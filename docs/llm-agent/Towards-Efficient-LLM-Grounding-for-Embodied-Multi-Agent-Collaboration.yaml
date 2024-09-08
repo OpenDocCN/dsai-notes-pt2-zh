@@ -1,0 +1,2742 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:46:07'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2405.14314](https://ar5iv.labs.arxiv.org/html/2405.14314)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Yang Zhang^(1,2) ,  Shixin Yang^(3∗),  Chenjia Bai²  ,  Fei Wu^(2,4),  Xiu Li¹,
+  prefs: []
+  type: TYPE_NORMAL
+- en: Zhen Wang^(2,3),  Xuelong Li^(2,5)
+  prefs: []
+  type: TYPE_NORMAL
+- en: ¹Tsinghua University, ²Shanghai AI Laboratory, ³Northwestern Polytechnical University
+  prefs: []
+  type: TYPE_NORMAL
+- en: ⁴Zhejiang University, ⁵Institute of Artificial Intelligence (TeleAI), China
+    Telecom
+  prefs: []
+  type: TYPE_NORMAL
+- en: baichenjia@pjlab.org.cn, xuelong_li@ieee.org Equal Contribution
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Grounding the reasoning ability of large language models (LLMs) for embodied
+    tasks is challenging due to the complexity of the physical world. Especially,
+    LLM planning for multi-agent collaboration requires communication of agents or
+    credit assignment as the feedback to re-adjust the proposed plans and achieve
+    effective coordination. However, existing methods that overly rely on physical
+    verification or self-reflection suffer from excessive and inefficient querying
+    of LLMs. In this paper, we propose a novel framework for multi-agent collaboration
+    that introduces Reinforced Advantage feedback (ReAd) for efficient self-refinement
+    of plans. Specifically, we perform critic regression to learn a sequential advantage
+    function from LLM-planned data, and then treat the LLM planner as an optimizer
+    to generate actions that maximize the advantage function. It endows the LLM with
+    the foresight to discern whether the action contributes to accomplishing the final
+    task. We provide theoretical analysis by extending advantage-weighted regression
+    in reinforcement learning to multi-agent systems. Experiments on Overcooked-AI
+    and a difficult variant of RoCoBench show that ReAd surpasses baselines in success
+    rate, and also significantly decreases the interaction steps of agents and query
+    rounds of LLMs, demonstrating its high efficiency for grounding LLMs. More results
+    are given at [https://read-llm.github.io/](https://read-llm.github.io/).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Large Language Models (LLMs) have exhibited remarkable capabilities across various
+    domains, including long-text understanding, reasoning, and text generation [devlin2019bert](#bib.bib13)
+    ; [radford2019language](#bib.bib47) ; [brown2020language](#bib.bib6) ; [raffel2023exploring](#bib.bib48)
+    . Benefiting from large-scale text corpora mined from the web, LLMs can absorb
+    and capture vast quantities of knowledge about the world for decision-making.
+    Recent research has shown that LLMs can interactively make decisions through zero-shot
+    or few-shot example prompting to solve embodied tasks [Firoozi2023FoundationMI](#bib.bib18)
+    via chain-of-thought (CoT) [wei2023chainofthought](#bib.bib61) or tree-of-thought
+    [yao2023tree](#bib.bib67) planning. However, LLMs perform planning only using
+    their internal knowledge, which is often not grounded in the physical world due
+    to the lack of task-specific knowledge of complex embodied agents. Such a problem
+    can lead to fact hallucination and nonsensical instruction interpretation issues
+    in reasoning [ahn2022i](#bib.bib2) . To prevent LLMs from outputting infeasible
+    plans in embodied tasks, existing methods mostly design a closed-loop framework
+    for the interaction process with feedback. Specifically, one line of research
+    adopts *self-reflection* by performing self-evaluation by LLMs to improve the
+    plan generation of LLM planner [shinn2023reflexion](#bib.bib51) ; [yao2023react](#bib.bib68)
+    ; [hao2023reasoning](#bib.bib21) ; [liu2023RAFA](#bib.bib40) ; and the other works
+    perform *physical verification* by using feedback of the external environment
+    to dynamically replan depending on unexpected feedback [huang2022Monologue](#bib.bib26)
+    ; [song2023llmplanner](#bib.bib53) . Nevertheless, these feedback is often sparse
+    or designed heuristically, a more principled feedback mechanism for LLM-based
+    embodied task planning is still lacking.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e82ad0480cf677ae876ebb8425e52e37.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: An illustration of the negotiation process of RoCo and our method.
+    RoCo interacts with the environment for each plan and takes the environment’s
+    feedback as prompts. In contrast, our method takes the advantage function (Adv.)
+    evaluated by a critic as feedback, and revises the plan if the advantage value
+    is lower than the threshold, which significantly reduces the interaction rounds
+    to the environment.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Considering more challenging planning problems in multi-agent settings, an LLM-based
+    agent needs to cooperate with other agents through communication and negotiation,
+    which causes more difficulties in effective feedback. Specifically, it is hard
+    for both self-reflection and physical verification to evaluate the effects of
+    individual action in a team outcome of multi-agents. Consequently, the feedback
+    mechanisms suffer from either excessive queries of LLMs or frequent interactions
+    with the physical environment. For instance, RoCo [mandi2023roco](#bib.bib42)
+    introduces physical verification as feedback to refine the LLM-generated actions
+    in multi-agent cooperative settings, but faces the difficulty of poor efficiency.
+    As we illustrated in Figure [1](#S1.F1 "Figure 1 ‣ 1 Introduction ‣ Towards Efficient
+    LLM Grounding for Embodied Multi-Agent Collaboration"), RoCo requires excessive
+    interaction to obtain physical feedback and queries to LLMs to get feasible joint-action
+    plans, which can be heavily inefficient for embodied tasks. In contrast, various
+    methods in Multi-Agent Reinforcement Learning (MARL) [MAsurvey](#bib.bib74) have
+    developed value or advantage decomposition theories for credit assignment of multiple
+    agents [QMIX](#bib.bib49) ; [kuba2022happo](#bib.bib29) , which provide effective
+    mechanisms to evaluate the contribution of individual actions in accomplishing
+    final tasks and can generate actions for monotonic policy improvement [Mirror](#bib.bib30)
+    . Inspired by these principles, we ask "*How to enhance the reasoning ability
+    of LLMs for embodied multi-agent collaboration* with theoretical supports of MARL?".
+    Our objective is to build an efficient feedback and refinement algorithm with
+    utilizing multi-agent advantage functions, for multi-agent planning assisted by
+    LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this paper, we propose Reinforced Advantage (*ReAd*) as a closed-loop feedback
+    for LLMs in multi-agent collaboration. We provide two optional LLM-generated plan
+    refinement scheme, including Sequential Individual Plan Refinement with the local
+    advantage (named *ReAd-S*) and Joint Plan Refinement with the joint advantage
+    (named *ReAd-J*). Among them, (i) *ReAd-J* evaluates the advantage function of
+    joint actions, which requires LLMs to generate the joint planning of all agents
+    at once. In contrast, (ii) *ReAd-S* evaluates the local advantages of each agent’s
+    action by following the principle of multi-agent advantage decomposition [kuba2022happo](#bib.bib29)
+    in MARL, which allows LLMs to generate actions for each agent sequentially. Both
+    advantage functions are estimated by a critic network that regresses LLM-planned
+    data. Based on the advantage function, an LLM planner is used as an optimizer
+    by prompting to generate actions that maximize the advantage value. Otherwise,
+    the LLM planner is required to re-plan if the advantage value is small. We provide
+    a theoretical motivation for such a process by extending advantage-weighted regression
+    [peng2019advantageweighted](#bib.bib46) to multi-agent settings. In experiments,
+    we extend RoCoBench [mandi2023roco](#bib.bib42) to a difficult variant, which
+    we term *DV-RoCoBench*. The results on *DV-RoCoBench* and *Overcooked-AI* show
+    that *ReAd* significantly decreases the interaction and query rounds, and also
+    surpasses baselines in success rate, highlighting its effectiveness for grounding
+    LLMs in embodied multi-agent collaboration tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Preliminaries
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We consider a Markov game, which is defined by a tuple $\langle\mathcal{N},\mathcal{S},\boldsymbol{\mathcal{A}},P,r,\gamma\rangle$.
+    In the following, we consider the LLM planner as a special RL policy, which can
+    be evaluated by a value function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Methodology
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We first give definitions and learning algorithms for the two kinds of advantage
+    functions in §[3.1](#S3.SS1 "3.1 Learning of Advantage Functions ‣ 3 Methodology
+    ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration"). Then,
+    we provide theoretical motivation for grounding LLMs by extending advantage-weighted
+    regression in multi-agent settings in §[3.2](#S3.SS2 "3.2 Theoretical Motivation
+    for Grounding LLM ‣ 3 Methodology ‣ Towards Efficient LLM Grounding for Embodied
+    Multi-Agent Collaboration"). Finally, we describe how to derive Reinforced Advantage
+    (*ReAd*) feedback from the theoretical motivation and use an LLM planner as an
+    optimizer and refine the plan in §[3.3](#S3.SS3 "3.3 Prompting by Reinforced Advantage
+    Feedback ‣ 3 Methodology ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent
+    Collaboration").
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Learning of Advantage Functions
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We first introduce the estimation of *joint* advantage function. Then the *local*
+    advantage is obtained via advantage decomposition by following theories from MARL.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Joint Advantage Function. Based on joint value functions $Q_{\boldsymbol{\pi}}(s,\boldsymbol{a})$,
+    we define the *joint* advantage function as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $A_{\boldsymbol{\pi}}(s,\boldsymbol{a})\triangleq Q_{\boldsymbol{\pi}}(s,\boldsymbol{a})-V_{\boldsymbol{\pi}}(s),$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: which evaluates the advantage value of joint actions $\boldsymbol{a}_{t}=(a_{t}^{1},a_{t}^{2},...,a_{t}^{n})$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When taking WAIT action $a=w$, as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Therefore, the *joint* advantage function can be derived by using only the $Q_{\boldsymbol{\pi}}$
+    function, as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $A_{\boldsymbol{\pi}}(s,\boldsymbol{a})=Q_{\boldsymbol{\pi}}(s,\boldsymbol{a})-\frac{1}{\gamma}Q_{\boldsymbol{\pi}}(s,\boldsymbol{w}).$
+    |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: Local Advantage Function. In cooperative multi-agent settings, we can further
+    consider the contribution to performance in different subsets of agents’ views.
+    We adopt the standard definition in MARL to measure the local advantages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Definition 1.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: '[kuba2022happo](#bib.bib29) Let $i_{1:m}$ agent in the ordered subset. Correspondingly,
+    the multi-agent local state-action value function is defined as'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: and for disjoint sets $j_{1:k}$, the multi-agent local advantage function is
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: Monte Carlo Estimation. Both Eqs. ([1](#S3.E1 "In 3.1 Learning of Advantage
+    Functions ‣ 3 Methodology ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent
+    Collaboration")) and ([3](#S3.E3 "In Definition 1\. ‣ 3.1 Learning of Advantage
+    Functions ‣ 3 Methodology ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent
+    Collaboration")) can be estimated via the local value function $Q_{\boldsymbol{\pi}}^{i_{1:u}}(s,\boldsymbol{a}^{i_{1:u}})$,
+    where the complement sets is sampled from the dataset. Then the value function
+    is learned by a regression loss as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: We refer to Alg. [1](#alg1 "Algorithm 1 ‣ Appendix C Algorithmic Description
+    ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration") in
+    §[C](#A3 "Appendix C Algorithmic Description ‣ Towards Efficient LLM Grounding
+    for Embodied Multi-Agent Collaboration") for the details. The setting of reward
+    $r_{t}$ otherwise. The details of data collection are given in §[E.4](#A5.SS4
+    "E.4 Dataset and Critic Network ‣ Appendix E Additional Experimental Results ‣
+    Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration").
+  prefs: []
+  type: TYPE_NORMAL
+- en: Advantage Decomposition. Based on Eq. ([2](#S3.E2 "In Definition 1\. ‣ 3.1 Learning
+    of Advantage Functions ‣ 3 Methodology ‣ Towards Efficient LLM Grounding for Embodied
+    Multi-Agent Collaboration")), we can express the state value function $V_{\boldsymbol{\pi}}(s)$,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $V_{\boldsymbol{\pi}}(s)=\mathbb{E}_{a^{1:n}\sim\boldsymbol{\pi}^{1:n}}\left[Q_{\boldsymbol{\pi}}(s,\boldsymbol{a}^{1:n})\right].$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Based on Definition [1](#Thmdefinition1 "Definition 1\. ‣ 3.1 Learning of Advantage
+    Functions ‣ 3 Methodology ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent
+    Collaboration"), we can introduce a pivotal lemma, which reveals that joint advantage
+    function can be decomposed into the summation of local advantages of each agent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lemma 1.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: (Multi-Agent Advantage Decomposition). In any cooperative Markov games, given
+    a joint policy $\boldsymbol{\pi}$ of all agents, we have
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $A_{\boldsymbol{\pi}}(s,\boldsymbol{a})=\sum_{k=1}^{n}A_{\boldsymbol{\pi}}^{i_{k}}(s,\boldsymbol{a}^{i_{1:k-1}},a^{i_{k}}),$
+    |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\boldsymbol{a}=(a^{1},a^{2},...,a^{n})$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The proof follows [kuba2022happo](#bib.bib29) and is given in §[A.1](#A1.SS1
+    "A.1 Proof of Multi-Agent Advantage Decomposition ‣ Appendix A Theoretical Proof
+    ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration"). Lemma
+    [1](#Thmlemma1 "Lemma 1\. ‣ 3.1 Learning of Advantage Functions ‣ 3 Methodology
+    ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration") will
+    be used for derivation in §[3.2](#S3.SS2 "3.2 Theoretical Motivation for Grounding
+    LLM ‣ 3 Methodology ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent
+    Collaboration").
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Theoretical Motivation for Grounding LLM
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In this section, we give a theoretical motivation that closely resembles advantage-weighted
+    regression [peng2019advantageweighted](#bib.bib46) in single-agent RL, while we
+    extend it for multi-agents via advantage decomposition in Lemma [1](#Thmlemma1
+    "Lemma 1\. ‣ 3.1 Learning of Advantage Functions ‣ 3 Methodology ‣ Towards Efficient
+    LLM Grounding for Embodied Multi-Agent Collaboration"). To achieve efficient LLM
+    grounding, i.e., to obtain a superior policy to the LLM planner, one option is
+    adopting LLM as a basic policy and searching for a stronger policy than it. Therefore,
+    we derive our objective as an approximate optimization of a constrained policy
+    search problem. Specifically, we denote the policy of LLM planners as $\boldsymbol{\mu}=\boldsymbol{\pi}_{\rm
+    llm}(\boldsymbol{a}|s)$, as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\begin{split}\eta(\boldsymbol{\pi})=\mathbb{E}_{s\sim\rho_{\boldsymbol{\pi}}(s),\boldsymbol{a}\sim\boldsymbol{\pi}(\boldsymbol{a}&#124;s)}\left[A_{\boldsymbol{\mu}}(s,\boldsymbol{a})\right],\end{split}$
+    |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\rho_{\boldsymbol{\pi}}(s)=\sum_{i=0}^{\infty}\gamma^{i}P(s_{i}=s)$,
+    instructed by [pmlr-v37-schulman15ppo](#bib.bib50) , as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\hat{\eta}(\boldsymbol{\pi})=\mathbb{E}_{s\sim\rho_{\boldsymbol{\mu}}(s),\boldsymbol{a}\sim\boldsymbol{\pi}(\boldsymbol{a}&#124;s)}\left[A_{\boldsymbol{\mu}}(s,\boldsymbol{a})\right].$
+    |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: By replacing the original objective with the surrogate objective, we can formulate
+    the following constrained policy search problem as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\begin{split}\mathop{\arg\max}\limits_{\boldsymbol{\pi}}\int_{s}\rho_{\boldsymbol{\mu}}(s)\int_{\boldsymbol{a}}\boldsymbol{\pi}(\boldsymbol{a}&#124;s)A_{\boldsymbol{\mu}}(s,\boldsymbol{a})\,d\boldsymbol{a}\,ds,\quad{\rm
+    s.t.}\int_{s}\rho_{\boldsymbol{\mu}}(s){\rm D}_{KL}\left(\boldsymbol{\pi}(\cdot&#124;s)\&#124;\boldsymbol{\mu}(\cdot&#124;s)\right)\,ds\leq\epsilon.\end{split}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: The constraint asserts that when the new policy $\boldsymbol{\pi}$¹¹1We refer
+    to [pmlr-v37-schulman15ppo](#bib.bib50) for a detailed derivation.. To get the
+    solution to this constrained optimization, we form the Lagrangian of the primal
+    problem presented above,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\begin{split}\mathcal{L}(\boldsymbol{\pi},\beta)=\,\int_{s}\rho_{\boldsymbol{\mu}}(s)\int_{\boldsymbol{a}}\boldsymbol{\pi}(\boldsymbol{a}&#124;s)A_{\boldsymbol{\mu}}(s,\boldsymbol{a})\,d\boldsymbol{a}\,ds+\beta\left(\epsilon-\int_{s}\rho_{\boldsymbol{\mu}}(s){\rm
+    D}_{\rm KL}\left(\boldsymbol{\pi}(\cdot&#124;s)\&#124;\boldsymbol{\mu}(\cdot&#124;s)\right)\,ds\right)\end{split}$
+    |  | (7) |'
+  prefs: []
+  type: TYPE_TB
+- en: where <math id="S3.SS2.p1.17.m1.1" class="ltx_Math" alttext="\beta></math> is
+    a Lagrange multiplier.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Optimal Joint Policy. According to KKT conditions [kkt](#bib.bib31) , the optimal
+    policy $\boldsymbol{\pi}^{*}$ for the constrained optimization problem in Eq. ([7](#S3.E7
+    "In 3.2 Theoretical Motivation for Grounding LLM ‣ 3 Methodology ‣ Towards Efficient
+    LLM Grounding for Embodied Multi-Agent Collaboration")) is expressed by
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\boldsymbol{\pi}^{*}(\boldsymbol{a}&#124;s)=\frac{1}{Z(s)}\boldsymbol{\mu}(\boldsymbol{a}&#124;s)\exp\left(\frac{1}{\beta}A_{\boldsymbol{\mu}}(s,\boldsymbol{a})\right),$
+    |  | (8) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $Z(s)$ is the partition function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Optimal Individual Policy. Following advantage decomposition in Lemma [1](#Thmlemma1
+    "Lemma 1\. ‣ 3.1 Learning of Advantage Functions ‣ 3 Methodology ‣ Towards Efficient
+    LLM Grounding for Embodied Multi-Agent Collaboration"), we can decompose optimal
+    joint policy $\boldsymbol{\pi}^{*}(\boldsymbol{a}|s)$, as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (9) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $Z^{i}(s)$ is the partition function. We refer to §[A.2](#A1.SS2 "A.2
+    Derivation of Optimal Joint Policy and Optimal Individual Policy ‣ Appendix A
+    Theoretical Proof ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration")
+    for a detailed derivation of Eqs. ([8](#S3.E8 "In 3.2 Theoretical Motivation for
+    Grounding LLM ‣ 3 Methodology ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent
+    Collaboration")) and ([9](#S3.E9 "In 3.2 Theoretical Motivation for Grounding
+    LLM ‣ 3 Methodology ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent
+    Collaboration")).
+  prefs: []
+  type: TYPE_NORMAL
+- en: By maximizing the expected policy improvement $\eta(\boldsymbol{\pi})=J(\boldsymbol{\pi})-J(\boldsymbol{\mu})$,
+    as we discussed in §[3.1](#S3.SS1 "3.1 Learning of Advantage Functions ‣ 3 Methodology
+    ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration").
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Prompting by Reinforced Advantage Feedback
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Upon the basic policy $\boldsymbol{\mu}=\boldsymbol{\pi}_{\rm llm}$, there being
+    convenient for grounding close-sourced LLMs. We provide theoretical proof for
+    the monotonic improvement with the *binary filtering* in §[A.3](#A1.SS3 "A.3 Proof
+    of Monotonic Improvement with Binary Filtering ‣ Appendix A Theoretical Proof
+    ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration").
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Inspired by the *binary filtering*, we develop a novel feedback mechanism,
+    wherein the main idea is to convert the filter $\mathds{1}[A_{\boldsymbol{\mu}}^{i}(s,\boldsymbol{a}^{1:i-1},a^{i})></math>
+    for refining the plans. Based on different types of advantages, we design two
+    algorithms for plan refinement: *ReAd-S* and *ReAd-J*. The process of prompting
+    and refinement is depicted in Figure [2](#S3.F2 $. The (refined) action is used
+    to interact with the environment, and the LLM planner is processed in the next
+    step.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Prompting and Refinement for *ReAd-S*. For each time step, we initialize an
+    empty action-set $\boldsymbol{a}_{t}=\{\}$ to estimate the advantage score of
+    a generated action, as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Given a threshold $\epsilon\geq 0$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Prompting and Refinement for *ReAd-J*. The planning process of the LLM planner
+    for *ReAd-J* is similar to that of *ReAd-S*. The main difference is the LLM planner
+    for *ReAd-J* is required to give a joint action $\boldsymbol{a}_{t}$ rather than
+    considering the local advantages. The score function is
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: based on Eq. ([8](#S3.E8 "In 3.2 Theoretical Motivation for Grounding LLM ‣
+    3 Methodology ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration")).
+    The joint plan $\boldsymbol{a}_{t}$).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Related Works
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Task Planning with LLMs. LLMs [chowdhery2023palm](#bib.bib10) ; [openAI2023GPT](#bib.bib45)
+    ; [touvron2023llama1](#bib.bib55) ; [touvron2023llama2](#bib.bib56) trained on
+    a large-scale corpus exhibits notable reasoning abilities via in-context learning
+    [dong2022survey](#bib.bib14) ; [abernethy2023mechanism](#bib.bib1) ; [akyurek2023what](#bib.bib3)
+    . However, LLMs can also give infeasible plans for embodied agents due to the
+    lack of real-world knowledge. A line of research modifies the open-loop planning
+    framework to a closed-loop one via self-evaluation and reflection. For example,
+    ReAct [yao2023react](#bib.bib68) , Reflexion [shinn2023reflexion](#bib.bib51)
+    , and BeamSearch [xie2023beam](#bib.bib65) incorporate feedback from an LLM evaluator
+    into prompts after the previous plan is finished. Other works integrate domain
+    knowledge of embodied agents in feedback. For example, RoCo [mandi2023roco](#bib.bib42)
+    and Inner Monologue [huang2022Monologue](#bib.bib26) design physical verification
+    such as collision checking, object recognition, and scene description for feedback.
+    DoReMi [guo2023DoReMi](#bib.bib20) leverages LLM to generate physical constraints,
+    and ViLA [hu2023look](#bib.bib23) adopts Vision-Language-Model (VLM) as a constraint
+    detector for verification. Another line of research develops advanced reasoning
+    frameworks, including chain-of-thought [wei2023chainofthought](#bib.bib61) ; [mu2023embodiedgpt](#bib.bib43)
+    and tree-of-thought [yao2023tree](#bib.bib67) . Works like [zhao2023large](#bib.bib75)
+    ; [hao2023reasoning](#bib.bib21) consider LLMs as a world model [ano2023learning](#bib.bib37)
+    and adopt tree search in planning [hu2023tree](#bib.bib22) . Other works adopt
+    planning domain definition language (PDDL) for searching in long-horizon problems
+    [silver2023PDDL](#bib.bib52) ; [liu2023llm+p](#bib.bib39) ; [zhou2023isr](#bib.bib76)
+    . Our work lies in closed-loop frameworks but has a novel advantage function in
+    feedback, which is different from self-reflection or physical feedback and does
+    not rely on advanced searching algorithms.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Grounding LLM with RL. RL with Human Feedback (RLHF) has been used for aligning
+    LLMs with human preference via parameter tuning [dai2023safe](#bib.bib12) ; [fernandes2023bridging](#bib.bib17)
+    ; [song2023preference](#bib.bib54) . In contrast, our work focuses on grounding
+    closed-source LLM with RL via few-shot prompting and closed-loop feedback [zeng2023socratic](#bib.bib70)
+    ; [wu2023embodied](#bib.bib62) ; [huang2022zero](#bib.bib24) ; [lin2023grounded](#bib.bib36)
+    . Previous works try to integrate RL into LLM planning under the framework tree
+    search [browne2012survey](#bib.bib7) . For example, FAFA [liu2023RAFA](#bib.bib40)
+    and TS-LLM [feng2023alphazero](#bib.bib16) learn an environment model and value
+    function to plan subroutine in MCTS. REX [murthy2023rex](#bib.bib44) proposes
+    to balance exploration and exploitation in LLM-based MCTS. Other works like SayCan
+    [ahn2022i](#bib.bib2) and Text2Motion [Kevin2023Motion](#bib.bib38) adopt a model-free
+    manner by learning value functions to connect LLM knowledge to physical environments.
+    SwiftSage [lin2023swiftsage](#bib.bib35) performs imitation learning for rapid
+    thinking and LLM for methodical training. Remember [zhang2023large](#bib.bib72)
+    learns value functions for LLM to predict $Q$-values. Different from the Remember
+    framework that retrieves similar states from a buffer, we evaluate the advantage
+    function of planned actions via a neural network and follow advantage-weighted
+    regression in prompting. We employ the advantage function in a multi-agent setting,
+    while previous methods focus on single-agent planning. Compared to previous LLM-based
+    multi-agent works that manually design communication, reflection, and reasoning
+    modules [zhang2023proagent](#bib.bib71) ; [zhang2023building](#bib.bib73) ; [Shyam2023MA](#bib.bib28)
+    ; [chen2023MA](#bib.bib9) , we propose a more principled way by using the sequential
+    advantage function from multi-agent RL for cooperation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We first introduce two multi-agent collaboration environment in §[5.1](#S5.SS1
+    "5.1 Experimental Setup ‣ 5 Experiments ‣ Towards Efficient LLM Grounding for
+    Embodied Multi-Agent Collaboration"). Then we design a series of experiments to
+    compare our approach with baselines in §[5.2](#S5.SS2 "5.2 Results ‣ 5 Experiments
+    ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration"). Finally,
+    we conduct ablation studies and analyze the impact of modules in §[5.3](#S5.SS3
+    "5.3 Ablation Studies ‣ 5 Experiments ‣ Towards Efficient LLM Grounding for Embodied
+    Multi-Agent Collaboration").
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.1 Experimental Setup
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: DV-RoCoBench. We present *Difficult Variants of RoCoBench (DV-RoCoBench)* for
+    embodied multi-robot collaboration, which is derived from RoCoBench [mandi2023roco](#bib.bib42)
+    . RoCoBench consists of 6 multi-robot collaboration tasks in a tabletop manipulation
+    environment, typically involving interactive objects that are semantically straightforward
+    to comprehend and reason about for LLMs. The tasks encompass a range of collaboration
+    scenarios that necessitate robots’ communication and coordination behaviors. Robots
+    receive their observation and select one action from the high-level actions set,
+    which includes diverse functionalities such as WAIT, moving, sweeping, grasping,
+    and dropping, across multiple tasks. The execution of high-level actions is subsequently
+    translated into low-level actions for manipulation. In contrast to RoCoBench,
+    which primarily focuses on tasks with a fixed difficulty level, we select three
+    tasks to enrich the complexity of the benchmark and create the new *DV-RoCoBench*,
+    where each task is tailored to have 4-5 difficulty levels for experiments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the following, we give a brief description of tasks and settings. See §[D](#A4
+    "Appendix D Environment Details ‣ Towards Efficient LLM Grounding for Embodied
+    Multi-Agent Collaboration") for details.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '-'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sweep Floor. Two robot arms need to work together to sweep all the cubes on
+    the table into the bin. The aim is to sweep away the cubes with given colors.
+    We establish 5 difficulty levels based on the number of overall cubes and the
+    target cubes. An LLM planner is more likely to produce fact hallucinations in
+    more difficult settings.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '-'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Make Sandwich. Two robot arms need to stack the ingredients to make a sandwich
+    according to the recipe. Each arm is limited in operating range and cooperation
+    between agents is required. We establish 4 difficulty levels depending on the
+    length of the recipe.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '-'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sort Cubes. Three robot arms within their operating ranges are required to coordinate
+    and place cubes on the table to their target positions. We establish 5 different
+    difficulty levels based on the distance between the cubes and their target locations.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Overcooked-AI. *Overcooked-AI* [micah2019overcooked_ai](#bib.bib8) is a fully
+    cooperative multi-agent benchmark environment based on the wildly popular video
+    game Overcooked. In this environment, agents need to deliver soups as fast as
+    possible. Each soup requires placing up to 3 ingredients in a pot, waiting for
+    the soup to cook, and having an agent pick up the soup and deliver it. The environment
+    consists of 5 different kitchen scenarios, covering from low-level motion coordination
+    challenges to high-level strategy coordination challenges. In our experiment,
+    we chose two representative scenarios: Cramped Room and Forced Coordination,and
+    set the number of ingredients for making soups as 2 and the timesteps for cooking
+    as 2. To enable the computation of the success rate, we modify the task to cook
+    and deliver a soup within a specified number of timesteps. Details of the environment
+    are given in §[D.4](#A4.SS4 "D.4 Overcooked-AI ‣ Appendix D Environment Details
+    ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration"). For
+    quantitative comparisons, we impose the maximum number of environment steps per
+    episode to 15 in *DV-RoCoBench*, 20 in Cramped Room, and 25 in Forced Coordination.
+    And the maximum rounds of re-planning per step is set to 15 for all tasks except
+    for Sort Cubes where it is set to 10.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Baseline Methods. We use GPT-4-Turbo [openAI2023GPT](#bib.bib45) as the basic
+    LLM policy for all experiments. On both benchmarks, we compare *ReAd-J* with three
+    strong close-loop baselines – ReAct [yao2023react](#bib.bib68) , Reflexion [shinn2023reflexion](#bib.bib51)
+    and MindAgent [gong2023mindagent](#bib.bib19) , and a planner named Central Plan
+    which instructs the LLM to generate actions for all robots based on the history
+    of all agents. These five methods output agents’ plans in a parallel manner. In
+    *DV-RoCoBench*, we particularly add one more baseline RoCo [mandi2023roco](#bib.bib42)
+    which achieves the state-of-the-art performance in RoCoBench [mandi2023roco](#bib.bib42)
+    , for comparisons with *ReAd-S*. Both of them generate joint plans in a sequential
+    manner. Due to the expensive cost of sequential planning with more environment
+    steps in *Overcooked-AI*, we only evaluate the performance of methods that generate
+    joint plans in a parallel manner. We provide a detailed comparison with baselines
+    in Table [3](#A5.T3 "Table 3 ‣ E.1 Comparison of Baselines ‣ Appendix E Additional
+    Experimental Results ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent
+    Collaboration") of §[E.1](#A5.SS1 "E.1 Comparison of Baselines ‣ Appendix E Additional
+    Experimental Results ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent
+    Collaboration").
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Evaluation Metrics. We evaluate the performance of algorithms on three metrics
+    that closely resemble that in RoCoBench: (i) SR: the success rate of completing
+    tasks within the limited interaction rounds; (ii) ES: the number of interaction
+    steps to the environment taken by the robots to complete the task; (iii) NQ: the
+    number of queries to LLMs in completing the task, which measures the efficiency
+    in enquiring LLMs to obtain a feasible plan. An algorithm is better if it has
+    *higher SR, fewer ES, and fewer NQ*. Among these metrics, SR and ES directly reflect
+    the effectiveness of a planner in completing tasks, while NQ can be somewhat trivial
+    since a planner can have much fewer queries to LLM but has a low SR. In contrast,
+    methods that require policy refinement often require more queries to lead to a
+    high SR.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d30081f6855a360f93b93b0b40124ebd.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: We report mean SR ($\boldsymbol{\uparrow}$) in 3 tasks with various
+    difficulty levels averaged over 10 random seeds. The detailed score is given in
+    Table [4](#A5.T4 "Table 4 ‣ E.2 Main Experiments ‣ Appendix E Additional Experimental
+    Results ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration")
+    of §[E.2](#A5.SS2 "E.2 Main Experiments ‣ Appendix E Additional Experimental Results
+    ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/2c0dd88e1ebfea2c5231dcab8422fab2.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: We report mean SR ($\boldsymbol{\uparrow}$) in two scenarios of *Overcooked-AI*
+    averaged over 10 random seeds. The detailed score is given in Table [5](#A5.T5
+    "Table 5 ‣ E.2 Main Experiments ‣ Appendix E Additional Experimental Results ‣
+    Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration") of §[E.2](#A5.SS2
+    "E.2 Main Experiments ‣ Appendix E Additional Experimental Results ‣ Towards Efficient
+    LLM Grounding for Embodied Multi-Agent Collaboration").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.2 Results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '*ReAd-S* and *ReAd-J* outperform their corresponding strong baselines on all
+    metrics and achieve more efficient LLM grounding. As shown in Figure [3](#S5.F3
+    "Figure 3 ‣ 5.1 Experimental Setup ‣ 5 Experiments ‣ Towards Efficient LLM Grounding
+    for Embodied Multi-Agent Collaboration"), with the increase of difficulty levels
+    in *DV-RoCoBench*, the performance contrast in SR becomes pronounced gradually.
+    In more difficult settings (e.g., level 4 or 5 in tasks), our approach obtains
+    higher success rates while baseline methods fail to make progress. Meanwhile,
+    *ReAd-S* and *ReAd-J* present lower ES and comparable or even lower NQ on most
+    tasks in *DV-RoCoBench* when compared to their corresponding baselines. A lower
+    ES suggests that prompting LLMs to generate actions maximizing the advantages
+    can improve the optimality of the proposed plans because a higher advantage implies
+    the generated action contributes more to accomplishing the task. Furthermore,
+    as shown in Figure [4](#S5.F4 "Figure 4 ‣ 5.1 Experimental Setup ‣ 5 Experiments
+    ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration"), our
+    methods achieve a significantly higher SR compared with the methods relying on
+    *physical verification* as feedback in *Overcooked-AI*. Due to the heavy coordination
+    challenges inherent to *Overcooked-AI*, LLM-based agents cannot advance toward
+    task completion unless the LLM planner generates highly collaborative plans. By
+    replacing the *physical verification* feedback with *advantage function*, we implicitly
+    transfer the understanding and reasoning of the LLMs from semantic comprehension
+    towards the current state of the environment to digesting the numerical relationship.
+    As the scenario becomes more challenging for multi-agent collaboration, it is
+    inevitable to involve more redundant information and disturbing components in
+    the environment, which poses a challenge for the LLM planner to capture and reason
+    about the essential part inside the state and physical feedback. In contrast,
+    benefiting from *ReAd* feedback, the LLM planner only needs to concentrate on
+    how to maximize the advantage score no matter how challenging the scenario is.
+    Hence, our approach exhibits superior planning capabilities and better LLM grounding
+    results for embodied tasks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: With sudden disturbances towards the environments, the LLM-planner can re-adjust
+    plans rapidly to accomplish the task via *ReAd* feedback. Since the critic takes
+    both the current state and the proposed actions as input, it endows the LLM planner
+    with not only the foresight to discern whether the action contributes to realizing
+    the goal but also the ability to reschedule the planning quickly when encountering
+    sudden disturbances to the advancement of the task. To evaluate
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: Evaluation results over 10 runs of *ReAd-S* and RoCo and its modified
+    versions on disturbances at timestep $n$: no resetting.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | Method | NQ | ES | SR |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | ReAd-S | 22.1±1.65 | 8.9±0.28 | 1.0±0.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| recipe3 | RoCo-L | 44.7±4.90 | 12.0±0.54 | 0.9±0.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $(n=0)$ | RoCo-P | 33.7±3.16 | 11.5±0.95 | 0.8±0.13 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | RoCo | 33.7±3.16 | 11.5±0.95 | 0.8±0.13 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | ReAd-S | 39.7±5.30 | 10.4±0.34 | 1.0±0.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| recipe3 | RoCo-L | 55.3±2.63 | 14.1±0.28 | 0.8±0.13 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $(n=1)$ | RoCo-P | 33.6±2.03 | 12.5±0.73 | 0.9±0.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | RoCo | 46.3±3.60 | 13.9±0.43 | 0.7±0.15 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | ReAd-S | 44.9±4.34 | 12.5±0.34 | 1.0±0.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| recipe3 | RoCo-L | 53.4±2.28 | 14.8±0.20 | 0.3±0.15 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $(n=2)$ | RoCo-P | 35.2±0.98 | 14.3±0.26 | 0.8±0.13 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | RoCo | 61.2±11.95 | 14.2±0.44 | 0.5±0.16 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | ReAd-S | 49.1±4.53 | 13.4±0.54 | 1.0±0.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| recipe3 | RoCo-L | 75.9±6.91 | 15.0±0.00 | 0.0±0.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $(n=3)$ | RoCo-P | 40.0±2.94 | 14.3±0.26 | 0.5±0.17 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | RoCo | 74.8±10.79 | 15.0±0.00 | 0.0±0.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: the robustness of the LLM planner, we compare *ReAd-S* and RoCo in extra extended
+    scenarios with unexpected disruptions. We select *‘recipe3’* (3rd difficulty level
+    in Make Sandwich) that takes a minimum environment step of 8 to accomplish the
+    task. When a disruption occurs at timestep $n\ (0\leq n<8,n\in\mathbb{N})$. Regardless
+    of what kind of history information RoCo relies on, consistent superior performance
+    demonstrates that *ReAd* feedback alleviates the potentially severe hallucination
+    issue and brings reliable robustness.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.3 Ablation Studies
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Table 2: The performance of the multi-step and single-step version of *ReAd-S*
+    and *ReAd-J* on the ‘Y3_G3’ task.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | NQ | ES | SR |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ReAd-J(Multi-Step) | 16.4±0.54 | 13.4±0.27 | 0.8±0.13 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ReAd-J(Single-Step) | 19.1±1.25 | 14.1±0.28 | 0.6±0.16 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ReAd-S(Multi-Step) | 31.4±1.11 | 14.0±0.26 | 0.8±0.13 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ReAd-S(Single-Step) | 35.1±1.16 | 14.5±0.17 | 0.6±0.16 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Plan refinement has a remarkable impact on grounding LLM. The advantage score
+    plays two roles in ReAd: (i) *prompting as optimizing* for generating actions
+    with the highest score, and (ii) *feedback as refinement* for re-plan if the score
+    is less than a threshold. The policy refinement makes our method a *multi-step*
+    process since the action can be refined for multi-rounds. To investigate the role
+    of plan refinement, we adopt a *single-step* version by removing the second role,
+    which forms an open-loop plan generation without refinement. In Table [5.3](#S5.SS3
+    "5.3 Ablation Studies ‣ 5 Experiments ‣ Towards Efficient LLM Grounding for Embodied
+    Multi-Agent Collaboration"), we denote the original version as *Multi-Step* and
+    the open-loop version as *Single-Step*. We pick the most difficult variant *‘Y3_G3’*
+    in Sweep Floor and observe a marginal decline in both efficiency and success rates
+    in *Single-Step*. It suggests that plan refinement that ensures monotonic policy
+    improvement is crucial for performance. Interestingly, *ReAd-J(Single-Step)* can
+    also achieve a considerable success rate of 60%, which is dramatically comparable
+    or superior to the baselines with *physical verification* as feedback.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We have presented *ReAd* as a novel LLM feedback for closed-loop planning in
+    multi-agent collaboration. We provide theoretical motivation based on multi-agent
+    advantage-weighted regression. The LLM is prompted to generate plans with high
+    advantages and perform policy refinement. The experiments show that our method
+    outperforms physical feedback with improved efficiency. The advantage feedback
+    can handle sudden disturbances and is crucial for refinement. Future works include
+    extending the advantage feedback to multi-objective and safe planning scenarios.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Acknowledgements
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We would like to thank Prof. Zhuoran Yang for his insightful discussions and
+    comments. This work was conducted during the internship of Yang Zhang at Shanghai
+    Artificial Intelligence Laboratory, and supported by the National Science Foundation
+    for Distinguished Young Scholarship of China (No. 62025602) and the National Natural
+    Science Foundation of China (No. 62306242).
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[1] Jacob Abernethy, Alekh Agarwal, Teodor V Marinov, and Manfred K Warmuth.
+    A mechanism for sample-efficient in-context learning for sparse retrieval tasks.
+    arXiv preprint arXiv:2305.17040, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[2] Michael Ahn, Anthony Brohan, Yevgen Chebotar, Chelsea Finn, Karol Hausman,
+    Alexander Herzog, Daniel Ho, Julian Ibarz, Alex Irpan, Eric Jang, Ryan Julian,
+    Dmitry Kalashnikov, Sergey Levine, and et al. Do as i can, not as i say: Grounding
+    language in robotic affordances. In Annual Conference on Robot Learning, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[3] Ekin Akyürek, Dale Schuurmans, Jacob Andreas, Tengyu Ma, and Denny Zhou.
+    What learning algorithm is in-context learning? investigations with linear models.
+    In International Conference on Learning Representations, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[4] Anthony Brohan, Noah Brown, Justice Carbajal, Yevgen Chebotar, Xi Chen,
+    Krzysztof Choromanski, Tianli Ding, Danny Driess, Avinava Dubey, Chelsea Finn,
+    Pete Florence, Chuyuan Fu, Montse Gonzalez Arenas, Keerthana Gopalakrishnan, Kehang
+    Han, Karol Hausman, Alexander Herzog, and et al. RT-2: vision-language-action
+    models transfer web knowledge to robotic control. CoRR, abs/2307.15818, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[5] Anthony Brohan, Noah Brown, Justice Carbajal, Yevgen Chebotar, Joseph Dabis,
+    Chelsea Finn, Keerthana Gopalakrishnan, Karol Hausman, Alexander Herzog, and et al.
+    Rt-1: Robotics transformer for real-world control at scale. In Robotics: Science
+    and Systems, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[6] Tom B. Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared Kaplan,
+    Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell,
+    Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan, Rewon Child,
+    Aditya Ramesh, Daniel M. Ziegler, Jeffrey Wu, Clemens Winter, Christopher Hesse,
+    Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack Clark,
+    Christopher Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario Amodei.
+    Language models are few-shot learners. In Advances in Neural Information Processing
+    Systems, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[7] Cameron B Browne, Edward Powley, Daniel Whitehouse, Simon M Lucas, Peter I
+    Cowling, Philipp Rohlfshagen, Stephen Tavener, Diego Perez, Spyridon Samothrakis,
+    and Simon Colton. A survey of monte carlo tree search methods. IEEE Transactions
+    on Computational Intelligence and AI in games, 4(1):1–43, 2012.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[8] Micah Carroll, Rohin Shah, Mark K. Ho, Thomas L. Griffiths, Sanjit A. Seshia,
+    Pieter Abbeel, and Anca Dragan. On the utility of learning about humans for human-ai
+    coordination. Proceedings of the 33rd International Conference on Neural Information
+    Processing Systems, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[9] Yongchao Chen, Jacob Arkin, Yang Zhang, Nicholas Roy, and Chuchu Fan. Scalable
+    multi-robot collaboration with large language models: Centralized or decentralized
+    systems? CoRR, abs/2309.15943, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[10] Aakanksha Chowdhery, Sharan Narang, Jacob Devlin, Maarten Bosma, Gaurav
+    Mishra, Adam Roberts, Paul Barham, Hyung Won Chung, Charles Sutton, Sebastian
+    Gehrmann, et al. Palm: Scaling language modeling with pathways. Journal of Machine
+    Learning Research, 24(240):1–113, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[11] Open X.-Embodiment Collaboration. Open x-embodiment: Robotic learning
+    datasets and RT-X models. CoRR, abs/2310.08864, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[12] Josef Dai, Xuehai Pan, Ruiyang Sun, Jiaming Ji, Xinbo Xu, Mickel Liu,
+    Yizhou Wang, and Yaodong Yang. Safe rlhf: Safe reinforcement learning from human
+    feedback. arXiv preprint arXiv:2310.12773, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[13] Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. BERT:
+    pre-training of deep bidirectional transformers for language understanding. In
+    Conference of the North American Chapter of the Association for Computational
+    Linguistics: Human Language Technologies, NAACL-HLT, pages 4171–4186, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[14] Qingxiu Dong, Lei Li, Damai Dai, Ce Zheng, Zhiyong Wu, Baobao Chang, Xu Sun,
+    Jingjing Xu, and Zhifang Sui. A survey for in-context learning. arXiv preprint
+    arXiv:2301.00234, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[15] Danny Driess, Fei Xia, Mehdi S. M. Sajjadi, Corey Lynch, Aakanksha Chowdhery,
+    Brian Ichter, Ayzaan Wahid, Jonathan Tompson, Quan Vuong, Tianhe Yu, Wenlong Huang,
+    Yevgen Chebotar, Pierre Sermanet, Daniel Duckworth, Sergey Levine, Vincent Vanhoucke,
+    Karol Hausman, Marc Toussaint, Klaus Greff, Andy Zeng, Igor Mordatch, and Pete
+    Florence. Palm-e: An embodied multimodal language model. In International Conference
+    on Machine Learning, volume 202, pages 8469–8488, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[16] Xidong Feng, Ziyu Wan, Muning Wen, Ying Wen, Weinan Zhang, and Jun Wang.
+    Alphazero-like tree-search can guide large language model decoding and training.
+    arXiv preprint arXiv:2309.17179, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[17] Patrick Fernandes, Aman Madaan, Emmy Liu, António Farinhas, Pedro Henrique
+    Martins, Amanda Bertsch, José GC de Souza, Shuyan Zhou, Tongshuang Wu, Graham
+    Neubig, et al. Bridging the gap: A survey on integrating (human) feedback for
+    natural language generation. arXiv preprint arXiv:2305.00955, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[18] Roya Firoozi, Johnathan Tucker, Stephen Tian, Anirudha Majumdar, Jiankai
+    Sun, Weiyu Liu, Yuke Zhu, Shuran Song, Ashish Kapoor, Karol Hausman, Brian Ichter,
+    Danny Driess, Jiajun Wu, Cewu Lu, and Mac Schwager. Foundation models in robotics:
+    Applications, challenges, and the future. CoRR, abs/2312.07843, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[19] Ran Gong, Qiuyuan Huang, Xiaojian Ma, Hoi Vo, Zane Durante, Yusuke Noda,
+    Zilong Zheng, Song-Chun Zhu, Demetri Terzopoulos, Li Fei-Fei, et al. Mindagent:
+    Emergent gaming interaction. arXiv preprint arXiv:2309.09971, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[20] Yanjiang Guo, Yen-Jen Wang, Lihan Zha, Zheyuan Jiang, and Jianyu Chen.
+    Doremi: Grounding language model by detecting and recovering from plan-execution
+    misalignment. arXiv preprint arXiv:2307.00329, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[21] Shibo Hao, Yi Gu, Haodi Ma, Joshua Jiahua Hong, Zhen Wang, Daisy Zhe Wang,
+    and Zhiting Hu. Reasoning with language model is planning with world model. arXiv
+    preprint arXiv:2305.14992, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[22] Mengkang Hu, Yao Mu, Xinmiao Yu, Mingyu Ding, Shiguang Wu, Wenqi Shao,
+    Qiguang Chen, Bin Wang, Yu Qiao, and Ping Luo. Tree-planner: Efficient close-loop
+    task planning with large language models. arXiv preprint arXiv:2310.08582, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[23] Yingdong Hu, Fanqi Lin, Tong Zhang, Li Yi, and Yang Gao. Look before you
+    leap: Unveiling the power of gpt-4v in robotic vision-language planning. arXiv
+    preprint arXiv:2311.17842, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[24] Wenlong Huang, Pieter Abbeel, Deepak Pathak, and Igor Mordatch. Language
+    models as zero-shot planners: Extracting actionable knowledge for embodied agents.
+    In International Conference on Machine Learning, pages 9118–9147\. PMLR, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[25] Wenlong Huang, Chen Wang, Ruohan Zhang, Yunzhu Li, Jiajun Wu, and Li Fei-Fei.
+    Voxposer: Composable 3d value maps for robotic manipulation with language models.
+    In Annual Conference on Robot Learning, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[26] Wenlong Huang, Fei Xia, Ted Xiao, Harris Chan, Jacky Liang, Pete Florence,
+    Andy Zeng, Jonathan Tompson, Igor Mordatch, Yevgen Chebotar, Pierre Sermanet,
+    Tomas Jackson, Noah Brown, Linda Luu, Sergey Levine, Karol Hausman, and brian
+    ichter. Inner monologue: Embodied reasoning through planning with language models.
+    In Annual Conference on Robot Learning, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[27] Sham Kakade and John Langford. Approximately optimal approximate reinforcement
+    learning. In International Conference on Machine Learning, page 267–274, 2002.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[28] Shyam Sundar Kannan, Vishnunandan L. N. Venkatesh, and Byung-Cheol Min.
+    Smart-llm: Smart multi-agent robot task planning using large language models.
+    CoRR, abs/2309.10062, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[29] Jakub Grudzien Kuba, Ruiqing Chen, Muning Wen, Ying Wen, Fanglei Sun,
+    Jun Wang, and Yaodong Yang. Trust region policy optimisation in multi-agent reinforcement
+    learning. In International Conference on Learning Representations, ICLR, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[30] Jakub Grudzien Kuba, Xidong Feng, Shiyao Ding, Hao Dong, Jun Wang, and
+    Yaodong Yang. Heterogeneous-agent mirror learning: A continuum of solutions to
+    cooperative MARL. CoRR, abs/2208.01682, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[31] Harold W. Kuhn and Albert W. Tucker. Nonlinear programming. In Berkeley
+    Symposium on Mathematical Statistics and Probability, page 481–492, 1950.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[32] Sergey Levine, Aviral Kumar, George Tucker, and Justin Fu. Offline reinforcement
+    learning: Tutorial, review, and perspectives on open problems. arXiv preprint
+    arXiv:2005.01643, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[33] Xinghang Li, Minghuan Liu, Hanbo Zhang, Cunjun Yu, Jie Xu, Hongtao Wu,
+    Chilam Cheang, Ya Jing, Weinan Zhang, Huaping Liu, Hang Li, and Tao Kong. Vision-language
+    foundation models as effective robot imitators. CoRR, abs/2311.01378, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[34] Jacky Liang, Wenlong Huang, Fei Xia, Peng Xu, Karol Hausman, Brian Ichter,
+    Pete Florence, and Andy Zeng. Code as policies: Language model programs for embodied
+    control. In IEEE International Conference on Robotics and Automation, pages 9493–9500\.
+    IEEE, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[35] Bill Yuchen Lin, Yicheng Fu, Karina Yang, Faeze Brahman, Shiyu Huang,
+    Chandra Bhagavatula, Prithviraj Ammanabrolu, Yejin Choi, and Xiang Ren. Swiftsage:
+    A generative agent with fast and slow thinking for complex interactive tasks.
+    In Neural Information Processing Systems, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[36] Bill Yuchen Lin, Chengsong Huang, Qian Liu, Wenda Gu, Sam Sommerer, and
+    Xiang Ren. On grounded planning for embodied tasks with language models. In AAAI
+    Conference on Artificial Intelligence, volume 37, pages 13192–13200, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[37] Jessy Lin, Yuqing Du, Olivia Watkins, Danijar Hafner, Pieter Abbeel, Dan
+    Klein, and Anca Dragan. Learning to model the world with language. arXiv preprint
+    arXiv:2308.01399, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[38] Kevin Lin, Christopher Agia, Toki Migimatsu, Marco Pavone, and Jeannette
+    Bohg. Text2motion: from natural language instructions to feasible plans. Auton.
+    Robots, 47(8):1345–1365, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[39] Bo Liu, Yuqian Jiang, Xiaohan Zhang, Qiang Liu, Shiqi Zhang, Joydeep Biswas,
+    and Peter Stone. Llm+ p: Empowering large language models with optimal planning
+    proficiency. arXiv preprint arXiv:2304.11477, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[40] Zhihan Liu, Hao Hu, Shenao Zhang, Hongyi Guo, Shuqi Ke, Boyi Liu, and
+    Zhaoran Wang. Reason for future, act for now: A principled architecture for autonomous
+    llm agents. In NeurIPS 2023 Foundation Models for Decision Making Workshop, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[41] Yecheng Jason Ma, William Liang, Guanzhi Wang, De-An Huang, Osbert Bastani,
+    Dinesh Jayaraman, Yuke Zhu, Linxi Fan, and Anima Anandkumar. Eureka: Human-level
+    reward design via coding large language models. CoRR, abs/2310.12931, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[42] Zhao Mandi, Shreeya Jain, and Shuran Song. Roco: Dialectic multi-robot
+    collaboration with large language models. CoRR, abs/2307.04738, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[43] Yao Mu, Qinglong Zhang, Mengkang Hu, Wenhai Wang, Mingyu Ding, Jun Jin,
+    Bin Wang, Jifeng Dai, Yu Qiao, and Ping Luo. EmbodiedGPT: Vision-language pre-training
+    via embodied chain of thought. In Neural Information Processing Systems, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[44] Rithesh Murthy, Shelby Heinecke, Juan Carlos Niebles, Zhiwei Liu, Le Xue,
+    Weiran Yao, Yihao Feng, Zeyuan Chen, Akash Gokul, Devansh Arpit, et al. Rex: Rapid
+    exploration and exploitation for ai agents. arXiv preprint arXiv:2307.08962, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[45] OpenAI. Gpt-4 technical report, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[46] Xue Bin Peng, Aviral Kumar, Grace Zhang, and Sergey Levine. Advantage-weighted
+    regression: Simple and scalable off-policy reinforcement learning. CoRR, abs/1910.00177,
+    2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[47] Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, Ilya
+    Sutskever, et al. Language models are unsupervised multitask learners. OpenAI
+    blog, 1(8):9, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[48] Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang,
+    Michael Matena, Yanqi Zhou, Wei Li, and Peter J. Liu. Exploring the limits of
+    transfer learning with a unified text-to-text transformer. Journal of Machine
+    Learning Research, 21:140:1–140:67, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[49] Tabish Rashid, Mikayel Samvelyan, Christian Schroeder de Witt, Gregory
+    Farquhar, Jakob Foerster, and Shimon Whiteson. Monotonic value function factorisation
+    for deep multi-agent reinforcement learning. Journal of Machine Learning Research,
+    21(178):1–51, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[50] John Schulman, Sergey Levine, Pieter Abbeel, Michael Jordan, and Philipp
+    Moritz. Trust region policy optimization. In International Conference on Machine
+    Learning, pages 1889–1897, 2015.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[51] Noah Shinn, Federico Cassano, Edward Berman, Ashwin Gopinath, Karthik
+    Narasimhan, and Shunyu Yao. Reflexion: Language agents with verbal reinforcement
+    learning. In Neural Information Processing Systems, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[52] Tom Silver, Soham Dan, Kavitha Srinivas, Joshua B Tenenbaum, Leslie Pack
+    Kaelbling, and Michael Katz. Generalized planning in pddl domains with pretrained
+    large language models. arXiv preprint arXiv:2305.11014, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[53] Chan Hee Song, Jiaman Wu, Clayton Washington, Brian M. Sadler, Wei-Lun
+    Chao, and Yu Su. Llm-planner: Few-shot grounded planning for embodied agents with
+    large language models. In IEEE/CVF International Conference on Computer Vision
+    (ICCV), 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[54] Feifan Song, Bowen Yu, Minghao Li, Haiyang Yu, Fei Huang, Yongbin Li,
+    and Houfeng Wang. Preference ranking optimization for human alignment. arXiv preprint
+    arXiv:2306.17492, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[55] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne
+    Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal, Eric Hambro, Faisal
+    Azhar, et al. Llama: Open and efficient foundation language models. arXiv preprint
+    arXiv:2302.13971, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[56] Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi,
+    Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale,
+    et al. Llama 2: Open foundation and fine-tuned chat models. arXiv preprint arXiv:2307.09288,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[57] Sai Vemprala, Rogerio Bonatti, Arthur Bucker, and Ashish Kapoor. Chatgpt
+    for robotics: Design principles and model abilities. Microsoft Auton. Syst. Robot.
+    Res, 2:20, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[58] Lirui Wang, Yiyang Ling, Zhecheng Yuan, Mohit Shridhar, Chen Bao, Yuzhe
+    Qin, Bailin Wang, Huazhe Xu, and Xiaolong Wang. Gensim: Generating robotic simulation
+    tasks via large language models. CoRR, abs/2310.01361, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[59] Yen-Jen Wang, Bike Zhang, Jianyu Chen, and Koushil Sreenath. Prompt a
+    robot to walk with large language models. CoRR, abs/2309.09969, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[60] Yufei Wang, Zhou Xian, Feng Chen, Tsun-Hsuan Wang, Yian Wang, Zackory
+    Erickson, David Held, and Chuang Gan. Robogen: Towards unleashing infinite data
+    for automated robot learning via generative simulation. CoRR, abs/2311.01455,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[61] Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, brian ichter,
+    Fei Xia, Ed H. Chi, Quoc V Le, and Denny Zhou. Chain of thought prompting elicits
+    reasoning in large language models. In Advances in Neural Information Processing
+    Systems, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[62] Zhenyu Wu, Ziwei Wang, Xiuwei Xu, Jiwen Lu, and Haibin Yan. Embodied task
+    planning with large language models. arXiv preprint arXiv:2307.01848, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[63] Tengyang Xie, Ching-An Cheng, Nan Jiang, Paul Mineiro, and Alekh Agarwal.
+    Bellman-consistent pessimism for offline reinforcement learning. Advances in neural
+    information processing systems, 34:6683–6694, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[64] Tianbao Xie, Siheng Zhao, Chen Henry Wu, Yitao Liu, Qian Luo, Victor Zhong,
+    Yanchao Yang, and Tao Yu. Text2reward: Automated dense reward function generation
+    for reinforcement learning. CoRR, abs/2309.11489, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[65] Yuxi Xie, Kenji Kawaguchi, Yiran Zhao, Xu Zhao, Min-Yen Kan, Junxian He,
+    and Qizhe Xie. Self-evaluation guided beam search for reasoning. In Thirty-seventh
+    Conference on Neural Information Processing Systems, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[66] Chengrun Yang, Xuezhi Wang, Yifeng Lu, Hanxiao Liu, Quoc V. Le, Denny
+    Zhou, and Xinyun Chen. Large language models as optimizers, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[67] Shunyu Yao, Dian Yu, Jeffrey Zhao, Izhak Shafran, Thomas L. Griffiths,
+    Yuan Cao, and Karthik R Narasimhan. Tree of thoughts: Deliberate problem solving
+    with large language models. In Neural Information Processing Systems, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[68] Shunyu Yao, Jeffrey Zhao, Dian Yu, Nan Du, Izhak Shafran, Karthik R Narasimhan,
+    and Yuan Cao. React: Synergizing reasoning and acting in language models. In International
+    Conference on Learning Representations, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[69] Wenhao Yu, Nimrod Gileadi, Chuyuan Fu, Sean Kirmani, Kuang-Huei Lee, Montse Gonzalez
+    Arenas, Hao-Tien Lewis Chiang, Tom Erez, Leonard Hasenclever, Jan Humplik, Brian
+    Ichter, Ted Xiao, Peng Xu, Andy Zeng, Tingnan Zhang, Nicolas Heess, Dorsa Sadigh,
+    Jie Tan, Yuval Tassa, and Fei Xia. Language to rewards for robotic skill synthesis.
+    CoRR, abs/2306.08647, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[70] Andy Zeng, Maria Attarian, brian ichter, Krzysztof Marcin Choromanski,
+    Adrian Wong, Stefan Welker, Federico Tombari, Aveek Purohit, Michael S Ryoo, Vikas
+    Sindhwani, Johnny Lee, Vincent Vanhoucke, and Pete Florence. Socratic models:
+    Composing zero-shot multimodal reasoning with language. In International Conference
+    on Learning Representations, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[71] Ceyao Zhang, Kaijie Yang, Siyi Hu, Zihao Wang, Guanghe Li, Yihang Sun,
+    Cheng Zhang, Zhaowei Zhang, Anji Liu, Song-Chun Zhu, et al. Proagent: Building
+    proactive cooperative ai with large language models. arXiv preprint arXiv:2308.11339,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[72] Danyang Zhang, Lu Chen, Situo Zhang, Hongshen Xu, Zihan Zhao, and Kai
+    Yu. Large language models are semi-parametric reinforcement learning agents. In
+    Neural Information Processing Systems, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[73] Hongxin Zhang, Weihua Du, Jiaming Shan, Qinhong Zhou, Yilun Du, Joshua
+    Tenenbaum, Tianmin Shu, and Chuang Gan. Building cooperative embodied agents modularly
+    with large language models. In NeurIPS 2023 Foundation Models for Decision Making
+    Workshop, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[74] Kaiqing Zhang, Zhuoran Yang, and Tamer Başar. Multi-agent reinforcement
+    learning: A selective overview of theories and algorithms. Studies in Systems,
+    Decision and Control, 325:321 – 384, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[75] Zirui Zhao, Wee Sun Lee, and David Hsu. Large language models as commonsense
+    knowledge for large-scale task planning. arXiv preprint arXiv:2305.14078, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[76] Zhehua Zhou, Jiayang Song, Kunpeng Yao, Zhan Shu, and Lei Ma. Isr-llm:
+    Iterative self-refined large language model for long-horizon sequential task planning.
+    arXiv preprint arXiv:2308.13724, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Theoretical Proof
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A.1 Proof of Multi-Agent Advantage Decomposition
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Proof.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: With the definition of the multi-agent local advantage function in Eq. ([3](#S3.E3
+    "In Definition 1\. ‣ 3.1 Learning of Advantage Functions ‣ 3 Methodology ‣ Towards
+    Efficient LLM Grounding for Embodied Multi-Agent Collaboration")), we can have
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\sum_{k=1}^{n}A_{\boldsymbol{\pi}}^{i_{k}}$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle\quad+...+Q_{\boldsymbol{\pi}}^{i_{1:1}}(s,\boldsymbol{a}^{i_{1:1}})-Q_{\boldsymbol{\pi}}^{i_{1:0}}(s,\boldsymbol{a}^{i_{1:0}})$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle=Q_{\boldsymbol{\pi}}^{i_{1:n}}(s,\boldsymbol{a}^{i_{1:n}})-Q_{\boldsymbol{\pi}}^{i_{1:0}}(s,\boldsymbol{a}^{i_{1:0}})$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle=Q_{\boldsymbol{\pi}}(s,\boldsymbol{a})-V_{\boldsymbol{\pi}}(s)$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle=A_{\boldsymbol{\pi}}(s,\boldsymbol{a}).$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: ∎
+  prefs: []
+  type: TYPE_NORMAL
+- en: A.2 Derivation of Optimal Joint Policy and Optimal Individual Policy
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In this section, we begin with the constrained policy search problem. Following
+    the performance difference lemma [[27](#bib.bib27)], the expected improvement
+    $\eta(\boldsymbol{\pi})=J(\boldsymbol{\pi})-J(\boldsymbol{\mu})$ can be expressed
+    by
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathbb{E}_{s_{0},\boldsymbol{a}_{0},...\sim\boldsymbol{\pi}}\left[\sum_{t=0}^{\infty}\gamma^{t}A_{\boldsymbol{\mu}}(s_{t},\boldsymbol{a}_{t})\right]$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle=-J(\boldsymbol{\mu})+J(\boldsymbol{\pi}).$ |  | (10)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: We can rewrite Eq. ([10](#A1.E10 "In A.2 Derivation of Optimal Joint Policy
+    and Optimal Individual Policy ‣ Appendix A Theoretical Proof ‣ Towards Efficient
+    LLM Grounding for Embodied Multi-Agent Collaboration")) with an expectation over
+    states using discounted visitation frequencies $\rho_{\boldsymbol{\pi}}(s)$,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\eta(\boldsymbol{\pi})$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle=\int_{s}\rho_{\boldsymbol{\pi}}(s)\int_{\boldsymbol{a}}\boldsymbol{\pi}(\boldsymbol{a}&#124;s)A_{\boldsymbol{\mu}}(s,\boldsymbol{a})\,d\boldsymbol{a}\,ds,$
+    |  | (11) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\rho_{\boldsymbol{\pi}}(s)=\sum_{t=0}^{\infty}\gamma^{t}p(s_{t}=s|\boldsymbol{\pi})$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, it’s intractable to sample over the target policy $\boldsymbol{\pi}$,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\hat{\eta}(\boldsymbol{\pi})=\int_{s}\rho_{\boldsymbol{\mu}}(s)\int_{\boldsymbol{a}}\boldsymbol{\pi}(\boldsymbol{a}&#124;s)A_{\boldsymbol{\mu}}(s,\boldsymbol{a})\,d\boldsymbol{a}\,ds.$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: $\hat{\eta}(\boldsymbol{\pi})$ to satisfy the above condition. Therefore, we
+    can formulate the following constrained policy search problem,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathop{\arg\max}\limits_{\boldsymbol{\pi}}$ |  | (12) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle{\rm s.t.}$ |  | (13) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle\quad\int_{\boldsymbol{a}}\boldsymbol{\pi}(\boldsymbol{a}&#124;s)\,d\boldsymbol{a}=1,\quad\forall
+    s.$ |  | (14) |'
+  prefs: []
+  type: TYPE_TB
+- en: However, enforcing the pointwise KL constraint in Eq. ([13](#A1.E13 "In A.2
+    Derivation of Optimal Joint Policy and Optimal Individual Policy ‣ Appendix A
+    Theoretical Proof ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration"))
+    at all states is intractable. To simplify the constrained optimization problem,
+    we relax the hard KL constraint by converting it into a soft constraint in an
+    expectation form, as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathop{\arg\max}\limits_{\boldsymbol{\pi}}$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle{\rm s.t.}$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle\quad\int_{\boldsymbol{a}}\boldsymbol{\pi}(\boldsymbol{a}&#124;s)\,d\boldsymbol{a}=1,\quad\forall
+    s.$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Next, we form the Lagrangian, as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathcal{L}(\boldsymbol{\pi},\beta,\nu)$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle\quad+\int_{s}\nu_{s}\left(1-\int_{a}\boldsymbol{\pi}(\boldsymbol{a}&#124;s)\,d\boldsymbol{a}\right)\,ds,$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\nu=\{\nu_{s}|\forall s\in\mathcal{S}\}$ correspond to the Lagrange multipliers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Derivation of Optimal Joint Policy.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Differentiating $\mathcal{L}(\boldsymbol{\pi},\beta,\nu)$ gives the following,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (15) |'
+  prefs: []
+  type: TYPE_TB
+- en: According to KKT conditions [[31](#bib.bib31)], if $(\boldsymbol{\pi}^{*},\beta^{*},\nu^{*})$
+    is the optimal solution of the primal problem. Thus, let Eq. ([15](#A1.E15 "In
+    Derivation of Optimal Joint Policy. ‣ A.2 Derivation of Optimal Joint Policy and
+    Optimal Individual Policy ‣ Appendix A Theoretical Proof ‣ Towards Efficient LLM
+    Grounding for Embodied Multi-Agent Collaboration")) be equal to zero, then we
+    have
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\log\boldsymbol{\pi}^{*}(\boldsymbol{a}&#124;s)$ |  | (16)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\boldsymbol{\pi}^{*}(\boldsymbol{a}&#124;s)$ |  | (17) |'
+  prefs: []
+  type: TYPE_TB
+- en: Note that the primal problem holds the constraint $\int_{\boldsymbol{a}}\boldsymbol{\pi}(\boldsymbol{a}|s)\,d\boldsymbol{a}=1$
+    that normalizes the conditional action distribution,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (18) |'
+  prefs: []
+  type: TYPE_TB
+- en: '*Optimal Joint Policy* is then given by,'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\underbrace{\boldsymbol{\pi}^{*}(\boldsymbol{a}&#124;s)}_{\text{Left-Hand
+    Side}}=\underbrace{\frac{1}{Z(s)}\boldsymbol{\mu}(\boldsymbol{a}&#124;s)\exp\left(\frac{1}{\beta^{*}}A_{\boldsymbol{\mu}}(s,\boldsymbol{a})\right)}_{\text{Right-Hand
+    Side}}.$ |  | (19) |'
+  prefs: []
+  type: TYPE_TB
+- en: Derivation of Optimal Individual Policy.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Given the set of agents $\mathcal{N}=\{1,2,...,n\}$ and select actions based
+    on that. The following equation holds by the support of the definition of conditional
+    probability,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\boldsymbol{\pi}(\boldsymbol{a}&#124;s)=\prod_{i=1}^{n}\pi^{i}(a^{i}&#124;s,\boldsymbol{a}^{1:i-1}),$
+    |  | (20) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\pi^{i}$. Here we consider a general case that the old joint policy and
+    the target joint policy are both in a sequential manner. Following multi-agent
+    advantage decomposition in Lemma [1](#Thmlemma1 "Lemma 1\. ‣ 3.1 Learning of Advantage
+    Functions ‣ 3 Methodology ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent
+    Collaboration"), the LHS and RHS of Eq. ([19](#A1.E19 "In Derivation of Optimal
+    Joint Policy. ‣ A.2 Derivation of Optimal Joint Policy and Optimal Individual
+    Policy ‣ Appendix A Theoretical Proof ‣ Towards Efficient LLM Grounding for Embodied
+    Multi-Agent Collaboration")) can be expressed respectively (in order to present
+    the *Optimal Individual Policy* we omit the superscript of it which denotes agent
+    id),
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | LHS | $\displaystyle=\prod_{i=1}^{n}\pi^{*}(a^{i}&#124;s,\boldsymbol{a}^{1:i-1}),$
+    |  | (21) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | RHS | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  | (22) |'
+  prefs: []
+  type: TYPE_TB
+- en: Thus, we can get the expression of *Optimal Individual Policy*,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (23) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $Z^{i}(s)$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since $Z^{i}(s)$, we can have,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (24) |'
+  prefs: []
+  type: TYPE_TB
+- en: Meanwhile, we can rewrite Eq. ([18](#A1.E18 "In Derivation of Optimal Joint
+    Policy. ‣ A.2 Derivation of Optimal Joint Policy and Optimal Individual Policy
+    ‣ Appendix A Theoretical Proof ‣ Towards Efficient LLM Grounding for Embodied
+    Multi-Agent Collaboration")) after applying multi-agent advantage decomposition
+    in Lemma [1](#Thmlemma1 "Lemma 1\. ‣ 3.1 Learning of Advantage Functions ‣ 3 Methodology
+    ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration"),
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle Z(s)$ |  | (25) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  | (26) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle=\prod_{i=1}^{n}Z^{i}(s).$ |  | (27) |'
+  prefs: []
+  type: TYPE_TB
+- en: Beyond the general case, if we consider a special case that the old policy $\boldsymbol{\mu}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A.3 Proof of Monotonic Improvement with Binary Filtering
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Proposition 1.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: (Relationship between Exponential Weighting and Binary Filtering). In terms
+    of the weight $e^{A^{i}_{\boldsymbol{\mu}}(s,\boldsymbol{a}^{1:i-1},a^{i})/\beta}$,
+    we have the following limitation,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (28) |'
+  prefs: []
+  type: TYPE_TB
+- en: As $\beta\rightarrow 0^{+}$ are filtered out.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Proof.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: We first define the minimum of the absolute value of those negative $A_{\boldsymbol{\mu}}^{i}$,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\alpha=\min\limits_{A_{\boldsymbol{\mu}}^{i}<0}&#124;A_{\boldsymbol{\mu}}^{i}&#124;=\min\limits_{A_{\boldsymbol{\mu}}^{i}<0}-A_{\boldsymbol{\mu}}^{i}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: To achieve Eq. ([28](#A1.E28 "In Proposition 1\. ‣ A.3 Proof of Monotonic Improvement
+    with Binary Filtering ‣ Appendix A Theoretical Proof ‣ Towards Efficient LLM Grounding
+    for Embodied Multi-Agent Collaboration")), we only need to ensure that the rate
+    at which $e^{A^{i}_{\boldsymbol{\mu}}(s,\boldsymbol{a}^{1:i-1},a^{i})/\beta}$
+    is a positive hyperparameter. Then we have,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\exp\left(\frac{{A^{i}_{\boldsymbol{\mu}}(s,\boldsymbol{a}^{1:i-1},a^{i})}}{\beta}\right)\leq\exp\left(\frac{-\alpha}{\beta}\right)=\exp\left(\frac{-1}{k}\right)$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Finally, for any positive <math id="A1.SS3.1.p1.8.m1.1" class="ltx_Math" alttext="\epsilon></math>,
+    it holds the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\exp\left(\frac{-1}{k}\right)<\epsilon$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Taking the natural logarithm of both sides, we get:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | <math id="A1.E29.m1.2" class="ltx_Math" alttext="k\ln(\epsilon)+1></math>
+    |  | (29) |'
+  prefs: []
+  type: TYPE_TB
+- en: With an arbitrary $\epsilon></math> that satisfies Eq. ([29](#A1.E29 $.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Proof.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'According to BC on a filtered dataset with *Binary Filtering* <math id="A1.SS3.3.p1.1.m1.2"
+    class="ltx_Math" alttext="\mathds{1}[A^{i}_{\boldsymbol{\mu}}(s,\boldsymbol{a}^{1:i-1},a^{i})></math>,
+    we have:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (30) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $Z^{i}(s)$, the expected improvement from Eq. ([6](#S3.E6 "In 3.2 Theoretical
+    Motivation for Grounding LLM ‣ 3 Methodology ‣ Towards Efficient LLM Grounding
+    for Embodied Multi-Agent Collaboration")) can be rewritten as,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\hat{\eta}(\boldsymbol{\pi})$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Substituting Lemma [1](#Thmlemma1 "Lemma 1\. ‣ 3.1 Learning of Advantage Functions
+    ‣ 3 Methodology ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration")
+    and Eq. ([30](#A1.E30 "In Proof. ‣ A.3 Proof of Monotonic Improvement with Binary
+    Filtering ‣ Appendix A Theoretical Proof ‣ Towards Efficient LLM Grounding for
+    Embodied Multi-Agent Collaboration")) into the above equation, we get:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\hat{\eta}(\boldsymbol{\pi})$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  | (31) |'
+  prefs: []
+  type: TYPE_TB
+- en: And we note that the expected improvement from Eq. ([6](#S3.E6 "In 3.2 Theoretical
+    Motivation for Grounding LLM ‣ 3 Methodology ‣ Towards Efficient LLM Grounding
+    for Embodied Multi-Agent Collaboration")) entails the following relationship,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\hat{\eta}(\boldsymbol{\mu})=J(\boldsymbol{\mu})-J(\boldsymbol{\mu})$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle=0$ |  | (32) |'
+  prefs: []
+  type: TYPE_TB
+- en: Comparing Eq. ([31](#A1.E31 "In Proof. ‣ A.3 Proof of Monotonic Improvement
+    with Binary Filtering ‣ Appendix A Theoretical Proof ‣ Towards Efficient LLM Grounding
+    for Embodied Multi-Agent Collaboration")) with Eq. ([32](#A1.E32 "In Proof. ‣
+    A.3 Proof of Monotonic Improvement with Binary Filtering ‣ Appendix A Theoretical
+    Proof ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration")),
+    it is obvious that those local advantages $A_{\boldsymbol{\mu}}^{i}(s,\boldsymbol{a}^{1:i-1},a^{i})$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ∎
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B Additional Related Works
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Other LLM-based Embodied Agent.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Beyond task planning, LLMs also shoulder other roles for embodied agents. (i)
+    Foundation Policy. Robot Transformer [[5](#bib.bib5), [4](#bib.bib4)], PaLM-E
+    [[15](#bib.bib15)], Open-X [[11](#bib.bib11)], and RoboFlamingo [[33](#bib.bib33)]
+    use pre-trained LLM or VLM as the foundation policies and fine-tune the parameters
+    with embodied data from real-world tasks. The LLM tokens and action tokens of
+    agents are unified in fine-tuning. (ii) Code Generator. Given high-level task
+    descriptions, LLMs can generate executable code by calling the basic control primitives
+    [[34](#bib.bib34), [57](#bib.bib57)] or low-level actions [[59](#bib.bib59)] of
+    embodied agents. VoxPoser [[25](#bib.bib25)] leverages the code-writing capabilities
+    of LLMs to compose 3D value maps via VLM and adopt model-predictive control (MPC)
+    for planning. (iii) Reward Designer. Text2Reward [[64](#bib.bib64)], Language2Reward
+    [[69](#bib.bib69)], and Eureka [[41](#bib.bib41)] leverage GPT-4 to produce interpretable
+    reward codes, and allow iterative refinement with feedback. (iv) Data Generator.
+    To enhance task-level generalization, GenSim [[58](#bib.bib58)] adopts LLMs to
+    propose task curriculum and novel sub-tasks to solve complex tasks. RoboGen [[60](#bib.bib60)]
+    proposes a closed-loop process to generate robot data, including proposing tasks,
+    generating simulation environments, decomposing sub-tasks, and solving sub-tasks
+    via RL or MPC.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix C Algorithmic Description
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we give the algorithm descriptions of critic regression via
+    Monte Carlo estimation, as well as the process of *ReAd-S* and *ReAd-J* algorithms.
+    We highlight the difference between *ReAd-S* and *ReAd-J* by different colors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 1 Critic regression on $\mathcal{D}$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Require: data buffer $\mathcal{D}$'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathcal{R}_{s,\boldsymbol{a}^{i_{1:u}}}=\sum_{\boldsymbol{a}^{-i_{1:u}}\in\mathcal{D}}\sum_{t=0}^{T}\gamma^{t}r_{t}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: update estimated critic $Q_{\theta}^{i_{1:u}}$ by using
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: end for  end for
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Algorithm 2 *ReAd-S*: Reinforced Advantage Feedback with Sequential Individual
+    Plan Refinement'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Require: agent name $u^{1},...,u^{N}$ then        break     end if  end while'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Algorithm 3 *ReAd-J*: Reinforced Advantage Feedback with Joint Plan Refinement'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Require: agent name $u^{1},...,u^{N}$ then        break     end if  end while'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix D Environment Details
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We use Difficult Variants of RoCoBench (*DV-RoCoBench*) adapted from RoCoBench
+    [[42](#bib.bib42)] and *Overcooked-AI* [[8](#bib.bib8)] in our experiments. *DV-RoCoBench*
+    involves three tasks: Sweep Floor, Make Sandwich and Sort Cubes. And we choose
+    two representative scenarios – Cramped Room and Forced Coordination from *Overcooked-AI*
+    in our experiments. In this section, we present a comprehensive overview of the
+    task specifications along with the difficulty modifications we have made in *DV-RoCoBench*
+    and the scenario specifications in two scenarios of *Overcooked-AI*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As for *DV-RoCoBench*, we directly inherit the action set and quantity of robots
+    from RoCoBench, but design diverse task goals to introduce different difficulty
+    levels. In original RoCoBench, the action set is not the same among different
+    tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As for *Overcooked-AI*, different scenarios share the same action space but
+    are initialized with different kitchen layouts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: D.1 Sweep Floor
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Task Description.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: In this task, the two robots are positioned on opposite sides of the table.
+    Each robot arm equipped with a dustpan and broom must collaborate to efficiently
+    sweep all cubes of the designated color into the dustpan. Subsequently, the robot
+    that holds the dustpan is responsible for disposing of the collected cubes in
+    the trash bin. In this environment, two distinct types of robots with different
+    action sets are used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'UR5E robot holding a dustpan (‘Alice’): can move to all cubes and can perform
+    only three operations: MOVE, DUMP, and WAIT.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Franka Panda holding a broom (‘Bob’): can move to all cubes and can perform
+    only three operations: MOVE, SWEEP, and WAIT.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '3.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Action sets: (i) MOVE [target]: target can only be a cube. (ii) DUMP: pour
+    all cubes in the dustpan into the trash bin. (iii) SWEEP [target]: sweep the target
+    cube into the dustpan. (iv) WAIT.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Difficulty Settings.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We shift the task goal from sweeping away all the cubes to sweeping away the
+    cubes of a given color. We establish 5 distinct difficulty levels based on the
+    number of cubes and the number of the target cubes. By increasing the difficulty
+    level step by step, the quantity of all cubes and the cubes of a given color increase
+    also gradually, as shown in Figure [5](#A4.F5 "Figure 5 ‣ Difficulty Settings.
+    ‣ D.1 Sweep Floor ‣ Appendix D Environment Details ‣ Towards Efficient LLM Grounding
+    for Embodied Multi-Agent Collaboration").
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/ad62a29f673dd8901495cb9a28923ffe.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: The initial states of the 5 difficulty levels in modified Sweep Floor.
+    The yellow and green squares are the ones to be swept in this task. The first
+    three tasks have a total of 7 squares, while the last two have 9\. We assess task
+    difficulty based on the number of cubes to be swept and the total cube number.
+    For example, the Y1_G1 in the figure represents 1 yellow cube and 1 green cube
+    needs to be swept.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: D.2 Make Sandwich
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Task Description.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: In this task, two robots are positioned on opposite sides of a table to assemble
+    a sandwich based on a given recipe, requiring collaborative effort to collect
+    and stack the ingredients in the specified order until all components have been
+    properly arranged. This environment accommodates two distinct types of robots
+    capable of executing all actions in the action set. Each robot has a restricted
+    range to manipulate the cubes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'UR5E robot (‘Chad’): can only retrieve the food on the right side.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Humanoid robot (‘Dave’): can only retrieve the food on the left side.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '3.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Action set: 1) PICK [object]: object must be a food. 2) PUT [object] on [target]:
+    object must be a food and target could be a food, cutting_board, or table. 3)
+    WAIT.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Difficulty Settings.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We establish 4 distinct difficulty levels dependent on the length of the recipe.
+    A longer recipe requires more complex collaboration between humanoid and robot
+    arm. The recipe lengths for these different settings are set to 3, 5, 7, and 9,
+    respectively, as shown in Figure [6](#A4.F6 "Figure 6 ‣ Difficulty Settings. ‣
+    D.2 Make Sandwich ‣ Appendix D Environment Details ‣ Towards Efficient LLM Grounding
+    for Embodied Multi-Agent Collaboration").
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/fbe00bbf702627c2fea9680e857b411a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: The initial states of the 4 difficulty levels in modified Make Sandwich.
+    The initial three tasks shared the same food and layout, differing only in the
+    length of the recipe. Conversely, the final task presented distinct food and layout,
+    accompanied by a lengthier recipe. The recipe lengths for four tasks are set to
+    3, 5, 7, and 9, respectively.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: D.3 Sort Cubes
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Task Description.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: The task requires three robots positioned on opposite sides of a table to collaboratively
+    place three target blocks in specific locations, utilizing their limited range
+    of motion and assisting each other as needed. The current environment consists
+    of three robots capable of executing all actions in the action set, albeit with
+    limited mobility range.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'UR5E with robotic gripper (‘Alice’): must put the blue square on panel2, can
+    only reach: panel1, panel2, panel3.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Franka Panda (‘Bob’): must put pink polygon on panel4, can only reach: panel3,
+    panel4, panel5.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '3.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'UR5E with suction gripper (‘Chad’): must put yellow trapezoid on panel6, can
+    only reach: panel5, panel6, panel7.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '4.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Action set: 1) PICK [object] PLACE [panelX]: the object must be a cube and
+    panelX cannot be the target panel of another cube. 2) WAIT.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Difficulty Settings.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We establish 5 difficulty levels based on the distance of the three blocks towards
+    their corresponding target location. Since each robot has limited range of motion,
+    picking further cube to the target location requires more complex collaboration
+    between three robot arms.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8d72d689eb72315bacc77a2ca20a9cb8.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7: The initial states of the 5 difficulty levels in modified Sort Cubes.
+    In these tasks, we orchestrated the initial placement of each block, and gauged
+    difficulty based on the cumulative distance between the three blocks and the target
+    panel. The shape of the three cubes was modified to avoid the robot’s inability
+    to pick up the objects due to their shape.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: D.4 Overcooked-AI
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In *Overcooked-AI*, two agents are originally required to make as much soup
+    as possible in limited timesteps with high coordination efficiency. Agents place
+    a specified number of onions in a pot, leave them to cook for a specified number
+    of timesteps, put the resulting soup in a dish, and serve it, giving all agents
+    a reward. The capacity of all agents to pick up items is 1. Every agent can only
+    carry 1 item such as the dish and the onion. In our experiment, to enable measuring
+    with the success rate metric, we modify the task as cooking and delivering a soup
+    to the service counter within a specified number of timesteps. The action set
+    of this environment are as following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'north: agent moves one step north. If agent collides with another object, it
+    will not move.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'south: agent moves one step south. Same as the previous term.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '3.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'east: agent moves one step east. Same as the previous term.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '4.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'west: agent moves one step west. Same as the previous term.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '5.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'interact: agent interacts with a object, including picking up or putting down
+    an item, turning on the cooking table, and putting the cooked soup in the dish.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '6.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'stay: agent does nothing.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'The first four actions (north, south, east and west) cover the movement of
+    the agent, and the interact action enables the interaction between the agent and
+    other objects. We use Figure [8](#A4.F8 "Figure 8 ‣ D.4 Overcooked-AI ‣ Appendix
+    D Environment Details ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent
+    Collaboration") to explain the above rules:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/31a0b259fc2d36e653b08a34d2486172.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8: In 2nd frame, since both agents collide with the workbench, the agents
+    merely change their current orientation. In 4th frame, since both agents have
+    picked up an object in their hands, executing "interact" again will not pick up
+    additional items. In 7th frame, agent1 places the onion on the cooking table.
+    And in 8th frame, agent1 turns on the cooking table and starts cooking. In 10th
+    and 11th frames, the soup is done and then put in a dish by agent0\. In the last
+    frame, agent0 serves the cooked soup.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cramped Room.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Two agents collaborate in a relatively small kitchen, and thus two agents must
+    be extremely careful to avoid collisions in order to complete the cooking task
+    as quickly as possible. The scenario is shown in the Figure [8](#A4.F8 "Figure
+    8 ‣ D.4 Overcooked-AI ‣ Appendix D Environment Details ‣ Towards Efficient LLM
+    Grounding for Embodied Multi-Agent Collaboration").
+  prefs: []
+  type: TYPE_NORMAL
+- en: Forced Coordination.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: The working spaces of two agents are completely separated, where one agent only
+    has access to the cooking table and the service counter and the other only has
+    access to onions and dishes. The scenario is shown in the Figure [9](#A4.F9 "Figure
+    9 ‣ Forced Coordination. ‣ D.4 Overcooked-AI ‣ Appendix D Environment Details
+    ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration").
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/5ff63b3531fb75e610275b4c5e599f66.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 9: In this task, agent0 must wait for agent1 to deliver the onion to
+    the table before agent0 can place it on the cooking table, and after the soup
+    is ready, agent0 must wait for agent1 to place the plate on the table before it
+    can serve the soup and deliver it to the service table.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix E Additional Experimental Results
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we give the detailed experiment results of 3 tasks in *DV-RoCoBench*
+    and 2 scenarios in *Overcooked-AI*. We also show the execution screenshots of
+    our method and baselines in the representative environments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: E.1 Comparison of Baselines
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Table 3: Overview of the key properties that distinguish four methods. (i)
+    State Type: whether the environment state included in the prompt is global or
+    not; (ii) Planning Scheme: whether LLM output plans sequentially or not; (iii)
+    History Info: whether all the history before is reserved in the prompt or not.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | State Type | Planning Scheme | History Info | Feedback Type |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RoCo | partial | Sequential | all previous rounds | Physical Verification
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ReAd-S | partial | Sequential | last round | Advantage Score |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Central-Plan | global | Parallel | all previous rounds | Physical Verification
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ReAd-J | global | Parallel | last round | Advantage Score |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ReAct | global | Parallel | all previous rounds | Physical Verification |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Reflexion | global | Parallel | all previous rounds | Physical Verification
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MindAgent | global | Parallel | all previous rounds | Physical Verification
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: E.2 Main Experiments
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The results of all experiments are shown in Table [4](#A5.T4 "Table 4 ‣ E.2
+    Main Experiments ‣ Appendix E Additional Experimental Results ‣ Towards Efficient
+    LLM Grounding for Embodied Multi-Agent Collaboration"), and Table [5](#A5.T5 "Table
+    5 ‣ E.2 Main Experiments ‣ Appendix E Additional Experimental Results ‣ Towards
+    Efficient LLM Grounding for Embodied Multi-Agent Collaboration"). SR, NQ and ES
+    represent success rates, the average number of requests to LLMs, and rounds of
+    environment interactions, respectively. We have provided a detailed introduction
+    to these metrics in §[5.1](#S5.SS1 "5.1 Experimental Setup ‣ 5 Experiments ‣ Towards
+    Efficient LLM Grounding for Embodied Multi-Agent Collaboration").
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4: The detailed results of the comparison in different tasks with various
+    difficulty levels in *DV-RoCoBench*. The mean value and standard error are calculated
+    over 10 random seeds.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: RoCo ReAct Central Plan Reflexion SR NQ ES SR NQ ES SR NQ ES SR NQ ES sweep
+    Y1_G1 0.9±0.32 14.4±5.95 6.2±3.12 1.0±0.00 5.5±0.50 5.5±0.50 0.4±0.52 15.3±0.48
+    11.2±4.92 1.0±0.00 5.0±0.00 5.0±0.00 Y1_G2 1.0±0.00 24.2±4.18 8.9±1.45 1.0±0.00
+    8.2±0.25 8.2±0.25 1.0±0.00 7.8±1.99 7.8±1.99 1.0±0.00 7.0±0.00 7.0±0.00 Y2_G2
+    1.0±0.00 29.1±5.40 10.6±1.35 1.0±0.00 10.0±0.00 10.0±0.00 0.8±0.42 12.7±1.77 12.7±1.77
+    1.0±0.00 10.1±0.10 10.0±0.00 Y2_G3 0.7±0.48 36.7±6.63 13.5±1.27 0.6±0.16 14.4±0.67
+    13.8±0.33 0.2±0.42 14.6±0.97 14.6±0.97 0.7±0.15 14.3±0.87 12.9±0.48 Y3_G3 0.6±0.52
+    41.8±7.73 14.7±0.48 0.4±0.16 15.2±0.25 14.9±0.32 0.0±0.00 15.0±0.00 15.0±0.00
+    0.3±0.15 15.1±0.23 14.9±0.10 sandwich recipe1 1.0±0.00 13.2±3.74 4.7±0.67 1.0±0.00
+    4.0±0.00 4.0±0.00 1.0±0.00 6.2±0.63 4.0±0.00 1.0±0.00 5.0±0.00 4.0±0.00 recipe2
+    0.9±0.32 28.9±11.25 9.1±2.42 1.0±0.00 6.0±0.00 6.0±0.00 1.0±0.00 8.2±0.42 6.0±0.00
+    1.0±0.00 6.8±0.13 6.0±0.00 recipe3 0.8±0.42 33.7±10.00 11.5±2.99 0.7±0.15 12.9±2.61
+    10.1±1.07 1.0±0.00 10.2±0.42 8.0±0.00 0.6±0.16 14.9±2.47 10.8±1.14 recipe4 0.5±0.53
+    43.1±17.84 13.1±2.47 0.6±0.16 16.7±2.60 12.5±0.75 0.4±0.52 80.5±53.35 14.2±1.14
+    0.5±0.17 17.7±2.39 13.1±0.67 sort sort1 1.0±0.00 3.3±0.95 1.1±0.32 1.0±0.00 1.2±0.13
+    1.0±0.00 1.0±0.00 1.0±0.00 1.0±0.00 1.0±0.00 1.2±0.13 1.0±0.00 sort2 1.0±0.00
+    13.5±4.67 3.4±0.52 0.6±0.16 14.8±4.56 7.8±1.96 1.0±0.00 16.9±9.13 2.6±0.52 1.0±0.00
+    5.5±0.48 2.9±0.10 sort3 1.0±0.00 18.6±15.10 4.9±2.60 0.8±0.13 19.4±6.18 6.4±1.45
+    1.0±0.00 8.3±4.32 2.3±0.95 1.0±0.00 6.6±0.50 4.7±0.33 sort4 1.0±0.00 24.8±9.37
+    6.4±1.78 0.8±0.13 24.0±11.31 6.1±1.49 1.0±0.00 37.2±25.05 7.1±2.77 0.7±0.13 19.2±6.83
+    7.1±1.45 sort5 1.0±0.00 38.5±9.96 7.4±2.95 0.7±0.15 17.3±3.00 8.4±1.59 0.6±0.52
+    128.4±115.99 11.0±3.97 0.8±0.13 13.9±3.27 6.9±1.43 average 0.89±0.19 25.99±8.06
+    8.25±1.74 0.80±0.09 12.11±2.29 8.19±0.69 0.74±0.17 25.88±15.32 8.39±1.36 0.83±0.06
+    10.16±1.24 7.59±0.41 Mind ReAd-S ReAd-J SR NQ ES SR NQ ES SR NQ ES sweep Y1_G1
+    1.0±0.00 5.0±0.00 5.0±0.00 1.0±0.00 10.4±0.52 5.0±0.00 1.0±0.00 5.9±0.99 5.0±0.00
+    Y1_G2 1.0±0.00 7.1±0.10 7.1±0.10 1.0±0.00 14.4±0.84 7.0±0.00 1.0±0.00 7.6±0.70
+    7.0±0.00 Y2_G2 1.0±0.00 9.9±0.18 9.8±0.13 1.0±0.00 19.9±3.28 9.4±0.70 1.0±0.00
+    13.0±4.32 9.0±0.00 Y2_G3 0.7±0.15 13.4±0.48 13.4±0.48 0.9±0.32 26.8±5.20 12.2±1.32
+    1.0±0.00 16.4±6.02 11.7±1.49 Y3_G3 0.2±0.13 15.1±0.10 15.0±0.00 0.8±0.42 31.4±3.50
+    14.0±0.82 0.8±0.42 16.4±1.71 13.4±0.84 sandwich recipe1 1.0±0.00 5.1±0.10 4.0±0.00
+    1.0±0.00 10.5±4.74 4.2±0.42 1.0±0.00 4.3±0.48 4.0±0.00 recipe2 1.0±0.00 6.6±0.16
+    6.0±0.00 1.0±0.00 14.5±2.46 6.4±0.52 1.0±0.00 6.5±0.85 6.0±0.00 recipe3 0.7±0.16
+    12.4±1.92 10.1±1.07 1.0±0.00 22.1±5.22 8.9±0.88 1.0±0.00 14.6±8.04 8.9±1.00 recipe4
+    0.6±0.16 16.5±2.24 12.7±0.72 1.0±0.00 27.9±8.06 11.1±1.73 1.0±0.00 10.8±0.42 10.0±0.00
+    sort sort1 1.0±0.00 1.2±0.13 1.0±0.00 1.0±0.00 3.4±0.52 1.0±0.00 1.0±0.00 1.1±0.32
+    1.1±0.32 sort2 1.0±0.00 6.1±1.12 3.2±0.33 1.0±0.00 10.8±2.53 3.1±0.32 1.0±0.00
+    7.3±2.91 3.3±0.48 sort3 0.8±0.13 11.1±3.70 6.2±1.54 1.0±0.00 17.5±2.80 3.9±0.57
+    1.0±0.00 8.3±3.80 3.4±0.84 sort4 0.9±0.10 22.6±9.62 5.9±1.12 1.0±0.00 21.6±7.07
+    3.7±0.67 1.0±0.00 18.8±6.29 4.3±0.95 sort5 0.8±0.13 18.0±4.12 7.8±1.35 1.0±0.00
+    33.5±6.35 6.1±0.88 1.0±0.00 17.3±11.87 4.4±1.26 average 0.84±0.07 10.72±1.71 7.66±0.49
+    0.98±0.05 18.91±3.79 6.86±0.63 0.99±0.03 10.59±3.48 6.54±0.51
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 5: The detailed results of the comparison in two scenarios in *Overcooked-AI*.
+    The mean value and standard error are calculated over 10 random seeds.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cramped_room Forced_coordination average SR NQ ES SR NQ ES SR NQ ES ReAct 0.0±0.00
+    20.1±0.10 20.0±0.00 0.0±0.00 26.9±0.75 25.0±0.00 0.00±0.00 23.50±0.43 22.50±0.00
+    Reflexion 0.0±0.00 20.0±0.00 20.0±0.00 0.0±0.00 26.1±0.60 25.0±0.00 0.00±0.00
+    23.05±0.30 22.50±0.00 MindAgent 0.0±0.00 20.8±0.47 20.0±0.00 0.0±0.00 26.9±0.80
+    25.0±0.00 0.00±0.00 23.85±0.64 22.50±0.00 Central 0.0±0.00 20.0±0.00 20.0±0.00
+    0.0±0.00 25.0±0.00 25.0±0.00 0.00±0.00 22.50±0.00 22.50±0.00 Read-J 0.4±0.16 23.9±1.49
+    18.9±0.59 0.3±0.15 27.2±0.53 24.8±0.20 0.35±0.16 25.55±1.01 21.85±0.40
+  prefs: []
+  type: TYPE_NORMAL
+- en: E.3 Visualization of Robustness Evaluation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We visualize the robustness comparison between *ReAd-S* and *RoCo* for accomplishing
+    *Make Sandwich* recipe3 task when the environment resets at timestep $n=2$, as
+    shown in Figure [10](#A5.F10 "Figure 10 ‣ E.3 Visualization of Robustness Evaluation
+    ‣ Appendix E Additional Experimental Results ‣ Towards Efficient LLM Grounding
+    for Embodied Multi-Agent Collaboration") and Figure [11](#A5.F11 "Figure 11 ‣
+    E.3 Visualization of Robustness Evaluation ‣ Appendix E Additional Experimental
+    Results ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent Collaboration").
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/047a4e6718503eaef005b763a33892a5.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 10: Screenshots of ReAd-S completing the recipe3 task in robustness
+    test. After the environment is reset, our method will be affected by the historical
+    dialogue information in a short period. After being prompted by the advantage
+    function re-evaluated in the new state, our method can make a rapid re-plan based
+    on the new state.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d2ccff6a3dc7ae8028e84855b90ca1b0.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 11: Screenshots of RoCo completing the recipe3 task in robustness test.
+    RoCo needs more steps to recover from the environmental disturbance. Since the
+    reset information is not included in the history, RoCo will be misled by historical
+    information and require multi-round physical feedback to adjust the plan.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: E.4 Dataset and Critic Network
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Dataset Collection Details.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: The advantage function relies on the Monte-Carlo estimation of value function
+    with access to an offline dataset collected by $\boldsymbol{\pi}_{\rm llm}$ policy,
+    we intentionally reset the environment state to an unreachable state and initiate
+    LLM-planning from that point.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Given that our theoretical analysis demonstrates that our method can achieve
+    a superior policy compared to the behavior policy $\boldsymbol{\mu}$ can be utilized
+    for dataset collection, potentially leading to further policy improvement during
+    optimization. Subsequently, we conduct an ablation study utilizing a mixed dataset
+    collected by an *expert policy* and an *LLM policy*. Our preliminary findings
+    indicate that the inclusion of additional optimal data does not result in performance
+    improvement. We hypothesize that two reasons contribute to these unexpected results.
+    (i) The incorporation of data from a different policy introduces increased variance
+    in Monte-Carlo estimation, thereby reducing the stability of the value functions.
+    Consequently, the value function may produce high-variance outputs, potentially
+    leading to misleading optimization of the LLM planner as prompts. (ii) The LLM
+    planner equipped with enhanced augmentation techniques achieves improved data
+    coverage of the resulting policy. In contrast, the optimal policy is more deterministic,
+    leading to more limited state coverage, which poses challenges for value estimation
+    of out-of-distribution (OOD) states and actions in LLM planning. This issue bears
+    resemblance to the distribution shift problem encountered in offline RL [[32](#bib.bib32),
+    [63](#bib.bib63)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: We describe the differences between *expert policy* and an *LLM policy* in detail
+    here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'LLM policy: This policy is to leverage the reasoning power of LLM to solve
+    specific tasks and use *physical verification* as feedback. It is recommended
+    to use a variant of *ReAd-J* for data collection, which replaces *ReAd* feedback
+    with *physical verification* and uses only the previous round of historical information
+    in the prompts. At each time step $t$) until the task is accomplished.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Expert policy: Here we implement this policy with human control. This requires
+    a human player to analyze the task and infer the optimal action at each time step.
+    The collected data format is the same as the method described above.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Table 6: An ablation study of data ratio of optimal data and LLM planner data
+    in the offline dataset. The mixing ratio is represented by $\mathbf{X}\%:\mathbf{Y}\%$
+    denotes the percent of samples collected by the *optimal policy*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | NQ | ES | SR |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ReAd-J(0%:100%) | 16.4±0.54 | 13.4±0.27 | 0.8±0.13 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ReAd-J(50%:50%) | 15.8±1.12 | 13.9±0.35 | 0.6±0.16 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ReAd-J(100%:0%) | 17.6±1.89 | 13.9±0.41 | 0.7±0.15 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ReAd-S(0%:100%) | 31.4±1.11 | 14.0±0.26 | 0.8±0.13 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ReAd-S(50%:50%) | 29.1±0.91 | 13.9±0.31 | 0.7±0.15 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ReAd-S(100%:0%) | 34.2±2.18 | 14.3±0.30 | 0.5±0.17 |'
+  prefs: []
+  type: TYPE_TB
+- en: Critic Architecture.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: The critic learns to estimate the value function of state-action pairs from
+    the dataset. The state includes the environment state and the agent state, where
+    the environment state contains variables of the simulator and the agent state
+    is described by language. The action is also described by language. We adopt the
+    pre-trained BERT Transformer model to extract language features of the agent state
+    and actions. Then we concatenate the output feature with environment state features
+    to some MLP layers to predict the $Q$-value. The structure of the critic network
+    is given in Figure [12](#A5.F12 "Figure 12 ‣ Critic Architecture. ‣ E.4 Dataset
+    and Critic Network ‣ Appendix E Additional Experimental Results ‣ Towards Efficient
+    LLM Grounding for Embodied Multi-Agent Collaboration"), and the hyper-parameters
+    are given in Table [7](#A5.T7 "Table 7 ‣ Critic Architecture. ‣ E.4 Dataset and
+    Critic Network ‣ Appendix E Additional Experimental Results ‣ Towards Efficient
+    LLM Grounding for Embodied Multi-Agent Collaboration").
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/25d9691d33f025c5363377d3ef75a1b5.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 12: In this figure, the parameters of BERT Transformer are fixed and
+    will not be updated during the training of Critic.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 7: The input dimensions for Critic of ReAd-J and ReAd-S are represented
+    by JIS and SIS respectively, while HS represents the hidden layer input dimension,
+    HN represents the number of hidden layers, LR is the learning rate, BS is batch
+    size, TN represents the number of training iterations, SS is the dimension of
+    environment state, and $n$ is the number of robots in the environment.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | JIS | SIS | HS | HN | LR | BS | TN |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| value | $768+$ |'
+  prefs: []
+  type: TYPE_TB
+- en: Token Consumption.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We report the details of token consumption on both benchmarks in Table [8](#A5.T8
+    "Table 8 ‣ Critic Training. ‣ E.4 Dataset and Critic Network ‣ Appendix E Additional
+    Experimental Results ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent
+    Collaboration") and Table [9](#A5.T9 "Table 9 ‣ Critic Training. ‣ E.4 Dataset
+    and Critic Network ‣ Appendix E Additional Experimental Results ‣ Towards Efficient
+    LLM Grounding for Embodied Multi-Agent Collaboration") respectively. The total
+    number of tokens consumed includes tokens consumed during pre-sampling data for
+    training critic network. We utilize *LLM policy* to collect data for critic training
+    in the experiment of *DV-RoCoBench*, while the data is collected by *expert policy*
+    in the experiment of *Overcooked-AI*. Obviously, during the phase of planning,
+    *ReAd-S* and *ReAd-J* consume less tokens than all other baselines. In terms of
+    total consumed tokens, *ReAd-J* is comparable to the baselines which also generate
+    joint plans in a parallel manner, and *ReAd-S* is significantly superior to RoCo.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Critic Training.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: The quantity of trajectories required for critic training depends on how challenging
+    the task is. For 5 difficulty levels in *Sweep Floor*, critic training demands
+    about 70, 120, 240, 600, and 1400 trajectories respectively. For 4 difficulty
+    levels in *Make Sandwich*, about 60 trajectories are needed for critic training.
+    For 5 difficulty levels in *Sort Cube*, critic training demands about 230, 240,
+    300, 400 and 510 trajectories respectively. For *Cramped room* and *Forced coordination*,
+    the number is about 128 and 2048 respectively. It is important to note that the
+    volume of data utilized for critic training can be adjusted flexibly to align
+    with the specific demands and challenges of the actual situation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 8: Tokens consumed by all methods during the evaluation in *DV-RoCoBench*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Methods | ReAd-S | ReAd-J | RoCo | Central Plan | ReAct | Reflexion | MindAgent
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Tokens for planning | 9M | 6M | 24M | 15M | 11M | 11M | 13M |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Tokens for training $\hat{Q}$ | 7M | 7M | - | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Total tokens | 16M | 13M | 24M | 15M | 11M | 11M | 13M |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 9: Tokens consumed by all methods during the evaluation in *Overcooked-AI*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Methods | ReAd-J | Central Plan | ReAct | Reflexion | MindAgent |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Tokens for planning | 1M | 2M | 4M | 3M | 4M |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Tokens for training $\hat{Q}$ | - | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Total tokens | 1M | 2M | 4M | 3M | 4M |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix F Illustration of the Interaction Process
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: we illustrate the distinctions between ReAd-S and RoCo by presenting a series
+    of task execution screenshots. In Figure [13](#A6.F13 "Figure 13 ‣ Appendix F
+    Illustration of the Interaction Process ‣ Towards Efficient LLM Grounding for
+    Embodied Multi-Agent Collaboration") and Figure [14](#A6.F14 "Figure 14 ‣ Appendix
+    F Illustration of the Interaction Process ‣ Towards Efficient LLM Grounding for
+    Embodied Multi-Agent Collaboration"), we compare the screenshots of our method
+    and RoCo algorithm in task *Sweep Floor* Y2_G2\. Our method can perform re-plan
+    and correct the initial planning using advantage feedback, which results in a
+    minimum number of environmental interactions. In contrast, RoCo which relies on
+    physical feedback requires more negotiation and interactions with the environment.
+    A similar comparison is shown in Figure [15](#A6.F15 "Figure 15 ‣ Appendix F Illustration
+    of the Interaction Process ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent
+    Collaboration") and Figure [16](#A6.F16 "Figure 16 ‣ Appendix F Illustration of
+    the Interaction Process ‣ Towards Efficient LLM Grounding for Embodied Multi-Agent
+    Collaboration") for *Sort Cubes* sort4. A comparison between *ReAd-J* and Central
+    Plan on *Forced Coordination* scenario is shown in Figure [17](#A6.F17 "Figure
+    17 ‣ Appendix F Illustration of the Interaction Process ‣ Towards Efficient LLM
+    Grounding for Embodied Multi-Agent Collaboration") and Figure [18](#A6.F18 "Figure
+    18 ‣ Appendix F Illustration of the Interaction Process ‣ Towards Efficient LLM
+    Grounding for Embodied Multi-Agent Collaboration").
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/982ec166a4ddb1dad5d83e840475af8c.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 13: Snapshots of the interaction process of *ReAd-J* in task *Sweep
+    Floor* Y2_G2\. Our method obtains the minimum number of environmental interactions
+    needed to complete the task.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 14: Snapshots of the interaction process of *RoCo* in task *Sweep Floor*
+    Y2_G2\. The figure above shows that after planning and sweeping a cube into the
+    dustpan, RoCo will dump it into the trash bin. However, after sweeping the last
+    cube into the dustpan, instead of immediately planning to dump it to complete
+    the task, LLM stubbornly believes that the task is done and plans to wait for
+    the next two interactions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/6753953a8244d96be35717b5a3f3c0b1.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 15: Snapshots of the interaction process of *ReAd-S* in task *Sort Cubes*
+    sort4\. This task is challenging and requires the collaboration of three robots
+    and takes a minimum of three steps to complete. Our approach efficiently accomplishes
+    this task with minimal environment interactions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a842b81ffa6c3b0a441d69d67b08d8e3.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 16: Snapshots of the interaction process of *RoCo* in task *Sort Cubes*
+    sort4\. Before the joint actions of all robots are executed, the planning result
+    can only be improved through the dialogue of LLMs. In addition, environmental
+    feedback can be generated only after the agent interacts with the simulator. In
+    contrast, our advantage feedback provides timely feedback in the process of LLM
+    planning for policy improvement before interaction.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/da9d2d7282557db92dee2f2b374633b7.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 17: Snapshots of the interaction process of *ReAd-J* in task *Forced
+    Coordination*. This task is challenging and requires the collaboration of two
+    agents and takes a minimum of 22 steps to complete. Most of the time, ReAd can
+    improve the unreasonable planning result generated by LLM, so that *ReAd-J* can
+    complete the task smoothly. However, due to the out-of-distribution (OOD), it
+    is possible to evaluate the advantage value of some unreasonable planning to carry
+    out environmental interaction'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7787642d81020475a144c977661be6af.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 18: Snapshots of the interaction process of *Central Plan* in task *Forced
+    Coordination*. From the screenshot of the interaction process, it can be found
+    that in the *Forced Coordination*, it is difficult for LLM to understand the state
+    of the current environment, so hallucination occurs frequently, resulting in the
+    failure of *Central Plan* to effectively complete the task.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix G Examples of Reinforced Advantage Feedback
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Format of Advantage Feedback. The Advantage Feedback comprises of [Evaluation
+    Score] and [Improvement Feedback]. If the advantage score of the action is higher
+    than a threshold, the response will only contain [Evaluation Score]. Otherwise,
+    we perform a re-plan to improve the previous action, and the response will include
+    both [Evaluation Score] and [Improvement Feedback].
+  prefs: []
+  type: TYPE_NORMAL
+- en: Below we will briefly show a few examples of the LLM’s planning corrected by
+    advantage feedback, using ReAd-S to complete the Sweep Floor task.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Alice Response]:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bob, we have green_cube_1 and green_cube_2 in the dustpan. Let’s MOVE to the
+    trash_bin so I can DUMP these cubes. After that, we can go for any remaining cubes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: PROCEED
+  prefs: []
+  type: TYPE_NORMAL
+- en: NAME Alice ACTION MOVE trash_bin.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Advantage Feedback]:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Evaluation Score]:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The advantage score of Alice’s action is -0.6652!
+  prefs: []
+  type: TYPE_NORMAL
+- en: The advantage score is low and the plan need to be changed!
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Improve Feedback]'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Alice’s previous response:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bob, we have green_cube_1 and green_cube_2 in the dustpan. Let’s MOVE to the
+    trash_bin so I can DUMP these cubes. After that, we can go for any remaining cubes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: PROCEED
+  prefs: []
+  type: TYPE_NORMAL
+- en: NAME Alice ACTION MOVE trash_bin
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The advantage score is -0.665, it is too low to run. The answer may contain
+    a misunderstanding of the state of the environment, you must change your action
+    to raise the advantage score over 0! [Alice Response]:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bob, I made a mistake in my previous plan. Since we already have green_cube_1
+    and green_cube_2 in the dustpan, I should DUMP them into the trash_bin. I’ll do
+    that while you WAIT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: PROCEED
+  prefs: []
+  type: TYPE_NORMAL
+- en: NAME Alice ACTION DUMP
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Advantage Feedback]:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Evaluation Score]:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The advantage score of Alice’s action is 17.376!
+  prefs: []
+  type: TYPE_NORMAL
+- en: The advantage score is high enough.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Explain. In this example, the MOVE action can only be used for cubes due to
+    the task setting, and the MOVE of the trash bin is illegal. However, the LLMs
+    learned from the web may consider the MOVE action can also be applied to the trash
+    bin, which does not ground well with the specific task, resulting in the fact
+    of hallucination. Our method can correct this type of error with advantage feedback
+    according to the reward since taking MOVE action to the trash bin will obtain
+    a zero reward and lead to the same next state as the current state.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Alice Response]:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bob, we have green_cube_1 and green_cube_2 in the dustpan. Let’s MOVE to the
+    next cube we need to sweep. I suggest we go to pink_cube_1 since it’s the closest
+    cube on the table. Once we’re in position, I will WAIT for you to SWEEP it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: PROCEED
+  prefs: []
+  type: TYPE_NORMAL
+- en: NAME Alice ACTION MOVE pink_cube_1
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Advantage Feedback]:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Evaluation Score]:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The advantage score of Alice’s action is -0.0927!
+  prefs: []
+  type: TYPE_NORMAL
+- en: The advantage score is low and the plan needs to be changed!
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Improve Feedback]'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Alice’s previous response:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bob, we have green_cube_1 and green_cube_2 in the dustpan. Let’s MOVE to the
+    next cube we need to sweep. I suggest we go to pink_cube_1 since it’s the closest
+    cube on the table. Once we’re in position, I will WAIT for you to SWEEP it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: PROCEED
+  prefs: []
+  type: TYPE_NORMAL
+- en: NAME Alice ACTION MOVE pink_cube_1 The advantage score is -0.0927, it is too
+    low to run. The answer may contain a misunderstanding of the state of the environment,
+    you must change your action to raise the advantage score over 0!
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Alice Response]:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bob, I made a mistake in my previous suggestion. We should not move to pink_cube_1
+    as it’s not one of our targets. Instead, let’s DUMP the cubes we have in the dustpan
+    into the trash_bin. I will do that while you WAIT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: PROCEED
+  prefs: []
+  type: TYPE_NORMAL
+- en: NAME Alice ACTION DUMP
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Advantage Feedback]:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Evaluation Score]:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The advantage score of Alice’s action is 18.4184!
+  prefs: []
+  type: TYPE_NORMAL
+- en: The advantage score is high enough.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Explain. In this example, the target colors to sweep are yellow and green. Since
+    the environment also includes many cubes with other colors, LLM may plan to sweep
+    cubes with the wrong colors initially. In such cases, the advantage feedback is
+    helpful to correct the plan generated by the LLM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Bob Response]:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Alice, I will WAIT as you move into position for yellow_cube_3.
+  prefs: []
+  type: TYPE_NORMAL
+- en: PROCEED
+  prefs: []
+  type: TYPE_NORMAL
+- en: NAME Bob ACTION WAIT
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Advantage Feedback]:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Evaluation Score]:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The advantage score of Bob’s action is -3.2211!
+  prefs: []
+  type: TYPE_NORMAL
+- en: The score is low and the plan needs to be changed!
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Improve Feedback] Bob’s previous response:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Alice, I will WAIT as you move into position for yellow_cube_3.
+  prefs: []
+  type: TYPE_NORMAL
+- en: PROCEED
+  prefs: []
+  type: TYPE_NORMAL
+- en: NAME Bob ACTION WAIT
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The advantage score score is -3.221, it is too low to run, the answer may contain
+    a misunderstanding of the state of the environment, you must change your action
+    to raise the advantage score over -0.2! [Bob Response]:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Alice, since you are moving to yellow_cube_3, I will also MOVE to yellow_cube_3
+    to be ready to SWEEP it once you are in position.
+  prefs: []
+  type: TYPE_NORMAL
+- en: PROCEED
+  prefs: []
+  type: TYPE_NORMAL
+- en: NAME Bob ACTION MOVE yellow_cube_3
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Advantage Feedback]:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Evaluation Score]:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The advantage score of Bob’s action is 0.6383!
+  prefs: []
+  type: TYPE_NORMAL
+- en: The advantage score is high enough.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Explain. In this example, the LLM plans for Bob to move to yellow_cube_3 with
+    Alice, it can sweep directly into the dustpan in the next step. However, during
+    the first LLM planning, the LLM plans the WAIT action for Bob. If Bob performs
+    this action at this time, Alice can only wait for Bob to move to yellow_cube_3\.
+    Thus, our method performs replanning based on the advantage feedback to reduces
+    the interaction steps to the environment.
+  prefs: []
+  type: TYPE_NORMAL

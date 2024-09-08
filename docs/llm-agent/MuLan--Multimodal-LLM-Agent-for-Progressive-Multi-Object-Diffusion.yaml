@@ -1,0 +1,1745 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:51:55'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'MuLan: Multimodal-LLM Agent for Progressive Multi-Object Diffusion'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2402.12741](https://ar5iv.labs.arxiv.org/html/2402.12741)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Sen Li    Ruochen Wang    Cho-Jui Hsieh    Minhao Cheng    Tianyi Zhou
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Existing text-to-image models still struggle to generate images of multiple
+    objects, especially in handling their spatial positions, relative sizes, overlapping,
+    and attribute bindings. In this paper, we develop a training-free Multimodal-LLM
+    agent (MuLan) to address these challenges by progressive multi-object generation
+    with planning and feedback control, like a human painter. MuLan harnesses a large
+    language model (LLM) to decompose a prompt to a sequence of sub-tasks, each generating
+    only one object conditioned on previously generated objects by stable diffusion.
+    Unlike existing LLM-grounded methods, MuLan only produces a high-level plan at
+    the beginning while the exact size and location of each object are determined
+    by an LLM and attention guidance upon each sub-task. Moreover, MuLan adopts a
+    vision-language model (VLM) to provide feedback to the image generated in each
+    sub-task and control the diffusion model to re-generate the image if it violates
+    the original prompt. Hence, each model in every step of MuLan only needs to address
+    an easy sub-task it is specialized for. We collect 200 prompts containing multi-objects
+    with spatial relationships and attribute bindings from different benchmarks to
+    evaluate MuLan. The results demonstrate the superiority of MuLan in generating
+    multiple objects over baselines. The code is available on [https:github.com/measure-infinity/mulan-code](https:github.com/measure-infinity/mulan-code).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Computer Vision, Machine Learning, ICML
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Diffusion models (Sohl-Dickstein et al., [2015](#bib.bib19); Ho et al., [2020](#bib.bib9);
+    Song et al., [2020](#bib.bib20)) have shown growing potential in generative AI
+    tasks, especially in creating diverse and high-quality images with text prompts (Saharia
+    et al., [2022](#bib.bib18); Rombach et al., [2022](#bib.bib17)). However, current
+    state-of-the-art text-to-image (T2I) models such as Stable Diffusion (Rombach
+    et al., [2022](#bib.bib17)) and DALL-E 3 (Betker et al., [2023](#bib.bib2)) still
+    struggle to deal with complicated prompts involving multiple objects and lack
+    precise control of their spatial relations, potential occlusions, relative sizes,
+    etc. As shown in Figure [2](#S1.F2 "Figure 2 ‣ 1 Introduction ‣ MuLan: Multimodal-LLM
+    Agent for Progressive Multi-Object Diffusion"), to generate a sketch of “The orange
+    pumpkin is on the right side of the black door”, even the SOTA open-source T2I
+    model, Stable Diffusion XL (Podell et al., [2023](#bib.bib16)), still generates
+    wrong attribute-binding as well as incorrect spatial positions of several objects.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Among works that aim to improve the controllability of T2I models on complicated
+    prompts, a recent promising line of research seeks to utilize large language models
+    (LLMs), e.g., ChatGPT, GPT-4 (Achiam et al., [2023](#bib.bib1)), to guide the
+    generation process (Lian et al., [2023](#bib.bib12); Feng et al., [2023](#bib.bib6)).
+    Specifically, an LLM is prompted to generate a layout for the given prompt, i.e.,
+    a bounding box for each object in the image, given detailed instructions or demonstrations
+    if necessary. However, due to the limited spatial reasoning capability of LLMs
+    as well as their lack of alignment with the diffusion models, it is still challenging
+    for LLMs to directly generate a complete and precise layout for multiple objects.
+    Without a feedback loop interacting with the generative process, the layout’s
+    possible mistakes cannot be effectively detected and corrected. Moreover, the
+    layout is often applied as an extra condition in addition to the original prompt
+    (e.g., bounding boxes combined with GLIGEN (Li et al., [2023](#bib.bib11))), so
+    the diffusion models may still generate an incorrect image due to its misunderstanding
+    of the complicated prompt.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d7e07ee781b1b94e34befc2ca4f28179.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: The proposed training-free Multimodal-LLM Agent (MuLan) for Progressive
+    Multi-Object Diffusion. MuLan consists of three main components: (1) LLM planning;
+    (2) Single-object diffusion with attention guidance; and (3) VLM-feedback control.
+    MuLan first decomposes a complicated prompt into a sequence of sub-prompts each
+    for one object, and then generates one object per step conditioned on a sub-prompt
+    and previously generated objects, where LLM plans the rough layout of the object
+    and attention guidance provides an accurate mask for it. The VLM-feedback control
+    allows MuLan to correct mistakes in each step by adjusting hyperparameters in
+    (2).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To address the limitations and challenges of previous methods, we develop a
+    training-free and controllable T2I generation paradigm that does not require demonstrations
+    but mainly focuses on improving the tool usage of existing models. Our paradigm
+    is built upon a progressive multi-object generation by a Multimodal-LLM agent
+    (MuLan), which generates only one object per stage, conditioned on generated objects
+    in the image and attention masks of the most plausible positions to place the
+    new object. Unlike previous methods that add conditions to each model and make
+    the task even more challenging, MuLan uses an LLM as a planner decomposing the
+    original T2I task into a sequence of easier subtasks. Each subtask generates one
+    single object, which can be easily handled by diffusion models. To be noted, the
+    LLM applied at the beginning of MuLan only focuses on high-level planning rather
+    than a precise layout of bounding boxes, while the exact size and position of
+    each object are determined later in each stage by LLM and attention guidance based
+    on the generated objects in the image. Hence, we can avoid mistakes in the planning
+    stage and find a better placement for each object adaptive to the generated content
+    and adhering to the original prompt. In addition, MuLan builds a feedback loop
+    monitoring the generation process, which assesses the generated image per stage
+    using a vision-language model (VLM). When the generated image violates the prompt,
+    the VLM will adjust the diffusion model to re-generate the image so any mistake
+    can be corrected before moving to the next stage. Furthermore, we develop a strategy
+    applied in each stage to handle the overlapping between objects, which is commonly
+    ignored by previous work (Lian et al., [2023](#bib.bib12)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Therefore, MuLan obtains better controllability of the multi-object composition.
+    An illustration of the progressive generation process is shown in Figure [1](#S1.F1
+    "Figure 1 ‣ 1 Introduction ‣ MuLan: Multimodal-LLM Agent for Progressive Multi-Object
+    Diffusion"). To evaluate MuLan, we curate a dataset of intricate and challenging
+    prompts from different benchmarks. To compare MuLan with existing approaches,
+    we prompt GPT-4V (OpenAI, [2023](#bib.bib15)) several questions based on the input
+    texts to comprehensively evaluate the alignment of the generated images with the
+    prompts from three aspects. We further conduct human evaluations of the generated
+    images. Extensive experimental results show that MuLan can achieve better controllability
+    over the generation process and generate high-quality images aligning better with
+    the prompts than the baselines. Example images generated by different methods
+    are shown in Figure [2](#S1.F2 "Figure 2 ‣ 1 Introduction ‣ MuLan: Multimodal-LLM
+    Agent for Progressive Multi-Object Diffusion"). Our main contributions are summarized
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/4277fec584bbedd7ba278d69e51fb0a9.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Examples of MuLan-generated images, compared to the original SD-v1.4 (Rombach
+    et al., [2022](#bib.bib17)), the original SDXL (Podell et al., [2023](#bib.bib16)),
+    Structure diffusion (Feng et al., [2022](#bib.bib5)), Promptist (Hao et al., [2022](#bib.bib7)),
+    and PixArt-$\alpha$ (Chen et al., [2023](#bib.bib3)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We propose a novel training-free paradigm for text-to-image generation and a
+    Multimodal-LLM agent. It achieves better control in generating images for complicated
+    prompts consisting of multiple objects with specified spatial relationships and
+    attribute bindings.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We propose an effective strategy to handle multi-object occlusion in T2I generation,
+    which improves the image quality and makes them more realistic.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We curate a dataset of prompts to evaluate multi-object composition with spatial
+    relationships and attribute bindings in T2I tasks. The quantitative results and
+    human evaluation results show that our method can achieve better results compared
+    to different controllable generation methods and general T2I generation methods.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 2 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Diffusion models
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: As a new family of generative models, diffusion models have attracting more
+    and more attention due to its powerful creative capability. Text-to-image generation,
+    which aims to generate the high-quality image aligning with given text prompts,
+    is one of the most popular applications (Nichol et al., [2021](#bib.bib14); Saharia
+    et al., [2022](#bib.bib18); Rombach et al., [2022](#bib.bib17); Betker et al.,
+    [2023](#bib.bib2)). Among different powerful diffusion models, the latent diffusion
+    model (Rombach et al., [2022](#bib.bib17)) has shown amazing capability and has
+    been widely used in practice due to the efficiency and superior performance, which
+    is also the backbone of the current SOTA stable diffusion models. Different from
+    the typical diffusion models which directly perform the diffusion and denoising
+    process in the pixel space, the latent diffusion model perform the whole process
+    in the encoded latent space (Rombach et al., [2022](#bib.bib17)), which can greatly
+    reduce the training and inference time. Recently, empowered by a significantly
+    expanded model capacity, Stable Diffusion XL has demonstrated performance levels
+    approaching commercial application standards (Podell et al., [2023](#bib.bib16)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Composed generation in diffusion models
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Although Stable Diffusion model has shown unprecedented performance on the T2I
+    generation task, it still struggles with text prompts with multi-object, especially
+    when there are several spatial relationships and attribute bindings in the prompts.
+    To achieve more controllable and accurate image compositions, many compositional
+    generation methods have been proposed. StructureDiffusion (Feng et al., [2022](#bib.bib5))
+    proposed a training-free method to parse the input prompt and combine it with
+    the cross-attention to achieve better control over attribute bindings and compositional
+    generation. On the other hand, Promptist (Hao et al., [2022](#bib.bib7)) aimed
+    to train a language model with the objective of optimizing input prompts, rendering
+    them more comprehensible and facilitative for diffusion models. Recently, several
+    works utilize the large language model to directly generate the whole layout for
+    the input prompt with in-context learning, and then generate the image conditioned
+    on the layout (Lian et al., [2023](#bib.bib12); Feng et al., [2023](#bib.bib6)).
+    While all the previous take the whole input prompt, we propose to turn the original
+    complicated task into several easier sub-tasks. A training-free multimodal-LLM
+    agent is utilized to progressively generate objects with feedback control so that
+    the whole generation process would be better controlled.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Multimodal-LLM Agent (MuLan)
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Existing diffusion models often struggle with complicated prompts but can handle
+    simpler ones. Recent approaches train a model or apply in-context learning given
+    similar examples to produce a detailed layout for the prompt in advance and the
+    diffusion model can generate each part of the layout with a simpler prompt separately.
+    Rather than generating all objects at once or in parallel, MuLan is inspired by
+    many human painters, who start by making a high-level plan, painting objects one
+    after another as planned, and correcting mistakes after each step if needed. Thereby,
+    the constraints between objects can be naturally taken into account.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Problem Formulation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Likewise, MuLan begins by strategically planning and decomposing an intricate
+    input prompt into a manageable sequence of sub-prompts, each focusing on an easier
+    sub-task generating one single object. MuLan then adopts a progressive strategy
+    that generates one object in each stage conditioned on previously generated objects
+    using a diffusion model. Simultaneously, a VLM offers insightful feedback and
+    adaptively adjusts the generation process to guarantee precision in accomplishing
+    each subtask. Compared to previous methods, MuLan is entirely training-free and
+    does not require any examples. As illustrated in Fig. [1](#S1.F1 "Figure 1 ‣ 1
+    Introduction ‣ MuLan: Multimodal-LLM Agent for Progressive Multi-Object Diffusion"),
+    MuLan is composed of three components:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Prompt decomposition by LLM planning, which produces a sequence of sub-prompts,
+    each focusing on generating one object in the prompt.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Conditional single-object diffusion with LLM planning and attention guidance,
+    which generates a new object conditioned on the previous step’s image using a
+    stable diffusion model. While a sub-prompt from LLM planning provides text guidance,
+    the object’s size and position are controlled by an attention mask.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: VLM-feedback control, which inspects the image generated per stage and adjusts
+    hyperparameters to re-generate the image if it violates the original prompt.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 3.2 Background on (Latent) Diffusion Models
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Consisting of the diffusion process and the reverse process, diffusion models
+    have shown impressive capability for high-quality image generation by iteratively
+    adding noise and denoising (Ho et al., [2020](#bib.bib9)). Let $\bm{x}_{0}\sim
+    q(\bm{x}_{0})$, the training loss of the model can be simplified as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: Latent diffusion models (Rombach et al., [2022](#bib.bib17)) have recently attracted
+    growing attention due to their efficiency and superior performance. Instead of
+    performing diffusion and its reverse process in the pixel space, they add noise
+    and denoise in a latent space of $\bm{z}$. Accordingly, the training loss becomes
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle L_{LDM}=\mathbb{E}_{\bm{z}_{0},\bm{\epsilon},t}\&#124;\bm{\epsilon}-\bm{\epsilon}_{\theta}(\bm{z}_{t},t)\&#124;^{2}.$
+    |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: 3.3 Prompt Decomposition by LLM Planning
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Given a complicated prompt p, MuLan first uses an LLM to automatically decompose
+    p into $N$”. MuLan conducts the above global planning by an LLM at the very beginning
+    before generating any image. The detailed prompts and template for LLM planning
+    can be found in Appendix [A](#A1 "Appendix A Detailed prompt template of the global
+    planning by the LLM ‣ MuLan: Multimodal-LLM Agent for Progressive Multi-Object
+    Diffusion").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When generating each object in Section [3.4](#S3.SS4 "3.4 Conditional Single-Object
+    Diffusion with LLM Planning and Attention Guidance ‣ 3 Multimodal-LLM Agent (MuLan)
+    ‣ MuLan: Multimodal-LLM Agent for Progressive Multi-Object Diffusion"), we will
+    use the LLM again as a local planner of the object’s position and size, i.e.,
+    by generating a mask in the image and coordinating its overlap with previous objects.
+    Then a diffusion model is used to generate the object under the attention guidance
+    of the mask. These will be further elaborated in Section [3.4](#S3.SS4 "3.4 Conditional
+    Single-Object Diffusion with LLM Planning and Attention Guidance ‣ 3 Multimodal-LLM
+    Agent (MuLan) ‣ MuLan: Multimodal-LLM Agent for Progressive Multi-Object Diffusion").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.4 Conditional Single-Object Diffusion with LLM Planning and Attention Guidance
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a677a4ab6ce43fd95c5fea4526fd850f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Single object diffusion with LLM planning and attention guidance
+    for $\texttt{obj}_{n}$ (detailed procedure in Algorithm [1](#alg1 "Algorithm 1
+    ‣ 3.4 Conditional Single-Object Diffusion with LLM Planning and Attention Guidance
+    ‣ 3 Multimodal-LLM Agent (MuLan) ‣ MuLan: Multimodal-LLM Agent for Progressive
+    Multi-Object Diffusion")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 1 Single Object Diffusion in MuLan
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1:  Input: Object number $n$}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'At stage-$n$-1). The pipeline is given in Figure [3](#S3.F3 "Figure 3 ‣ 3.4
+    Conditional Single-Object Diffusion with LLM Planning and Attention Guidance ‣
+    3 Multimodal-LLM Agent (MuLan) ‣ MuLan: Multimodal-LLM Agent for Progressive Multi-Object
+    Diffusion") with the complete procedure listed in Algorithm [1](#alg1 "Algorithm
+    1 ‣ 3.4 Conditional Single-Object Diffusion with LLM Planning and Attention Guidance
+    ‣ 3 Multimodal-LLM Agent (MuLan) ‣ MuLan: Multimodal-LLM Agent for Progressive
+    Multi-Object Diffusion"). We will introduce it step by step in the following.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: LLM Planning of a Rough Mask for $\texttt{obj}_{n}$.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: At stage-$n$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When $n=1$, which leads to the following bounding box:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: '![Refer to caption](img/eaf6680d2961f1b44158eed3637777d6.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: The rough mask $\bm{M}_{n}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When <math id="S3.SS4.SSS0.Px1.p3.1.1.m1.1" class="ltx_Math" alttext="n></math>
+    as followings.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | <math id="S3.E4.m1.4" class="ltx_Math" alttext="\displaystyle\bm{M}_{n}=\begin{cases}(\tilde{x}_{n-1}+\tilde{w}_{n-1},0,\frac{W-\tilde{x}_{n-1}+\tilde{w}_{n-1}}{\texttt{Num}_{n}},H),\\
+    \text{if }\texttt{opt}_{n}=\texttt{right},\\'
+  prefs: []
+  type: TYPE_NORMAL
+- en: \\
+  prefs: []
+  type: TYPE_NORMAL
+- en: (0,\frac{\tilde{y}_{n-1}\cdot(\texttt{Num}_{n}-1)}{\texttt{Num}_{n}},W,\frac{\tilde{y}_{n-1}}{\texttt{Num}_{n}}),\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: \text{if }\texttt{opt}^{n}=\texttt{top}.\end{cases}" display="inline"><semantics
+    id="S3.E4.m1.4a"><mrow id="S3.E4.m1.4.5" xref="S3.E4.m1.4.5.cmml"><msub id="S3.E4.m1.4.5.2"
+    xref="S3.E4.m1.4.5.2.cmml"><mi id="S3.E4.m1.4.5.2.2" xref="S3.E4.m1.4.5.2.2.cmml">𝑴</mi><mi
+    id="S3.E4.m1.4.5.2.3" xref="S3.E4.m1.4.5.2.3.cmml">n</mi></msub><mo id="S3.E4.m1.4.5.1"
+    xref="S3.E4.m1.4.5.1.cmml">=</mo><mrow id="S3.E4.m1.4.4a" xref="S3.E4.m1.4.5.3.1.cmml"><mo
+    id="S3.E4.m1.4.4a.5" xref="S3.E4.m1.4.5.3.1.1.cmml">{</mo><mtable columnspacing="5pt"
+    rowspacing="0pt" id="S3.E4.m1.4.4.4a" xref="S3.E4.m1.4.5.3.1.cmml"><mtr id="S3.E4.m1.4.4.4aa"
+    xref="S3.E4.m1.4.5.3.1.cmml"><mtd class="ltx_align_left" columnalign="left" id="S3.E4.m1.4.4.4ab"
+    xref="S3.E4.m1.4.5.3.1.cmml"><mrow id="S3.E4.m1.1.1.1.1.1.1.4" xref="S3.E4.m1.4.5.3.1.cmml"><mrow
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1" xref="S3.E4.m1.1.1.1.1.1.1.4.1.2.cmml"><mo stretchy="false"
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.2" xref="S3.E4.m1.1.1.1.1.1.1.4.1.2.cmml">(</mo><mrow
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.cmml"><msub
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.cmml"><mover
+    accent="true" id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.2" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.2.cmml"><mi
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.2.2" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.2.2.cmml">x</mi><mo
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.2.1" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.2.1.cmml">~</mo></mover><mrow
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.3" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.3.cmml"><mi
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.3.2" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.3.2.cmml">n</mi><mo
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.3.1" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.3.1.cmml">−</mo><mn
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.3.3" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.3.3.cmml">1</mn></mrow></msub><mo
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.1" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.1.cmml">+</mo><msub
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.cmml"><mover
+    accent="true" id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.2" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.2.cmml"><mi
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.2.2" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.2.2.cmml">w</mi><mo
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.2.1" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.2.1.cmml">~</mo></mover><mrow
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.3" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.3.cmml"><mi
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.3.2" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.3.2.cmml">n</mi><mo
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.3.1" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.3.1.cmml">−</mo><mn
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.3.3" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.3.3.cmml">1</mn></mrow></msub></mrow><mo
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.3" xref="S3.E4.m1.1.1.1.1.1.1.4.1.2.cmml">,</mo><mn
+    id="S3.E4.m1.1.1.1.1.1.1.1" xref="S3.E4.m1.1.1.1.1.1.1.1.cmml">0</mn><mo id="S3.E4.m1.1.1.1.1.1.1.4.1.1.4"
+    xref="S3.E4.m1.1.1.1.1.1.1.4.1.2.cmml">,</mo><mfrac id="S3.E4.m1.1.1.1.1.1.1.2"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.cmml"><mrow id="S3.E4.m1.1.1.1.1.1.1.2.2" xref="S3.E4.m1.1.1.1.1.1.1.2.2.cmml"><mrow
+    id="S3.E4.m1.1.1.1.1.1.1.2.2.2" xref="S3.E4.m1.1.1.1.1.1.1.2.2.2.cmml"><mi id="S3.E4.m1.1.1.1.1.1.1.2.2.2.2"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.2.2.2.cmml">W</mi><mo id="S3.E4.m1.1.1.1.1.1.1.2.2.2.1"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.2.2.1.cmml">−</mo><msub id="S3.E4.m1.1.1.1.1.1.1.2.2.2.3"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.cmml"><mover accent="true" id="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.2"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.2.cmml"><mi id="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.2.2"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.2.2.cmml">x</mi><mo id="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.2.1"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.2.1.cmml">~</mo></mover><mrow id="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.3"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.3.cmml"><mi id="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.3.2"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.3.2.cmml">n</mi><mo id="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.3.1"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.3.1.cmml">−</mo><mn id="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.3.3"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.3.3.cmml">1</mn></mrow></msub></mrow><mo id="S3.E4.m1.1.1.1.1.1.1.2.2.1"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.2.1.cmml">+</mo><msub id="S3.E4.m1.1.1.1.1.1.1.2.2.3"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.2.3.cmml"><mover accent="true" id="S3.E4.m1.1.1.1.1.1.1.2.2.3.2"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.2.3.2.cmml"><mi id="S3.E4.m1.1.1.1.1.1.1.2.2.3.2.2"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.2.3.2.2.cmml">w</mi><mo id="S3.E4.m1.1.1.1.1.1.1.2.2.3.2.1"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.2.3.2.1.cmml">~</mo></mover><mrow id="S3.E4.m1.1.1.1.1.1.1.2.2.3.3"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.2.3.3.cmml"><mi id="S3.E4.m1.1.1.1.1.1.1.2.2.3.3.2"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.2.3.3.2.cmml">n</mi><mo id="S3.E4.m1.1.1.1.1.1.1.2.2.3.3.1"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.2.3.3.1.cmml">−</mo><mn id="S3.E4.m1.1.1.1.1.1.1.2.2.3.3.3"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.2.3.3.3.cmml">1</mn></mrow></msub></mrow><msub id="S3.E4.m1.1.1.1.1.1.1.2.3"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.3.cmml"><mtext class="ltx_mathvariant_monospace"
+    id="S3.E4.m1.1.1.1.1.1.1.2.3.2" xref="S3.E4.m1.1.1.1.1.1.1.2.3.2a.cmml">Num</mtext><mi
+    id="S3.E4.m1.1.1.1.1.1.1.2.3.3" xref="S3.E4.m1.1.1.1.1.1.1.2.3.3.cmml">n</mi></msub></mfrac><mo
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.5" xref="S3.E4.m1.1.1.1.1.1.1.4.1.2.cmml">,</mo><mi
+    id="S3.E4.m1.1.1.1.1.1.1.3" xref="S3.E4.m1.1.1.1.1.1.1.3.cmml">H</mi><mo stretchy="false"
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.6" xref="S3.E4.m1.1.1.1.1.1.1.4.1.2.cmml">)</mo></mrow><mo
+    id="S3.E4.m1.1.1.1.1.1.1.4.2" xref="S3.E4.m1.4.5.3.1.cmml">,</mo></mrow></mtd></mtr><mtr
+    id="S3.E4.m1.4.4.4ad" xref="S3.E4.m1.4.5.3.1.cmml"><mtd class="ltx_align_left"
+    columnalign="left" id="S3.E4.m1.4.4.4ae" xref="S3.E4.m1.4.5.3.1.cmml"><mrow id="S3.E4.m1.2.2.2.2.1.1.1"
+    xref="S3.E4.m1.2.2.2.2.1.1.1.1.cmml"><mrow id="S3.E4.m1.2.2.2.2.1.1.1.1" xref="S3.E4.m1.2.2.2.2.1.1.1.1.cmml"><msub
+    id="S3.E4.m1.2.2.2.2.1.1.1.1.2" xref="S3.E4.m1.2.2.2.2.1.1.1.1.2.cmml"><mrow id="S3.E4.m1.2.2.2.2.1.1.1.1.2.2"
+    xref="S3.E4.m1.2.2.2.2.1.1.1.1.2.2c.cmml"><mtext id="S3.E4.m1.2.2.2.2.1.1.1.1.2.2a"
+    xref="S3.E4.m1.2.2.2.2.1.1.1.1.2.2c.cmml">if </mtext><mtext class="ltx_mathvariant_monospace"
+    id="S3.E4.m1.2.2.2.2.1.1.1.1.2.2b" xref="S3.E4.m1.2.2.2.2.1.1.1.1.2.2c.cmml">opt</mtext></mrow><mi
+    id="S3.E4.m1.2.2.2.2.1.1.1.1.2.3" xref="S3.E4.m1.2.2.2.2.1.1.1.1.2.3.cmml">n</mi></msub><mo
+    id="S3.E4.m1.2.2.2.2.1.1.1.1.1" xref="S3.E4.m1.2.2.2.2.1.1.1.1.1.cmml">=</mo><mtext
+    class="ltx_mathvariant_monospace" id="S3.E4.m1.2.2.2.2.1.1.1.1.3" xref="S3.E4.m1.2.2.2.2.1.1.1.1.3a.cmml">right</mtext></mrow><mo
+    id="S3.E4.m1.2.2.2.2.1.1.1.2" xref="S3.E4.m1.2.2.2.2.1.1.1.1.cmml">,</mo></mrow></mtd></mtr><mtr
+    id="S3.E4.m1.4.4.4aj" xref="S3.E4.m1.4.5.3.1.cmml"><mtd class="ltx_align_left"
+    columnalign="left" id="S3.E4.m1.4.4.4ak" xref="S3.E4.m1.4.5.3.1.cmml"><mrow id="S3.E4.m1.3.3.3.3.1.1.5"
+    xref="S3.E4.m1.4.5.3.1.cmml"><mrow id="S3.E4.m1.3.3.3.3.1.1.5.1.2" xref="S3.E4.m1.3.3.3.3.1.1.5.1.1.cmml"><mo
+    stretchy="false" id="S3.E4.m1.3.3.3.3.1.1.5.1.2.1" xref="S3.E4.m1.3.3.3.3.1.1.5.1.1.cmml">(</mo><mn
+    id="S3.E4.m1.3.3.3.3.1.1.2" xref="S3.E4.m1.3.3.3.3.1.1.2.cmml">0</mn><mo id="S3.E4.m1.3.3.3.3.1.1.5.1.2.2"
+    xref="S3.E4.m1.3.3.3.3.1.1.5.1.1.cmml">,</mo><mfrac id="S3.E4.m1.3.3.3.3.1.1.1"
+    xref="S3.E4.m1.3.3.3.3.1.1.1.cmml"><mrow id="S3.E4.m1.3.3.3.3.1.1.1.1" xref="S3.E4.m1.3.3.3.3.1.1.1.1.cmml"><msub
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.3" xref="S3.E4.m1.3.3.3.3.1.1.1.1.3.cmml"><mover
+    accent="true" id="S3.E4.m1.3.3.3.3.1.1.1.1.3.2" xref="S3.E4.m1.3.3.3.3.1.1.1.1.3.2.cmml"><mi
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.3.2.2" xref="S3.E4.m1.3.3.3.3.1.1.1.1.3.2.2.cmml">y</mi><mo
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.3.2.1" xref="S3.E4.m1.3.3.3.3.1.1.1.1.3.2.1.cmml">~</mo></mover><mrow
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.3.3" xref="S3.E4.m1.3.3.3.3.1.1.1.1.3.3.cmml"><mi
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.3.3.2" xref="S3.E4.m1.3.3.3.3.1.1.1.1.3.3.2.cmml">n</mi><mo
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.3.3.1" xref="S3.E4.m1.3.3.3.3.1.1.1.1.3.3.1.cmml">−</mo><mn
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.3.3.3" xref="S3.E4.m1.3.3.3.3.1.1.1.1.3.3.3.cmml">1</mn></mrow></msub><mo
+    lspace="0.222em" rspace="0.222em" id="S3.E4.m1.3.3.3.3.1.1.1.1.2" xref="S3.E4.m1.3.3.3.3.1.1.1.1.2.cmml">⋅</mo><mrow
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.1.1" xref="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.cmml"><mo
+    stretchy="false" id="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.2" xref="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.cmml">(</mo><mrow
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1" xref="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.cmml"><msub
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.2" xref="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.2.cmml"><mtext
+    class="ltx_mathvariant_monospace" id="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.2.2" xref="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.2.2a.cmml">Num</mtext><mi
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.2.3" xref="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.2.3.cmml">n</mi></msub><mo
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.1" xref="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.1.cmml">−</mo><mn
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.3" xref="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.3.cmml">1</mn></mrow><mo
+    stretchy="false" id="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.3" xref="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.cmml">)</mo></mrow></mrow><msub
+    id="S3.E4.m1.3.3.3.3.1.1.1.3" xref="S3.E4.m1.3.3.3.3.1.1.1.3.cmml"><mtext class="ltx_mathvariant_monospace"
+    id="S3.E4.m1.3.3.3.3.1.1.1.3.2" xref="S3.E4.m1.3.3.3.3.1.1.1.3.2a.cmml">Num</mtext><mi
+    id="S3.E4.m1.3.3.3.3.1.1.1.3.3" xref="S3.E4.m1.3.3.3.3.1.1.1.3.3.cmml">n</mi></msub></mfrac><mo
+    id="S3.E4.m1.3.3.3.3.1.1.5.1.2.3" xref="S3.E4.m1.3.3.3.3.1.1.5.1.1.cmml">,</mo><mi
+    id="S3.E4.m1.3.3.3.3.1.1.3" xref="S3.E4.m1.3.3.3.3.1.1.3.cmml">W</mi><mo id="S3.E4.m1.3.3.3.3.1.1.5.1.2.4"
+    xref="S3.E4.m1.3.3.3.3.1.1.5.1.1.cmml">,</mo><mfrac id="S3.E4.m1.3.3.3.3.1.1.4"
+    xref="S3.E4.m1.3.3.3.3.1.1.4.cmml"><msub id="S3.E4.m1.3.3.3.3.1.1.4.2" xref="S3.E4.m1.3.3.3.3.1.1.4.2.cmml"><mover
+    accent="true" id="S3.E4.m1.3.3.3.3.1.1.4.2.2" xref="S3.E4.m1.3.3.3.3.1.1.4.2.2.cmml"><mi
+    id="S3.E4.m1.3.3.3.3.1.1.4.2.2.2" xref="S3.E4.m1.3.3.3.3.1.1.4.2.2.2.cmml">y</mi><mo
+    id="S3.E4.m1.3.3.3.3.1.1.4.2.2.1" xref="S3.E4.m1.3.3.3.3.1.1.4.2.2.1.cmml">~</mo></mover><mrow
+    id="S3.E4.m1.3.3.3.3.1.1.4.2.3" xref="S3.E4.m1.3.3.3.3.1.1.4.2.3.cmml"><mi id="S3.E4.m1.3.3.3.3.1.1.4.2.3.2"
+    xref="S3.E4.m1.3.3.3.3.1.1.4.2.3.2.cmml">n</mi><mo id="S3.E4.m1.3.3.3.3.1.1.4.2.3.1"
+    xref="S3.E4.m1.3.3.3.3.1.1.4.2.3.1.cmml">−</mo><mn id="S3.E4.m1.3.3.3.3.1.1.4.2.3.3"
+    xref="S3.E4.m1.3.3.3.3.1.1.4.2.3.3.cmml">1</mn></mrow></msub><msub id="S3.E4.m1.3.3.3.3.1.1.4.3"
+    xref="S3.E4.m1.3.3.3.3.1.1.4.3.cmml"><mtext class="ltx_mathvariant_monospace"
+    id="S3.E4.m1.3.3.3.3.1.1.4.3.2" xref="S3.E4.m1.3.3.3.3.1.1.4.3.2a.cmml">Num</mtext><mi
+    id="S3.E4.m1.3.3.3.3.1.1.4.3.3" xref="S3.E4.m1.3.3.3.3.1.1.4.3.3.cmml">n</mi></msub></mfrac><mo
+    stretchy="false" id="S3.E4.m1.3.3.3.3.1.1.5.1.2.5" xref="S3.E4.m1.3.3.3.3.1.1.5.1.1.cmml">)</mo></mrow><mo
+    id="S3.E4.m1.3.3.3.3.1.1.5.2" xref="S3.E4.m1.4.5.3.1.cmml">,</mo></mrow></mtd></mtr><mtr
+    id="S3.E4.m1.4.4.4am" xref="S3.E4.m1.4.5.3.1.cmml"><mtd class="ltx_align_left"
+    columnalign="left" id="S3.E4.m1.4.4.4an" xref="S3.E4.m1.4.5.3.1.cmml"><mrow id="S3.E4.m1.4.4.4.4.1.1.1"
+    xref="S3.E4.m1.4.4.4.4.1.1.1.1.cmml"><mrow id="S3.E4.m1.4.4.4.4.1.1.1.1" xref="S3.E4.m1.4.4.4.4.1.1.1.1.cmml"><msup
+    id="S3.E4.m1.4.4.4.4.1.1.1.1.2" xref="S3.E4.m1.4.4.4.4.1.1.1.1.2.cmml"><mrow id="S3.E4.m1.4.4.4.4.1.1.1.1.2.2"
+    xref="S3.E4.m1.4.4.4.4.1.1.1.1.2.2c.cmml"><mtext id="S3.E4.m1.4.4.4.4.1.1.1.1.2.2a"
+    xref="S3.E4.m1.4.4.4.4.1.1.1.1.2.2c.cmml">if </mtext><mtext class="ltx_mathvariant_monospace"
+    id="S3.E4.m1.4.4.4.4.1.1.1.1.2.2b" xref="S3.E4.m1.4.4.4.4.1.1.1.1.2.2c.cmml">opt</mtext></mrow><mi
+    id="S3.E4.m1.4.4.4.4.1.1.1.1.2.3" xref="S3.E4.m1.4.4.4.4.1.1.1.1.2.3.cmml">n</mi></msup><mo
+    id="S3.E4.m1.4.4.4.4.1.1.1.1.1" xref="S3.E4.m1.4.4.4.4.1.1.1.1.1.cmml">=</mo><mtext
+    class="ltx_mathvariant_monospace" id="S3.E4.m1.4.4.4.4.1.1.1.1.3" xref="S3.E4.m1.4.4.4.4.1.1.1.1.3a.cmml">top</mtext></mrow><mo
+    lspace="0em" id="S3.E4.m1.4.4.4.4.1.1.1.2" xref="S3.E4.m1.4.4.4.4.1.1.1.1.cmml">.</mo></mrow></mtd></mtr></mtable></mrow></mrow><annotation-xml
+    encoding="MathML-Content" id="S3.E4.m1.4b"><apply id="S3.E4.m1.4.5.cmml" xref="S3.E4.m1.4.5"><apply
+    id="S3.E4.m1.4.5.2.cmml" xref="S3.E4.m1.4.5.2"><csymbol cd="ambiguous" id="S3.E4.m1.4.5.2.1.cmml"
+    xref="S3.E4.m1.4.5.2">subscript</csymbol><ci id="S3.E4.m1.4.5.2.2.cmml" xref="S3.E4.m1.4.5.2.2">𝑴</ci><ci
+    id="S3.E4.m1.4.5.2.3.cmml" xref="S3.E4.m1.4.5.2.3">𝑛</ci></apply><apply id="S3.E4.m1.4.5.3.1.cmml"
+    xref="S3.E4.m1.4.4a"><csymbol cd="latexml" id="S3.E4.m1.4.5.3.1.1.cmml" xref="S3.E4.m1.4.4a.5">cases</csymbol><vector
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.2.cmml" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1"><apply
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.cmml" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1"><apply
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.cmml" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2"><csymbol
+    cd="ambiguous" id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.1.cmml" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2">subscript</csymbol><apply
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.2.cmml" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.2"><ci
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.2.1.cmml" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.2.1">~</ci><ci
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.2.2.cmml" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.2.2">𝑥</ci></apply><apply
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.3.cmml" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.3"><ci
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.3.2.cmml" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.3.2">𝑛</ci><cn
+    type="integer" id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.3.3.cmml" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.2.3.3">1</cn></apply></apply><apply
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.cmml" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3"><csymbol
+    cd="ambiguous" id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.1.cmml" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3">subscript</csymbol><apply
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.2.cmml" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.2"><ci
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.2.1.cmml" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.2.1">~</ci><ci
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.2.2.cmml" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.2.2">𝑤</ci></apply><apply
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.3.cmml" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.3"><ci
+    id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.3.2.cmml" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.3.2">𝑛</ci><cn
+    type="integer" id="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.3.3.cmml" xref="S3.E4.m1.1.1.1.1.1.1.4.1.1.1.3.3.3">1</cn></apply></apply></apply><cn
+    type="integer" id="S3.E4.m1.1.1.1.1.1.1.1.cmml" xref="S3.E4.m1.1.1.1.1.1.1.1">0</cn><apply
+    id="S3.E4.m1.1.1.1.1.1.1.2.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2"><apply id="S3.E4.m1.1.1.1.1.1.1.2.2.cmml"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.2"><apply id="S3.E4.m1.1.1.1.1.1.1.2.2.2.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2.2.2"><ci
+    id="S3.E4.m1.1.1.1.1.1.1.2.2.2.2.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2.2.2.2">𝑊</ci><apply
+    id="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2.2.2.3"><csymbol
+    cd="ambiguous" id="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.1.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2.2.2.3">subscript</csymbol><apply
+    id="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.2.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.2"><ci
+    id="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.2.1.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.2.1">~</ci><ci
+    id="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.2.2.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.2.2">𝑥</ci></apply><apply
+    id="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.3.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.3"><ci
+    id="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.3.2.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.3.2">𝑛</ci><cn
+    type="integer" id="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.3.3.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2.2.2.3.3.3">1</cn></apply></apply></apply><apply
+    id="S3.E4.m1.1.1.1.1.1.1.2.2.3.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2.2.3"><csymbol
+    cd="ambiguous" id="S3.E4.m1.1.1.1.1.1.1.2.2.3.1.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2.2.3">subscript</csymbol><apply
+    id="S3.E4.m1.1.1.1.1.1.1.2.2.3.2.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2.2.3.2"><ci
+    id="S3.E4.m1.1.1.1.1.1.1.2.2.3.2.1.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2.2.3.2.1">~</ci><ci
+    id="S3.E4.m1.1.1.1.1.1.1.2.2.3.2.2.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2.2.3.2.2">𝑤</ci></apply><apply
+    id="S3.E4.m1.1.1.1.1.1.1.2.2.3.3.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2.2.3.3"><ci
+    id="S3.E4.m1.1.1.1.1.1.1.2.2.3.3.2.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2.2.3.3.2">𝑛</ci><cn
+    type="integer" id="S3.E4.m1.1.1.1.1.1.1.2.2.3.3.3.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2.2.3.3.3">1</cn></apply></apply></apply><apply
+    id="S3.E4.m1.1.1.1.1.1.1.2.3.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2.3"><csymbol cd="ambiguous"
+    id="S3.E4.m1.1.1.1.1.1.1.2.3.1.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2.3">subscript</csymbol><ci
+    id="S3.E4.m1.1.1.1.1.1.1.2.3.2a.cmml" xref="S3.E4.m1.1.1.1.1.1.1.2.3.2"><mtext
+    class="ltx_mathvariant_monospace" mathsize="70%" id="S3.E4.m1.1.1.1.1.1.1.2.3.2.cmml"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.3.2">Num</mtext></ci><ci id="S3.E4.m1.1.1.1.1.1.1.2.3.3.cmml"
+    xref="S3.E4.m1.1.1.1.1.1.1.2.3.3">𝑛</ci></apply></apply><ci id="S3.E4.m1.1.1.1.1.1.1.3.cmml"
+    xref="S3.E4.m1.1.1.1.1.1.1.3">𝐻</ci></vector><ci id="S3.E4.m1.4.5.3.1.3a.cmml"
+    xref="S3.E4.m1.4.4a"><mtext class="ltx_mathvariant_italic" id="S3.E4.m1.4.5.3.1.3.cmml"
+    xref="S3.E4.m1.4.4a.5">otherwise</mtext></ci><apply id="S3.E4.m1.2.2.2.2.1.1.1.1.cmml"
+    xref="S3.E4.m1.2.2.2.2.1.1.1"><apply id="S3.E4.m1.2.2.2.2.1.1.1.1.2.cmml" xref="S3.E4.m1.2.2.2.2.1.1.1.1.2"><csymbol
+    cd="ambiguous" id="S3.E4.m1.2.2.2.2.1.1.1.1.2.1.cmml" xref="S3.E4.m1.2.2.2.2.1.1.1.1.2">subscript</csymbol><ci
+    id="S3.E4.m1.2.2.2.2.1.1.1.1.2.2c.cmml" xref="S3.E4.m1.2.2.2.2.1.1.1.1.2.2"><mrow
+    id="S3.E4.m1.2.2.2.2.1.1.1.1.2.2.cmml" xref="S3.E4.m1.2.2.2.2.1.1.1.1.2.2"><mtext
+    id="S3.E4.m1.2.2.2.2.1.1.1.1.2.2a.cmml" xref="S3.E4.m1.2.2.2.2.1.1.1.1.2.2">if </mtext><mtext
+    class="ltx_mathvariant_monospace" id="S3.E4.m1.2.2.2.2.1.1.1.1.2.2b.cmml" xref="S3.E4.m1.2.2.2.2.1.1.1.1.2.2">opt</mtext></mrow></ci><ci
+    id="S3.E4.m1.2.2.2.2.1.1.1.1.2.3.cmml" xref="S3.E4.m1.2.2.2.2.1.1.1.1.2.3">𝑛</ci></apply><ci
+    id="S3.E4.m1.2.2.2.2.1.1.1.1.3a.cmml" xref="S3.E4.m1.2.2.2.2.1.1.1.1.3"><mtext
+    class="ltx_mathvariant_monospace" id="S3.E4.m1.2.2.2.2.1.1.1.1.3.cmml" xref="S3.E4.m1.2.2.2.2.1.1.1.1.3">right</mtext></ci></apply><ci
+    id="S3.E4.m1.4.5.3.1.5a.cmml" xref="S3.E4.m1.4.4a"><mtext class="ltx_mathvariant_italic"
+    id="S3.E4.m1.4.5.3.1.5.cmml" xref="S3.E4.m1.4.4a.5">otherwise</mtext></ci><ci
+    id="S3.E4.m1.4.5.3.1.6a.cmml" xref="S3.E4.m1.4.4a"><mtext class="ltx_mathvariant_italic"
+    id="S3.E4.m1.4.5.3.1.6.cmml" xref="S3.E4.m1.4.4a.5">otherwise</mtext></ci><ci
+    id="S3.E4.m1.4.5.3.1.7a.cmml" xref="S3.E4.m1.4.4a"><mtext class="ltx_mathvariant_italic"
+    id="S3.E4.m1.4.5.3.1.7.cmml" xref="S3.E4.m1.4.4a.5">otherwise</mtext></ci><vector
+    id="S3.E4.m1.3.3.3.3.1.1.5.1.1.cmml" xref="S3.E4.m1.3.3.3.3.1.1.5.1.2"><cn type="integer"
+    id="S3.E4.m1.3.3.3.3.1.1.2.cmml" xref="S3.E4.m1.3.3.3.3.1.1.2">0</cn><apply id="S3.E4.m1.3.3.3.3.1.1.1.cmml"
+    xref="S3.E4.m1.3.3.3.3.1.1.1"><apply id="S3.E4.m1.3.3.3.3.1.1.1.1.cmml" xref="S3.E4.m1.3.3.3.3.1.1.1.1"><ci
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.2.cmml" xref="S3.E4.m1.3.3.3.3.1.1.1.1.2">⋅</ci><apply
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.3.cmml" xref="S3.E4.m1.3.3.3.3.1.1.1.1.3"><csymbol
+    cd="ambiguous" id="S3.E4.m1.3.3.3.3.1.1.1.1.3.1.cmml" xref="S3.E4.m1.3.3.3.3.1.1.1.1.3">subscript</csymbol><apply
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.3.2.cmml" xref="S3.E4.m1.3.3.3.3.1.1.1.1.3.2"><ci
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.3.2.1.cmml" xref="S3.E4.m1.3.3.3.3.1.1.1.1.3.2.1">~</ci><ci
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.3.2.2.cmml" xref="S3.E4.m1.3.3.3.3.1.1.1.1.3.2.2">𝑦</ci></apply><apply
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.3.3.cmml" xref="S3.E4.m1.3.3.3.3.1.1.1.1.3.3"><ci
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.3.3.2.cmml" xref="S3.E4.m1.3.3.3.3.1.1.1.1.3.3.2">𝑛</ci><cn
+    type="integer" id="S3.E4.m1.3.3.3.3.1.1.1.1.3.3.3.cmml" xref="S3.E4.m1.3.3.3.3.1.1.1.1.3.3.3">1</cn></apply></apply><apply
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.cmml" xref="S3.E4.m1.3.3.3.3.1.1.1.1.1.1"><apply
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.2.cmml" xref="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.2"><csymbol
+    cd="ambiguous" id="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.2.1.cmml" xref="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.2">subscript</csymbol><ci
+    id="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.2.2a.cmml" xref="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.2.2"><mtext
+    class="ltx_mathvariant_monospace" mathsize="70%" id="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.2.2.cmml"
+    xref="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.2.2">Num</mtext></ci><ci id="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.2.3.cmml"
+    xref="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.2.3">𝑛</ci></apply><cn type="integer" id="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.3.cmml"
+    xref="S3.E4.m1.3.3.3.3.1.1.1.1.1.1.1.3">1</cn></apply></apply><apply id="S3.E4.m1.3.3.3.3.1.1.1.3.cmml"
+    xref="S3.E4.m1.3.3.3.3.1.1.1.3"><csymbol cd="ambiguous" id="S3.E4.m1.3.3.3.3.1.1.1.3.1.cmml"
+    xref="S3.E4.m1.3.3.3.3.1.1.1.3">subscript</csymbol><ci id="S3.E4.m1.3.3.3.3.1.1.1.3.2a.cmml"
+    xref="S3.E4.m1.3.3.3.3.1.1.1.3.2"><mtext class="ltx_mathvariant_monospace" mathsize="70%"
+    id="S3.E4.m1.3.3.3.3.1.1.1.3.2.cmml" xref="S3.E4.m1.3.3.3.3.1.1.1.3.2">Num</mtext></ci><ci
+    id="S3.E4.m1.3.3.3.3.1.1.1.3.3.cmml" xref="S3.E4.m1.3.3.3.3.1.1.1.3.3">𝑛</ci></apply></apply><ci
+    id="S3.E4.m1.3.3.3.3.1.1.3.cmml" xref="S3.E4.m1.3.3.3.3.1.1.3">𝑊</ci><apply id="S3.E4.m1.3.3.3.3.1.1.4.cmml"
+    xref="S3.E4.m1.3.3.3.3.1.1.4"><apply id="S3.E4.m1.3.3.3.3.1.1.4.2.cmml" xref="S3.E4.m1.3.3.3.3.1.1.4.2"><csymbol
+    cd="ambiguous" id="S3.E4.m1.3.3.3.3.1.1.4.2.1.cmml" xref="S3.E4.m1.3.3.3.3.1.1.4.2">subscript</csymbol><apply
+    id="S3.E4.m1.3.3.3.3.1.1.4.2.2.cmml" xref="S3.E4.m1.3.3.3.3.1.1.4.2.2"><ci id="S3.E4.m1.3.3.3.3.1.1.4.2.2.1.cmml"
+    xref="S3.E4.m1.3.3.3.3.1.1.4.2.2.1">~</ci><ci id="S3.E4.m1.3.3.3.3.1.1.4.2.2.2.cmml"
+    xref="S3.E4.m1.3.3.3.3.1.1.4.2.2.2">𝑦</ci></apply><apply id="S3.E4.m1.3.3.3.3.1.1.4.2.3.cmml"
+    xref="S3.E4.m1.3.3.3.3.1.1.4.2.3"><ci id="S3.E4.m1.3.3.3.3.1.1.4.2.3.2.cmml" xref="S3.E4.m1.3.3.3.3.1.1.4.2.3.2">𝑛</ci><cn
+    type="integer" id="S3.E4.m1.3.3.3.3.1.1.4.2.3.3.cmml" xref="S3.E4.m1.3.3.3.3.1.1.4.2.3.3">1</cn></apply></apply><apply
+    id="S3.E4.m1.3.3.3.3.1.1.4.3.cmml" xref="S3.E4.m1.3.3.3.3.1.1.4.3"><csymbol cd="ambiguous"
+    id="S3.E4.m1.3.3.3.3.1.1.4.3.1.cmml" xref="S3.E4.m1.3.3.3.3.1.1.4.3">subscript</csymbol><ci
+    id="S3.E4.m1.3.3.3.3.1.1.4.3.2a.cmml" xref="S3.E4.m1.3.3.3.3.1.1.4.3.2"><mtext
+    class="ltx_mathvariant_monospace" mathsize="70%" id="S3.E4.m1.3.3.3.3.1.1.4.3.2.cmml"
+    xref="S3.E4.m1.3.3.3.3.1.1.4.3.2">Num</mtext></ci><ci id="S3.E4.m1.3.3.3.3.1.1.4.3.3.cmml"
+    xref="S3.E4.m1.3.3.3.3.1.1.4.3.3">𝑛</ci></apply></apply></vector><ci id="S3.E4.m1.4.5.3.1.9a.cmml"
+    xref="S3.E4.m1.4.4a"><mtext class="ltx_mathvariant_italic" id="S3.E4.m1.4.5.3.1.9.cmml"
+    xref="S3.E4.m1.4.4a.5">otherwise</mtext></ci><apply id="S3.E4.m1.4.4.4.4.1.1.1.1.cmml"
+    xref="S3.E4.m1.4.4.4.4.1.1.1"><apply id="S3.E4.m1.4.4.4.4.1.1.1.1.2.cmml" xref="S3.E4.m1.4.4.4.4.1.1.1.1.2"><csymbol
+    cd="ambiguous" id="S3.E4.m1.4.4.4.4.1.1.1.1.2.1.cmml" xref="S3.E4.m1.4.4.4.4.1.1.1.1.2">superscript</csymbol><ci
+    id="S3.E4.m1.4.4.4.4.1.1.1.1.2.2c.cmml" xref="S3.E4.m1.4.4.4.4.1.1.1.1.2.2"><mrow
+    id="S3.E4.m1.4.4.4.4.1.1.1.1.2.2.cmml" xref="S3.E4.m1.4.4.4.4.1.1.1.1.2.2"><mtext
+    id="S3.E4.m1.4.4.4.4.1.1.1.1.2.2a.cmml" xref="S3.E4.m1.4.4.4.4.1.1.1.1.2.2">if </mtext><mtext
+    class="ltx_mathvariant_monospace" id="S3.E4.m1.4.4.4.4.1.1.1.1.2.2b.cmml" xref="S3.E4.m1.4.4.4.4.1.1.1.1.2.2">opt</mtext></mrow></ci><ci
+    id="S3.E4.m1.4.4.4.4.1.1.1.1.2.3.cmml" xref="S3.E4.m1.4.4.4.4.1.1.1.1.2.3">𝑛</ci></apply><ci
+    id="S3.E4.m1.4.4.4.4.1.1.1.1.3a.cmml" xref="S3.E4.m1.4.4.4.4.1.1.1.1.3"><mtext
+    class="ltx_mathvariant_monospace" id="S3.E4.m1.4.4.4.4.1.1.1.1.3.cmml" xref="S3.E4.m1.4.4.4.4.1.1.1.1.3">top</mtext></ci></apply><ci
+    id="S3.E4.m1.4.5.3.1.11a.cmml" xref="S3.E4.m1.4.4a"><mtext class="ltx_mathvariant_italic"
+    id="S3.E4.m1.4.5.3.1.11.cmml" xref="S3.E4.m1.4.4a.5">otherwise</mtext></ci></apply></apply></annotation-xml><annotation
+    encoding="application/x-tex" id="S3.E4.m1.4c">\displaystyle\bm{M}_{n}=\begin{cases}(\tilde{x}_{n-1}+\tilde{w}_{n-1},0,\frac{W-\tilde{x}_{n-1}+\tilde{w}_{n-1}}{\texttt{Num}_{n}},H),\\
+    \text{if }\texttt{opt}_{n}=\texttt{right},\\ \\ (0,\frac{\tilde{y}_{n-1}\cdot(\texttt{Num}_{n}-1)}{\texttt{Num}_{n}},W,\frac{\tilde{y}_{n-1}}{\texttt{Num}_{n}}),\\
+    \text{if }\texttt{opt}^{n}=\texttt{top}.\end{cases}</annotation></semantics></math>
+    |  | (4) |
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure [4](#S3.F4 "Figure 4 ‣ LLM Planning of a Rough Mask for "obj"_𝑛. ‣ 3.4
+    Conditional Single-Object Diffusion with LLM Planning and Attention Guidance ‣
+    3 Multimodal-LLM Agent (MuLan) ‣ MuLan: Multimodal-LLM Agent for Progressive Multi-Object
+    Diffusion") illustrates how the rough mask can be computed based on the precise
+    mask of previous objects.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f5bebbdfc8f48f560f2b5bfdd1892c6f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: Illustration of the rough mask $\bm{M}_{1}$ for the mask since the
+    LLM is prompted to plan the object order from left to right, bottom to top.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Single-Object Diffusion with Attention Guidance.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Given the rough mask $\bm{M}_{n}$) to have a larger value inside the mask:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: Then, in every step-$t$ by
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\bm{z}_{n,t}=\bm{z}_{n,t}-\eta\cdot\nabla_{\bm{z}_{n,t}}\sum_{j\in
+    B}E(\bm{A}^{(j)},\bm{M}_{n},k),$ |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\eta$ by
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\bm{z}_{n,(t-1)}=\bm{M}^{\prime}_{n}\odot\bm{z}_{n,(t-1)}+(1-\bm{M}^{\prime}_{n})\odot\bm{z}_{(n-1),(t-1)},$
+    |  | (7) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\odot$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: MuLan applies the above single-object diffusion to each object one after another
+    from $\texttt{obj}_{1}$-defined bounding box via attention guidance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Overlapping between Objects
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Overlapping between objects is a key challenge when generating one object conditioned
+    on the previous one(s). However, it lacks attention in previous methods (Lian
+    et al., [2023](#bib.bib12); Feng et al., [2023](#bib.bib6)). Instead, we propose
+    an effective strategy that can be merged into the procedure above. Specifically,
+    at the generation of object $\texttt{obj}_{n}$. An illustration is given in Figure [7](#A3.F7
+    "Figure 7 ‣ Appendix C More details on the overlapping processing ‣ MuLan: Multimodal-LLM
+    Agent for Progressive Multi-Object Diffusion") with more details of candidate
+    masks in Appendix [C](#A3 "Appendix C More details on the overlapping processing
+    ‣ MuLan: Multimodal-LLM Agent for Progressive Multi-Object Diffusion").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Given the three masks $\bm{M}_{n,i}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.5 Adaptive Feedback Control by VLM
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To correct the possible mistakes made in the sequential generation process,
+    MuLan builds a feedback-loop control by a vision-language model (VLM). After each
+    generation stage, MuLan queries the VLM to inspect the generated object(s)and
+    its consistency with the input prompt. If they do not align well, MuLan will adjust
+    the backward guidance and $T^{*}$ of the current stage to re-generate the object.
+    Such a close-loop control involves LLM, diffusion, and VLM and significantly automates
+    the T2I generation for complicated prompts, leading to a more accurate generation
+    in practice.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Table 1: GPT-4V evaluation/human evaluation of images generated by different
+    methods for complicated prompts.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Object completeness | Attribute bindings | Spatial relationships
+    | Overall |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Structure Diffusion (Feng et al., [2022](#bib.bib5)) | 88.97%/87.37% | 54.62%/62.63%
+    | 34.36%/24.24% | 64.31%/64.85% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Promptist-SD v1.4 (Hao et al., [2022](#bib.bib7)) | 80.36%/70.71% | 49.23%/52.02%
+    | 24.49%/13.13% | 56.73%/51.72% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Promptist-SDXL (Hao et al., [2022](#bib.bib7)) | 94.36%/93.94% | 70.00%/78.28%
+    | 35.89%/33.33% | 72.92%/75.56% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SD v1.4 (Rombach et al., [2022](#bib.bib17)) | 90.31%/74.49% | 57.14%/51.02%
+    | 37.24%/32.65% | 66.43%/56.73% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SDXL (Podell et al., [2023](#bib.bib16)) | 94.64%/78.57% | 66.07%/53.06%
+    | 41.14%/24.49% | 72.34%/57.55% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PixArt-$\alpha$ (Chen et al., [2023](#bib.bib3)) | 92.09%/76.53% | 66.58%/61.22%
+    | 34.69%/32.65% | 70.41%/61.63% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MuLan-SD v1.4 (Ours) | 93.11%/86.36% | 74.23%/74.24% | 51.53%/54.54% | 77.24%/75.15%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MuLan-SDXL (Ours) | 96.17%/90.40% | 75.00%/79.29% | 39.29%/49.49% | 76.33%/77.78%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: Dataset
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: To evaluate our framework, we construct a prompt dataset from different benchmarks.
+    Specifically, since our focus is to achieve better generation for complex prompts
+    containing multi-objects with both spatial relationships and attribute bindings,
+    we first collect all complex spatial prompts from T2I-CompBench (Huang et al.,
+    [2023](#bib.bib10)). To make the experiments more comprehensive, we let ChatGPT
+    generate about 400 prompts with different objects, spatial relationships, and
+    attribute bindings so that the prompt sets consists of about 600 prompts. To further
+    evaluate the capability of our framework on extremely complex and hard prompts,
+    we manually add prompts that SDXL fails to generate, leading to a hard prompt
+    dataset containing 200 prompts. Similar to the complex spatial prompts in T2I-CompBench (Huang
+    et al., [2023](#bib.bib10)), each prompt in our curated dataset typically contains
+    two objects with various spatial relationships, with each object containing attribute
+    bindings randomly selected from {color,shape,texture}.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Models & Baseline
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: As a training-free framework, MuLan can be incorporated into any existing diffusion
+    models. We evaluate two stable diffusion models with our framework, Stable Diffusion
+    v1.4 (Rombach et al., [2022](#bib.bib17)) and the SOTA Stable Diffusion XL (Podell
+    et al., [2023](#bib.bib16)). To verify the superiority of MuLan, we compare it
+    with previous controllable generation methods and general T2I generation methods.
+    Specifically, we evaluate Structure Diffusion (Feng et al., [2022](#bib.bib5)),
+    Promptist (Hao et al., [2022](#bib.bib7)), the original Stable Diffusion v1.4,
+    the original SDXL, and the recent SOTA diffusion model PixArt-$\alpha$ (Chen et al.,
+    [2023](#bib.bib3)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementation Details
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: MuLan use GPT-4 (Achiam et al., [2023](#bib.bib1)) as the LLM planner, and LLaVA-1.5 (Liu
+    et al., [2023](#bib.bib13)) as the VLM checker to provide the feedback. We also
+    conducted an ablation study to show the importance of the feedback control provided
+    by the VLM and the effect of different VLMs. Moreover, we found the attention
+    blocks utilized during the attention guidance are vital, which can be classified
+    as near-input blocks, near-middle blocks, and near-output blocks. We utilize the
+    near-middle blocks in our main experiments and also show the ablation results
+    of different blocks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Evaluation
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Since the prompt dataset contains texts with complex compositions, we design
+    a questionnaire to comprehensively investigate the alignment between the generated
+    image and the corresponding input text. The questionnaire is composed of three
+    aspects - object completeness, correctness of attribute bindings, and correctness
+    of spatial relationships. We only set two options for each question (Yes or No),
+    without any ambiguity. For detailed questions and examples of the evaluation,
+    please refer to Appendix [D](#A4 "Appendix D More details on the evaluation questionnaire
+    ‣ MuLan: Multimodal-LLM Agent for Progressive Multi-Object Diffusion"). For each
+    aspect of the evaluation, we compute the percentage of answers with “Yes”. Given
+    the generated image, we assess the image’s quality using a questionnaire asking
+    both the state-of-the-art multi-modal large language model (GPT-4V (OpenAI, [2023](#bib.bib15)))
+    and the human evaluator.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Main Results and Analysis
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Results with GPT Evaluation
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Given the generated image, we prompt GPT-4V to answer the questions about the
+    image in the questionnaire, where each only focuses on one of the three aspects.
+    The results for different methods and different base models are shown in Table [1](#S4.T1
+    "Table 1 ‣ 4 Experiments ‣ MuLan: Multimodal-LLM Agent for Progressive Multi-Object
+    Diffusion"). The results show that our framework can achieve the best performance
+    compared to different controllable generation methods and T2I generation methods.
+    In particular, in the two ‘harder’ aspects - attribute bindings and spatial relationships,
+    MuLan can surpass other methods by a large margin. More qualitative results can
+    be found in Figure [6](#S4.F6 "Figure 6 ‣ Results with GPT Evaluation ‣ 4.1 Main
+    Results and Analysis ‣ 4 Experiments ‣ MuLan: Multimodal-LLM Agent for Progressive
+    Multi-Object Diffusion") and Appendix [E](#A5 "Appendix E More qualitative results
+    ‣ MuLan: Multimodal-LLM Agent for Progressive Multi-Object Diffusion").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/86f64cf6bc764564666a32e3e0e87822.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: More qualitative examples of images generated by different methods
+    on intricate prompts.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Results with Human evaluation
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'To further accurately evaluate the generated images about the alignments with
+    human preferences, we further conduct a human evaluation by randomly sampling
+    100 prompts from the prompt dataset. Similarly, we ask human evaluators to finish
+    the questionnaire used in GPT evaluation. The results are shown in Table [1](#S4.T1
+    "Table 1 ‣ 4 Experiments ‣ MuLan: Multimodal-LLM Agent for Progressive Multi-Object
+    Diffusion"), which indicates that our method can still achieve the best performance
+    and is consistent with the GPT-4V evaluation results.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Ablation study
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In this section, we show ablation results on the effect of the attention blocks
+    during diffusion generation and the importance of the VLM feedback control in
+    the proposed framework. 50 prompts are randomly sampled from the prompt dataset
+    for all experiments in the ablation study.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Ablation on the attention blocks
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'As we mentioned at the beginning of Section [4](#S4 "4 Experiments ‣ MuLan:
+    Multimodal-LLM Agent for Progressive Multi-Object Diffusion"), there are three
+    options for the attention blocks used for backward guidance, i.e., near-input
+    blocks, near-middle blocks, and near-output blocks. We empirically found the near-middle
+    blocks can achieve the best control and performance for the generation, which
+    generally contains the richest semantics. Hence here we show the ablation results
+    on different choices of the attention blocks. We utilize SD-v1.4 as the base model,
+    and evaluate the performance of different attention blocks under our framework
+    by GPT-4V. The results are shown in Table [2](#S4.T2 "Table 2 ‣ Ablation on the
+    attention blocks ‣ 4.2 Ablation study ‣ 4 Experiments ‣ MuLan: Multimodal-LLM
+    Agent for Progressive Multi-Object Diffusion"), which indicates the diffusion
+    generation with near-middle blocks can achieve much better results compared to
+    the other two options.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 2: Ablation study on attention blocks with SD-v1.4 as the base model.
+    “Objects”, “Attributes”, and “Spatial” denote Object completeness, Attribute bindings,
+    and Spatial relationships. The results (evaluated by GPT-4V (OpenAI, [2023](#bib.bib15)))
+    show that near-middle attention blocks perform the best for attention guidance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Guidance | Objects | Attributes | Spatial | Overall |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| near-input | 83.67% | 55.10% | 14.29% | 58.37% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| near-middle | 97.96% | 80.61% | 30.61% | 77.55% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| near-output | 72.45% | 45.92% | 22.45% | 51.84% |'
+  prefs: []
+  type: TYPE_TB
+- en: Ablation on the VLM feedback control
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'The VLM feedback control is a key componenet in MuLan to provide feedback and
+    adjust the generation process to ensure the every stage’s correct generation.
+    Here, we show the importance of the feedback by removing feedback control from
+    the whole framework. As shown in Table [3](#S4.T3 "Table 3 ‣ Ablation on the VLM
+    feedback control ‣ 4.2 Ablation study ‣ 4 Experiments ‣ MuLan: Multimodal-LLM
+    Agent for Progressive Multi-Object Diffusion"), after removing the VLM, the results
+    would be much worse. It is because there is no guarantee or adaptive adjustment
+    for each generation stage, which verifies that the feedback control provided by
+    the VLM is essential to handle complex prompts. Moreover, we also test MuLan’s
+    compatibility with different VLMs. As shown in Table [4](#S4.T4 "Table 4 ‣ Ablation
+    on the VLM feedback control ‣ 4.2 Ablation study ‣ 4 Experiments ‣ MuLan: Multimodal-LLM
+    Agent for Progressive Multi-Object Diffusion"), we compare the Mulan’s performance
+    using different VLMs including LLaVA-1.5 (Liu et al., [2023](#bib.bib13)), GPT-4V (OpenAI,
+    [2023](#bib.bib15)), and Gemini-Pro (Team et al., [2023](#bib.bib21)). The results
+    show that MuLan could still maintain a good performance with different choices
+    of the VLM and achieve good compatibility.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 3: Ablation study comparing MuLan with vs. without VLM feedback control,
+    using SD-v1.4 as the diffusion model and GPT-4 as the judge in evaluations. It
+    indicates that feedback control can significantly improve the performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| MuLan | Objects | Attributes | Spatial | Overall |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| w/ Feedback | 97.96% | 80.61% | 30.61% | 77.55% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| w/o Feedback | 81.63% | 59.18% | 18.37% | 60.00% |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 4: Ablation study of the VLM used in MuLan, using SD-v1.4 as the diffusion
+    model and GPT-4 as the judge in evaluations. The results show that the choice
+    of the VLM would not affect the overall performance too much.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| VLM in MuLan | Objects | Attributes | Spatial | Overall |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaVA-1.5 (Liu et al., [2023](#bib.bib13)) | 97.96% | 80.61% | 30.61% | 77.55%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPT-4V (OpenAI, [2023](#bib.bib15)) | 95.92% | 80.61% | 28.57% | 76.33% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Gemini-Pro (Team et al., [2023](#bib.bib21)) | 95.92% | 83.67% | 38.78% |
+    79.59% |'
+  prefs: []
+  type: TYPE_TB
+- en: 5 Conclusions and Limitations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this paper, we propose a training-free multimodal-LLM agent (MuLan) to progressively
+    generate objects contained in the complicated input prompt with closed-loop feedback
+    control, achieving better and more precise control on the whole generation process.
+    By first decomposing the complicated prompt into easier sub-tasks, our method
+    takes turns to deal with each object, conditioned on the previous one. The VLM
+    checker further provides a guarantee with feedback control and adaptive adjustment
+    for correct generation at each stage. Extensive experiments demonstrate the superiority
+    of MuLan over previous methods, showing the potential of MuLan as a new paradigm
+    of controllable diffusion generation. However, there are still limitations to
+    be further addressed in the future work. Since the whole generation contains multiple
+    stages, depending on the number of objects, it will take a longer time than a
+    one-stage generation approach. On the other hand, the LLM planner may mistakenly
+    parse the input prompt which results in incorrect decomposition. This could be
+    addressed by first re-writing the input prompt by the LLM to facilitate later
+    processing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Broader Impact
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Our work will bring significant advantages to both the research community focused
+    on diffusion models and the practical application of T2I generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In terms of the research community, we present a new and novel controllable
+    image generation paradigm that demonstrates exceptional controllability and produces
+    remarkable results even when tackling challenging tasks. This pioneering approach
+    can offer valuable insights for future investigations into diffusion models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Regarding industrial applications, our method can be readily employed by T2I
+    generation service providers to enhance the performance of their models. Moreover,
+    the diffusion models operating within our framework are less likely to generate
+    harmful content due to the meticulous control exerted at each generation stage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Achiam et al. (2023) Achiam, J., Adler, S., Agarwal, S., Ahmad, L., Akkaya,
+    I., Aleman, F. L., Almeida, D., Altenschmidt, J., Altman, S., Anadkat, S., et al.
+    Gpt-4 technical report. *arXiv preprint arXiv:2303.08774*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Betker et al. (2023) Betker, J., Goh, G., Jing, L., Brooks, T., Wang, J., Li,
+    L., Ouyang, L., Zhuang, J., Lee, J., Guo, Y., et al. Improving image generation
+    with better captions. *Computer Science. https://cdn. openai. com/papers/dall-e-3\.
+    pdf*, 2(3), 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chen et al. (2023) Chen, J., Yu, J., Ge, C., Yao, L., Xie, E., Wu, Y., Wang,
+    Z., Kwok, J., Luo, P., Lu, H., et al. Pixart-$alpha$: Fast training of diffusion
+    transformer for photorealistic text-to-image synthesis. *arXiv preprint arXiv:2310.00426*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chen et al. (2024) Chen, M., Laina, I., and Vedaldi, A. Training-free layout
+    control with cross-attention guidance. In *Proceedings of the IEEE/CVF Winter
+    Conference on Applications of Computer Vision*, pp.  5343–5353, 2024.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Feng et al. (2022) Feng, W., He, X., Fu, T.-J., Jampani, V., Akula, A., Narayana,
+    P., Basu, S., Wang, X. E., and Wang, W. Y. Training-free structured diffusion
+    guidance for compositional text-to-image synthesis. *arXiv preprint arXiv:2212.05032*,
+    2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Feng et al. (2023) Feng, W., Zhu, W., Fu, T.-j., Jampani, V., Akula, A., He,
+    X., Basu, S., Wang, X. E., and Wang, W. Y. Layoutgpt: Compositional visual planning
+    and generation with large language models. *arXiv preprint arXiv:2305.15393*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hao et al. (2022) Hao, Y., Chi, Z., Dong, L., and Wei, F. Optimizing prompts
+    for text-to-image generation. *arXiv preprint arXiv:2212.09611*, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hessel et al. (2021) Hessel, J., Holtzman, A., Forbes, M., Bras, R. L., and
+    Choi, Y. Clipscore: A reference-free evaluation metric for image captioning. *arXiv
+    preprint arXiv:2104.08718*, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Ho et al. (2020) Ho, J., Jain, A., and Abbeel, P. Denoising diffusion probabilistic
+    models. *Advances in neural information processing systems*, 33:6840–6851, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Huang et al. (2023) Huang, K., Sun, K., Xie, E., Li, Z., and Liu, X. T2i-compbench:
+    A comprehensive benchmark for open-world compositional text-to-image generation.
+    *arXiv preprint arXiv:2307.06350*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. (2023) Li, Y., Liu, H., Wu, Q., Mu, F., Yang, J., Gao, J., Li, C.,
+    and Lee, Y. J. Gligen: Open-set grounded text-to-image generation. In *Proceedings
+    of the IEEE/CVF Conference on Computer Vision and Pattern Recognition*, pp.  22511–22521,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lian et al. (2023) Lian, L., Li, B., Yala, A., and Darrell, T. Llm-grounded
+    diffusion: Enhancing prompt understanding of text-to-image diffusion models with
+    large language models. *arXiv preprint arXiv:2305.13655*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Liu et al. (2023) Liu, H., Li, C., Li, Y., and Lee, Y. J. Improved baselines
+    with visual instruction tuning. *arXiv preprint arXiv:2310.03744*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Nichol et al. (2021) Nichol, A., Dhariwal, P., Ramesh, A., Shyam, P., Mishkin,
+    P., McGrew, B., Sutskever, I., and Chen, M. Glide: Towards photorealistic image
+    generation and editing with text-guided diffusion models. *arXiv preprint arXiv:2112.10741*,
+    2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: OpenAI (2023) OpenAI. Gpt-4v(ision) system card. 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Podell et al. (2023) Podell, D., English, Z., Lacey, K., Blattmann, A., Dockhorn,
+    T., Müller, J., Penna, J., and Rombach, R. Sdxl: Improving latent diffusion models
+    for high-resolution image synthesis. *arXiv preprint arXiv:2307.01952*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Rombach et al. (2022) Rombach, R., Blattmann, A., Lorenz, D., Esser, P., and
+    Ommer, B. High-resolution image synthesis with latent diffusion models. In *Proceedings
+    of the IEEE/CVF conference on computer vision and pattern recognition*, pp.  10684–10695,
+    2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Saharia et al. (2022) Saharia, C., Chan, W., Saxena, S., Li, L., Whang, J.,
+    Denton, E. L., Ghasemipour, K., Gontijo Lopes, R., Karagol Ayan, B., Salimans,
+    T., et al. Photorealistic text-to-image diffusion models with deep language understanding.
+    *Advances in Neural Information Processing Systems*, 35:36479–36494, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sohl-Dickstein et al. (2015) Sohl-Dickstein, J., Weiss, E., Maheswaranathan,
+    N., and Ganguli, S. Deep unsupervised learning using nonequilibrium thermodynamics.
+    In *International conference on machine learning*, pp.  2256–2265\. PMLR, 2015.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Song et al. (2020) Song, Y., Sohl-Dickstein, J., Kingma, D. P., Kumar, A., Ermon,
+    S., and Poole, B. Score-based generative modeling through stochastic differential
+    equations. *arXiv preprint arXiv:2011.13456*, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Team et al. (2023) Team, G., Anil, R., Borgeaud, S., Wu, Y., Alayrac, J.-B.,
+    Yu, J., Soricut, R., Schalkwyk, J., Dai, A. M., Hauth, A., et al. Gemini: a family
+    of highly capable multimodal models. *arXiv preprint arXiv:2312.11805*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Detailed prompt template of the global planning by the LLM
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'As stated in Section [3.3](#S3.SS3 "3.3 Prompt Decomposition by LLM Planning
+    ‣ 3 Multimodal-LLM Agent (MuLan) ‣ MuLan: Multimodal-LLM Agent for Progressive
+    Multi-Object Diffusion"), MuLan first conduct the global planning to decompose
+    the input prompts into $N$ objects before the whole generation process. To this
+    end, given the input prompt p, we prompt the LLM using the following template:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You are an excellent painter. I will give you some descriptions. Your task
+    is to turn the description into a painting. You only need to list the objects
+    in the description by painting order, from left to right, from down to top. Do
+    not list additional information other than the objects mentioned in the description.
+    Description: {p}.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this way, the LLM will decompose the input prompt p following the pre-defined
+    order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B Detailed prompt template of the local planning by the LLM
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'As stated in Section [3.4](#S3.SS4 "3.4 Conditional Single-Object Diffusion
+    with LLM Planning and Attention Guidance ‣ 3 Multimodal-LLM Agent (MuLan) ‣ MuLan:
+    Multimodal-LLM Agent for Progressive Multi-Object Diffusion"), the LLM is also
+    utilized during the generation stage for local planning of the object’s rough
+    position and the object counting.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For the rough position $\texttt{opt}_{1}$ planning of the first object, we
+    utilize the following template:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You are an excellent painter. I will give you some descriptions. Your task
+    is to turn the description into a painting. Now given the description: {p}. If
+    I want to paint the {$\texttt{obj}_{1}$}? Choose from left, right, top, and bottom.
+    You can make reasonable guesses. Give one answer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Then the LLM is prompted to figure out the object number based on $\texttt{opt}_{1}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If $\texttt{opt}_{1}=\texttt{left}$ is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You are an excellent painter. I will give you some descriptions. Your task
+    is to turn the description into a painting. Now given the description: {p}. How
+    many non-overlapping objects are there in the horizontal direction? ONLY give
+    the final number.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If $\texttt{opt}_{1}=\texttt{bottom}$, the prompt template would be:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You are an excellent painter. I will give you some descriptions. Your task
+    is to turn the description into a painting. Now given the description: {p}. How
+    many non-overlapping objects are there in the vertical direction? ONLY give the
+    final number.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For the rough position $\texttt{opt}_{n}(n\geq 2)$, we utilize the following
+    template:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You are an excellent painter. I will give you some descriptions. Your task
+    is to turn the description into a painting. Now given the description: {p}. If
+    I already have a painting that contains {$\{\texttt{obj}_{i}\}_{i=1}^{n-1}$}?
+    Choose from left, right, above, bottom, and none of above. You can make reasonable
+    guesses. Give one answer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Then we prompt the LLM to figure out the object number by:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You are an excellent painter. I will give you some descriptions. Your task
+    is to turn the description into a painting. Now given the description: {p}. If
+    I already have a painting that contains {$\{\texttt{obj}_{i}\}_{i=1}^{n-1}$}?
+    Only give the final number.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix C More details on the overlapping processing
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Given $\texttt{opt}_{n}$ can be computed as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | <math id="A3.E8.m1.4" class="ltx_Math" alttext="\displaystyle\bm{M}_{n,i}=\begin{cases}\Big{(}\tilde{x}_{n-1}\cdot
+    r_{i}+(\tilde{x}_{n-1}+\tilde{w}_{n-1})\cdot(1-r_{i}),\tilde{y}_{n-1},\tilde{w}_{n-1}\cdot
+    r_{i}+\frac{W-\tilde{x}_{n-1}-\tilde{w}_{n-1}}{\texttt{Num}^{n}},\tilde{h}_{n-1}\Big{)},\text{if
+    }\texttt{opt}^{n}=\texttt{right},\\ \\'
+  prefs: []
+  type: TYPE_NORMAL
+- en: \Big{(}\tilde{x}_{n-1},\frac{(\texttt{Num}^{n}-1)\cdot\tilde{y}_{n-1}}{\texttt{Num}^{n}},\tilde{w}_{n-1},\tilde{h}_{n-1}\cdot
+    r_{i}+\frac{\tilde{y}_{n-1}}{\texttt{Num}^{n}}\Big{)},\text{if }\texttt{opt}^{n}=\texttt{top}.\end{cases}"
+    display="inline"><semantics id="A3.E8.m1.4a"><mrow id="A3.E8.m1.4.5" xref="A3.E8.m1.4.5.cmml"><msub
+    id="A3.E8.m1.4.5.2" xref="A3.E8.m1.4.5.2.cmml"><mi id="A3.E8.m1.4.5.2.2" xref="A3.E8.m1.4.5.2.2.cmml">𝑴</mi><mrow
+    id="A3.E8.m1.4.4.2.4" xref="A3.E8.m1.4.4.2.3.cmml"><mi id="A3.E8.m1.3.3.1.1" xref="A3.E8.m1.3.3.1.1.cmml">n</mi><mo
+    id="A3.E8.m1.4.4.2.4.1" xref="A3.E8.m1.4.4.2.3.cmml">,</mo><mi id="A3.E8.m1.4.4.2.2"
+    xref="A3.E8.m1.4.4.2.2.cmml">i</mi></mrow></msub><mo id="A3.E8.m1.4.5.1" xref="A3.E8.m1.4.5.1.cmml">=</mo><mrow
+    id="A3.E8.m1.2.2a" xref="A3.E8.m1.4.5.3.1.cmml"><mo id="A3.E8.m1.2.2a.3" xref="A3.E8.m1.4.5.3.1.1.cmml">{</mo><mtable
+    columnspacing="5pt" rowspacing="0pt" id="A3.E8.m1.2.2.2a" xref="A3.E8.m1.4.5.3.1.cmml"><mtr
+    id="A3.E8.m1.2.2.2aa" xref="A3.E8.m1.4.5.3.1.cmml"><mtd class="ltx_align_left"
+    columnalign="left" id="A3.E8.m1.2.2.2ab" xref="A3.E8.m1.4.5.3.1.cmml"><mrow id="A3.E8.m1.1.1.1.1.1.1.1"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.cmml"><mrow id="A3.E8.m1.1.1.1.1.1.1.1.1" xref="A3.E8.m1.1.1.1.1.1.1.1.1.cmml"><mrow
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.2.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.2.3.cmml"><mrow
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.5.cmml"><mo
+    maxsize="160%" minsize="160%" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.5" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.5.cmml">(</mo><mrow
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.cmml"><mrow
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.cmml"><msub
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.cmml"><mover
+    accent="true" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.2.cmml"><mi
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.2.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.2.2.cmml">x</mi><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.2.1" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.2.1.cmml">~</mo></mover><mrow
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.3.cmml"><mi
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.3.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.3.2.cmml">n</mi><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.3.1" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.3.1.cmml">−</mo><mn
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.3.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.3.3.cmml">1</mn></mrow></msub><mo
+    lspace="0.222em" rspace="0.222em" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.1"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.1.cmml">⋅</mo><msub id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.3"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.3.cmml"><mi id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.3.2"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.3.2.cmml">r</mi><mi id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.3.3"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.3.3.cmml">i</mi></msub></mrow><mo id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.3"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.cmml">+</mo><mrow id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.cmml"><mrow id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.cmml"><mo stretchy="false" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.cmml">(</mo><mrow id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.cmml"><msub id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.cmml"><mover accent="true"
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.cmml"><mi
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.2.cmml">x</mi><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.cmml">~</mo></mover><mrow
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.3.cmml"><mi
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.3.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.3.2.cmml">n</mi><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.3.1" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.3.1.cmml">−</mo><mn
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.3.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.3.3.cmml">1</mn></mrow></msub><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.cmml">+</mo><msub
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.cmml"><mover
+    accent="true" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.2.cmml"><mi
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.2.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.2.2.cmml">w</mi><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.2.1" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.2.1.cmml">~</mo></mover><mrow
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.3.cmml"><mi
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.3.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.cmml">n</mi><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.3.1" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.3.1.cmml">−</mo><mn
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.3.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.cmml">1</mn></mrow></msub></mrow><mo
+    rspace="0.055em" stretchy="false" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.cmml">)</mo></mrow><mo rspace="0.222em"
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.3.cmml">⋅</mo><mrow
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.cmml"><mo
+    stretchy="false" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.cmml">(</mo><mrow
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.cmml"><mn
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.2.cmml">1</mn><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.1" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.1.cmml">−</mo><msub
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.3.cmml"><mi
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.3.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.3.2.cmml">r</mi><mi
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.3.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.3.3.cmml">i</mi></msub></mrow><mo
+    stretchy="false" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.cmml">)</mo></mrow></mrow></mrow><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.6" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.5.cmml">,</mo><msub
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.cmml"><mover
+    accent="true" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.2.cmml"><mi
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.2.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.2.2.cmml">y</mi><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.2.1" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.2.1.cmml">~</mo></mover><mrow
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.3.cmml"><mi
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.3.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.3.2.cmml">n</mi><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.3.1" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.3.1.cmml">−</mo><mn
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.3.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.3.3.cmml">1</mn></mrow></msub><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.7" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.5.cmml">,</mo><mrow
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.cmml"><mrow
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.cmml"><msub
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.cmml"><mover
+    accent="true" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.2.cmml"><mi
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.2.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.2.2.cmml">w</mi><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.2.1" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.2.1.cmml">~</mo></mover><mrow
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.3.cmml"><mi
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.3.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.3.2.cmml">n</mi><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.3.1" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.3.1.cmml">−</mo><mn
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.3.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.3.3.cmml">1</mn></mrow></msub><mo
+    lspace="0.222em" rspace="0.222em" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.1"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.1.cmml">⋅</mo><msub id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.3"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.3.cmml"><mi id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.3.2"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.3.2.cmml">r</mi><mi id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.3.3"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.3.3.cmml">i</mi></msub></mrow><mo id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.1"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.1.cmml">+</mo><mfrac id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.cmml"><mrow id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.cmml"><mi id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.2"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.2.cmml">W</mi><mo id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.1"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.1.cmml">−</mo><msub id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.cmml"><mover accent="true" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.2"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.2.cmml"><mi id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.2.2"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.2.2.cmml">x</mi><mo id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.2.1"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.2.1.cmml">~</mo></mover><mrow id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.3"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.3.cmml"><mi id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.3.2"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.3.2.cmml">n</mi><mo id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.3.1"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.3.1.cmml">−</mo><mn id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.3.3"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.3.3.cmml">1</mn></mrow></msub><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.1a" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.1.cmml">−</mo><msub
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.cmml"><mover
+    accent="true" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.2.cmml"><mi
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.2.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.2.2.cmml">w</mi><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.2.1" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.2.1.cmml">~</mo></mover><mrow
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.3.cmml"><mi
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.3.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.3.2.cmml">n</mi><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.3.1" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.3.1.cmml">−</mo><mn
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.3.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.3.3.cmml">1</mn></mrow></msub></mrow><msup
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.3.cmml"><mtext
+    class="ltx_mathvariant_monospace" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.3.2"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.3.2a.cmml">Num</mtext><mi id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.3.3"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.3.3.cmml">n</mi></msup></mfrac></mrow><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.8" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.5.cmml">,</mo><msub
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.cmml"><mover
+    accent="true" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.2.cmml"><mi
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.2.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.2.2.cmml">h</mi><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.2.1" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.2.1.cmml">~</mo></mover><mrow
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.3.cmml"><mi
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.3.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.3.2.cmml">n</mi><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.3.1" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.3.1.cmml">−</mo><mn
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.3.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.3.3.cmml">1</mn></mrow></msub><mo
+    maxsize="160%" minsize="160%" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.9" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.5.cmml">)</mo></mrow><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.2.3.cmml">,</mo><msup
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2.cmml"><mrow
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2.2c.cmml"><mtext
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2.2a" xref="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2.2c.cmml">if </mtext><mtext
+    class="ltx_mathvariant_monospace" id="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2.2b" xref="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2.2c.cmml">opt</mtext></mrow><mi
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2.3.cmml">n</mi></msup></mrow><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.3" xref="A3.E8.m1.1.1.1.1.1.1.1.1.3.cmml">=</mo><mtext
+    class="ltx_mathvariant_monospace" id="A3.E8.m1.1.1.1.1.1.1.1.1.4" xref="A3.E8.m1.1.1.1.1.1.1.1.1.4a.cmml">right</mtext></mrow><mo
+    id="A3.E8.m1.1.1.1.1.1.1.1.2" xref="A3.E8.m1.1.1.1.1.1.1.1.1.cmml">,</mo></mrow></mtd></mtr><mtr
+    id="A3.E8.m1.2.2.2ag" xref="A3.E8.m1.4.5.3.1.cmml"><mtd class="ltx_align_left"
+    columnalign="left" id="A3.E8.m1.2.2.2ah" xref="A3.E8.m1.4.5.3.1.cmml"><mrow id="A3.E8.m1.2.2.2.2.1.1.2"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.cmml"><mrow id="A3.E8.m1.2.2.2.2.1.1.2.1" xref="A3.E8.m1.2.2.2.2.1.1.2.1.cmml"><mrow
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.2.2" xref="A3.E8.m1.2.2.2.2.1.1.2.1.2.3.cmml"><mrow
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.4.cmml"><mo
+    maxsize="160%" minsize="160%" id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.4" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.4.cmml">(</mo><msub
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.cmml"><mover
+    accent="true" id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.2" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.2.cmml"><mi
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.2.2" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.2.2.cmml">x</mi><mo
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.2.1" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.2.1.cmml">~</mo></mover><mrow
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.3" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.3.cmml"><mi
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.3.2" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.3.2.cmml">n</mi><mo
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.3.1" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.3.1.cmml">−</mo><mn
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.3.3" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.3.3.cmml">1</mn></mrow></msub><mo
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.5" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.4.cmml">,</mo><mfrac
+    id="A3.E8.m1.2.2.2.2.1.1.1" xref="A3.E8.m1.2.2.2.2.1.1.1.cmml"><mrow id="A3.E8.m1.2.2.2.2.1.1.1.1"
+    xref="A3.E8.m1.2.2.2.2.1.1.1.1.cmml"><mrow id="A3.E8.m1.2.2.2.2.1.1.1.1.1.1" xref="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.cmml"><mo
+    stretchy="false" id="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.2" xref="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.cmml">(</mo><mrow
+    id="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1" xref="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.cmml"><msup
+    id="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.2" xref="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.2.cmml"><mtext
+    class="ltx_mathvariant_monospace" id="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.2.2" xref="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.2.2a.cmml">Num</mtext><mi
+    id="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.2.3" xref="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.2.3.cmml">n</mi></msup><mo
+    id="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.1" xref="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.1.cmml">−</mo><mn
+    id="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.3" xref="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.3.cmml">1</mn></mrow><mo
+    rspace="0.055em" stretchy="false" id="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.3" xref="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.cmml">)</mo></mrow><mo
+    rspace="0.222em" id="A3.E8.m1.2.2.2.2.1.1.1.1.2" xref="A3.E8.m1.2.2.2.2.1.1.1.1.2.cmml">⋅</mo><msub
+    id="A3.E8.m1.2.2.2.2.1.1.1.1.3" xref="A3.E8.m1.2.2.2.2.1.1.1.1.3.cmml"><mover
+    accent="true" id="A3.E8.m1.2.2.2.2.1.1.1.1.3.2" xref="A3.E8.m1.2.2.2.2.1.1.1.1.3.2.cmml"><mi
+    id="A3.E8.m1.2.2.2.2.1.1.1.1.3.2.2" xref="A3.E8.m1.2.2.2.2.1.1.1.1.3.2.2.cmml">y</mi><mo
+    id="A3.E8.m1.2.2.2.2.1.1.1.1.3.2.1" xref="A3.E8.m1.2.2.2.2.1.1.1.1.3.2.1.cmml">~</mo></mover><mrow
+    id="A3.E8.m1.2.2.2.2.1.1.1.1.3.3" xref="A3.E8.m1.2.2.2.2.1.1.1.1.3.3.cmml"><mi
+    id="A3.E8.m1.2.2.2.2.1.1.1.1.3.3.2" xref="A3.E8.m1.2.2.2.2.1.1.1.1.3.3.2.cmml">n</mi><mo
+    id="A3.E8.m1.2.2.2.2.1.1.1.1.3.3.1" xref="A3.E8.m1.2.2.2.2.1.1.1.1.3.3.1.cmml">−</mo><mn
+    id="A3.E8.m1.2.2.2.2.1.1.1.1.3.3.3" xref="A3.E8.m1.2.2.2.2.1.1.1.1.3.3.3.cmml">1</mn></mrow></msub></mrow><msup
+    id="A3.E8.m1.2.2.2.2.1.1.1.3" xref="A3.E8.m1.2.2.2.2.1.1.1.3.cmml"><mtext class="ltx_mathvariant_monospace"
+    id="A3.E8.m1.2.2.2.2.1.1.1.3.2" xref="A3.E8.m1.2.2.2.2.1.1.1.3.2a.cmml">Num</mtext><mi
+    id="A3.E8.m1.2.2.2.2.1.1.1.3.3" xref="A3.E8.m1.2.2.2.2.1.1.1.3.3.cmml">n</mi></msup></mfrac><mo
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.6" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.4.cmml">,</mo><msub
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.cmml"><mover
+    accent="true" id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.2" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.2.cmml"><mi
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.2.2" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.2.2.cmml">w</mi><mo
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.2.1" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.2.1.cmml">~</mo></mover><mrow
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.3" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.3.cmml"><mi
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.3.2" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.3.2.cmml">n</mi><mo
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.3.1" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.3.1.cmml">−</mo><mn
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.3.3" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.3.3.cmml">1</mn></mrow></msub><mo
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.7" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.4.cmml">,</mo><mrow
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.cmml"><mrow
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.cmml"><msub
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.cmml"><mover
+    accent="true" id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.2" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.2.cmml"><mi
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.2.2" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.2.2.cmml">h</mi><mo
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.2.1" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.2.1.cmml">~</mo></mover><mrow
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.3" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.3.cmml"><mi
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.3.2" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.3.2.cmml">n</mi><mo
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.3.1" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.3.1.cmml">−</mo><mn
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.3.3" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.3.3.cmml">1</mn></mrow></msub><mo
+    lspace="0.222em" rspace="0.222em" id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.1"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.1.cmml">⋅</mo><msub id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.3"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.3.cmml"><mi id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.3.2"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.3.2.cmml">r</mi><mi id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.3.3"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.3.3.cmml">i</mi></msub></mrow><mo id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.1"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.1.cmml">+</mo><mfrac id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.cmml"><msub id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.cmml"><mover accent="true" id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.2"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.2.cmml"><mi id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.2.2"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.2.2.cmml">y</mi><mo id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.2.1"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.2.1.cmml">~</mo></mover><mrow id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.3"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.3.cmml"><mi id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.3.2"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.3.2.cmml">n</mi><mo id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.3.1"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.3.1.cmml">−</mo><mn id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.3.3"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.3.3.cmml">1</mn></mrow></msub><msup
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.3" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.3.cmml"><mtext
+    class="ltx_mathvariant_monospace" id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.3.2"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.3.2a.cmml">Num</mtext><mi id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.3.3"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.3.3.cmml">n</mi></msup></mfrac></mrow><mo
+    maxsize="160%" minsize="160%" id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.8" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.4.cmml">)</mo></mrow><mo
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.3" xref="A3.E8.m1.2.2.2.2.1.1.2.1.2.3.cmml">,</mo><msup
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2" xref="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2.cmml"><mrow
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2.2" xref="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2.2c.cmml"><mtext
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2.2a" xref="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2.2c.cmml">if </mtext><mtext
+    class="ltx_mathvariant_monospace" id="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2.2b" xref="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2.2c.cmml">opt</mtext></mrow><mi
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2.3" xref="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2.3.cmml">n</mi></msup></mrow><mo
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.3" xref="A3.E8.m1.2.2.2.2.1.1.2.1.3.cmml">=</mo><mtext
+    class="ltx_mathvariant_monospace" id="A3.E8.m1.2.2.2.2.1.1.2.1.4" xref="A3.E8.m1.2.2.2.2.1.1.2.1.4a.cmml">top</mtext></mrow><mo
+    lspace="0em" id="A3.E8.m1.2.2.2.2.1.1.2.2" xref="A3.E8.m1.2.2.2.2.1.1.2.1.cmml">.</mo></mrow></mtd></mtr></mtable></mrow></mrow><annotation-xml
+    encoding="MathML-Content" id="A3.E8.m1.4b"><apply id="A3.E8.m1.4.5.cmml" xref="A3.E8.m1.4.5"><apply
+    id="A3.E8.m1.4.5.2.cmml" xref="A3.E8.m1.4.5.2"><csymbol cd="ambiguous" id="A3.E8.m1.4.5.2.1.cmml"
+    xref="A3.E8.m1.4.5.2">subscript</csymbol><ci id="A3.E8.m1.4.5.2.2.cmml" xref="A3.E8.m1.4.5.2.2">𝑴</ci><list
+    id="A3.E8.m1.4.4.2.3.cmml" xref="A3.E8.m1.4.4.2.4"><ci id="A3.E8.m1.3.3.1.1.cmml"
+    xref="A3.E8.m1.3.3.1.1">𝑛</ci><ci id="A3.E8.m1.4.4.2.2.cmml" xref="A3.E8.m1.4.4.2.2">𝑖</ci></list></apply><apply
+    id="A3.E8.m1.4.5.3.1.cmml" xref="A3.E8.m1.2.2a"><csymbol cd="latexml" id="A3.E8.m1.4.5.3.1.1.cmml"
+    xref="A3.E8.m1.2.2a.3">cases</csymbol><apply id="A3.E8.m1.1.1.1.1.1.1.1.1.cmml"
+    xref="A3.E8.m1.1.1.1.1.1.1.1"><list id="A3.E8.m1.1.1.1.1.1.1.1.1.2.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.2.2"><vector
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.5.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4"><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1"><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4"><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.1">⋅</ci><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2"><csymbol
+    cd="ambiguous" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2">subscript</csymbol><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.2"><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.2.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.2.1">~</ci><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.2.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.2.2">𝑥</ci></apply><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.3"><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.3.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.3.2">𝑛</ci><cn
+    type="integer" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.3.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.2.3.3">1</cn></apply></apply><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.3"><csymbol
+    cd="ambiguous" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.3.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.3">subscript</csymbol><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.3.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.3.2">𝑟</ci><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.3.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.4.3.3">𝑖</ci></apply></apply><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2"><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.3">⋅</ci><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1"><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2"><csymbol
+    cd="ambiguous" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2">subscript</csymbol><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2"><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1">~</ci><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.2">𝑥</ci></apply><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.3"><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.3.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.3.2">𝑛</ci><cn
+    type="integer" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.3.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.3.3">1</cn></apply></apply><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3"><csymbol
+    cd="ambiguous" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3">subscript</csymbol><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.2"><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.2.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.2.1">~</ci><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.2.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.2.2">𝑤</ci></apply><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.3"><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.3.2">𝑛</ci><cn
+    type="integer" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.3.3.3">1</cn></apply></apply></apply><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1"><cn
+    type="integer" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.2">1</cn><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.3"><csymbol
+    cd="ambiguous" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.3.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.3">subscript</csymbol><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.3.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.3.2">𝑟</ci><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.3.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.1.3.3">𝑖</ci></apply></apply></apply></apply><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2"><csymbol
+    cd="ambiguous" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2">subscript</csymbol><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.2"><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.2.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.2.1">~</ci><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.2.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.2.2">𝑦</ci></apply><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.3"><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.3.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.3.2">𝑛</ci><cn
+    type="integer" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.3.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.2.2.3.3">1</cn></apply></apply><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3"><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2"><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.1">⋅</ci><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2"><csymbol
+    cd="ambiguous" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2">subscript</csymbol><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.2"><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.2.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.2.1">~</ci><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.2.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.2.2">𝑤</ci></apply><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.3"><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.3.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.3.2">𝑛</ci><cn
+    type="integer" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.3.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.2.3.3">1</cn></apply></apply><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.3"><csymbol
+    cd="ambiguous" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.3.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.3">subscript</csymbol><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.3.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.3.2">𝑟</ci><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.3.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.2.3.3">𝑖</ci></apply></apply><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3"><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2"><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.2">𝑊</ci><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3"><csymbol
+    cd="ambiguous" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3">subscript</csymbol><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.2"><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.2.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.2.1">~</ci><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.2.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.2.2">𝑥</ci></apply><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.3"><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.3.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.3.2">𝑛</ci><cn
+    type="integer" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.3.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.3.3.3">1</cn></apply></apply><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4"><csymbol
+    cd="ambiguous" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4">subscript</csymbol><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.2"><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.2.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.2.1">~</ci><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.2.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.2.2">𝑤</ci></apply><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.3"><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.3.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.3.2">𝑛</ci><cn
+    type="integer" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.3.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.2.4.3.3">1</cn></apply></apply></apply><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.3"><csymbol
+    cd="ambiguous" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.3.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.3">superscript</csymbol><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.3.2a.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.3.2"><mtext
+    class="ltx_mathvariant_monospace" mathsize="70%" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.3.2.cmml"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.3.2">Num</mtext></ci><ci id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.3.3.cmml"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.3.3.3.3.3">𝑛</ci></apply></apply></apply><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4"><csymbol
+    cd="ambiguous" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4">subscript</csymbol><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.2"><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.2.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.2.1">~</ci><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.2.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.2.2">ℎ</ci></apply><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.3"><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.3.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.3.2">𝑛</ci><cn
+    type="integer" id="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.3.3.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.1.1.1.4.4.3.3">1</cn></apply></apply></vector><apply
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2"><csymbol
+    cd="ambiguous" id="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2.1.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2">superscript</csymbol><ci
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2.2c.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2.2"><mrow
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2.2.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2.2"><mtext
+    id="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2.2a.cmml" xref="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2.2">if </mtext><mtext
+    class="ltx_mathvariant_monospace" id="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2.2b.cmml"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2.2">opt</mtext></mrow></ci><ci id="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2.3.cmml"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.2.2.2.3">𝑛</ci></apply></list><ci id="A3.E8.m1.1.1.1.1.1.1.1.1.4a.cmml"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.4"><mtext class="ltx_mathvariant_monospace" id="A3.E8.m1.1.1.1.1.1.1.1.1.4.cmml"
+    xref="A3.E8.m1.1.1.1.1.1.1.1.1.4">right</mtext></ci></apply><ci id="A3.E8.m1.4.5.3.1.3a.cmml"
+    xref="A3.E8.m1.2.2a"><mtext class="ltx_mathvariant_italic" id="A3.E8.m1.4.5.3.1.3.cmml"
+    xref="A3.E8.m1.2.2a.3">otherwise</mtext></ci><ci id="A3.E8.m1.4.5.3.1.4a.cmml"
+    xref="A3.E8.m1.2.2a"><mtext class="ltx_mathvariant_italic" id="A3.E8.m1.4.5.3.1.4.cmml"
+    xref="A3.E8.m1.2.2a.3">otherwise</mtext></ci><ci id="A3.E8.m1.4.5.3.1.5a.cmml"
+    xref="A3.E8.m1.2.2a"><mtext class="ltx_mathvariant_italic" id="A3.E8.m1.4.5.3.1.5.cmml"
+    xref="A3.E8.m1.2.2a.3">otherwise</mtext></ci><apply id="A3.E8.m1.2.2.2.2.1.1.2.1.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.2"><list id="A3.E8.m1.2.2.2.2.1.1.2.1.2.3.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.2.2"><vector
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.4.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3"><apply
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1"><csymbol
+    cd="ambiguous" id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.1.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1">subscript</csymbol><apply
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.2"><ci
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.2.1.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.2.1">~</ci><ci
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.2.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.2.2">𝑥</ci></apply><apply
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.3.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.3"><ci
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.3.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.3.2">𝑛</ci><cn
+    type="integer" id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.3.3.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.1.1.3.3">1</cn></apply></apply><apply
+    id="A3.E8.m1.2.2.2.2.1.1.1.cmml" xref="A3.E8.m1.2.2.2.2.1.1.1"><apply id="A3.E8.m1.2.2.2.2.1.1.1.1.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.1.1"><ci id="A3.E8.m1.2.2.2.2.1.1.1.1.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.1.1.2">⋅</ci><apply
+    id="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.cmml" xref="A3.E8.m1.2.2.2.2.1.1.1.1.1.1"><apply
+    id="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.2"><csymbol
+    cd="ambiguous" id="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.2.1.cmml" xref="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.2">superscript</csymbol><ci
+    id="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.2.2a.cmml" xref="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.2.2"><mtext
+    class="ltx_mathvariant_monospace" mathsize="70%" id="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.2.2.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.2.2">Num</mtext></ci><ci id="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.2.3.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.2.3">𝑛</ci></apply><cn type="integer" id="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.3.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.1.1.1.1.1.3">1</cn></apply><apply id="A3.E8.m1.2.2.2.2.1.1.1.1.3.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.1.1.3"><csymbol cd="ambiguous" id="A3.E8.m1.2.2.2.2.1.1.1.1.3.1.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.1.1.3">subscript</csymbol><apply id="A3.E8.m1.2.2.2.2.1.1.1.1.3.2.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.1.1.3.2"><ci id="A3.E8.m1.2.2.2.2.1.1.1.1.3.2.1.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.1.1.3.2.1">~</ci><ci id="A3.E8.m1.2.2.2.2.1.1.1.1.3.2.2.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.1.1.3.2.2">𝑦</ci></apply><apply id="A3.E8.m1.2.2.2.2.1.1.1.1.3.3.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.1.1.3.3"><ci id="A3.E8.m1.2.2.2.2.1.1.1.1.3.3.2.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.1.1.3.3.2">𝑛</ci><cn type="integer" id="A3.E8.m1.2.2.2.2.1.1.1.1.3.3.3.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.1.1.3.3.3">1</cn></apply></apply></apply><apply id="A3.E8.m1.2.2.2.2.1.1.1.3.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.1.3"><csymbol cd="ambiguous" id="A3.E8.m1.2.2.2.2.1.1.1.3.1.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.1.3">superscript</csymbol><ci id="A3.E8.m1.2.2.2.2.1.1.1.3.2a.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.1.3.2"><mtext class="ltx_mathvariant_monospace" mathsize="70%"
+    id="A3.E8.m1.2.2.2.2.1.1.1.3.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.1.3.2">Num</mtext></ci><ci
+    id="A3.E8.m1.2.2.2.2.1.1.1.3.3.cmml" xref="A3.E8.m1.2.2.2.2.1.1.1.3.3">𝑛</ci></apply></apply><apply
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2"><csymbol
+    cd="ambiguous" id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.1.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2">subscript</csymbol><apply
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.2"><ci
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.2.1.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.2.1">~</ci><ci
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.2.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.2.2">𝑤</ci></apply><apply
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.3.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.3"><ci
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.3.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.3.2">𝑛</ci><cn
+    type="integer" id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.3.3.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.2.2.3.3">1</cn></apply></apply><apply
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3"><apply
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2"><ci
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.1.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.1">⋅</ci><apply
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2"><csymbol
+    cd="ambiguous" id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.1.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2">subscript</csymbol><apply
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.2"><ci
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.2.1.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.2.1">~</ci><ci
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.2.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.2.2">ℎ</ci></apply><apply
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.3.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.3"><ci
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.3.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.3.2">𝑛</ci><cn
+    type="integer" id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.3.3.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.2.3.3">1</cn></apply></apply><apply
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.3.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.3"><csymbol
+    cd="ambiguous" id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.3.1.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.3">subscript</csymbol><ci
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.3.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.3.2">𝑟</ci><ci
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.3.3.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.2.3.3">𝑖</ci></apply></apply><apply
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3"><apply
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2"><csymbol
+    cd="ambiguous" id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.1.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2">subscript</csymbol><apply
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.2"><ci
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.2.1.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.2.1">~</ci><ci
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.2.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.2.2">𝑦</ci></apply><apply
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.3.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.3"><ci
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.3.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.3.2">𝑛</ci><cn
+    type="integer" id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.3.3.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.2.3.3">1</cn></apply></apply><apply
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.3.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.3"><csymbol
+    cd="ambiguous" id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.3.1.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.3">superscript</csymbol><ci
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.3.2a.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.3.2"><mtext
+    class="ltx_mathvariant_monospace" mathsize="70%" id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.3.2.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.3.2">Num</mtext></ci><ci id="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.3.3.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.1.1.1.3.3.3.3.3">𝑛</ci></apply></apply></apply></vector><apply
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2"><csymbol
+    cd="ambiguous" id="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2.1.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2">superscript</csymbol><ci
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2.2c.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2.2"><mrow
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2.2.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2.2"><mtext
+    id="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2.2a.cmml" xref="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2.2">if </mtext><mtext
+    class="ltx_mathvariant_monospace" id="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2.2b.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2.2">opt</mtext></mrow></ci><ci id="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2.3.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.2.2.2.3">𝑛</ci></apply></list><ci id="A3.E8.m1.2.2.2.2.1.1.2.1.4a.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.4"><mtext class="ltx_mathvariant_monospace" id="A3.E8.m1.2.2.2.2.1.1.2.1.4.cmml"
+    xref="A3.E8.m1.2.2.2.2.1.1.2.1.4">top</mtext></ci></apply><ci id="A3.E8.m1.4.5.3.1.7a.cmml"
+    xref="A3.E8.m1.2.2a"><mtext class="ltx_mathvariant_italic" id="A3.E8.m1.4.5.3.1.7.cmml"
+    xref="A3.E8.m1.2.2a.3">otherwise</mtext></ci></apply></apply></annotation-xml><annotation
+    encoding="application/x-tex" id="A3.E8.m1.4c">\displaystyle\bm{M}_{n,i}=\begin{cases}\Big{(}\tilde{x}_{n-1}\cdot
+    r_{i}+(\tilde{x}_{n-1}+\tilde{w}_{n-1})\cdot(1-r_{i}),\tilde{y}_{n-1},\tilde{w}_{n-1}\cdot
+    r_{i}+\frac{W-\tilde{x}_{n-1}-\tilde{w}_{n-1}}{\texttt{Num}^{n}},\tilde{h}_{n-1}\Big{)},\text{if
+    }\texttt{opt}^{n}=\texttt{right},\\ \\ \Big{(}\tilde{x}_{n-1},\frac{(\texttt{Num}^{n}-1)\cdot\tilde{y}_{n-1}}{\texttt{Num}^{n}},\tilde{w}_{n-1},\tilde{h}_{n-1}\cdot
+    r_{i}+\frac{\tilde{y}_{n-1}}{\texttt{Num}^{n}}\Big{)},\text{if }\texttt{opt}^{n}=\texttt{top}.\end{cases}</annotation></semantics></math>
+    |  | (8) |
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The illustration for different overlapping ratios is shown in Figure [7](#A3.F7
+    "Figure 7 ‣ Appendix C More details on the overlapping processing ‣ MuLan: Multimodal-LLM
+    Agent for Progressive Multi-Object Diffusion").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/2e78c0fd2cf02630e7c5408947de4ee8.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7: Three candidate masks $\bm{M}_{n,i}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix D More details on the evaluation questionnaire
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'As shown in Section [4](#S4 "4 Experiments ‣ MuLan: Multimodal-LLM Agent for
+    Progressive Multi-Object Diffusion"), we design a questionnaire to comprehensively
+    evaluate the alignment between the generated image and the text by GPT-4V (OpenAI,
+    [2023](#bib.bib15)) and human, from three aspects - object completeness, correctness
+    of attribute bindings, and correctness of spatial relationships. Specifically,
+    given an image and a text prompt, for object completeness, we will evaluate if
+    the image contains each single object in the prompt. If the object appears in
+    the image, we will then judge if the attribute bindings of the object in the image
+    align with the corresponding attribute bindings in the text prompt, to evaluate
+    the correctness of attribute bindings. We will also ask GPT-4V or human to judge
+    if the spatial relationships are correct and match the text, as the evaluation
+    of the spatial relationships.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Examples of the questionnaire for different images and text prompts are shown
+    in Figure [8](#A4.F8 "Figure 8 ‣ Appendix D More details on the evaluation questionnaire
+    ‣ MuLan: Multimodal-LLM Agent for Progressive Multi-Object Diffusion").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d52a88ce7f6619b631c7a83f32248c86.png)![Refer to caption](img/f1cbcc625be0cab74a23aca5fcb67c04.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8: Illustration of the questionnaire for the evaluation of generated
+    images'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix E More qualitative results
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We show more examples of different methods in Figure [9](#A5.F9 "Figure 9 ‣
+    Appendix E More qualitative results ‣ MuLan: Multimodal-LLM Agent for Progressive
+    Multi-Object Diffusion").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/b1b08ddef8a8425379e74b9c4a58958d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 9: More qualitative examples of images generated by different methods
+    on intricate prompts.'
+  prefs: []
+  type: TYPE_NORMAL

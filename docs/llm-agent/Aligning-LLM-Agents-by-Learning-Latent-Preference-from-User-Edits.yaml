@@ -1,0 +1,2285 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:48:13'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: Aligning LLM Agents by Learning Latent Preference from User Edits
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2404.15269](https://ar5iv.labs.arxiv.org/html/2404.15269)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Ge Gao^♣^∗   Alexey Taymanov^♢^∗   Eduardo Salinas^♢  Paul Mineiro^♢  Dipendra
+    Misra^♢
+  prefs: []
+  type: TYPE_NORMAL
+- en: Department of Computer Science, Cornell University^♣     Microsoft Research
+    New York^♢
+  prefs: []
+  type: TYPE_NORMAL
+- en: ggao@cs.cornell.edu   {ataymano, edus, pmineiro, dimisra}@microsoft.com
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: We study interactive learning of language agents based on user edits made to
+    the agent’s output. In a typical setting such as writing assistants, the user
+    interacts with a language agent to generate a response given a context, and may
+    optionally edit the agent response to personalize it based on their *latent* preference,
+    in addition to improving the correctness. The edit feedback is *naturally generated*,
+    making it a suitable candidate for improving the agent’s alignment with the user’s
+    preference, and for reducing the cost of user edits over time. We propose a learning
+    framework, PRELUDE, to conduct PREference Learning from User’s Direct Edits by
+    inferring a description of the user’s latent preference based on historic edit
+    data and using it to define a prompt policy that drives future response generation.
+    This avoids fine-tuning the agent, which is costly, challenging to scale with
+    the number of users, and may even degrade its performance on other tasks. Furthermore,
+    learning descriptive preference improves interpretability, allowing the user to
+    view and modify the learned preference. However, user preference can be complex,
+    subtle, and vary based on context, making it challenging to learn. To address
+    this, we propose a simple yet effective algorithm named CIPHER (Consolidates Induced
+    Preferences based on Historical Edits with Retrieval). CIPHER leverages a large
+    language model (LLM) to infer the user preference for a given context based on
+    user edits. In the future, CIPHER retrieves inferred preferences from the $k$-closest
+    contexts in the history, and forms an aggregate preference for response generation.
+    We introduce two interactive environments – summarization and email writing, for
+    evaluation using a GPT-4 simulated user. We compare with algorithms that directly
+    retrieve user edits but do not learn descriptive preference, and algorithms that
+    learn context-agnostic preference. On both tasks, CIPHER outperforms baselines
+    by achieving the lowest edit distance cost. Meanwhile, CIPHER has a lower computational
+    expense, as using learned preference results in a shorter prompt than directly
+    using user edits. Our further analysis reports that the user preference learned
+    by CIPHER shows significant similarity to the ground truth latent preference.¹¹1Our
+    code and data are publicly available at [https://github.com/gao-g/prelude](https://github.com/gao-g/prelude).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '^($*$)^($*$)footnotetext: Equal contribution.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Language agents based on large language models (LLMs) have been developed for
+    a variety of applications (Dohmke, [2022](#bib.bib19); Brynjolfsson et al., [2023](#bib.bib9)),
+    following recent breakthroughs in improving LLMs (Achiam et al., [2023](#bib.bib1);
+    Ouyang et al., [2022b](#bib.bib50); Team et al., [2023](#bib.bib63)). However,
+    despite their impressive zero-shot performance, LLMs still need to adapt and personalize
+    to a given user and task (Mysore et al., [2023](#bib.bib46); Li et al., [2023](#bib.bib34)).
+    In many applications, a natural feedback for LLM-based agents is user edits, where
+    a user queries the agent and edits the agent’s response before their own final
+    use. In contrast, typical feedback used for fine-tuning, such as the comparison-based
+    preference feedback in RLHF, is explicitly collected by providing annotators with
+    model responses and asking them to rank (Ziegler et al., [2019](#bib.bib71); Stiennon
+    et al., [2020](#bib.bib62); Nakano et al., [2021](#bib.bib47); Ouyang et al.,
+    [2022a](#bib.bib49), inter alia), making such feedback an expensive choice for
+    improving alignment. Motivated by this observation, we focus on interactive learning
+    of LLM-based language agents using user edits as feedback.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/237f6c57be59e121dcb0e537a9103197.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Illustration of interactive learning from user edits. Color coding
+    in edits is for visualization only – our agent takes the plain revised text as
+    feedback.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Consider the scenario in [Figure 1](#S1.F1 "Figure 1 ‣ 1 Introduction ‣ Aligning
+    LLM Agents by Learning Latent Preference from User Edits") where a user interacts
+    with an LLM-based writing assistant (agent) to complete their task. The interaction
+    starts with the user (and the world) providing a context to the agent. This context
+    may include a query prompt provided by the user, along with additional information
+    provided by the world, such as the content on the screen, current time, and the
+    user’s calendar information. The agent generates a textual response to the user
+    given the context.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the beginning, the agent’s response may not be optimal for the user, as it
+    is not personalized to this user’s individual needs and preference. As most users
+    are not familiar with prompt engineering, and LLMs are often able to generate
+    an acceptable response for the task, therefore, users may find it the most convenient
+    to simply edit the response when it is not ideal to suit their needs, rather than
+    trying different prompts to get new responses. The example in [Figure 1](#S1.F1
+    "Figure 1 ‣ 1 Introduction ‣ Aligning LLM Agents by Learning Latent Preference
+    from User Edits") illustrates that the user directly edits the summary generated
+    by the agent to satisfy their preference on bullet point format. It takes time
+    and efforts for the user to make edits. We can measure such cost using a variety
+    of metrics, such as the edit distance between the agent-generated response and
+    the user-revised text. Zero edit from the user is also a useful feedback, reflecting
+    that the agent’s response satisfies this user’s needs. One important feature of
+    our setting is that *every natural use of the agent yields an edit feedback for
+    learning*. Since there is no distinction between training and testing in this
+    setting, we care about minimizing the user’s efforts across all rounds of interaction
+    with the agent. In summary, our goal is to learn from the implicit feedback in
+    user edit history to minimize the cumulative cost of the user’s efforts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We conjecture that user edits are driven by user’s hidden preference which can
+    be described in natural language. These *preference descriptions* are different
+    from the notion of comparison-based preference used in RLHF. In this paper, we
+    use the word *preference* to mean *preference descriptions*. For instance, preference
+    of the user in [Figure 1](#S1.F1 "Figure 1 ‣ 1 Introduction ‣ Aligning LLM Agents
+    by Learning Latent Preference from User Edits") can be described as *bullet points*.
+    In practice, user preference can be compound, such as preferring *bullet point,
+    informal, with emojis* at the same time, and also context-dependent, e.g., *informal*
+    tone when writing an email to a family member, and *formal* tone when writing
+    to a colleague. In more complex settings, user preference can evolve with time
+    (non-stationary), or depend on information unavailable in the context (partially
+    observed). Such user preference may not be fully derivable from the context, and
+    the user may not even be fully aware of all their preference. These considerations
+    imply that user preference is *latent* to the language agent. If the agent could
+    learn the *latent* preference correctly, it can significantly improve its performance
+    by generating satisfactory responses accordingly. Furthermore, preference learned
+    by the agent can be shown to the user to enhance *interpretability*, and can even
+    be modified by the user to improve correctness. Motivated by this, we propose
+    a learning framework, PRELUDE (PREference Learning from User’s Direct Edits),
+    where we seek to learn a textual description of the user preference for a given
+    context using the history of user edits.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In a typical real-world scenario such as writing assistants, one has to potentially
+    update the LLM-based agent for every user. Efficient approaches, therefore, must
+    scale with the number of users. This makes approaches that perform a full fine-tuning
+    of the LLM used by the agent very hard to scale. Furthermore, LLMs typically undergo
+    evaluation on a variety of metrics before being released, and thus fine-tuning
+    them often results in breaking the generalization guarantees offered by these
+    tests. For example, fine-tuning GPT-4 for millions of users can quickly turn very
+    expensive. Approaches such as adding LORA and Adapter layers and only updating
+    them, or using federated learning, can reduce the expense to some extent, while
+    the loss of generalizable alignment remains as a concern. In this work, we focus
+    on leveraging a frozen, black-box LLM, and instead learning a *prompt policy*
+    that can infer textual description of user’s preference for a given context, and
+    then use it to directly drive the response generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We introduce a simple yet effective algorithm CIPHER (Consolidates Induced Preferences
+    based on Historical Edits with Retrieval) under the PRELUDE framework. For a given
+    context, CIPHER first retrieves the $k$ contexts. It relies on this aggregate
+    preference to generate a response for the given context. If the user performs
+    no edits, then it saves this aggregate preference as the correct preference for
+    the given context. Otherwise, it queries the LLM to infer a plausible preference
+    that explains these user edits made to the agent response, and saves this inferred
+    preference as the correct preference for the given context. A key advantage of CIPHER is
+    that it typically leads to significantly shorter prompts compared to other retrieval
+    methods that use the entire documents or context, as inferred preferences are
+    much shorter than retrieved documents or contexts. This results in a significant
+    reduction in the computational expense of querying the LLM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We introduce two interactive environments for evaluation, inspired by writing
+    assistant applications. In the first environment, we evaluate the agent’s ability
+    to summarize a given document (articles from different sources). In the second
+    environment, we evaluate the agent’s ability to compose an email using content
+    from a given document (notes for various purpose). In both tasks, we simulate
+    a GPT-4 user that can generate edits based on a pre-designed *latent* preference.
+    We use documents from several existing domains as our user-provided context, and
+    vary the GPT-4 user’s preference based on the domain, in order to capture the
+    real-world context-dependent nature of human user’s preference. We evaluate CIPHER against
+    several baselines, including approaches that learn context-agnostic user preferences,
+    and retrieval-based approaches that do not learn preferences but directly use
+    past user edits for generation. We show that for both tasks, CIPHER achieves the
+    lowest user edit cost compared to baselines, and significantly reduces the cumulative
+    cost compared to using the frozen base agent. Additionally, CIPHER results in
+    a lower LLM query cost than other retrieval-based baselines. Finally, we qualitatively
+    and quantitatively analyze preferences learned by our agents, and find that they
+    show significant similarity to the ground truth latent preferences in our setup.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Interactive Learning from User Edits and the PRELUDE Framework
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We first describe LLM agents and the general learning framework from user edits.
+    We then describe our specialized PRELUDE framework for learning descriptive user
+    preference, and discuss associated learning challenges.
+  prefs: []
+  type: TYPE_NORMAL
+- en: LLM and Language Agents.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: We assume access to a language agent that internally relies on an LLM. We make
+    no assumption about the language agent except that it can take input $x_{t}$ .
+    The language agent may simply perform greedy decoding on the LLM, or may perform
+    complex planning using the given LLM to generate a response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Protocol 1 Interactive Learning from User Edits.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:for $t=1,2,\cdots,T$
+  prefs: []
+  type: TYPE_NORMAL
+- en: Interactive Learning from User Edits.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: In an application such as a writing assistant, a user interacts with the language
+    agent over $T$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In our experiments, we use $\Delta_{\textrm{edit}}$. In general, a higher edit
+    distance implies that the user has made more edits and spent more efforts. We
+    note that our framework is general enough to accommodate situations where the
+    user tries different prompts with the same demand. We treat each call to the language
+    agent as a different round with a different context (as the context includes the
+    user prompt).
+  prefs: []
+  type: TYPE_NORMAL
+- en: PRELUDE Framework.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: We describe our PRELUDE framework in [Protocol 2](#alg2 "Protocol 2 ‣ PRELUDE
+    Framework. ‣ 2 Interactive Learning from User Edits and the PRELUDE Framework
+    ‣ Aligning LLM Agents by Learning Latent Preference from User Edits") which is
+    a specialization of the general learning setup described above in [Protocol 1](#alg1
+    "Protocol 1 ‣ LLM and Language Agents. ‣ 2 Interactive Learning from User Edits
+    and the PRELUDE Framework ‣ Aligning LLM Agents by Learning Latent Preference
+    from User Edits"). In PRELUDE, in the $t^{th}$ at the start of each round. We
+    assume that the LLM remains frozen across all methods in this work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Protocol 2 PRELUDE: PREference Learning from User’s Direct Edits'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:for $t=1,2,\cdots,T$
+  prefs: []
+  type: TYPE_NORMAL
+- en: Challenges of Learning User Preference.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: Learning user preference from edits is challenging. In practice, user preference
+    are multifaceted and complex. Furthermore, user’s preference can also significantly
+    vary based on the context. The feedback in the form of user edits emerges naturally
+    but is inherently implicit, lacking direct expressions of the actual preference
+    and carrying subtleties that may lead to diverse interpretations. The combination
+    of preference variability and the implicit nature of feedback poses considerable
+    challenges for agents in accurately learning and integrating these preferences.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Learning User Preference through Retrieval and Aggregation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we present our method, CIPHER (Consolidates Induced Preferences
+    based on Historical Edits with Retrieval), that learns user preference based on
+    user edits.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Algorithm 1](#alg1a "Algorithm 1 ‣ Computational Cost of CIPHER. ‣ 3 Learning
+    User Preference through Retrieval and Aggregation ‣ Aligning LLM Agents by Learning
+    Latent Preference from User Edits") shows CIPHER which implements the PRELUDE framework.
+    CIPHER maintains a preference history $\mathcal{D}_{t}=\{(x_{\ell},\tilde{f}_{\ell})\}_{\ell=1}^{t-1}$
+    as an empty string as the agent has no prior knowledge of this user’s preference.³³3In
+    practice, one can initialize with a publicly available preference history.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The agent uses the inferred preference $f_{t}$. We list the actual template
+    used in our experiments in [Table 7](#A2.T7 "Table 7 ‣ Retrieval Accuracy. ‣ Appendix
+    B Additional Analysis ‣ Aligning LLM Agents by Learning Latent Preference from
+    User Edits") in [Appendix A](#A1 "Appendix A Additional Details ‣ Aligning LLM
+    Agents by Learning Latent Preference from User Edits").
+  prefs: []
+  type: TYPE_NORMAL
+- en: Given the user edits $y^{\prime}_{t}$ to the preference history.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that we cannot query the LLM for the inferred preference in the first case
+    where the user edit cost $c_{t}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Computational Cost of CIPHER.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: In a given round, CIPHER adds a maximum of 3 LLM calls on top of the cost of
+    calling the underlying inference algorithm of the agent in [line 6](#alg1.l6a
+    "In Algorithm 1 ‣ Computational Cost of CIPHER. ‣ 3 Learning User Preference through
+    Retrieval and Aggregation ‣ Aligning LLM Agents by Learning Latent Preference
+    from User Edits"). CIPHER further reduces the memory storage by only storing the
+    representation of contexts in the preference string instead of the input itself.
+    Finally, CIPHER only adds a small prompt to the context $x_{t}$, before calling
+    the agent’s inference algorithm. This only slightly increases the length of the
+    prompt, thereby, reducing the query cost associated with LLMs that scales with
+    the number of input tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 1 CIPHER$(\phi,k,\delta)$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:$\mathcal{D}=\emptyset$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experiment
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we first introduce two interactive tasks for evaluating agents
+    that learn from user edits. These tasks can be used more broadly even outside
+    the PRELUDE framework, and can be of independent interest. We then describe our
+    baselines and provide implementation details of CIPHER. Finally, we provide quantitative
+    results in terms of user edit cost and qualitative analysis of the learned preferences.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Two Interactive Writing Assistant Environments for Learning from User Edits
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Task.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: We introduce two tasks inspired by the use of LLMs as writing assistants (Mysore
+    et al., [2023](#bib.bib46); Shen et al., [2023](#bib.bib58); Wang et al., [2023](#bib.bib64)).
+    In the first task, we evaluate the agent’s ability to summarize a given document.
+    We use documents from 5 existing sources listed in [Table 1](#S4.T1 "Table 1 ‣
+    Task. ‣ 4.1 Two Interactive Writing Assistant Environments for Learning from User
+    Edits ‣ 4 Experiment ‣ Aligning LLM Agents by Learning Latent Preference from
+    User Edits").⁴⁴4[Table 4](#A2.T4 "Table 4 ‣ Retrieval Accuracy. ‣ Appendix B Additional
+    Analysis ‣ Aligning LLM Agents by Learning Latent Preference from User Edits")
+    in Appendix provides links to each source dataset, used as user-provided context
+    in our tasks. These sources represent a diverse category of documents that a writing
+    assistant would typically encounter, including news articles that are formal and
+    concise, movie reviews that are informal, and paper abstracts that are technical.
+    In the second task, we evaluate the agent’s ability to compose an email given
+    notes. For this task, we use notes from four different sources including a variety
+    of tasks such as writing emails to friends, describing reports to managers, and
+    writing reviews for colleagues. In any given round, the user is provided a context
+    that is a document from one of the document sources for the given task. Importantly,
+    the agent is *unaware of the source of the given document* which as we discuss
+    later, will determine the user preference. For both tasks, we run an experiment
+    for $T=200$ rounds, with an equal number of randomly sampled documents from each
+    document source. We mix documents from different sources and shuffle them to remove
+    any temporal correlation in document source across rounds.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: Latent user preference design, specific to the document source.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Doc Source | Latent User Preference | Scenario |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Summarization |  |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| News article (See et al., [2017](#bib.bib57)) | targeted to young children,
+    storytelling, short sentences, playful language, interactive, positive | introduce
+    a political news to kids |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Reddit post (Stiennon et al., [2020](#bib.bib62)) | second person narrative,
+    brief, show emotions, invoke personal reflection, immersive | for character development
+    in creative writing |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wikipedia page (Foundation, [2022](#bib.bib23)) | bullet points, parallel
+    structure, brief | take notes for key knowledge |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Paper abstract (Clement et al., [2019](#bib.bib15)) | tweet style, simple
+    English, inquisitive, skillful foreshadowing, with emojis | promote a paper to
+    invoke more attention and interests |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Movie review (Maas et al., [2011](#bib.bib39)) | question answering style,
+    direct, concise | quickly get main opinions |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Email Writing |  |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Personal problem (Stiennon et al., [2020](#bib.bib62)) | informal, conversational,
+    short, no closing | share life with friends |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Paper review (Hua et al., [2019](#bib.bib28)) | casual tone, positive, clear,
+    call to action | peer review to colleague |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Paper tweet (Bar, [2022](#bib.bib5)) | engaging, personalized, professional
+    tone, thankful closing | networking emails for researchers |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Paper summary (Kershaw & Koeling, [2020](#bib.bib29)) | structured, straight
+    to the points, respectful, professional greeting and closing | milestone report
+    to superiors |'
+  prefs: []
+  type: TYPE_TB
+- en: Two-Stage GPT-4 Simulated User.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: We simulate a user that can edit a given response. We define a set of *latent
+    user preferences* for the user that vary based on the document source. [Table 1](#S4.T1
+    "Table 1 ‣ Task. ‣ 4.1 Two Interactive Writing Assistant Environments for Learning
+    from User Edits ‣ 4 Experiment ‣ Aligning LLM Agents by Learning Latent Preference
+    from User Edits") lists the preference and the corresponding document source.
+    This captures the context-dependent nature of user preferences as the document
+    source influences the type of context. For example, the *Personal problem* document
+    source contains documents pertaining to discussions with a friend, and a user
+    may have a different preference when writing an email to a friend compared to
+    writing an email to a colleague. In real-world settings, the context dependence
+    of the user preference can be more complex than just the document source. We assume
+    that our user is aware of the document source $d_{t}$ maps a given document source
+    to the user preference. Recall that the *agent in our learning setup is never
+    provided the document source of any context*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We model our user using GPT-4 with a two-stage approach. Given an agent response
+    $y_{t}$ achieves a minimal user cost.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Evaluation Metric.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: We propose three metrics for evaluating agents learning from user edits. Our
+    main metric is the cumulative user edit cost $\sum_{t=1}^{T}c_{t}$. To compute
+    the edit distance, we perform BPE tokenization using Tiktoken tokenizer, and compute
+    the edit distance in the token space. In general, one can learn a metric that
+    better captures the cognitive load associated with a user edit. However, Levenshtein
+    edit distance provides a clean, transparent metric that is easy to interpret.
+    Additionally, it doesn’t have concerns shared by learned metrics such as erroneous
+    evaluations when applying the metric to examples not covered by the metric’s training
+    distribution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For CIPHER and any other method in the PRELUDE framework, we additionally evaluate
+    the accuracy of the inferred user preference $f_{t}$, where BERTScore (Zhang*
+    et al., [2020](#bib.bib70)) is a popular text similarity metric.⁵⁵5We use the
+    microsoft/deberta-xlarge-mnli to implement BERTScore.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we evaluate the token expense associated with querying the LLM across
+    all methods. We compute the total number of tokens both generated by or provided
+    as input to the LLM across all rounds. This is a typical metric used by popular
+    LLM providers to charge their customers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Details of CIPHER and Comparison Systems
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We use GPT-4 as our base LLM for CIPHER and all baselines. We do not perform
+    fine-tuning of the GPT-4 and do not add any additional parameters to the model.
+    We use a prompt-based GPT-4 agent for all methods that uses a single prompt with
+    greedy decoding to generate the response. Our main method CIPHER and the baselines,
+    can be extended to more complex language agents that perform multiple steps of
+    reasoning on top of the base LLM before generating a response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CIPHER Details.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: We use a simple agent that uses GPT-4 with a prompt template to generate the
+    response $y_{t}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Baselines.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: We evaluate CIPHER against baselines that either perform no learning, or learn
+    context-agnostic preferences and against methods that do not learn preferences
+    but directly use past user edits for generating a response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'No learning: The agent performs no learning based on interaction with the user.
+    In each step, the agent generates a response $y_{t}$.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Explore-then-exploit (E-then-e) LPI: This baseline is based on the classic
+    explore-then-exploit strategy in interactive learning (Garivier et al., [2016](#bib.bib24)).
+    The agent first generates responses for the first $T_{e}$ rounds using the LPI
+    step similar to [line 12](#alg1.l12 "In Algorithm 1 ‣ Computational Cost of CIPHER.
+    ‣ 3 Learning User Preference through Retrieval and Aggregation ‣ Aligning LLM
+    Agents by Learning Latent Preference from User Edits") in CIPHER([Algorithm 1](#alg1a
+    "Algorithm 1 ‣ Computational Cost of CIPHER. ‣ 3 Learning User Preference through
+    Retrieval and Aggregation ‣ Aligning LLM Agents by Learning Latent Preference
+    from User Edits")). It then uses the learned preference to generate the response
+    for all remaining rounds (exploitation step).'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '3.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Continual LPI: This method is similar to explore-then-exploit except that it
+    never stops exploring. In any given round $t$.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '4.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'ICL-edit: This is a standard retrieval-based in-context learning (ICL) baseline (Brown
+    et al., [2020](#bib.bib8)). In a given round $t$ and the historical data.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Baseline Hyperparameters.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: For explore-then-exploit LPI and continual LPI baselines, we set the number
+    of exploration $T_{e}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Oracle Method.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: We additionally run an oracle preference method to provide an approximated upper
+    bound on performance. In each round $t$. This method can test whether our setup
+    is well-defined, e.g., in a poorly designed setup, the user always edits the agent
+    response no matter what the agent generates including providing user edits back
+    to the user, and thus no method can effectively minimize the cost over time in
+    this case. If the oracle method achieves a zero or a minimal user edit cost, then
+    learning the optimal preference leads to success.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 Main Result and Discussion.
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Main Results.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: '[Table 2](#S4.T2 "Table 2 ‣ Main Results. ‣ 4.3 Main Result and Discussion.
+    ‣ 4 Experiment ‣ Aligning LLM Agents by Learning Latent Preference from User Edits")
+    reports the performance of baselines and our methods on summarization and email
+    writing tasks on three metrics: *edit distance* which measures cumulative user
+    edit cost, *accuracy* which measures mean preference classification accuracy,
+    and *expense* measuring the total BPE token cost of querying LLM.⁶⁶6[Table 9](#A2.T9
+    "Table 9 ‣ Retrieval Accuracy. ‣ Appendix B Additional Analysis ‣ Aligning LLM
+    Agents by Learning Latent Preference from User Edits") in Appendix shows the breakdown
+    of expense in terms of input and output. We report the mean and standard deviation
+    across 3 different random seeds.⁷⁷7We randomize the context sampling from source
+    datasets, so experiments on different seeds contain different sets of input contexts.
+    On the same seed, experiments across different methods are strictly comparable,
+    as both the set of input contexts and the order of input context seen are the
+    same in our implementation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 2: Performance of baselines and our methods in terms of cumulative edit
+    distance cost and classification accuracy. $\mu_{\sigma}$ retrieved examples.
+    Numbers in bold are the best performance in each column excluding oracle preference
+    method, underline for the second best, and dotted underline for the third best.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Summarization | Email Writing |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Edit Distance$\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Oracle Preference |   6,573[1,451] | 1.000 | 1.67 | 1,851[243] | 1.000 |
+    1.62 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| No Learning | 48,269[957] | - | 1.50 | 31,103[900] | - | 1.65 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| E-then-e LPI |   65,218[17,466] | 0.218[0.003] | 1.99 | 24,562[1,022] | 0.263[0.003]
+    | 1.73 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Continual LPI | 57,915[2,210] | 0.233[0.010] | 8.89 | 26,852[1,464] | 0.243[0.019]
+    | 8.63 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ICL-edit-5-MPNET | 38,560[1,044] | - | 8.00 | 32,405[1,307] | - | 12.12 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ICL-edit-5-BERT | 39,734[1,929] | - | 7.96 | 30,949[3,250] | - | 11.55 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CIPHER-1-MPNET | 33,926[4,000] | 0.520[0.022] | 2.74 | 10,781[1,711] | 0.435[0.084]
+    | 1.94 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CIPHER-5-MPNET | 32,974[195] | 0.478[0.010] | 3.00 | 10,058[1,709] | 0.467[0.081]
+    | 2.09 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CIPHER-1-BERT | 37,637[3,025] | 0.565[0.053] | 2.81 | 12,634[4,868] | 0.487[0.125]
+    | 1.99 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CIPHER-5-BERT | 35,811[3,384] | 0.478[0.028] | 3.03 |  8,391[3,038] | 0.363[0.075]
+    | 2.22 |'
+  prefs: []
+  type: TYPE_TB
+- en: Discussion of Main Result.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: We observe that not performing learning results in a high edit cost, whereas
+    using the Oracle preferences achieves a significantly smaller edit cost. This
+    shows that our environments are sound and well-conditioned. E-then-e LPI and Continual
+    LPI learn context-agnostic preferences which cannot capture the context-dependent
+    preferences in the environments and end up doing poorly. For the summarization
+    task, they end up with a higher edit distance than even performing no learning.
+    One explanation is that using context-agnostic preferences can push the model
+    to specialize to a given preference much more than the base model, resulting in
+    more edits when that preference is incorrect. We see this in preference accuracy
+    which is low for both of these baselines, and lower for the summarization task
+    than the email writing task where they outperform no learning baselines. Further,
+    Continual LPI has a higher expense cost due to constantly querying the LLM to
+    infer the user preference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ICL-edit baselines perform significantly better on the summarization task. However,
+    using a list of user edits in the prompt results in a higher token expense cost,
+    as the responses and their edits can be significantly long in practice. Further,
+    the ICL-edit baselines provide no interpretable explanation for their response
+    or for explaining user behavior.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, CIPHER achieves the smallest edit distance cost reducing edits by 31%
+    in the summarization task and 73% in the email writing task. We observe that retrieving
+    $k=5$ seems task-dependent. Further, CIPHER achieves the highest preference accuracy
+    showing that CIPHER can learn preferences that correlate more with the ground
+    truth preference than preferences of other document sources. Note that the performance
+    of a random preference classifier is only 20% for summarization and 25% for email
+    writing. Further, CIPHER achieves a smaller cost than ICL-edit and Continual LPI
+    baselines, as it doesn’t use long user edits in the prompt for generating a response.
+    Overall, CIPHER provides a cheap, more effective, and interpretable method than
+    our baselines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 2: Learning curves of different methods based on cumulative cost over
+    time (average across 3 seeds). In the legend, -k means with top $k$ retrieved
+    examples, -B for BERT, and -M for MPNET.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: <svg id="S4.F2.pic1" class="ltx_picture ltx_centering" height="346.11" overflow="visible"
+    version="1.1" width="555.14"><g transform="translate(0,346.11) matrix(1 0 0 -1
+    0 0) translate(14.8,0) translate(0,28.47)" fill="#000000" stroke="#000000" stroke-width="0.4pt"><g
+    transform="matrix(1.0 0.0 0.0 1.0 -14.8 -28.47)"><g class="ltx_nestedsvg" transform="matrix(1
+    0 0 1 0 0) translate(14.8,0) translate(0,28.26)"><g stroke="#000000" fill="#000000"
+    stroke-width="0.4pt"><g transform="matrix(1.0 0.0 0.0 1.0 -3.11 -12.25)" fill="#000000"
+    stroke="#000000"><foreignobject width="6.23" height="8.03" transform="matrix(1
+    0 0 -1 0 16.6)" overflow="visible">$0$</foreignobject></g><g transform="matrix(1.0
+    0.0 0.0 1.0 103.79 -24.23)" fill="#000000" stroke="#000000"><foreignobject width="36.15"
+    height="8.65" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">Round</foreignobject></g><g
+    transform="matrix(0.0 1.0 -1.0 0.0 -9.55 103.08)" fill="#000000" stroke="#000000"><foreignobject
+    width="92.43" height="8.65" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">Cumulative
+    Cost</foreignobject></g><g transform="matrix(1.0 0.0 0.0 1.0 83.02 304.93)" fill="#000000"
+    stroke="#000000"><foreignobject width="78.73" height="11.07" transform="matrix(1
+    0 0 -1 0 16.6)" overflow="visible">Email Writing</foreignobject></g><g fill="#FFFFFF"
+    stroke="#000000" transform="matrix(1.0 0.0 0.0 1.0 16.46 141.1)"><g class="ltx_tikzmatrix"
+    transform="matrix(1 0 0 -1 0 133.74)"><g class="ltx_tikzmatrix_row" transform="matrix(1
+    0 0 1 0 7.06)"><g class="ltx_tikzmatrix_col ltx_nopad_l ltx_nopad_r" transform="matrix(1
+    0 0 -1 25.01 0) translate(-0.28,0) matrix(1.0 0.0 0.0 1.0 3.04 -2.43)" fill="#000000"
+    stroke="#000000"><foreignobject width="27.47" height="6.73" transform="matrix(1
+    0 0 -1 0 16.6)" overflow="visible">Oracle</foreignobject></g></g><g class="ltx_tikzmatrix_row"
+    transform="matrix(1 0 0 1 0 21.14)"><g class="ltx_tikzmatrix_col ltx_nopad_l ltx_nopad_r"
+    transform="matrix(1 0 0 -1 25.01 0) translate(-0.28,0) matrix(1.0 0.0 0.0 1.0
+    3.04 -2.38)" fill="#000000" stroke="#000000"><foreignobject width="52.63" height="8.5"
+    transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">No Learning</foreignobject></g></g><g
+    class="ltx_tikzmatrix_row" transform="matrix(1 0 0 1 0 35.21)"><g class="ltx_tikzmatrix_col
+    ltx_nopad_l ltx_nopad_r" transform="matrix(1 0 0 -1 25.01 0) translate(-0.28,0)
+    matrix(1.0 0.0 0.0 1.0 3.04 -2.43)" fill="#000000" stroke="#000000"><foreignobject
+    width="36.19" height="6.73" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">E-then-e</foreignobject></g></g><g
+    class="ltx_tikzmatrix_row" transform="matrix(1 0 0 1 0 49.34)"><g class="ltx_tikzmatrix_col
+    ltx_nopad_l ltx_nopad_r" transform="matrix(1 0 0 -1 25.01 0) translate(-0.28,0)
+    matrix(1.0 0.0 0.0 1.0 3.04 -2.43)" fill="#000000" stroke="#000000"><foreignobject
+    width="41.7" height="6.73" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">Continual</foreignobject></g></g><g
+    class="ltx_tikzmatrix_row" transform="matrix(1 0 0 1 0 63.47)"><g class="ltx_tikzmatrix_col
+    ltx_nopad_l ltx_nopad_r" transform="matrix(1 0 0 -1 25.01 0) translate(-0.28,0)
+    matrix(1.0 0.0 0.0 1.0 3.04 -2.43)" fill="#000000" stroke="#000000"><foreignobject
+    width="46.01" height="6.73" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">ICL-edit-B</foreignobject></g></g><g
+    class="ltx_tikzmatrix_row" transform="matrix(1 0 0 1 0 77.6)"><g class="ltx_tikzmatrix_col
+    ltx_nopad_l ltx_nopad_r" transform="matrix(1 0 0 -1 25.01 0) translate(-0.28,0)
+    matrix(1.0 0.0 0.0 1.0 3.04 -2.43)" fill="#000000" stroke="#000000"><foreignobject
+    width="48.03" height="6.73" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">ICL-edit-M</foreignobject></g></g><g
+    class="ltx_tikzmatrix_row" transform="matrix(1 0 0 1 0 91.68)"><g class="ltx_tikzmatrix_col
+    ltx_nopad_l ltx_nopad_r" transform="matrix(1 0 0 -1 25.01 0) translate(-0.28,0)
+    matrix(1.0 0.0 0.0 1.0 3.04 -2.38)" fill="#000000" stroke="#000000"><foreignobject
+    width="56.23" height="6.62" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">CIPHER-1-B</foreignobject></g></g><g
+    class="ltx_tikzmatrix_row" transform="matrix(1 0 0 1 0 105.7)"><g class="ltx_tikzmatrix_col
+    ltx_nopad_l ltx_nopad_r" transform="matrix(1 0 0 -1 25.01 0) translate(-0.28,0)
+    matrix(1.0 0.0 0.0 1.0 3.04 -2.38)" fill="#000000" stroke="#000000"><foreignobject
+    width="56.23" height="6.62" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">CIPHER-5-B</foreignobject></g></g><g
+    class="ltx_tikzmatrix_row" transform="matrix(1 0 0 1 0 119.72)"><g class="ltx_tikzmatrix_col
+    ltx_nopad_l ltx_nopad_r" transform="matrix(1 0 0 -1 25.01 0) translate(-0.28,0)
+    matrix(1.0 0.0 0.0 1.0 3.04 -2.38)" fill="#000000" stroke="#000000"><foreignobject
+    width="58.25" height="6.62" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">CIPHER-1-M</foreignobject></g></g><g
+    class="ltx_tikzmatrix_row" transform="matrix(1 0 0 1 0 133.74)"><g class="ltx_tikzmatrix_col
+    ltx_nopad_l ltx_nopad_r" transform="matrix(1 0 0 -1 25.01 0) translate(-0.28,0)
+    matrix(1.0 0.0 0.0 1.0 3.04 -2.38)" fill="#000000" stroke="#000000"><foreignobject
+    width="58.25" height="6.62" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">CIPHER-5-M</foreignobject></g></g></g></g></g></g></g></g></svg>
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 3: Normalized cost and percentage of zero-cost examples of CIPHER over
+    time, binned per 20 rounds to show the trend (average across 3 seeds). In the
+    legend, -k means with top $k$ retrieved examples, -B for BERT, and -M for MPNET.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: <svg id="S4.F3.pic1" class="ltx_picture ltx_centering" height="307.55" overflow="visible"
+    version="1.1" width="587.75"><g transform="translate(0,307.55) matrix(1 0 0 -1
+    0 0) translate(31.43,0) translate(0,162.8)" fill="#000000" stroke="#000000" stroke-width="0.4pt"><g
+    transform="matrix(1.0 0.0 0.0 1.0 -26.57 -28.47)"><g class="ltx_nestedsvg" transform="matrix(1
+    0 0 1 0 0) translate(26.57,0) translate(0,28.47)"><g stroke="#000000" fill="#000000"
+    stroke-width="0.4pt"><g transform="matrix(1.0 0.0 0.0 1.0 42.52 -12.45)" fill="#000000"
+    stroke="#000000"><foreignobject width="12.45" height="8.03" transform="matrix(1
+    0 0 -1 0 16.6)" overflow="visible">40</foreignobject></g><g transform="matrix(1.0
+    0.0 0.0 1.0 91.27 -12.45)" fill="#000000" stroke="#000000"><foreignobject width="12.45"
+    height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">80</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 136.9 -12.45)" fill="#000000" stroke="#000000"><foreignobject
+    width="18.68" height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">120</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 185.65 -12.45)" fill="#000000" stroke="#000000"><foreignobject
+    width="18.68" height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">160</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 234.4 -12.45)" fill="#000000" stroke="#000000"><foreignobject
+    width="18.68" height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">200</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 -10.65 -4.01)" fill="#000000" stroke="#000000"><foreignobject
+    width="6.23" height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">$0$</foreignobject></g><clippath
+    id="pgfcp4"><path d="M 0 0 L 243.74 0 L 243.74 99.73 L 0 99.73 Z"></path></clippath><g
+    clip-path="url(#pgfcp4)"><g stroke="#3C78D8" fill="#3C78D8" stroke-width="0.8pt"
+    color="#3C78D8"><path d="M 0 44.96 C 0 44.96 19.57 47.22 27.08 47.5 C 34.6 47.79
+    46.65 47.82 54.16 47 C 61.68 46.17 73.73 43.28 81.25 41.54 C 88.76 39.8 100.81
+    35.45 108.33 34.46 C 115.84 33.48 127.9 34.47 135.41 34.46 C 142.93 34.46 154.98
+    34.33 162.49 34.44 C 170.01 34.55 182.06 34.74 189.58 35.25 C 197.09 35.76 209.14
+    37.76 216.66 38.13 C 224.17 38.5 243.74 37.9 243.74 37.9" style="fill:none"></path></g><g><g
+    stroke="#E69138" fill="#E69138" stroke-dasharray="3.0pt,2.0pt,0.8pt,2.0pt" stroke-dashoffset="0.0pt"
+    stroke-width="0.8pt" color="#E69138"><path d="M 0 52.93 C 0 52.93 19.57 53.16
+    27.08 53.21 C 34.6 53.25 46.65 53.55 54.16 53.27 C 61.68 52.99 73.73 51.08 81.25
+    51.19 C 88.76 51.3 100.81 54.25 108.33 54.1 C 115.84 53.94 127.9 51.5 135.41 50.09
+    C 142.93 48.68 154.98 44.83 162.49 43.94 C 170.01 43.04 182.06 44.08 189.58 43.63
+    C 197.09 43.18 209.14 40.76 216.66 40.72 C 224.17 40.68 243.74 43.35 243.74 43.35"
+    style="fill:none"></path></g><g><g stroke="#3CB371" fill="#3CB371" stroke-width="0.8pt"
+    color="#3CB371"><path d="M 0 66.21 C 0 66.21 19.57 64.64 27.08 63.59 C 34.6 62.53
+    46.65 60.42 54.16 58.63 C 61.68 56.85 73.73 51.45 81.25 50.7 C 88.76 49.95 100.81
+    53.08 108.33 53.22 C 115.84 53.36 127.9 51.9 135.41 51.69 C 142.93 51.48 154.98
+    51.69 162.49 51.69 C 170.01 51.69 182.06 52.01 189.58 51.69 C 197.09 51.37 209.14
+    49.69 216.66 49.41 C 224.17 49.13 243.74 49.67 243.74 49.67" style="fill:none"></path></g><g><g
+    stroke="#000000" fill="#000000" stroke-dasharray="0.8pt,2.0pt" stroke-dashoffset="0.0pt"
+    stroke-width="0.8pt" color="#000000"><path d="M 0 6.27 C 0 6.27 19.57 4.55 27.08
+    4.27 C 34.6 4 46.65 4.27 54.16 4.27 C 61.68 4.27 73.73 4.27 81.25 4.27 C 88.76
+    4.27 100.81 4.52 108.33 4.27 C 115.84 4.03 127.9 2.76 135.41 2.52 C 142.93 2.28
+    154.98 2.24 162.49 2.52 C 170.01 2.81 182.06 4.29 189.58 4.58 C 197.09 4.86 209.14
+    4.34 216.66 4.58 C 224.17 4.82 243.74 6.32 243.74 6.32" style="fill:none"></path></g><g
+    stroke="#3C78D8" fill="#3C78D8" stroke-width="0.8pt" color="#3C78D8"><path d="M
+    2.77 44.96 C 2.77 46.49 1.53 47.73 0 47.73 C -1.53 47.73 -2.77 46.49 -2.77 44.96
+    C -2.77 43.43 -1.53 42.2 0 42.2 C 1.53 42.2 2.77 43.43 2.77 44.96 Z M 0 44.96"
+    style="fill:none"><path d="M 29.85 47.5 C 29.85 49.03 28.61 50.27 27.08 50.27
+    C 25.55 50.27 24.31 49.03 24.31 47.5 C 24.31 45.98 25.55 44.74 27.08 44.74 C 28.61
+    44.74 29.85 45.98 29.85 47.5 Z M 27.08 47.5" style="fill:none"><path d="M 56.93
+    47 C 56.93 48.53 55.69 49.76 54.16 49.76 C 52.64 49.76 51.4 48.53 51.4 47 C 51.4
+    45.47 52.64 44.23 54.16 44.23 C 55.69 44.23 56.93 45.47 56.93 47 Z M 54.16 47"
+    style="fill:none"><path d="M 84.01 41.54 C 84.01 43.07 82.78 44.31 81.25 44.31
+    C 79.72 44.31 78.48 43.07 78.48 41.54 C 78.48 40.01 79.72 38.78 81.25 38.78 C
+    82.78 38.78 84.01 40.01 84.01 41.54 Z M 81.25 41.54" style="fill:none"><path d="M
+    111.1 34.46 C 111.1 35.99 109.86 37.23 108.33 37.23 C 106.8 37.23 105.56 35.99
+    105.56 34.46 C 105.56 32.94 106.8 31.7 108.33 31.7 C 109.86 31.7 111.1 32.94 111.1
+    34.46 Z M 108.33 34.46" style="fill:none"><path d="M 138.18 34.46 C 138.18 35.99
+    136.94 37.23 135.41 37.23 C 133.88 37.23 132.64 35.99 132.64 34.46 C 132.64 32.94
+    133.88 31.7 135.41 31.7 C 136.94 31.7 138.18 32.94 138.18 34.46 Z M 135.41 34.46"
+    style="fill:none"><path d="M 165.26 34.44 C 165.26 35.97 164.02 37.21 162.49 37.21
+    C 160.97 37.21 159.73 35.97 159.73 34.44 C 159.73 32.91 160.97 31.68 162.49 31.68
+    C 164.02 31.68 165.26 32.91 165.26 34.44 Z M 162.49 34.44" style="fill:none"><path
+    d="M 192.34 35.25 C 192.34 36.78 191.11 38.02 189.58 38.02 C 188.05 38.02 186.81
+    36.78 186.81 35.25 C 186.81 33.72 188.05 32.48 189.58 32.48 C 191.11 32.48 192.34
+    33.72 192.34 35.25 Z M 189.58 35.25" style="fill:none"><path d="M 219.43 38.13
+    C 219.43 39.66 218.19 40.9 216.66 40.9 C 215.13 40.9 213.89 39.66 213.89 38.13
+    C 213.89 36.6 215.13 35.36 216.66 35.36 C 218.19 35.36 219.43 36.6 219.43 38.13
+    Z M 216.66 38.13" style="fill:none"><path d="M 246.51 37.9 C 246.51 39.43 245.27
+    40.67 243.74 40.67 C 242.21 40.67 240.97 39.43 240.97 37.9 C 240.97 36.37 242.21
+    35.14 243.74 35.14 C 245.27 35.14 246.51 36.37 246.51 37.9 Z M 243.74 37.9" style="fill:none"></path></path></path></path></path></path></path></path></path></path></g><g
+    stroke="#3CB371" fill="#3CB371" stroke-width="0.8pt" color="#3CB371"><path d="M
+    -1.96 64.25 L 1.96 68.17 M -1.96 68.17 L 1.96 64.25" style="fill:none"><path d="M
+    25.13 61.63 L 29.04 65.54 M 25.13 65.54 L 29.04 61.63" style="fill:none"><path
+    d="M 52.21 56.68 L 56.12 60.59 M 52.21 60.59 L 56.12 56.68" style="fill:none"><path
+    d="M 79.29 48.74 L 83.2 52.66 M 79.29 52.66 L 83.2 48.74" style="fill:none"><path
+    d="M 106.37 51.27 L 110.29 55.18 M 106.37 55.18 L 110.29 51.27" style="fill:none"><path
+    d="M 133.46 49.73 L 137.37 53.65 M 133.46 53.65 L 137.37 49.73" style="fill:none"><path
+    d="M 160.54 49.73 L 164.45 53.65 M 160.54 53.65 L 164.45 49.73" style="fill:none"><path
+    d="M 187.62 49.73 L 191.53 53.65 M 187.62 53.65 L 191.53 49.73" style="fill:none"><path
+    d="M 214.7 47.45 L 218.62 51.37 M 214.7 51.37 L 218.62 47.45" style="fill:none"><path
+    d="M 241.78 47.71 L 245.7 51.63 M 241.78 51.63 L 245.7 47.71" style="fill:none"></path></path></path></path></path></path></path></path></path></path></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 103.8 -24.32)" fill="#000000" stroke="#000000"><foreignobject
+    width="36.15" height="8.65" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">Round</foreignobject></g>
+    <g transform="matrix(0.0 1.0 -1.0 0.0 -12.23 -16.13)" fill="#000000" stroke="#000000"><foreignobject
+    width="132" height="8.72" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">Normalized
+    Cost</foreignobject></g> <g transform="matrix(1.0 0.0 0.0 1.0 83.02 106.84)" fill="#000000"
+    stroke="#000000"><foreignobject width="78.73" height="11.07" transform="matrix(1
+    0 0 -1 0 16.6)" overflow="visible">Email Writing</foreignobject></g></g></g></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 -31.43 -162.8)"><g class="ltx_nestedsvg" transform="matrix(1
+    0 0 1 0 0) translate(31.43,0) translate(0,28.47)"><g stroke-width="0.2pt" fill="#808080"
+    stroke="#808080" color="#808080"><path d="M 0 0 L 0 5.91 M 48.75 0 L 48.75 5.91
+    M 97.5 0 L 97.5 5.91 M 146.24 0 L 146.24 5.91 M 194.99 0 L 194.99 5.91 M 243.74
+    0 L 243.74 5.91 M 0 99.74 L 0 93.84 M 48.75 99.74 L 48.75 93.84 M 97.5 99.74 L
+    97.5 93.84 M 146.24 99.74 L 146.24 93.84 M 194.99 99.74 L 194.99 93.84 M 243.74
+    99.74 L 243.74 93.84" style="fill:none"></path></g><g stroke-width="0.2pt" fill="#808080"
+    stroke="#808080" color="#808080"><path d="M 0 0 L 5.91 0 M 0 22.17 L 5.91 22.17
+    M 0 44.33 L 5.91 44.33 M 0 66.5 L 5.91 66.5 M 0 88.66 L 5.91 88.66 M 243.74 0
+    L 237.84 0 M 243.74 22.17 L 237.84 22.17 M 243.74 44.33 L 237.84 44.33 M 243.74
+    66.5 L 237.84 66.5 M 243.74 88.66 L 237.84 88.66" style="fill:none"></path></g><g
+    stroke="#000000" fill="#000000" stroke-width="0.4pt"><path d="M 0 0 L 0 99.74
+    L 243.74 99.74 L 243.74 0 L 0 0 Z" style="fill:none"><g transform="matrix(1.0
+    0.0 0.0 1.0 42.52 -12.45)" fill="#000000" stroke="#000000"><foreignobject width="12.45"
+    height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">40</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 91.27 -12.45)" fill="#000000" stroke="#000000"><foreignobject
+    width="12.45" height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">80</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 136.9 -12.45)" fill="#000000" stroke="#000000"><foreignobject
+    width="18.68" height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">120</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 185.65 -12.45)" fill="#000000" stroke="#000000"><foreignobject
+    width="18.68" height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">160</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 234.4 -12.45)" fill="#000000" stroke="#000000"><foreignobject
+    width="18.68" height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">200</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 -10.65 -4.01)" fill="#000000" stroke="#000000"><foreignobject
+    width="6.23" height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">0</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 -20.34 18.15)" fill="#000000" stroke="#000000"><foreignobject
+    width="15.91" height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">0.2</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 -20.34 40.32)" fill="#000000" stroke="#000000"><foreignobject
+    width="15.91" height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">0.4</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 -20.34 62.48)" fill="#000000" stroke="#000000"><foreignobject
+    width="15.91" height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">0.6</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 -20.34 84.65)" fill="#000000" stroke="#000000"><foreignobject
+    width="15.91" height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">0.8</foreignobject></g><clippath
+    id="pgfcp5"><path d="M 0 0 L 243.74 0 L 243.74 99.74 L 0 99.74 Z"></path></clippath><g
+    clip-path="url(#pgfcp5)"><g stroke="#3C78D8" fill="#3C78D8" stroke-width="0.8pt"
+    color="#3C78D8"><path d="M 0 12.93 C 0 12.93 19.57 14.78 27.08 14.78 C 34.6 14.78
+    46.65 13.19 54.16 12.93 C 61.68 12.67 73.73 13.19 81.25 12.93 C 88.76 12.67 100.81
+    10.57 108.33 11.08 C 115.84 11.6 127.9 15.6 135.41 16.62 C 142.93 17.65 154.98
+    18.21 162.49 18.47 C 170.01 18.73 182.06 18.47 189.58 18.47 C 197.09 18.47 209.14
+    18.21 216.66 18.47 C 224.17 18.73 243.74 20.32 243.74 20.32" style="fill:none"></path></g><g><g
+    stroke="#E69138" fill="#E69138" stroke-dasharray="3.0pt,2.0pt,0.8pt,2.0pt" stroke-dashoffset="0.0pt"
+    stroke-width="0.8pt" color="#E69138"><path d="M 0 25.86 C 0 25.86 19.57 26.12
+    27.08 25.86 C 34.6 25.6 46.65 24.01 54.16 24.01 C 61.68 24.01 73.73 25.86 81.25
+    25.86 C 88.76 25.86 100.81 23.5 108.33 24.01 C 115.84 24.52 127.9 28.53 135.41
+    29.55 C 142.93 30.58 154.98 30.89 162.49 31.4 C 170.01 31.91 182.06 32.22 189.58
+    33.25 C 197.09 34.27 209.14 37.51 216.66 38.79 C 224.17 40.07 243.74 42.48 243.74
+    42.48" style="fill:none"></path></g><g><g stroke="#3CB371" fill="#3CB371" stroke-width="0.8pt"
+    color="#3CB371"><path d="M 0 20.32 C 0 20.32 19.57 20.32 27.08 20.32 C 34.6 20.32
+    46.65 20.32 54.16 20.32 C 61.68 20.32 73.73 20.32 81.25 20.32 C 88.76 20.32 100.81
+    19.55 108.33 20.32 C 115.84 21.09 127.9 24.83 135.41 25.86 C 142.93 26.88 154.98
+    27.45 162.49 27.71 C 170.01 27.96 182.06 27.71 189.58 27.71 C 197.09 27.71 209.14
+    26.94 216.66 27.71 C 224.17 28.48 243.74 33.25 243.74 33.25" style="fill:none"></path></g><g><g
+    stroke="#000000" fill="#000000" stroke-dasharray="0.8pt,2.0pt" stroke-dashoffset="0.0pt"
+    stroke-width="0.8pt" color="#000000"><path d="M 0 92.35 C 0 92.35 19.57 90.76
+    27.08 90.51 C 34.6 90.25 46.65 90.76 54.16 90.51 C 61.68 90.25 73.73 89.43 81.25
+    88.66 C 88.76 87.89 100.81 85.48 108.33 84.97 C 115.84 84.45 127.9 84.45 135.41
+    84.97 C 142.93 85.48 154.98 87.89 162.49 88.66 C 170.01 89.43 182.06 89.99 189.58
+    90.51 C 197.09 91.02 209.14 92.35 216.66 92.35 C 224.17 92.35 243.74 90.51 243.74
+    90.51" style="fill:none"></path></g><g stroke="#3C78D8" fill="#3C78D8" stroke-width="0.8pt"
+    color="#3C78D8"><path d="M 2.77 12.93 C 2.77 14.46 1.53 15.7 0 15.7 C -1.53 15.7
+    -2.77 14.46 -2.77 12.93 C -2.77 11.4 -1.53 10.16 0 10.16 C 1.53 10.16 2.77 11.4
+    2.77 12.93 Z M 0 12.93" style="fill:none"><path d="M 29.85 14.78 C 29.85 16.31
+    28.61 17.54 27.08 17.54 C 25.55 17.54 24.31 16.31 24.31 14.78 C 24.31 13.25 25.55
+    12.01 27.08 12.01 C 28.61 12.01 29.85 13.25 29.85 14.78 Z M 27.08 14.78" style="fill:none"><path
+    d="M 56.93 12.93 C 56.93 14.46 55.69 15.7 54.16 15.7 C 52.64 15.7 51.4 14.46 51.4
+    12.93 C 51.4 11.4 52.64 10.16 54.16 10.16 C 55.69 10.16 56.93 11.4 56.93 12.93
+    Z M 54.16 12.93" style="fill:none"><path d="M 84.01 12.93 C 84.01 14.46 82.78
+    15.7 81.25 15.7 C 79.72 15.7 78.48 14.46 78.48 12.93 C 78.48 11.4 79.72 10.16
+    81.25 10.16 C 82.78 10.16 84.01 11.4 84.01 12.93 Z M 81.25 12.93" style="fill:none"><path
+    d="M 111.1 11.08 C 111.1 12.61 109.86 13.85 108.33 13.85 C 106.8 13.85 105.56
+    12.61 105.56 11.08 C 105.56 9.55 106.8 8.32 108.33 8.32 C 109.86 8.32 111.1 9.55
+    111.1 11.08 Z M 108.33 11.08" style="fill:none"><path d="M 138.18 16.62 C 138.18
+    18.15 136.94 19.39 135.41 19.39 C 133.88 19.39 132.64 18.15 132.64 16.62 C 132.64
+    15.1 133.88 13.86 135.41 13.86 C 136.94 13.86 138.18 15.1 138.18 16.62 Z M 135.41
+    16.62" style="fill:none"><path d="M 165.26 18.47 C 165.26 20 164.02 21.24 162.49
+    21.24 C 160.97 21.24 159.73 20 159.73 18.47 C 159.73 16.94 160.97 15.7 162.49
+    15.7 C 164.02 15.7 165.26 16.94 165.26 18.47 Z M 162.49 18.47" style="fill:none"><path
+    d="M 192.34 18.47 C 192.34 20 191.11 21.24 189.58 21.24 C 188.05 21.24 186.81
+    20 186.81 18.47 C 186.81 16.94 188.05 15.7 189.58 15.7 C 191.11 15.7 192.34 16.94
+    192.34 18.47 Z M 189.58 18.47" style="fill:none"><path d="M 219.43 18.47 C 219.43
+    20 218.19 21.24 216.66 21.24 C 215.13 21.24 213.89 20 213.89 18.47 C 213.89 16.94
+    215.13 15.7 216.66 15.7 C 218.19 15.7 219.43 16.94 219.43 18.47 Z M 216.66 18.47"
+    style="fill:none"><path d="M 246.51 20.32 C 246.51 21.85 245.27 23.09 243.74 23.09
+    C 242.21 23.09 240.97 21.85 240.97 20.32 C 240.97 18.79 242.21 17.55 243.74 17.55
+    C 245.27 17.55 246.51 18.79 246.51 20.32 Z M 243.74 20.32" style="fill:none"></path></path></path></path></path></path></path></path></path></path></g><g
+    stroke="#3CB371" fill="#3CB371" stroke-width="0.8pt" color="#3CB371"><path d="M
+    -1.96 18.36 L 1.96 22.27 M -1.96 22.27 L 1.96 18.36" style="fill:none"><path d="M
+    25.13 18.36 L 29.04 22.27 M 25.13 22.27 L 29.04 18.36" style="fill:none"><path
+    d="M 52.21 18.36 L 56.12 22.27 M 52.21 22.27 L 56.12 18.36" style="fill:none"><path
+    d="M 79.29 18.36 L 83.2 22.27 M 79.29 22.27 L 83.2 18.36" style="fill:none"><path
+    d="M 106.37 18.36 L 110.29 22.27 M 106.37 22.27 L 110.29 18.36" style="fill:none"><path
+    d="M 133.46 23.9 L 137.37 27.82 M 133.46 27.82 L 137.37 23.9" style="fill:none"><path
+    d="M 160.54 25.75 L 164.45 29.66 M 160.54 29.66 L 164.45 25.75" style="fill:none"><path
+    d="M 187.62 25.75 L 191.53 29.66 M 187.62 29.66 L 191.53 25.75" style="fill:none"><path
+    d="M 214.7 25.75 L 218.62 29.66 M 214.7 29.66 L 218.62 25.75" style="fill:none"><path
+    d="M 241.78 31.29 L 245.7 35.2 M 241.78 35.2 L 245.7 31.29" style="fill:none"></path></path></path></path></path></path></path></path></path></path></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 103.8 -24.32)" fill="#000000" stroke="#000000"><foreignobject
+    width="36.15" height="8.65" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">Round</foreignobject></g>
+    <g transform="matrix(0.0 1.0 -1.0 0.0 -18.56 -16.13)" fill="#000000" stroke="#000000"><foreignobject
+    width="132" height="11.76" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">%
+    Zero-cost Ex. per Bin</foreignobject></g></g></g></g> <g transform="matrix(1.0
+    0.0 0.0 1.0 267.66 -162.79)"><g class="ltx_nestedsvg" transform="matrix(1 0 0
+    1 0 0) translate(31.43,0) translate(0,28.47)"><g stroke-width="0.2pt" fill="#808080"
+    stroke="#808080" color="#808080"><path d="M 0 0 L 0 5.91 M 48.75 0 L 48.75 5.91
+    M 97.5 0 L 97.5 5.91 M 146.24 0 L 146.24 5.91 M 194.99 0 L 194.99 5.91 M 243.74
+    0 L 243.74 5.91 M 0 99.73 L 0 93.82 M 48.75 99.73 L 48.75 93.82 M 97.5 99.73 L
+    97.5 93.82 M 146.24 99.73 L 146.24 93.82 M 194.99 99.73 L 194.99 93.82 M 243.74
+    99.73 L 243.74 93.82" style="fill:none"></path></g><g stroke-width="0.2pt" fill="#808080"
+    stroke="#808080" color="#808080"><path d="M 0 19.95 L 5.91 19.95 M 0 59.84 L 5.91
+    59.84 M 0 99.73 L 5.91 99.73 M 243.74 19.95 L 237.84 19.95 M 243.74 59.84 L 237.84
+    59.84 M 243.74 99.73 L 237.84 99.73" style="fill:none"></path></g><g stroke="#000000"
+    fill="#000000" stroke-width="0.4pt"><path d="M 0 0 L 0 99.73 L 243.74 99.73 L
+    243.74 0 L 0 0 Z" style="fill:none"><g transform="matrix(1.0 0.0 0.0 1.0 42.52
+    -12.45)" fill="#000000" stroke="#000000"><foreignobject width="12.45" height="8.03"
+    transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">40</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 91.27 -12.45)" fill="#000000" stroke="#000000"><foreignobject
+    width="12.45" height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">80</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 136.9 -12.45)" fill="#000000" stroke="#000000"><foreignobject
+    width="18.68" height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">120</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 185.65 -12.45)" fill="#000000" stroke="#000000"><foreignobject
+    width="18.68" height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">160</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 234.4 -12.45)" fill="#000000" stroke="#000000"><foreignobject
+    width="18.68" height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">200</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 -20.34 15.93)" fill="#000000" stroke="#000000"><foreignobject
+    width="15.91" height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">0.2</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 -20.34 55.83)" fill="#000000" stroke="#000000"><foreignobject
+    width="15.91" height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">0.4</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 -20.34 95.72)" fill="#000000" stroke="#000000"><foreignobject
+    width="15.91" height="8.03" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">0.6</foreignobject></g><clippath
+    id="pgfcp6"><path d="M 0 0 L 243.74 0 L 243.74 99.73 L 0 99.73 Z"></path></clippath><g
+    clip-path="url(#pgfcp6)"><g stroke="#3C78D8" fill="#3C78D8" stroke-width="0.8pt"
+    color="#3C78D8"><path d="M 0 39.89 C 0 39.89 19.57 37.03 27.08 36.57 C 34.6 36.11
+    46.65 35.65 54.16 36.57 C 61.68 37.49 73.73 40.91 81.25 43.22 C 88.76 45.52 100.81
+    51.81 108.33 53.19 C 115.84 54.57 127.9 53.19 135.41 53.19 C 142.93 53.19 154.98
+    53.19 162.49 53.19 C 170.01 53.19 182.06 53.65 189.58 53.19 C 197.09 52.73 209.14
+    50.33 216.66 49.87 C 224.17 49.4 243.74 49.87 243.74 49.87" style="fill:none"></path></g><g><g
+    stroke="#E69138" fill="#E69138" stroke-dasharray="3.0pt,2.0pt,0.8pt,2.0pt" stroke-dashoffset="0.0pt"
+    stroke-width="0.8pt" color="#E69138"><path d="M 0 26.59 C 0 26.59 19.57 26.59
+    27.08 26.59 C 34.6 26.59 46.65 26.13 54.16 26.59 C 61.68 27.06 73.73 29.92 81.25
+    29.92 C 88.76 29.92 100.81 26.13 108.33 26.59 C 115.84 27.06 127.9 30.94 135.41
+    33.24 C 142.93 35.55 154.98 41.83 162.49 43.22 C 170.01 44.6 182.06 42.76 189.58
+    43.22 C 197.09 43.68 209.14 46.54 216.66 46.54 C 224.17 46.54 243.74 43.22 243.74
+    43.22" style="fill:none"></path></g><g><g stroke="#3CB371" fill="#3CB371" stroke-width="0.8pt"
+    color="#3CB371"><path d="M 0 13.3 C 0 13.3 19.57 15.24 27.08 16.62 C 34.6 18.01
+    46.65 20.96 54.16 23.27 C 61.68 25.58 73.73 32.32 81.25 33.24 C 88.76 34.17 100.81
+    29.92 108.33 29.92 C 115.84 29.92 127.9 32.78 135.41 33.24 C 142.93 33.7 154.98
+    33.24 162.49 33.24 C 170.01 33.24 182.06 32.78 189.58 33.24 C 197.09 33.7 209.14
+    36.11 216.66 36.57 C 224.17 37.03 243.74 36.57 243.74 36.57" style="fill:none"></path></g><g><g
+    stroke="#000000" fill="#000000" stroke-dasharray="0.8pt,2.0pt" stroke-dashoffset="0.0pt"
+    stroke-width="0.8pt" color="#000000"><path d="M 0 89.76 C 0 89.76 19.57 92.62
+    27.08 93.08 C 34.6 93.54 46.65 93.08 54.16 93.08 C 61.68 93.08 73.73 93.08 81.25
+    93.08 C 88.76 93.08 100.81 92.62 108.33 93.08 C 115.84 93.54 127.9 95.94 135.41
+    96.41 C 142.93 96.87 154.98 96.87 162.49 96.41 C 170.01 95.94 182.06 93.54 189.58
+    93.08 C 197.09 92.62 209.14 93.54 216.66 93.08 C 224.17 92.62 243.74 89.76 243.74
+    89.76" style="fill:none"></path></g><g stroke="#3C78D8" fill="#3C78D8" stroke-width="0.8pt"
+    color="#3C78D8"><path d="M 2.77 39.89 C 2.77 41.42 1.53 42.66 0 42.66 C -1.53
+    42.66 -2.77 41.42 -2.77 39.89 C -2.77 38.36 -1.53 37.12 0 37.12 C 1.53 37.12 2.77
+    38.36 2.77 39.89 Z M 0 39.89" style="fill:none"><path d="M 29.85 36.57 C 29.85
+    38.1 28.61 39.34 27.08 39.34 C 25.55 39.34 24.31 38.1 24.31 36.57 C 24.31 35.04
+    25.55 33.8 27.08 33.8 C 28.61 33.8 29.85 35.04 29.85 36.57 Z M 27.08 36.57" style="fill:none"><path
+    d="M 56.93 36.57 C 56.93 38.1 55.69 39.34 54.16 39.34 C 52.64 39.34 51.4 38.1
+    51.4 36.57 C 51.4 35.04 52.64 33.8 54.16 33.8 C 55.69 33.8 56.93 35.04 56.93 36.57
+    Z M 54.16 36.57" style="fill:none"><path d="M 84.01 43.22 C 84.01 44.74 82.78
+    45.98 81.25 45.98 C 79.72 45.98 78.48 44.74 78.48 43.22 C 78.48 41.69 79.72 40.45
+    81.25 40.45 C 82.78 40.45 84.01 41.69 84.01 43.22 Z M 81.25 43.22" style="fill:none"><path
+    d="M 111.1 53.19 C 111.1 54.72 109.86 55.96 108.33 55.96 C 106.8 55.96 105.56
+    54.72 105.56 53.19 C 105.56 51.66 106.8 50.42 108.33 50.42 C 109.86 50.42 111.1
+    51.66 111.1 53.19 Z M 108.33 53.19" style="fill:none"><path d="M 138.18 53.19
+    C 138.18 54.72 136.94 55.96 135.41 55.96 C 133.88 55.96 132.64 54.72 132.64 53.19
+    C 132.64 51.66 133.88 50.42 135.41 50.42 C 136.94 50.42 138.18 51.66 138.18 53.19
+    Z M 135.41 53.19" style="fill:none"><path d="M 165.26 53.19 C 165.26 54.72 164.02
+    55.96 162.49 55.96 C 160.97 55.96 159.73 54.72 159.73 53.19 C 159.73 51.66 160.97
+    50.42 162.49 50.42 C 164.02 50.42 165.26 51.66 165.26 53.19 Z M 162.49 53.19"
+    style="fill:none"><path d="M 192.34 53.19 C 192.34 54.72 191.11 55.96 189.58 55.96
+    C 188.05 55.96 186.81 54.72 186.81 53.19 C 186.81 51.66 188.05 50.42 189.58 50.42
+    C 191.11 50.42 192.34 51.66 192.34 53.19 Z M 189.58 53.19" style="fill:none"><path
+    d="M 219.43 49.87 C 219.43 51.39 218.19 52.63 216.66 52.63 C 215.13 52.63 213.89
+    51.39 213.89 49.87 C 213.89 48.34 215.13 47.1 216.66 47.1 C 218.19 47.1 219.43
+    48.34 219.43 49.87 Z M 216.66 49.87" style="fill:none"><path d="M 246.51 49.87
+    C 246.51 51.39 245.27 52.63 243.74 52.63 C 242.21 52.63 240.97 51.39 240.97 49.87
+    C 240.97 48.34 242.21 47.1 243.74 47.1 C 245.27 47.1 246.51 48.34 246.51 49.87
+    Z M 243.74 49.87" style="fill:none"></path></path></path></path></path></path></path></path></path></path></g><g
+    stroke="#3CB371" fill="#3CB371" stroke-width="0.8pt" color="#3CB371"><path d="M
+    -1.96 11.34 L 1.96 15.25 M -1.96 15.25 L 1.96 11.34" style="fill:none"><path d="M
+    25.13 14.66 L 29.04 18.58 M 25.13 18.58 L 29.04 14.66" style="fill:none"><path
+    d="M 52.21 21.31 L 56.12 25.23 M 52.21 25.23 L 56.12 21.31" style="fill:none"><path
+    d="M 79.29 31.29 L 83.2 35.2 M 79.29 35.2 L 83.2 31.29" style="fill:none"><path
+    d="M 106.37 27.96 L 110.29 31.88 M 106.37 31.88 L 110.29 27.96" style="fill:none"><path
+    d="M 133.46 31.29 L 137.37 35.2 M 133.46 35.2 L 137.37 31.29" style="fill:none"><path
+    d="M 160.54 31.29 L 164.45 35.2 M 160.54 35.2 L 164.45 31.29" style="fill:none"><path
+    d="M 187.62 31.29 L 191.53 35.2 M 187.62 35.2 L 191.53 31.29" style="fill:none"><path
+    d="M 214.7 34.61 L 218.62 38.52 M 214.7 38.52 L 218.62 34.61" style="fill:none"><path
+    d="M 241.78 34.61 L 245.7 38.52 M 241.78 38.52 L 245.7 34.61" style="fill:none"></path></path></path></path></path></path></path></path></path></path></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 103.8 -24.32)" fill="#000000" stroke="#000000"><foreignobject
+    width="36.15" height="8.65" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">Round</foreignobject></g>
+    <g transform="matrix(0.0 1.0 -1.0 0.0 -18.56 -16.13)" fill="#000000" stroke="#000000"><foreignobject
+    width="132" height="11.76" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">%
+    Zero-cost Ex. per Bin</foreignobject></g></g></g></g></g>
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4 More Analysis
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Learning Curves.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: We plot mean cumulative user edit costs over rounds in [Figure 2](#S4.F2 "Figure
+    2 ‣ Discussion of Main Result. ‣ 4.3 Main Result and Discussion. ‣ 4 Experiment
+    ‣ Aligning LLM Agents by Learning Latent Preference from User Edits"). The cumulative
+    user edit costs in [Figure 2](#S4.F2 "Figure 2 ‣ Discussion of Main Result. ‣
+    4.3 Main Result and Discussion. ‣ 4 Experiment ‣ Aligning LLM Agents by Learning
+    Latent Preference from User Edits") show that the angle of the learning curves
+    decreases for CIPHER after an initial number of rounds, showing that learning
+    helps decrease the rate at which user edits are accumulated. In contrast, the
+    angle of the learning curve for the no-learning baseline remains unchanged.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Evaluating Normalized Edit Cost.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: The cumulative user edit cost measures the total effort of the user but is susceptible
+    to outlier examples, as the edit distance for a given round is potentially unbounded.
+    Therefore, we also compute a *normalized edit distance* $\Delta_{\textrm{edit}}(y_{t},y^{\prime}_{t})/|y_{t}|$,
+    therefore, the normalized cost is at most 1\. [Figure 3](#S4.F3 "Figure 3 ‣ Discussion
+    of Main Result. ‣ 4.3 Main Result and Discussion. ‣ 4 Experiment ‣ Aligning LLM
+    Agents by Learning Latent Preference from User Edits") reports normalized cost
+    over rounds for the top 3 methods. We notice that for all variants of CIPHER for
+    the summarization task, and for CIPHER-5-M for the email writing task, the normalized
+    cost decreases notably as training progresses indicating learning. As the cost
+    is normalized by the response length, even a small decrease can lead to a significant
+    reduction in the number of tokens edited.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Evaluating Fraction of Edited Response.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: Recall that the first stage of our GPT-4 user checks if the agent response satisfies
+    the latent user preference $f^{\star}$. If it does, then the user performs no
+    edits. Otherwise, in the second stage, the user edits the response. To measure
+    how many times the agent response isn’t edited, we also plot the percentage of
+    examples with zero edit cost per 20 rounds bin in [Figure 3](#S4.F3 "Figure 3
+    ‣ Discussion of Main Result. ‣ 4.3 Main Result and Discussion. ‣ 4 Experiment
+    ‣ Aligning LLM Agents by Learning Latent Preference from User Edits"). We notice
+    a small increase in the number of examples with zero edit cost. This indicates
+    that gains come from reducing edits across all examples, and not just by increasing
+    the number of examples that avoid getting edited in stage 1 of our user.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Qualitative Analysis of Learned Preferences.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: We qualitatively analyze the learned preferences for CIPHER to understand the
+    quality of learned preferences. We present our analysis on the summarization task,
+    where our methods have a larger gap with the oracle performance compared to the
+    email writing task. [Table 3](#S4.T3 "Table 3 ‣ Failure Cases. ‣ 4.4 More Analysis
+    ‣ 4 Experiment ‣ Aligning LLM Agents by Learning Latent Preference from User Edits")
+    lists 3 learned preferences per document source for CIPHER-5-MPNET which are randomly
+    sampled at the beginning, middle, and end of the interaction history. We see that
+    overall the agent can learn a reasonable description of the latent preference.
+    For example, it can learn *bullet points* preference for Wikipedia articles, and
+    *second person narrative* for Reddit posts, and *QA style* for Movie reviews.
+    CIPHER can pick some preferences fairly early such as *bullet points* for Wikipedia
+    and *emojis* for Paper abstract, whereas some are learned only later such as *Structured
+    Q$\&amp;$A* for Movie reviews. This shows using CIPHER can quickly learn useful
+    preferences, but further interaction continues to help.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Failure Cases.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: CIPHER notably reduces the edit cost and learns useful preference, however,
+    significant gaps to the oracle method remain, especially in the summarization
+    task. We manually analyze failure cases on summarization task with the best performing
+    method CIPHER-5-MPNET.  [Table 10](#A2.T10 "Table 10 ‣ Retrieval Accuracy. ‣ Appendix
+    B Additional Analysis ‣ Aligning LLM Agents by Learning Latent Preference from
+    User Edits") in the Appendix reports the summary and example of our findings,
+    categorized as preference inference from output-revision pair, consolidation of
+    inferred preferences, and retrieval.⁸⁸8We provide additional analysis on the accuracy
+    of retrieval in [Table 11](#A2.T11 "Table 11 ‣ Retrieval Accuracy. ‣ Appendix
+    B Additional Analysis ‣ Aligning LLM Agents by Learning Latent Preference from
+    User Edits"). In brief, the most common type of failure is on the preference inference
+    step given the agent output and user revision. For example, the agent often misses
+    the exact keyword for brief or short sentences, and sometimes struggles with inferring
+    the second-person narrative aspect.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 3: Examples of learned preferences on summarization task with CIPHER-5-MPNET,
+    grouped based on the document source and corresponding latent preference. We randomly
+    sample 3 examples per type at the beginning, middle, and end of the interaction
+    history.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Latent User Preference | (Round) Learned Preference |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| News article. targeted to young children, storytelling, short sentences,
+    playful language, interactive, positive | (22) Fairy tale narrative style, informal
+    and conversational tone, use of rhetorical questions, simplified language. (115)
+    Simplified, childlike storytelling with playful language and imagery'
+  prefs: []
+  type: TYPE_NORMAL
+- en: (192) Simplified and playful storytelling language |
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Reddit post: second person narrative, brief, show emotions, invoke personal
+    reflection, immersive | (14) Concise and coherent storytelling (102) The user
+    prefers a second-person narrative and a more direct, personal tone'
+  prefs: []
+  type: TYPE_NORMAL
+- en: (194) Poetic and descriptive language, narrative perspective shift to second
+    person |
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Wikipedia page. bullet points, parallel structure, brief | (19) Concise,
+    Bullet-Pointed, Structured Summaries with a Narrative Q&A Style (124) Concise
+    and factual writing style, bullet-point formatting'
+  prefs: []
+  type: TYPE_NORMAL
+- en: (197) Concise and streamlined formatting, with bullet points and clear subheadings
+    for easy scanning |
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Paper abstract. tweet style, simple English, inquisitive, skillful foreshadowing,
+    with emojis | (20) Concise, conversational summaries with bullet points and emojis.
+    (111) Concise, conversational, whimsical bullet-point summaries with emojis. ![[Uncaptioned
+    image]](img/2496d5a0dfc546107fc52bb6ac9c2c4f.png)  ![[Uncaptioned image]](img/9b82923202081e97ba9b5f338569d9b2.png)  ![[Uncaptioned
+    image]](img/606e64ae68070a1c0b8b2a3f6ef6a0d0.png)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: (193) Concise, conversational, and whimsical bullet-point summaries with emojis.
+    ![[Uncaptioned image]](img/2496d5a0dfc546107fc52bb6ac9c2c4f.png)  ![[Uncaptioned
+    image]](img/9b82923202081e97ba9b5f338569d9b2.png)  ![[Uncaptioned image]](img/606e64ae68070a1c0b8b2a3f6ef6a0d0.png)  ![[Uncaptioned
+    image]](img/398f85daf5421bbb602f6bfd2bc1af15.png)  |
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Movie review. question answering style | (12) The user prefers a straightforward,
+    clear, and concise writing style with factual formatting. (123) The user prefers
+    a clear and concise question and answer format with straightforward language.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: (199) Concise, Structured Q&A with Whimsical Clarity |
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We describe related work in this area grouped by main themes in this work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Learning from Feedback.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: Besides pair-wise comparison feedback from annotators used in Reinforcement
+    Learning from Human Feedback (RLHF) research (Ziegler et al., [2019](#bib.bib71);
+    Stiennon et al., [2020](#bib.bib62); Nakano et al., [2021](#bib.bib47); Ouyang
+    et al., [2022a](#bib.bib49), inter alia), prior work has also studied free-form
+    text feedback provided by annotators  (Fernandes et al., [2023](#bib.bib22)),
+    such as on the task of dialog (Weston, [2016](#bib.bib65); Li et al., [2016](#bib.bib35);
+    Hancock et al., [2019](#bib.bib27); Xu et al., [2022](#bib.bib66); Petrak et al.,
+    [2023](#bib.bib51)), question answering (Li et al., [2022](#bib.bib36); Malaviya
+    et al., [2023](#bib.bib40)), summarization (Saunders et al., [2022](#bib.bib55)),
+    and general decision making (Cheng et al., [2023](#bib.bib13)). This feedback,
+    tailored to each example, is often utilized to rank candidate outputs, thereby
+    improving task performance. Some work studies learning from text feedback to generate
+    outputs directly (Scheurer et al., [2023](#bib.bib56); Bai et al., [2022](#bib.bib3);
+    Shi et al., [2022](#bib.bib59)), by generating multiple refinements of the original
+    output based on the feedback and fine-tuning the original model to maximize the
+    likelihood of the best refinement. In grounded settings such as instruction-based
+    navigation, one line of work has also used hindsight feedback that explicitly
+    provides a text instruction for the generated trajectory, to train policies (Nguyen
+    et al., [2021](#bib.bib48); Misra et al., [2024](#bib.bib44)). Moving beyond the
+    conventional focus on text feedback that explicitly articulates human intent,
+    we investigate feedback in the form of direct edits on the original model output.
+    Such revisions by users occur naturally during model deployment in practice. Additionally,
+    we examine the learning of user preferences through historical interactions, aiming
+    to surpass the constraints of example-specific feedback.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Language Agents and Personalization.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: LLMs have enabled the development of language agents for a variety of tasks
+    from writing assistants (Lee et al., [2024](#bib.bib32)), coding assistants (Dohmke,
+    [2022](#bib.bib19)), and customer service assistants (Brynjolfsson et al., [2023](#bib.bib9)).
+    Since these LLM-based assistants are often used by individuals, a natural question
+    has arisen on how to personalize these agents for each user. Straightforward approaches
+    for fine-tuning LLMs includes supervised learning, online DPO (Guo et al., [2024](#bib.bib25)),
+    learning-to-search (Chang et al., [2023](#bib.bib11)), and reinforcement learning (Ouyang
+    et al., [2022b](#bib.bib50)). These approaches can be directly applied to our
+    setting. For example, one can use $(y_{t},y^{\prime}_{t})$ as the ground truth
+    for supervised learning. However, fine-tuning is expensive and hard to scale with
+    the number of users. Therefore, a line of work has explored improving the alignment
+    of frozen LLMs by *prompt engineering*, such as learning a personalized retrieval
+    model (Mysore et al., [2023](#bib.bib46)), learning a prompt policy given a reward
+    function (Deng et al., [2022](#bib.bib17)), or more generally, learning to rewrite
+    the entire prompt (Li et al., [2023](#bib.bib34)). We focus on learning a prompt
+    policy by learning from user edits, and specifically, using them to extract textural
+    descriptions of user preference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Edits and Revisions.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: Many prior work on editing model output focuses on error correction, such as
+    fixing source code (Yin et al., [2018](#bib.bib68); Chen et al., [2018](#bib.bib12);
+    Reid et al., [2023](#bib.bib54)) and improving the factual consistency of model
+    summaries (Cao et al., [2020](#bib.bib10); Liu et al., [2022](#bib.bib38); Balachandran
+    et al., [2022](#bib.bib4)). A line of work has explored understanding human edits
+    based on edit history of Wikipedia (Botha et al., [2018](#bib.bib6); Faltings
+    et al., [2020](#bib.bib21); Rajagopal et al., [2022](#bib.bib52); Reid & Neubig,
+    [2022](#bib.bib53); Laban et al., [2023](#bib.bib31)), or revisions of academic
+    writings (Mita et al., [2022](#bib.bib45); Du et al., [2022](#bib.bib20); D’Arcy
+    et al., [2023](#bib.bib16)). Prior work explores predicting text revisions with
+    edit intents (Brody et al., [2020](#bib.bib7); Kim et al., [2022](#bib.bib30);
+    Chong et al., [2023](#bib.bib14)), and modeling edits with various approaches,
+    including latent vectors (Guu et al., [2017](#bib.bib26); Marrese-Taylor et al.,
+    [2020](#bib.bib42), [2023](#bib.bib43)), structured trees (Yao et al., [2021](#bib.bib67)),
+    discrete diffusion process (Reid et al., [2023](#bib.bib54)), or a series of singular
+    edit operations (Stahlberg & Kumar, [2020](#bib.bib61); Mallinson et al., [2020](#bib.bib41);
+    Agrawal & Carpuat, [2022](#bib.bib2); Zhang et al., [2022](#bib.bib69); Liu et al.,
+    [2023](#bib.bib37)). However, these methodologies predominantly target generic
+    improvements in model performance, overlooking the intricacies of individual user
+    satisfaction and preference. Our research takes a distinct direction, focusing
+    on understanding edits across a variety of examples to study user-level preferences,
+    with a practical goal of aligning the agent to individual preferences.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We study aligning LLM-based agents using user edits that arise naturally in
+    applications such as writing assistants. We conjecture that user edits are driven
+    by a latent user preference that can be captured by textual descriptions. We introduce
+    the PRELUDE framework that focuses on learning descriptions of user preferences
+    from user edit data and then generating an agent response accordingly. We propose
+    a simple yet effective retrieval-based algorithm CIPHER that infers user preference
+    by querying the LLM, retrieves relevant examples in the history, and aggregates
+    induced preferences in retrieved examples to generate a response for the given
+    context. We introduce two interactive environments with a GPT-4 simulated user
+    to study learning from edits, which can be of independent interest. In this work,
+    we focus on aligning an LLM agent with a frozen LLM, in part, due to the challenge
+    of scaling fine-tuning based approaches with the number of users. However, for
+    settings where computational cost is not a barrier, applying fine-tuning approaches
+    would be an interesting future work direction. Another promising future work direction
+    is to learn user preference based on different levels of edits – words, sentences,
+    paragraphs – to generate a satisfactory response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Acknowledgments
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Gao was a research intern in MSR NYC, and later was partially supported by
+    NSF project #1901030\. All content represents the opinion of the authors, which
+    is not necessarily shared or endorsed by their respective employers and/or sponsors.
+    We thank MSR NYC research community, Jonathan D. Chang, Daniel D. Lee, Claire
+    Cardie, and Sasha Rush for helpful discussions and support.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Achiam et al. (2023) Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ahmad,
+    Ilge Akkaya, Florencia Leoni Aleman, Diogo Almeida, Janko Altenschmidt, Sam Altman,
+    Shyamal Anadkat, et al. Gpt-4 technical report. *arXiv preprint arXiv:2303.08774*,
+    2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Agrawal & Carpuat (2022) Sweta Agrawal and Marine Carpuat. An imitation learning
+    curriculum for text editing with non-autoregressive models. *ArXiv*, abs/2203.09486,
+    2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bai et al. (2022) Yuntao Bai, Saurav Kadavath, Sandipan Kundu, Amanda Askell,
+    Jackson Kernion, Andy Jones, Anna Chen, Anna Goldie, Azalia Mirhoseini, Cameron
+    McKinnon, Carol Chen, Catherine Olsson, Christopher Olah, Danny Hernandez, Dawn
+    Drain, Deep Ganguli, Dustin Li, Eli Tran-Johnson, Ethan Perez, Jamie Kerr, Jared
+    Mueller, Jeffrey Ladish, Joshua Landau, Kamal Ndousse, Kamile Lukosuite, Liane
+    Lovitt, Michael Sellitto, Nelson Elhage, Nicholas Schiefer, Noemi Mercado, Nova
+    DasSarma, Robert Lasenby, Robin Larson, Sam Ringer, Scott Johnston, Shauna Kravec,
+    Sheer El Showk, Stanislav Fort, Tamera Lanham, Timothy Telleen-Lawton, Tom Conerly,
+    Tom Henighan, Tristan Hume, Samuel R. Bowman, Zac Hatfield-Dodds, Ben Mann, Dario
+    Amodei, Nicholas Joseph, Sam McCandlish, Tom Brown, and Jared Kaplan. Constitutional
+    ai: Harmlessness from ai feedback, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Balachandran et al. (2022) Vidhisha Balachandran, Hannaneh Hajishirzi, William
+    Cohen, and Yulia Tsvetkov. Correcting diverse factual errors in abstractive summarization
+    via post-editing and language model infilling. *ArXiv*, abs/2210.12378, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Bar (2022) Nitsan Bar. Papertweet. [https://github.com/bnitsan/PaperTweet/](https://github.com/bnitsan/PaperTweet/),
+    2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Botha et al. (2018) Jan A. Botha, Manaal Faruqui, John Alex, Jason Baldridge,
+    and Dipanjan Das. Learning to split and rephrase from wikipedia edit history.
+    *ArXiv*, abs/1808.09468, 2018.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Brody et al. (2020) Shaked Brody, Uri Alon, and Eran Yahav. A structural model
+    for contextual code changes. *Proceedings of the ACM on Programming Languages*,
+    4:1 – 28, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Brown et al. (2020) Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D
+    Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda
+    Askell, et al. Language models are few-shot learners. *Advances in neural information
+    processing systems*, 33:1877–1901, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Brynjolfsson et al. (2023) Erik Brynjolfsson, Danielle Li, and Lindsey R Raymond.
+    Generative ai at work. Technical report, National Bureau of Economic Research,
+    2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Cao et al. (2020) Mengyao Cao, Yue Dong, Jiapeng Wu, and Jackie Chi Kit Cheung.
+    Factual error correction for abstractive summarization models. *ArXiv*, abs/2010.08712,
+    2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chang et al. (2023) Jonathan D Chang, Kiante Brantley, Rajkumar Ramamurthy,
+    Dipendra Misra, and Wen Sun. Learning to generate better than your llm. *arXiv
+    preprint arXiv:2306.11816*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chen et al. (2018) Zimin Chen, Steve Kommrusch, Michele Tufano, Louis-Noël
+    Pouchet, Denys Poshyvanyk, and Monperrus Martin. Sequencer: Sequence-to-sequence
+    learning for end-to-end program repair. *IEEE Transactions on Software Engineering*,
+    47:1943–1959, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Cheng et al. (2023) Ching-An Cheng, Andrey Kolobov, Dipendra Misra, Allen Nie,
+    and Adith Swaminathan. Llf-bench: Benchmark for interactive learning from language
+    feedback. *arXiv preprint arXiv:2312.06853*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chong et al. (2023) Ruining Chong, Cunliang Kong, Liu Wu, Zhenghao Liu, Ziye
+    Jin, Liner Yang, Yange Fan, Hanghang Fan, and Erhong Yang. Leveraging prefix transfer
+    for multi-intent text revision. *Annual Meeting of the Association for Computational
+    Linguistics*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Clement et al. (2019) Colin B. Clement, Matthew Bierbaum, Kevin P. O’Keeffe,
+    and Alexander A. Alemi. On the use of arxiv as a dataset, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'D’Arcy et al. (2023) Mike D’Arcy, Alexis Ross, Erin Bransom, Bailey Kuehl,
+    Jonathan Bragg, Tom Hope, and Doug Downey. Aries: A corpus of scientific paper
+    edits made in response to peer reviews. *ArXiv*, abs/2306.12587, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Deng et al. (2022) Mingkai Deng, Jianyu Wang, Cheng-Ping Hsieh, Yihan Wang,
+    Han Guo, Tianmin Shu, Meng Song, Eric P Xing, and Zhiting Hu. Rlprompt: Optimizing
+    discrete text prompts with reinforcement learning. *arXiv preprint arXiv:2205.12548*,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Devlin et al. (2019) Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina
+    Toutanova. Bert: Pre-training of deep bidirectional transformers for language
+    understanding. *North American Chapter of the Association for Computational Linguistics*,
+    2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dohmke (2022) Thomas Dohmke. Github copilot is generally available to all developers.
+    [https://github.blog/2022-06-21-github-copilot-is-generally-available-to-all-developers/](https://github.blog/2022-06-21-github-copilot-is-generally-available-to-all-developers/),
+    2022. Accessed: April-20-2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Du et al. (2022) Wanyu Du, Vipul Raheja, Dhruv Kumar, Zae Myung Kim, Melissa
+    Lopez, and Dongyeop Kang. Understanding iterative revision from human-written
+    text. *ArXiv*, abs/2203.03802, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Faltings et al. (2020) Felix Faltings, Michel Galley, Gerold Hintz, Chris Brockett,
+    Chris Quirk, Jianfeng Gao, and Bill Dolan. Text editing by command. *ArXiv*, abs/2010.12826,
+    2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Fernandes et al. (2023) Patrick Fernandes, Aman Madaan, Emmy Liu, António Farinhas,
+    Pedro Henrique Martins, Amanda Bertsch, José G. C. de Souza, Shuyan Zhou, Tongshuang Sherry
+    Wu, Graham Neubig, and André F. T. Martins. Bridging the gap: A survey on integrating
+    (human) feedback for natural language generation. *ArXiv*, abs/2305.00955, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Foundation (2022) Wikimedia Foundation. Wikimedia downloads. [https://dumps.wikimedia.org](https://dumps.wikimedia.org),
+    2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Garivier et al. (2016) Aurélien Garivier, Tor Lattimore, and Emilie Kaufmann.
+    On explore-then-commit strategies. *Advances in Neural Information Processing
+    Systems*, 29, 2016.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Guo et al. (2024) Shangmin Guo, Biao Zhang, Tianlin Liu, Tianqi Liu, Misha Khalman,
+    Felipe Llinares, Alexandre Rame, Thomas Mesnard, Yao Zhao, Bilal Piot, et al.
+    Direct language model alignment from online ai feedback. *arXiv preprint arXiv:2402.04792*,
+    2024.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Guu et al. (2017) Kelvin Guu, Tatsunori B. Hashimoto, Yonatan Oren, and Percy
+    Liang. Generating sentences by editing prototypes. *Transactions of the Association
+    for Computational Linguistics*, 6:437–450, 2017.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hancock et al. (2019) Braden Hancock, Antoine Bordes, Pierre-Emmanuel Mazaré,
+    and Jason Weston. Learning from dialogue after deployment: Feed yourself, chatbot!
+    *Annual Meeting of the Association for Computational Linguistics*, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hua et al. (2019) Xinyu Hua, Mitko Nikolov, Nikhil Badugu, and Lu Wang. Argument
+    mining for understanding peer reviews. *Proceedings of the 2019 Conference of
+    the North American Chapter of the Association for Computational Linguistics: Human
+    Language Technologies, Volume 1 (Long and Short Papers)*, June 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kershaw & Koeling (2020) Daniel James Kershaw and R. Koeling. Elsevier oa cc-by
+    corpus. *ArXiv*, abs/2008.00774, 2020. doi: https://doi.org/10.48550/arXiv.2008.00774.
+    URL [https://elsevier.digitalcommonsdata.com/datasets/zm33cdndxs](https://elsevier.digitalcommonsdata.com/datasets/zm33cdndxs).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kim et al. (2022) Zae Myung Kim, Wanyu Du, Vipul Raheja, Dhruv Kumar, and Dongyeop
+    Kang. Improving iterative text revision by learning where to edit from other revision
+    tasks. *ArXiv*, abs/2212.01350, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Laban et al. (2023) Philippe Laban, Jesse Vig, Wojciech Kryscinski, Shafiq R.
+    Joty, Caiming Xiong, and Chien-Sheng Wu. Swipe: A dataset for document-level simplification
+    of wikipedia pages. *Annual Meeting of the Association for Computational Linguistics*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Lee et al. (2024) Mina Lee, Katy Ilonka Gero, John Joon Young Chung, Simon Buckingham
+    Shum, Vipul Raheja, Hua Shen, Subhashini Venugopalan, Thiemo Wambsganss, David
+    Zhou, Emad A. Alghamdi, Tal August, Avinash Bhat, Madiha Zahrah Choksi, Senjuti
+    Dutta, Jin L.C. Guo, Md. Naimul Hoque, Yewon Kim, Seyed Parsa Neshaei, Agnia Sergeyuk,
+    Antonette Shibani, Disha Shrivastava, Lila Shroff, Jessi Stark, S. Sterman, Sitong
+    Wang, Antoine Bosselut, Daniel Buschek, Joseph Chee Chang, Sherol Chen, Max Kreminski,
+    Joonsuk Park, Roy Pea, Eugenia H. Rho, Shannon Zejiang Shen, and Pao Siangliulue.
+    A design space for intelligent and interactive writing assistants. *Conference
+    on Human Factors in Computing Systems*, abs/2403.14117, 2024.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Levenshtein (1965) Vladimir I. Levenshtein. Binary codes capable of correcting
+    deletions, insertions, and reversals. *Soviet physics. Doklady*, 10:707–710, 1965.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Li et al. (2023) Cheng Li, Mingyang Zhang, Qiaozhu Mei, Weize Kong, and Michael
+    Bendersky. Automatic prompt rewriting for personalized text generation. *arXiv
+    preprint arXiv:2310.00152*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Li et al. (2016) Jiwei Li, Alexander H. Miller, Sumit Chopra, Marc’Aurelio Ranzato,
+    and Jason Weston. Dialogue learning with human-in-the-loop. *ArXiv*, abs/1611.09823,
+    2016.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Li et al. (2022) Zichao Li, Prakhar Sharma, Xing Han Lu, Jackie Chi Kit Cheung,
+    and Siva Reddy. Using interactive feedback to improve the accuracy and explainability
+    of question answering systems post-deployment. *ArXiv*, abs/2204.03025, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. (2023) Ruibo Liu, Chenyan Jia, Ge Zhang, Ziyu Zhuang, Tony X. Liu,
+    and Soroush Vosoughi. Second thoughts are best: Learning to re-align with human
+    values from text edits. *ArXiv*, abs/2301.00355, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Liu et al. (2022) Yixin Liu, Budhaditya Deb, Milagro Teruel, Aaron L Halfaker,
+    Dragomir R. Radev, and Ahmed Hassan Awadallah. On improving summarization factual
+    consistency from natural language feedback. *Annual Meeting of the Association
+    for Computational Linguistics*, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Maas et al. (2011) Andrew L. Maas, Raymond E. Daly, Peter T. Pham, Dan Huang,
+    Andrew Y. Ng, and Christopher Potts. Learning word vectors for sentiment analysis.
+    *Proceedings of the 49th Annual Meeting of the Association for Computational Linguistics:
+    Human Language Technologies*, June 2011.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Malaviya et al. (2023) Chaitanya Malaviya, Subin Lee, Dan Roth, and Mark Yatskar.
+    Pachinko: Patching interpretable qa models through natural language feedback.
+    *ArXiv*, abs/2311.09558, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Mallinson et al. (2020) Jonathan Mallinson, Aliaksei Severyn, Eric Malmi, and
+    Guillermo Garrido. Felix: Flexible text editing through tagging and insertion.
+    *ArXiv*, abs/2003.10687, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Marrese-Taylor et al. (2020) Edison Marrese-Taylor, Machel Reid, and Yutaka
+    Matsuo. Variational inference for learning representations of natural language
+    edits. *ArXiv*, abs/2004.09143, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Marrese-Taylor et al. (2023) Edison Marrese-Taylor, Machel Reid, and Alfredo
+    Solano. Edit aware representation learning via levenshtein prediction. *The Fourth
+    Workshop on Insights from Negative Results in NLP*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Misra et al. (2024) Dipendra Misra, Aldo Pacchiano, and Robert E Schapire. Provable
+    interactive learning with hindsight instruction feedback. *arXiv preprint arXiv:2404.09123*,
+    2024.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Mita et al. (2022) Masato Mita, Keisuke Sakaguchi, Masato Hagiwara, Tomoya
+    Mizumoto, Jun Suzuki, and Kentaro Inui. Towards automated document revision: Grammatical
+    error correction, fluency edits, and beyond. *ArXiv*, abs/2205.11484, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Mysore et al. (2023) Sheshera Mysore, Zhuoran Lu, Mengting Wan, Longqi Yang,
+    Steve Menezes, Tina Baghaee, Emmanuel Barajas Gonzalez, Jennifer Neville, and
+    Tara Safavi. Pearl: Personalizing large language model writing assistants with
+    generation-calibrated retrievers. *arXiv preprint arXiv:2311.09180*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Nakano et al. (2021) Reiichiro Nakano, Jacob Hilton, S. Arun Balaji, Jeff Wu,
+    Long Ouyang, Christina Kim, Christopher Hesse, Shantanu Jain, Vineet Kosaraju,
+    William Saunders, Xu Jiang, Karl Cobbe, Tyna Eloundou, Gretchen Krueger, Kevin
+    Button, Matthew Knight, Benjamin Chess, and John Schulman. Webgpt: Browser-assisted
+    question-answering with human feedback. *ArXiv*, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Nguyen et al. (2021) Khanh X Nguyen, Dipendra Misra, Robert Schapire, Miroslav
+    Dudík, and Patrick Shafto. Interactive learning from activity description. *International
+    Conference on Machine Learning*, pp.  8096–8108, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Ouyang et al. (2022a) Long Ouyang, Jeff Wu, Xu Jiang, Diogo Almeida, Carroll L.
+    Wainwright, Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex
+    Ray, John Schulman, Jacob Hilton, Fraser Kelton, Luke E. Miller, Maddie Simens,
+    Amanda Askell, Peter Welinder, Paul Francis Christiano, Jan Leike, and Ryan J.
+    Lowe. Training language models to follow instructions with human feedback. *ArXiv*,
+    2022a.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Ouyang et al. (2022b) Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll
+    Wainwright, Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex
+    Ray, et al. Training language models to follow instructions with human feedback.
+    *Advances in neural information processing systems*, 35:27730–27744, 2022b.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Petrak et al. (2023) Dominic Petrak, Nafise Sadat Moosavi, Ye Tian, Nikolai
+    Rozanov, and Iryna Gurevych. Learning from free-text human feedback - collect
+    new datasets or extend existing ones? *ArXiv*, abs/2310.15758, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Rajagopal et al. (2022) Dheeraj Rajagopal, Xuchao Zhang, Michael Gamon, Sujay Kumar
+    Jauhar, Diyi Yang, and Eduard H. Hovy. One document, many revisions: A dataset
+    for classification and description of edit intents. *International Conference
+    on Language Resources and Evaluation*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Reid & Neubig (2022) Machel Reid and Graham Neubig. Learning to model editing
+    processes. *Conference on Empirical Methods in Natural Language Processing*, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Reid et al. (2023) Machel Reid, Vincent J. Hellendoorn, and Graham Neubig.
+    Diffuser: Diffusion via edit-based reconstruction. *International Conference on
+    Learning Representations*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Saunders et al. (2022) William Saunders, Catherine Yeh, Jeff Wu, Steven Bills,
+    Ouyang Long, Jonathan Ward, and Jan Leike. Self-critiquing models for assisting
+    human evaluators. *ArXiv*, abs/2206.05802, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Scheurer et al. (2023) J’er’emy Scheurer, Jon Ander Campos, Tomasz Korbak, Jun Shern
+    Chan, Angelica Chen, Kyunghyun Cho, and Ethan Perez. Training language models
+    with language feedback at scale. *ArXiv*, abs/2303.16755, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'See et al. (2017) Abigail See, Peter J. Liu, and Christopher D. Manning. Get
+    to the point: Summarization with pointer-generator networks. *Proceedings of the
+    55th Annual Meeting of the Association for Computational Linguistics (Volume 1:
+    Long Papers)*, July 2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Shen et al. (2023) Zejiang Shen, Tal August, Pao Siangliulue, Kyle Lo, Jonathan
+    Bragg, Jeff Hammerbacher, Doug Downey, Joseph Chee Chang, and David Sontag. Beyond
+    summarization: Designing ai support for real-world expository writing tasks. *arXiv
+    preprint arXiv:2304.02623*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Shi et al. (2022) Weiyan Shi, Emily Dinan, Kurt Shuster, Jason Weston, and
+    Jing Xu. When life gives you lemons, make cherryade: Converting feedback from
+    bad responses into good labels. *ArXiv*, abs/2210.15893, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Song et al. (2020) Kaitao Song, Xu Tan, Tao Qin, Jianfeng Lu, and Tie-Yan Liu.
+    Mpnet: Masked and permuted pre-training for language understanding. *ArXiv*, abs/2004.09297,
+    2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Stahlberg & Kumar (2020) Felix Stahlberg and Shankar Kumar. Seq2edits: Sequence
+    transduction using span-level edit operations. *Conference on Empirical Methods
+    in Natural Language Processing*, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Stiennon et al. (2020) Nisan Stiennon, Long Ouyang, Jeff Wu, Daniel M. Ziegler,
+    Ryan J. Lowe, Chelsea Voss, Alec Radford, Dario Amodei, and Paul Christiano. Learning
+    to summarize from human feedback. *ArXiv*, abs/2009.01325, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Team et al. (2023) Gemini Team, Rohan Anil, Sebastian Borgeaud, Yonghui Wu,
+    Jean-Baptiste Alayrac, Jiahui Yu, Radu Soricut, Johan Schalkwyk, Andrew M Dai,
+    Anja Hauth, et al. Gemini: a family of highly capable multimodal models. *arXiv
+    preprint arXiv:2312.11805*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wang et al. (2023) Sitong Wang, Lydia B Chilton, and Jeffrey V Nickerson. Writing
+    with generative ai: Multi-modal and multi-dimensional tools for journalists. *The
+    Second Workshop on Intelligent and Interactive Writing Assistants at ACM CHI*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Weston (2016) Jason Weston. Dialog-based language learning. *ArXiv*, abs/1604.06045,
+    2016.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xu et al. (2022) Jing Xu, Megan Ung, Mojtaba Komeili, Kushal Arora, Y-Lan Boureau,
+    and Jason Weston. Learning new skills after deployment: Improving open-domain
+    internet-driven dialogue with human feedback. *Annual Meeting of the Association
+    for Computational Linguistics*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Yao et al. (2021) Ziyu Yao, Frank F. Xu, Pengcheng Yin, Huan Sun, and Graham
+    Neubig. Learning structural edits via incremental tree transformations. *ArXiv*,
+    abs/2101.12087, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Yin et al. (2018) Pengcheng Yin, Graham Neubig, Miltiadis Allamanis, Marc Brockschmidt,
+    and Alexander L. Gaunt. Learning to represent edits. *ArXiv*, abs/1810.13337,
+    2018.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. (2022) Jiyang Zhang, Sheena Panthaplackel, Pengyu Nie, Junyi Jessy
+    Li, and Miloš Gligorić. Coditt5: Pretraining for source code and natural language
+    editing. *Proceedings of the 37th IEEE/ACM International Conference on Automated
+    Software Engineering*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang* et al. (2020) Tianyi Zhang*, Varsha Kishore*, Felix Wu*, Kilian Q. Weinberger,
+    and Yoav Artzi. Bertscore: Evaluating text generation with bert. *International
+    Conference on Learning Representations*, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Ziegler et al. (2019) Daniel M. Ziegler, Nisan Stiennon, Jeff Wu, Tom B. Brown,
+    Alec Radford, Dario Amodei, Paul Christiano, and Geoffrey Irving. Fine-tuning
+    language models from human preferences. *ArXiv*, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Appendix A Additional Details
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Dataset Examples.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: We list links to dataset sources for our user-provided context in [Table 4](#A2.T4
+    "Table 4 ‣ Retrieval Accuracy. ‣ Appendix B Additional Analysis ‣ Aligning LLM
+    Agents by Learning Latent Preference from User Edits").
+  prefs: []
+  type: TYPE_NORMAL
+- en: GPT-4 User’s Edits
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: We list examples of OUR GPT-4 user’s edits with different latent preference
+    on summarization in [Table 5](#A2.T5 "Table 5 ‣ Retrieval Accuracy. ‣ Appendix
+    B Additional Analysis ‣ Aligning LLM Agents by Learning Latent Preference from
+    User Edits").
+  prefs: []
+  type: TYPE_NORMAL
+- en: GPT-4 User Template.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: Prompt templates used by our GPT-4 user are provided in [Table 6](#A2.T6 "Table
+    6 ‣ Retrieval Accuracy. ‣ Appendix B Additional Analysis ‣ Aligning LLM Agents
+    by Learning Latent Preference from User Edits").
+  prefs: []
+  type: TYPE_NORMAL
+- en: CIPHER Templates.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: Prompt templates used by CIPHER are provided in [Table 7](#A2.T7 "Table 7 ‣
+    Retrieval Accuracy. ‣ Appendix B Additional Analysis ‣ Aligning LLM Agents by
+    Learning Latent Preference from User Edits").
+  prefs: []
+  type: TYPE_NORMAL
+- en: ICL-edit Templates.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: Prompt templates used by ICL-edit baseline are provided in [Table 8](#A2.T8
+    "Table 8 ‣ Retrieval Accuracy. ‣ Appendix B Additional Analysis ‣ Aligning LLM
+    Agents by Learning Latent Preference from User Edits").
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B Additional Analysis
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Detailed Expense Analysis.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: We list a detailed computational expense of different methods in [Table 9](#A2.T9
+    "Table 9 ‣ Retrieval Accuracy. ‣ Appendix B Additional Analysis ‣ Aligning LLM
+    Agents by Learning Latent Preference from User Edits").
+  prefs: []
+  type: TYPE_NORMAL
+- en: Failure Cases.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: We summarize our failure case analysis of CIPHER on summarization in [Table 10](#A2.T10
+    "Table 10 ‣ Retrieval Accuracy. ‣ Appendix B Additional Analysis ‣ Aligning LLM
+    Agents by Learning Latent Preference from User Edits").
+  prefs: []
+  type: TYPE_NORMAL
+- en: Retrieval Accuracy.
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: We calculate retrieval accuracy for  CIPHER as the fraction of all retrieved
+    contexts that are of the same document type as the currently given context across
+    all seeds and time steps. We report the results in [Table 11](#A2.T11 "Table 11
+    ‣ Retrieval Accuracy. ‣ Appendix B Additional Analysis ‣ Aligning LLM Agents by
+    Learning Latent Preference from User Edits"). We find that the retrieval accuracy
+    is higher on the summarization task than on email writing. and using MPNET typically
+    performs better than using Bert to encode context.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4: Link to each source dataset, from which we randomly sample examples
+    as the user-provided context in our tasks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Data Source | Link and Example |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CNN Daily Mail (See et al., [2017](#bib.bib57)) | [https://huggingface.co/datasets/cnn_dailymail](https://huggingface.co/datasets/cnn_dailymail)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SLF5K (Stiennon et al., [2020](#bib.bib62)) | [https://huggingface.co/datasets/JeremyAlain/SLF5K](https://huggingface.co/datasets/JeremyAlain/SLF5K)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wikidump (Foundation, [2022](#bib.bib23)) | [https://huggingface.co/datasets/wikipedia](https://huggingface.co/datasets/wikipedia)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Arxiv (Clement et al., [2019](#bib.bib15)) | [https://huggingface.co/datasets/CShorten/ML-ArXiv-Papers](https://huggingface.co/datasets/CShorten/ML-ArXiv-Papers)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| IMDb (Maas et al., [2011](#bib.bib39)) | [https://huggingface.co/datasets/imdb](https://huggingface.co/datasets/imdb)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PaperTweet (Bar, [2022](#bib.bib5)) | [https://huggingface.co/datasets/nitsanb/paper_tweet](https://huggingface.co/datasets/nitsanb/paper_tweet)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Elsevier OA CC-By (Kershaw & Koeling, [2020](#bib.bib29)) | [https://huggingface.co/datasets/orieg/elsevier-oa-cc-by](https://huggingface.co/datasets/orieg/elsevier-oa-cc-by)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 5: Examples of user edits with different latent preference on summarization.
+    The agent output column shows the agent generation without conditioning on any
+    preference. The latent preference for the user edits is in bold and parenthesis.
+    We truncate some examples due to limited space.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Agent Output | User Edits |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Leon Fenner, the suspected gunman in a $2 million diamond heist at Watch
+    Standard Jewelry in New York City, was arrested in Maryland. The robbery occurred
+    on November 11 and resulted in the injury of the store owner’s elderly father.
+    Fenner’s accomplice, Rondu Frisby, was a friend of the store owner and was apprehended
+    a week after the heist. The robbery took place during the city’s Veteran’s Day
+    Parade, leading to a block shutdown. Fenner and Frisby stole numerous jewels and
+    20 luxury watches, but were caught on surveillance cameras. Fenner is set to appear
+    before a federal court in Maryland. | (targeted to young children, storytelling,
+    short sentences, playful language, interactive, positive) Once upon a time in
+    the big, bustling city of New York, during a parade filled with music and marching
+    on Veteran’s Day, something sneaky happened at a place called Watch Standard Jewelry.
+    This wasn’t just any store; it was a treasure chest full of sparkling diamonds
+    and shiny watches that could make your eyes twinkle like stars. Now, two not-so-nice
+    men, Leon Fenner and his buddy Rondu Frisby, thought they could be sneaky and
+    take these treasures without asking. On November 11, while everyone was watching
+    the parade, they tiptoed into the store. But oh no! They accidentally hurt the
+    store owner’s dear old dad, which wasn’t very kind at all. [TRUNCATED] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| The article describes a situation where a neighbor’s cat, one of seven rescued
+    by a "cat lady," has started frequenting the author’s front yard after leaving
+    its original home due to the presence of other cats. Over the past few months,
+    the cat has become more consistent in its visits, meowing at the author and their
+    family members for attention. The cat allows itself to be petted and shows affectionate
+    behavior, such as rubbing against legs and headbutting hands, until it is fed.
+    After eating, the cat typically leaves but returns in the evening. The author
+    is seeking advice on how to handle the situation, expressing concern about feeding
+    the cat because it is not legally theirs and there could be potential ownership
+    and legal issues. | (second person narrative, brief, show emotions, invoke personal
+    reflection, immersive) Imagine yourself in a quaint neighborhood, where the gentle
+    purrs of a feline friend have become a familiar part of your daily routine. This
+    isn’t just any cat—it’s one of seven, a charming escapee from the home of a local
+    ""cat lady,"" seeking solace in the tranquility of your front yard. Over recent
+    months, this whiskered wanderer has turned your doorstep into its personal stage,
+    meowing for attention with a persistence that tugs at your heartstrings. Each
+    encounter with this affectionate creature is a dance of mutual admiration. You
+    find yourself captivated by its soft fur and the way it eagerly rubs against your
+    legs, headbutting your hands in a silent plea for affection. [TRUNCATED] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| The Puerto Plata Province is a northern province in the Dominican Republic,
+    known for its beautiful beaches and as a popular tourist destination since the
+    late 1990s. Its capital is San Felipe de Puerto Plata, named after the silver
+    clouds Columbus saw on a mountain nearby in 1493\. The city of Puerto Plata was
+    founded in 1502. Historically, the first European town in the Americas, La Isabela,
+    was established by Columbus near Puerto Plata in 1493\. In 1605, the governor
+    Antonio de Osorio destroyed Puerto Plata and other towns to curb illegal trade,
+    leading to the formation of new settlements. Puerto Plata became a Maritime District
+    in 1865 and was later recognized as a province in the 1907 constitution. Over
+    time, it expanded to include more municipalities and municipal districts, with
+    the latest additions in 2007. [TRUNCATED] | (bullet points, parallel structure,
+    brief) - Location: Northern Dominican Republic'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '- Capital: San Felipe de Puerto Plata'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '- Founding: 1502 by Europeans'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '- Historical site: La Isabela (1493, first European town in the Americas)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '- 1605: Destruction by Governor Antonio de Osorio to stop illegal trade'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '- Status: Became Maritime District in 1865, recognized as province in 1907'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '- Expansion: Added more municipalities, latest in 2007'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '- Borders: Atlantic Ocean, Espaillat, Santiago, Valverde, Monte Cristi provinces'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[TRUNCATED] |'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| The article discusses the challenge of detecting and classifying stuttered
+    speech, which affects many people but has been subject to limited research. The
+    authors present a new model that differs from most existing methods, which typically
+    use language models for stutter identification. Instead, their model is based
+    on acoustic features, which allows it to identify various kinds of stuttering
+    disfluencies without relying on speech recognition technology. The proposed model
+    combines a deep residual network with bidirectional long short-term memory (LSTM)
+    layers to classify different stutter types. It has been shown to significantly
+    outperform current leading methods, reducing the average miss rate to 10.03%,
+    which is a 27% improvement over the state-of-the-art. | (tweet style, simple English,
+    inquisitive, skillful foreshadowing, with emojis) Ever struggled with stuttering
+    or know someone who does? ![[Uncaptioned image]](img/b594cfbe3c591525ade65441337b58c9.png)
+    Research on detecting stutters hasn’t been huge, but guess what? A new study is
+    changing the game! ![[Uncaptioned image]](img/f709c0a7963abcb74f40f1766bbe9ac8.png)
+    Instead of just looking at words, this smart model listens to how things are said.
+    ![[Uncaptioned image]](img/c2ce2925a4f77ee92ff4c58064a1985f.png) It’s like a detective
+    for sounds, using cool tech called deep learning and memory networks to spot different
+    stutter types. ![[Uncaptioned image]](img/03a93b8ec12f0c683c32d9808b3c47dc.png)
+    And it’s crushing it, beating old methods by 27%! Missed stutters? Down to just
+    10%! ![[Uncaptioned image]](img/d85321c36403930d76d688a37abae723.png) This could
+    be a big deal for speech therapy! ![[Uncaptioned image]](img/4286c387c926c55ce254d0d6170f7cc6.png)
+    #Stuttering # SpeechTech # Innovation  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| The article discusses a movie that begins promisingly but later becomes confusing
+    due to a poorly depicted portrayal of ancient black magic rituals. The male lead
+    delivers a strong performance despite his character’s unfavorable outcome in the
+    climax. The movie is compared to a mix of "Boomerang" and "Extremities." | (question
+    answering style, direct, concise) What is the general sentiment of the article
+    about the movie? The article suggests that the movie starts off well but eventually
+    becomes muddled. The depiction of ancient black magic rituals is criticized for
+    being confusing. How does the article describe the male lead’s performance? The
+    male lead’s performance is described as strong, even though his character does
+    not have a favorable outcome in the climax. What films is the movie compared to
+    in the article? The movie is compared to ""Boomerang"" and ""Extremities"" in
+    the article. |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 6: Prompt templates for the AI user. The first step is to prompt the
+    user for yes/no answer regarding satisfaction. If the answer is no, the second
+    step is to ask the user edit the agent output according to the latent preference.
+    If the answer is yes, the agent output receives 0 edits.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | Summarization | Email Writing |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Step 1 | Article: {user-provided article} Summary: {agent-generated summary}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Is the above summary of the above article good for person who would love to
+    use the following style: {latent user preference}? Please answer yes or no. |
+    Notes: {user-provided notes} Email: {agent-generated email}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Is the above email based on the above notes good for a user who wants the following
+    style: {latent user preference}? Please answer yes or no. |'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Step 2 | Summary: {agent-generated summary} Please revise the above summary
+    of an article to meet your style: {latent user preference}. | Email: {agent-generated
+    email} Assume that you prefer {latent user preference}. Please revise the above
+    email to meet your style. |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 7: Prompt templates for CIPHER.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | Summarization | Email Writing |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Task prompt conditioned on inferred preference ([line 6](#alg1.l6a "In Algorithm
+    1 ‣ Computational Cost of CIPHER. ‣ 3 Learning User Preference through Retrieval
+    and Aggregation ‣ Aligning LLM Agents by Learning Latent Preference from User
+    Edits") in[Algorithm 1](#alg1a "Algorithm 1 ‣ Computational Cost of CIPHER. ‣
+    3 Learning User Preference through Retrieval and Aggregation ‣ Aligning LLM Agents
+    by Learning Latent Preference from User Edits")) | Article: {user-provided article}
+    Assume that you need to summarize the above article for a user, who prefers the
+    following style: {inferred user preference}. Please write a summary of the above
+    article to address those specified preferences. | Notes: {user-provided notes}
+    These notes are written by a user who prefers the following style of emails: {inferred
+    user preference}. Please write a short email based on the above notes to address
+    those specified preferences. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Prompt to infer user preference based on revision ([line 12](#alg1.l12 "In
+    Algorithm 1 ‣ Computational Cost of CIPHER. ‣ 3 Learning User Preference through
+    Retrieval and Aggregation ‣ Aligning LLM Agents by Learning Latent Preference
+    from User Edits") in[Algorithm 1](#alg1a "Algorithm 1 ‣ Computational Cost of
+    CIPHER. ‣ 3 Learning User Preference through Retrieval and Aggregation ‣ Aligning
+    LLM Agents by Learning Latent Preference from User Edits")) | Original summary
+    of an article: {agent-generated summary} Revised summary by a user: {user revision}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Based on the edits and revision by this user on the original summary in the
+    above examples, what do you find about this user’s generic preference in terms
+    of writing style and formatting? Please answer in a short phrase and only recommend
+    those preferences that are widely used. | Original email: {agent-generated email}
+    Revised email: {user revision}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Based on the edits and revision by this user on the original email in the above
+    examples, what do you find about this user’s generic preference in terms of writing
+    style and formatting? Please answer in a short phrase and only recommend those
+    preferences that are widely used. |
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Prompt to consolidate inferred preferences from history ([line 5](#alg1.l5a
+    "In Algorithm 1 ‣ Computational Cost of CIPHER. ‣ 3 Learning User Preference through
+    Retrieval and Aggregation ‣ Aligning LLM Agents by Learning Latent Preference
+    from User Edits") in[Algorithm 1](#alg1a "Algorithm 1 ‣ Computational Cost of
+    CIPHER. ‣ 3 Learning User Preference through Retrieval and Aggregation ‣ Aligning
+    LLM Agents by Learning Latent Preference from User Edits")) | List of user preferences
+    successfully being used to generate summaries of similar documents: - {inferred
+    preference in a retrieved example}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '- {inferred preference in a retrieved example}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: …
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Based on the the above examples, please come up with short phrase with the
+    most represented summarization preferences of the user. | List of user preferences
+    successfully being used to generate emails of a similar kind: - {inferred preference
+    in a retrieved example}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '- {inferred preference in a retrieved example}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: …
+  prefs: []
+  type: TYPE_NORMAL
+- en: Based on the the above examples, please come up with short phrase with the most
+    represented writing preferences of this user. |
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 8: Prompt templates for the ICL-edit baseline.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | Summarization | Email Writing |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Prompt with retrieved user edit examples | Original summary of an article:
+    {agent-generated summary in a retrieved example} Revised summary by a user: {user
+    revision in a retrieved example}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Original summary of an article: {agent-generated summary in a retrieved example}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Revised summary by a user: {user revision in a retrieved example}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: …
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Article: {user-provided article}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Based on the edits and revision by this user on the original summary in the
+    above examples, Please summarize the above article: | Original summary of an article:
+    {agent-generated summary in a retrieved example} Revised summary by a user: {user
+    revision in a retrieved example}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Original summary of an article: {agent-generated summary in a retrieved example}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Revised summary by a user: {user revision in a retrieved example}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: …
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Notes: {user-provided notes}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Based on the edits and revision by this user on the original email in the above
+    examples, Please write an email based on the above notes for this user: |'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 9: Expense of different methods: number of BPE tokens in terms of input,
+    output and total. Each number is the average across 3 runs (unit is $\cdot 10^{5}$).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Summarization | Email Writing |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Input | Output | Total | Input | Output | Total |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Oracle Preference | 1.14 | 0.53 | 1.67 | 0.91 | 0.71 | 1.62 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| No Learning | 1.06 | 0.44 | 1.50 | 0.85 | 0.80 | 1.65 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| E-then-e LPI | 1.16 | 0.83 | 1.99 | 0.94 | 0.79 | 1.73 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Continual LPI | 8.14 | 0.75 | 8.89 | 7.89 | 0.73 | 8.63 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ICL-edit-5-MPNET | 7.35 | 0.65 | 8.00 | 11.05 | 1.06 | 12.12 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ICL-edit-5-BERT | 7.32 | 0.64 | 7.96 | 10.51 | 1.03 | 11.55 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CIPHER-1-MPNET | 2.02 | 0.72 | 2.74 | 1.21 | 0.73 | 1.94 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CIPHER-5-MPNET | 2.27 | 0.73 | 3.00 | 1.44 | 0.64 | 2.09 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CIPHER-1-BERT | 2.10 | 0.71 | 2.81 | 1.27 | 0.73 | 1.99 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CIPHER-5-BERT | 2.32 | 0.71 | 3.03 | 1.48 | 0.73 | 2.22 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 10: Summary of failure cases on summarization task with CIPHER-5-MPNET.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Type of Failures | Summary | Examples |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Preference inference based on an output-revision pair ($f_{t}$) (the most
+    common failure type) | 1) Not totally wrong but insufficient, i.e. the inferred
+    preference only captures a few aspects of user’s latent preference. This is most
+    common for news articles and Reddit posts, for which the user shows nuanced preference
+    for several aspects. | The dominant missing aspect is brief or short sentences
+    across different context, although the agent can infer keywords such as concise.
+    For news article context, the agent tends to infer the preference keyword whimsical.
+    The agent has difficulty to infer subtle aspects, including invoke personal reflection,
+    immersive, positive, parallel structure, inquisitive, and skillful foreshadowing.
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 2) Sometimes fail to infer some important aspects, even though the user
+    edits clearly show such preference. | The agent often could not infer second-person
+    narrative. For question answering style, the agent occasionally only learns consistent
+    format. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Consolidation of induced preferences from retrieved interactions ($\tilde{f}_{t}$)
+    | Overall, this step can capture the majority preference relatively well, although
+    it tends to result in a more general preference compared to the retrieved ones.
+    | When both specific phrase second-person narrative and general phrase narrative
+    or narration occur in retrieved examples, the agent often chooses to give a final
+    preference not including the second-person perspective aspect. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Retrieval of historical examples relevant to the given context | The retrieval
+    part in general works reasonably well, with more than half of the retrieved example
+    being truly relevant to the given context. Note that one incorrect retrieved example
+    typically does not affect the performance, as we instruct the agent to only use
+    the most represented preference keywords among all five retrieved examples. |
+    The agent sometimes retrieves wrong examples for Wikipedia context when its topic
+    very relates to other context, e.g. wrongly retrieving past examples on news articles
+    and movie reviews when the topic in the given Wikipedia context relates to these
+    domains. |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 11: We report retrieval accuracy as the percentage of total retrieved
+    document representations across all time steps and seeds that are of the same
+    document source type as the context document for which they were retrieved. We
+    use 3 seeds. We retrieve 600 examples for $k=1$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Summarization | Email Writing |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CIPHER-1-B | 72.00 | 25.83 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CIPHER-1-M | 82.00 | 26.33 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CIPHER-5-B | 65.79 | 26.57 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CIPHER-5-M | 76.33 | 25.45 |</path></g></g></g></g></path></g></g></g></g></path></g></g></g></foreignobject></g></g></g></g></g></svg>'
+  prefs: []
+  type: TYPE_NORMAL

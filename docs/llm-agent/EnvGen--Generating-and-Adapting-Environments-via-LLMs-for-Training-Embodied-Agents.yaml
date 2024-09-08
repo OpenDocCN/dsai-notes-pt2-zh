@@ -1,0 +1,1780 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:50:01'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'EnvGen: Generating and Adapting Environments via LLMs for Training Embodied
+    Agents'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2403.12014](https://ar5iv.labs.arxiv.org/html/2403.12014)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: 'Abhay Zala  Jaemin Cho^†^†footnotemark:  Han Lin  Jaehong Yoon  Mohit Bansal'
+  prefs: []
+  type: TYPE_NORMAL
+- en: UNC Chapel Hill
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{aszala, jmincho, hanlincs, jhyoon, mbansal}@cs.unc.edu'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://envgen-llm.github.io](https://envgen-llm.github.io) equal contribution'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'Recent state-of-the-art approaches for embodied learning via interaction directly
+    employ large language models (LLMs) as agents to determine the next steps in an
+    environment. Due to their world knowledge and reasoning capabilities, LLM agents
+    achieve stronger performance than previous smaller agents based on reinforcement
+    learning (RL); however, frequently calling LLMs is slow and expensive. This begs
+    an interesting question: Instead of directly employing LLMs as embodied agents,
+    can we use LLMs’ reasoning capabilities to adaptively create training environments
+    to help smaller embodied RL agents learn useful skills that they are weak at?
+    In this work, we propose EnvGen, a novel framework to address this question. First,
+    we prompt an LLM to generate training environments that allow agents to quickly
+    learn different tasks in parallel. Concretely, the LLM is given the task description
+    and environment simulator objectives that the agents should learn and is then
+    asked to generate a set of environment configurations (*e.g*., different terrains,
+    items initially given to agents, chance of finding certain objects, *etc*.). Next,
+    we train a small RL agent in a mixture of the original and LLM-generated environments.
+    Then, we enable the LLM to *continuously adapt* the generated environments to
+    progressively improve the skills that the agent is weak at, by providing feedback
+    to the LLM in the form of the agent’s performance. We demonstrate the usefulness
+    of EnvGen with comprehensive experiments in Crafter and Heist game environments.
+    We find that a small RL agent trained with EnvGen can outperform SOTA methods,
+    including a GPT-4 agent, and learns long-horizon tasks significantly faster. We
+    also show qualitatively how the LLM adapts training environments to help improve
+    RL agents’ weaker skills over time. Additionally, EnvGen is substantially more
+    efficient as it only uses a small number of LLM calls (*e.g*., 4 in total), whereas
+    LLM agents require one or more LLM calls per step (resulting in thousands of LLM
+    calls per episode). Lastly, we present detailed ablation studies for EnvGen’s
+    design choices.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'There has been growing interest in embodied AI, where agents learn through
+    interactions with environments instead of static datasets (Ahn et al., [2022](#bib.bib2);
+    Duan et al., [2022](#bib.bib14); Wang et al., [2023a](#bib.bib51); Yao et al.,
+    [2023](#bib.bib60); Driess et al., [2023](#bib.bib12)). Open-world games such
+    as Minecraft (Mojang Studios, [2009](#bib.bib35)) and Crafter (Hafner, [2022](#bib.bib19))
+    have been widely used as research environments for embodied agents, where the
+    agents visually perceive their surroundings, traverse large terrains, and learn
+    to unlock various achievements (*e.g*., collecting resources, building tools,
+    defeating monsters, *etc*.). Some achievements can be easily unlocked within a
+    few steps, whereas others are more challenging as they only become accessible
+    after the agent completes a series of prerequisite achievements, requiring hundreds
+    of steps (*i.e*., long-horizon tasks). As illustrated in [Fig. 1](#S1.F1 "In 1
+    Introduction ‣ EnvGen: Generating and Adapting Environments via LLMs for Training
+    Embodied Agents") (a), traditional embodied agents are based on reinforcement
+    learning (RL) (Hafner et al., [2020](#bib.bib20); [2021](#bib.bib21); [2023](#bib.bib22);
+    Schulman et al., [2017](#bib.bib41); Burda et al., [2018](#bib.bib8); Hessel et al.,
+    [2018](#bib.bib24); Sekar et al., [2020](#bib.bib42); Moon et al., [2023](#bib.bib36)).
+    However, these RL agents usually struggle when learning such long-horizon tasks
+    since the reward is sparsely given only after the correct execution of successive
+    actions, and it is very expensive to automatically find many action sequences
+    which lead to the reward (Aytar et al., [2018](#bib.bib4); Li et al., [2022a](#bib.bib29);
+    Yuan et al., [2023](#bib.bib61)), even after long pretraining with curiosity-driven
+    intrinsic reward (Walker et al., [2023](#bib.bib50)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/15148b9cd1a2b3c0c15be2ef93cccd1e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Comparison of different methods for creating embodied agents. Previous
+    works commonly use (a) small RL agents or (b) LLM agents to explore skills. In
+    (c) EnvGen, we train a small RL agent with diverse LLM-generated environments
+    that train different skills in parallel and can be adapted via feedback to help
+    the agents progressively improve skills that they are weaker at. Our method benefits
+    from using the world knowledge from LLMs while maintaining efficient training
+    through a lightweight RL agent.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As large language models (LLMs) have shown remarkable progress in various tasks
+    that require complex reasoning (Brown et al., [2020](#bib.bib7); OpenAI, [2023a](#bib.bib38);
+    Touvron et al., [2023a](#bib.bib48); [b](#bib.bib49); Chowdhery et al., [2023](#bib.bib10);
+    Anil et al., [2023](#bib.bib3)), recent works study implementing embodied agents
+    based on LLMs. As illustrated in [Fig. 1](#S1.F1 "In 1 Introduction ‣ EnvGen:
+    Generating and Adapting Environments via LLMs for Training Embodied Agents") (b),
+    these methods leverage LLMs’ world knowledge with chain-of-thought reasoning (Nye
+    et al., [2021](#bib.bib37); Kojima et al., [2022](#bib.bib25); Wei et al., [2022](#bib.bib57))
+    by creating action plans, giving feedback, and obtaining rewards throughout the
+    episode (Yuan et al., [2023](#bib.bib61); Wang et al., [2023c](#bib.bib53); Wu
+    et al., [2023](#bib.bib59); Wang et al., [2023a](#bib.bib51); [d](#bib.bib54);
+    Zhao et al., [2023](#bib.bib62); Du et al., [2023](#bib.bib13)). While these LLM-based
+    agents that verbalize their knowledge in reasoning steps have seen success in
+    achieving better performance over previous approaches, iteratively calling LLMs
+    throughout the episode is prohibitively slow and expensive (*e.g*., SPRING (Wu
+    et al., [2023](#bib.bib59)) calls GPT-4 (OpenAI, [2023a](#bib.bib38)) 9 times
+    to take any action step, which results in $270 USD to complete an episode). Du
+    et al. ([2023](#bib.bib13)) use LLMs to create rewards to train smaller agents,
+    but the training is still costly, as it requires many interactions between the
+    LLMs and student agents. This begs the question: Instead of directly employing
+    LLMs as embodied agents, can we use LLMs’ reasoning capability to adaptively create
+    training environments to help smaller embodied RL agents learn useful skills that
+    they are weak at?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To address this question, we propose EnvGen, a novel framework where an LLM
+    adaptively generates training environments to teach smaller embodied RL agents.
+    We aim to generate environments that can create various conditions (*e.g*., have
+    different terrains or some subgoals are already achieved) so that agents can learn
+    different skills in parallel and obtain more frequent rewards for challenging
+    long-horizon tasks than in the original environment. As shown in [Fig. 1](#S1.F1
+    "In 1 Introduction ‣ EnvGen: Generating and Adapting Environments via LLMs for
+    Training Embodied Agents") (c), EnvGen iterates over multiple training cycles,
+    each consisting of the following four steps.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Step 1: We generate configurations for custom training environments (*i.e*.,
+    specifically created to train an RL agent on certain skills) by providing an LLM
+    with a prompt including task description, controllable simulator settings, and
+    simulator constraints (see [Fig. 2](#S2.F2 "In 2 EnvGen: Generating and Adapting
+    Environments via LLMs for Training Embodied Agents ‣ EnvGen: Generating and Adapting
+    Environments via LLMs for Training Embodied Agents") and [Sec. 2](#S2 "2 EnvGen:
+    Generating and Adapting Environments via LLMs for Training Embodied Agents ‣ EnvGen:
+    Generating and Adapting Environments via LLMs for Training Embodied Agents") for
+    details). Then we use the generated configurations to create different custom
+    environments (*e.g*., different terrains, items initially given to agents, and
+    chance of finding certain objects) that can teach multiple skills in parallel.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Step 2: We train the RL agent in multiple LLM-generated environments (*i.e*.,
+    LLM environments), so that it can learn different useful skills in parallel.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Step 3: We first train the RL agent in the original environment to mitigate
+    overfitting to the LLM environments. Then we measure the current RL agent’s performance
+    in different tasks in the original environment to check which skills/tasks the
+    agent is still weak at.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Step 4: We provide the RL agent’s successes/failures in different tasks (from
+    step 3) as feedback to the LLM, so that the LLM can adapt the custom training
+    environments to focus on progressively improving the skills that the agent is
+    weak at.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Note that EnvGen only requires a few LLM calls (*e.g*., 4) for environment generation/updating
+    during the entire RL agent training process, whereas other works based on LLM
+    agents query an LLM once or multiple times every step (resulting in thousands
+    of LLM calls for a single episode).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We study the usefulness of EnvGen in different game environments: Crafter (Hafner,
+    [2022](#bib.bib19)) and Heist (Cobbe et al., [2020](#bib.bib11)). In the Crafter
+    environment, a simple PPO-based (Schulman et al., [2017](#bib.bib41)) lightweight
+    ($<5$M parameters) RL agent trained with our LLM-generated environments outperforms
+    strong baselines including a GPT-4 based agent that queries an LLM multiple times
+    at every step, and RL agents that use extensive pretraining (*e.g*., 150M steps
+    *vs*. less than 1M steps for us). When compared to just training longer in the
+    original Crafter environment, an RL agent trained with EnvGen achieves significant
+    improvements on the overall score and long-horizon tasks. In Heist, we also show
+    that our LLM-generated environments can improve overall agent performance and
+    training stability. We also show a qualitative study on how the LLM adapts training
+    environments to help improve RL agents’ weaker skills over time. Finally, we provide
+    comprehensive analysis and ablation studies of the design choices of EnvGen, including
+    EnvGen *vs*. longer training in the original environment, adaptively updating
+    LLM-generated environments *vs*. a fixed environment, different LLMs for generating
+    environments, frequency of environment updates, the number of LLM-generated environments,
+    and the mixture ratio between the original and LLM environment during training.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '2 EnvGen: Generating and Adapting Environments via LLMs for Training Embodied
+    Agents'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We propose EnvGen, a novel framework where an LLM adaptively generates training
+    environments to train smaller embodied RL agents, enabling them to accomplish
+    various tasks within an environment, particularly long-horizon tasks. During the
+    training process, the LLM is given feedback (in the form of the agent’s performance)
+    and can adaptively update the training environments to progressively focus on
+    improving the tasks that the agent is weak at. In the following, we first explain
+    why it is challenging to explore long-horizon tasks in open-world games ([Sec. 2.1](#S2.SS1
+    "2.1 Preliminary: Exploration is Hard for Long-Horizon Tasks ‣ 2 EnvGen: Generating
+    and Adapting Environments via LLMs for Training Embodied Agents ‣ EnvGen: Generating
+    and Adapting Environments via LLMs for Training Embodied Agents")). Then we explain
+    our method details, including how we generate environments and how agents are
+    trained in the generated and original environments ([Sec. 2.2](#S2.SS2 "2.2 EnvGen
+    Method Details ‣ 2 EnvGen: Generating and Adapting Environments via LLMs for Training
+    Embodied Agents ‣ EnvGen: Generating and Adapting Environments via LLMs for Training
+    Embodied Agents")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/bf0033debb3bee1567a2827b6698b9d2.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: In EnvGen framework, we generate multiple environments with an LLM
+    to let the agent learn different skills effectively, with the $N^{\text{Cycle}}$
+    training cycles, each consisting of the following four steps. Step 1: we provide
+    an LLM with a prompt composed of four components (*i.e*., task description, environment
+    details, output template, and feedback from the previous cycle), and ask the LLM
+    to fill the template and output various environment configurations that can be
+    used to train agents on different skills. Step 2: we train a small RL agent in
+    the LLM-generated environments. Step 3: we train the agent in the original environment
+    to allow for better generalization and then measure the RL agent’s training progress
+    by letting it explore the original environment. Step 4: we provide the LLM with
+    the agent performance from the original environment (measured in step 3) as feedback
+    for adapting the LLM environments in the next cycle to focus on the weaker performing
+    skills.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '2.1 Preliminary: Exploration is Hard for Long-Horizon Tasks'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In the RL framework, agents explore various states along a trajectory and amplify
+    policies based on the rewards received from those trajectories. However, exploration
+    for long-horizon tasks is slow and computationally expensive, as rewards for such
+    tasks are sparsely given only after a sequence of successful actions that often
+    involve achieving multiple subgoals. For example, the goal in Crafter (Hafner,
+    [2022](#bib.bib19)) is to unlock 22 achievements, where some achievements can
+    be unlocked quickly through several simple actions and others require long chains
+    of prerequisites (*e.g*., collect iron requires make stone pickaxe, which must
+    be preceded by collect stone, … *etc*.); see [Sec. 3.1](#S3.SS1 "3.1 Evaluated
+    Benchmarks and Training Details ‣ 3 Experimental Setup ‣ EnvGen: Generating and
+    Adapting Environments via LLMs for Training Embodied Agents") for details. As
+    shown in Hafner ([2022](#bib.bib19)), existing agents in Crafter spend most exploration
+    steps learning low-level achievements but fail to unlock high-order achievements
+    with many prerequisites.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2 EnvGen Method Details
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We introduce EnvGen, where we train an embodied RL agent in multiple LLM-generated
+    environments (we refer to these as ‘LLM environments’ in the paper) that progressively
+    adapt to improve agent performance in multiple skills. The generated environments
+    can provide various conditions (*e.g*., different terrains, or some subgoals are
+    already achieved) so that agents can learn different skills in parallel and obtain
+    more frequent rewards for long-horizon tasks. As shown in [Fig. 2](#S2.F2 "In
+    2 EnvGen: Generating and Adapting Environments via LLMs for Training Embodied
+    Agents ‣ EnvGen: Generating and Adapting Environments via LLMs for Training Embodied
+    Agents"), EnvGen iterates $N^{\text{Cycle}}$ training cycles, each consisting
+    of the following four steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Step 1: Generate training environments with an LLM.'
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'As illustrated in step 1 of [Fig. 2](#S2.F2 "In 2 EnvGen: Generating and Adapting
+    Environments via LLMs for Training Embodied Agents ‣ EnvGen: Generating and Adapting
+    Environments via LLMs for Training Embodied Agents"), we use an LLM (*e.g*., GPT-4 (OpenAI,
+    [2023a](#bib.bib38))¹¹1We use GPT-4-1106-Preview (*i.e*., GPT-4 Turbo).) to first
+    generate $N^{\text{LLM-Env}}$ custom training environment configurations²²2We
+    find that N=4 works well; see [Table 7](#S4.T7 "In Frequency of LLM feedback /
+    environment updates. ‣ 4.5 Additional Analysis and Ablation Studies ‣ 4 Results
+    and Analysis ‣ EnvGen: Generating and Adapting Environments via LLMs for Training
+    Embodied Agents") for details. that can cover various objectives and skills that
+    are required in the original environment. The following describes the LLM input
+    prompt components used to create environment configurations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Task description: We provide a brief description of the environment and what
+    the LLM should do (*e.g*., “generate a set of training environments…”).'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Game/simulator details: We provide a list of objectives that need to be achieved
+    in the environment (*e.g*., “collect coal, collect iron, *etc*.” for Crafter);
+    a list of which simulator settings can be controlled (*e.g*., terrain, agent inventory);
+    and a list of constraints/rules that the simulator has (*e.g*., “skeletons only
+    spawn in mountains; cows only spawn in grass; …” for Crafter).'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '3.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Output environment configuration template: We provide a blank output configuration
+    template (*i.e*., a JSON object where the environment settings are empty) to the
+    LLM, and request it to fill in the values, creating $N^{\text{LLM-Env}}$ environment
+    configurations. Along with filling the templates, we also ask the LLM to verbally
+    explain the purpose for each environment (*e.g*., what the environment would teach
+    the agent); this would help users easily understand the environment generation
+    process.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '4.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Adaptation feedback based on the RL agent’s performance: We provide the LLM
+    with the performance of the RL agent from the original environment (measured in
+    step 3 and summarized in step 4), as feedback for adapting LLM environments to
+    focus on skills that the RL agent is weak at. The feedback is given at the end
+    of each cycle, so it is only provided to LLM from the second cycle onwards.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'The obtained environment configurations are then rendered in the game’s simulator.
+    [Fig. 2](#S2.F2 "In 2 EnvGen: Generating and Adapting Environments via LLMs for
+    Training Embodied Agents ‣ EnvGen: Generating and Adapting Environments via LLMs
+    for Training Embodied Agents") presents the summary of input prompt and output
+    environments from the GPT-4 model. We provide more prompt details in the appendix.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Step 2: Train a small RL agent in the LLM-generated environments.'
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'As shown in step 2 of [Fig. 2](#S2.F2 "In 2 EnvGen: Generating and Adapting
+    Environments via LLMs for Training Embodied Agents ‣ EnvGen: Generating and Adapting
+    Environments via LLMs for Training Embodied Agents"), we first train the small
+    RL agent in the LLM-generated environments. Concretely, we train the agent in
+    the $N^{\text{LLM-Env}}$ total steps in parallel.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Step 3: Train and measure the RL agent’s performance in the original environment.'
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'It is important to note that the goal of EnvGen is to improve the RL agent’s
+    performance in the original environment, instead of the performance only in the
+    LLM environments. To help the RL agent effectively adapt to the original environment
+    and provide the LLM with the current agent’s performance as feedback, we train
+    the agent and measure its performance in the original environment, as shown in
+    step 3 of [Fig. 2](#S2.F2 "In 2 EnvGen: Generating and Adapting Environments via
+    LLMs for Training Embodied Agents ‣ EnvGen: Generating and Adapting Environments
+    via LLMs for Training Embodied Agents"). First, to mitigate the overfitting to
+    LLM environments, we train the agent in the original environment for $T^{\text{Orig-Env}}$
+    works well; see [Table 8](#S4.T8 "In Number of LLM environments. ‣ 4.5 Additional
+    Analysis and Ablation Studies ‣ 4 Results and Analysis ‣ EnvGen: Generating and
+    Adapting Environments via LLMs for Training Embodied Agents") for details. Next,
+    to find the skills that the RL agent needs to improve at, we test the agent in
+    the original environment, without any parameter updates. Concretely, we measure
+    individual success rates for each environment task (*e.g*., Crafter achievements).
+    The agent performance is summarized (in step 4) and is provided to LLM as feedback
+    (in step 1) to adapt training environments in the next cycle. Moreover, importantly,
+    to obtain a more calibrated estimation of agent performance, we calculate the
+    average and variance of the task-specific scores by testing agents with multiple
+    random seeds (*i.e*., 12). Note this performance measuring takes minimal time
+    and computation compared to the actual training steps (*e.g*., 30x faster in our
+    experiments) as it does not involve backpropagation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Step 4: Send feedback to LLM to adapt environments (to focus on weak skills).'
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We provide the LLM with the agent’s performance from the original environment
+    (measured in step 3), as feedback for updating LLM environments. Concretely, we
+    list the agent’s average task-specific success rate in percentages along with
+    one standard deviation (*e.g*., “$\dots$ times.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Experimental Setup
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In the following subsections, we present the benchmarks in which we evaluate
+    EnvGen framework on ([Sec. 3.1](#S3.SS1 "3.1 Evaluated Benchmarks and Training
+    Details ‣ 3 Experimental Setup ‣ EnvGen: Generating and Adapting Environments
+    via LLMs for Training Embodied Agents")) and the agent architectures that we use
+    for experiments ([Sec. 3.2](#S3.SS2 "3.2 Agent Architectures ‣ 3 Experimental
+    Setup ‣ EnvGen: Generating and Adapting Environments via LLMs for Training Embodied
+    Agents")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Evaluated Benchmarks and Training Details
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/9fc56bda8bf921b9ce16aae9ce097600.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: (a): Crafter gameplay screenshot. An agent explores a 2D world and
+    completes 22 achievements. (b): Crafter achievement hierarchy. Some achievements
+    can be completed right away; others require previous achievements to be unlocked
+    first (*i.e*., in a hierarchical order following the arrows).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Crafter.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Crafter (Hafner, [2022](#bib.bib19)) is an open-world 2D survival game focused
+    on evaluating a broad range of agent capabilities (see [Fig. 3](#S3.F3 "In 3.1
+    Evaluated Benchmarks and Training Details ‣ 3 Experimental Setup ‣ EnvGen: Generating
+    and Adapting Environments via LLMs for Training Embodied Agents")). Crafter features
+    22 achievements that an agent can unlock during an episode of play. Some achievements
+    can be unlocked in a few steps (*e.g*., collect wood, collect sapling, *etc*.),
+    but other achievements, such as make iron pickaxe or collect diamond, require
+    many training/exploration steps and several prerequisite achievements to be unlocked
+    (see [Fig. 3](#S3.F3 "In 3.1 Evaluated Benchmarks and Training Details ‣ 3 Experimental
+    Setup ‣ EnvGen: Generating and Adapting Environments via LLMs for Training Embodied
+    Agents") b). For example, to make a stone pickaxe, an agent must first collect
+    enough wood to make a table and a wooden pickaxe, then go collect stone and return
+    to the table (or collect more wood to make a new one) and then construct the stone
+    pickaxe. As an agent progresses, these prerequisite achievements become increasingly
+    compounded (*e.g*., an iron pickaxe requires a table + a stone pickaxe + a furnace
+    + some coal + some wood), making it incredibly difficult to complete all achievements.
+    The score for Crafter is computed as the geometric mean of individual success
+    rates of each achievement for each episode it is completed within 1M training
+    steps: $S=exp(\frac{1}{22}\sum^{22}_{i=1}ln(1+s_{i}))-1$th achievement across
+    all episodes that occurred during training.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For EnvGen setup, we use $N^{\text{Cycle}}=4$ 10 different random seeds).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/422f6d30cc9639b4094ea1db9e3bcb52.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: (a): Heist gameplay screenshot. An agent aims to steal a gem (colored
+    yellow), navigating a maze and colored opening locks. (b): Heist achievement hierarchy.
+    The agent can only reach the gem after successively unlocking all locks in order.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Heist.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Heist is part of the OpenAI Procgen (Cobbe et al., [2020](#bib.bib11)) benchmark.
+    In this environment, agents must successfully ‘steal’ the gem after navigating
+    a maze and opening all locks (see [Fig. 4](#S3.F4 "In Crafter. ‣ 3.1 Evaluated
+    Benchmarks and Training Details ‣ 3 Experimental Setup ‣ EnvGen: Generating and
+    Adapting Environments via LLMs for Training Embodied Agents")). The gem is behind
+    three layers of color-coded locks, each requiring that the previous lock be unlocked
+    first (*e.g*., to unlock the green lock, the blue lock must first be unlocked).
+    Following Moon et al. ([2023](#bib.bib36)), the final score is calculated as the
+    average success of the agent in stealing the gem in 100 test episodes in 10 different
+    seeds (*i.e*., 1,000 runs in total). For agent training, we use a total of 5M
+    steps in the LLM-generated environments (*i.e*., 5M Heist${}^{\text{EnvGen}}$
+    training cycle.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Agent Architectures
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Our base RL agent.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'For both Crafter and Heist, we test the EnvGen framework with a simple (CNN
+    + linear layer) and lightweight ($<$5M) agent used in Moon et al. ([2023](#bib.bib36)),
+    which is slightly modified from the agent architecture used in IMPALA (Espeholt
+    et al., [2018](#bib.bib15)). Following Moon et al. ([2023](#bib.bib36)), we train
+    the agent with a PPO (Schulman et al., [2017](#bib.bib41)) objective. At every
+    step, the agent takes an RGB image (surroundings for Crafter, entire maze for
+    Heist) as input and outputs the value estimates and policy (action probability).
+    See [Fig. 3](#S3.F3 "In 3.1 Evaluated Benchmarks and Training Details ‣ 3 Experimental
+    Setup ‣ EnvGen: Generating and Adapting Environments via LLMs for Training Embodied
+    Agents") (a) and [Fig. 4](#S3.F4 "In Crafter. ‣ 3.1 Evaluated Benchmarks and Training
+    Details ‣ 3 Experimental Setup ‣ EnvGen: Generating and Adapting Environments
+    via LLMs for Training Embodied Agents") (a) for example visual inputs for agents.
+    We provide additional model implementation details in the appendix.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Baseline methods.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'For Crafter, we compare our method to two groups of recent baselines – (1)
+    methods that use frequent (*i.e*., more than thousands of) LLM calls during training
+    or inference: SPRING (Wu et al., [2023](#bib.bib59)) (based on GPT-4 (OpenAI,
+    [2023a](#bib.bib38))) and ELLM (Du et al., [2023](#bib.bib13)) (based on Codex (Chen
+    et al., [2021](#bib.bib9))) and (2) methods that do not use an LLM during training
+    or inference: DreamerV3 (Hafner et al., [2023](#bib.bib22)), MuZero + SPR (Walker
+    et al., [2023](#bib.bib50)), LSTM-SPCNN (Stanić et al., [2023](#bib.bib44)), PPO (Schulman
+    et al., [2017](#bib.bib41)), and Achievement Distillation (AD) (Moon et al., [2023](#bib.bib36)).
+    For Heist, we compare against the PPO agent. For the PPO and AD agents, we follow
+    the implementation of Moon et al. ([2023](#bib.bib36)). See appendix for the PPO/AD
+    agent details.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Results and Analysis
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We demonstrate the usefulness of the EnvGen method with comprehensive experiments
+    and analysis. We first compare RL agents trained with EnvGen to different baseline
+    methods on Crafter, an open-world game with 22 hierarchical achievements ([Sec. 4.1](#S4.SS1
+    "4.1 Comparison with State-of-the-art Methods on Crafter Environment ‣ 4 Results
+    and Analysis ‣ EnvGen: Generating and Adapting Environments via LLMs for Training
+    Embodied Agents")). Next, we present a detailed analysis of the improvements that
+    training with EnvGen environments can give RL agents on long-horizon tasks ([Sec. 4.2](#S4.SS2
+    "4.2 Detailed Achievement Analysis on Crafter Environment ‣ 4 Results and Analysis
+    ‣ EnvGen: Generating and Adapting Environments via LLMs for Training Embodied
+    Agents")). Then, we analyze how the LLM-based environment adaptation can help
+    an RL agent progressively improve the skills that the agent is weak at ([Sec. 4.3](#S4.SS3
+    "4.3 Adaptation of Training Environments Helps the Agent Improve Weaker Skills
+    ‣ 4 Results and Analysis ‣ EnvGen: Generating and Adapting Environments via LLMs
+    for Training Embodied Agents")). Moreover, we also compare an RL agent’s performance
+    on Heist (a maze navigation game), with and without EnvGen environments ([Sec. 4.4](#S4.SS4
+    "4.4 Evaluation on Heist Environment ‣ 4 Results and Analysis ‣ EnvGen: Generating
+    and Adapting Environments via LLMs for Training Embodied Agents")). Lastly, we
+    present various ablation studies on EnvGen design choices ([Sec. 4.5](#S4.SS5
+    "4.5 Additional Analysis and Ablation Studies ‣ 4 Results and Analysis ‣ EnvGen:
+    Generating and Adapting Environments via LLMs for Training Embodied Agents")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Models | Description | # LLM calls | # Agent Params | Score (%) | Reward
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Human^∗ |  |  |  | 50.5 $\pm$ 2.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Random^∗ |  |  |  | 1.6 $\pm$ 1.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ELLM* (Du et al., [2023](#bib.bib13)) | 5M step PT in Crafter w/ Codex reward
+    | 5M | 62M | - | 6.0 $\pm$ 0.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LSTM-SPCNN^∗ (Stanić et al., [2023](#bib.bib44)) |  |  | 135M | 11.7 $\pm$
+    0.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DreamerV3^∗ (Hafner et al., [2023](#bib.bib22)) |  |  | 201M | 14.8 $\pm$
+    0.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MuZero + SPR^∗ (Walker et al., [2023](#bib.bib50)) | 150M step PT in Crafter
+    w/ RND reward |  | 54M | 16.4 $\pm$ 0.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SPRING* (Wu et al., [2023](#bib.bib59)) | 9 queries to call GPT-4 per step
+    | 2.7K^† | Unknown | 27.3 $\pm$ 0.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PPO (Moon et al., [2023](#bib.bib36)) |  |  | 4M | 15.5 $\pm$ 0.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PPO (Moon et al., [2023](#bib.bib36)) | 0.96M step PT in Crafter |  | 4M
+    | 26.4 $\pm$ 1.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AD* (Moon et al., [2023](#bib.bib36)) |  |  | 9M | 21.8 $\pm$ 0.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AD (Moon et al., [2023](#bib.bib36)) | 0.96M step PT in Crafter |  | 9M |
+    31.8 $\pm$ 1.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PPO + EnvGen (Ours) | 0.96M step PT w/ Crafter${}^{\text{EnvGen}}$ 0.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AD + EnvGen (Ours) | 0.96M step PT w/ Crafter${}^{\text{EnvGen}}$ 0.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 1: Comparison of different agents in the Crafter (Hafner, [2022](#bib.bib19))
+    environment. Following previous works, we report the geometric mean of success
+    rates across its 22 achievements and rewards for 1M Crafter steps. We experiment
+    with EnvGen on two models, PPO and Achievement Distillation. *: scores from the
+    Crafter Scoreboard (Hafner, [2022](#bib.bib19)) and Moon et al. ([2023](#bib.bib36)).
+    $\dagger$: one standard deviation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Comparison with State-of-the-art Methods on Crafter Environment
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Small RL agent trained with EnvGen outperforms state-of-the-art baselines.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'On the Crafter environment (described in [Sec. 3.1](#S3.SS1 "3.1 Evaluated
+    Benchmarks and Training Details ‣ 3 Experimental Setup ‣ EnvGen: Generating and
+    Adapting Environments via LLMs for Training Embodied Agents")), we compare a small
+    PPO agent trained in Crafter${}^{\text{EnvGen}}$ (*i.e*., Crafter environments
+    generated with EnvGen) to state-of-the-art baseline methods. As shown in [Table 1](#S4.T1
+    "In 4 Results and Analysis ‣ EnvGen: Generating and Adapting Environments via
+    LLMs for Training Embodied Agents"), we find that a small (4M parameters) PPO
+    agent with EnvGen achieves an average score of 32.2% and significantly outperforms
+    the baselines (and also in terms of the average reward). Note that some baseline
+    agents have many more parameters or pretraining steps such as SPRING (27.3%) that
+    directly employs GPT-4 as agent, and MuZero + SPR (16.4%) that uses 150M pretraining
+    steps. Also, note that our method only uses orders of magnitude fewer LLM calls
+    (only 4) than works like SPRING (2.7K on average) and ELLM (5M). Due to the large
+    number of LLM calls, SPRING costs around $270 USD to run an agent in a single
+    episode, whereas EnvGen only costs a couple of cents total for any number of episodes
+    (see appendix for cost details). Moreover, we find that EnvGen can help train
+    another small RL agent – Achievement Distillation (AD) (Moon et al., [2023](#bib.bib36))
+    – to achieve an even higher score (35.3%).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Detailed Achievement Analysis on Crafter Environment
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Next, we analyze where EnvGen improves the overall score by checking individual
+    achievement success rates in detail. For this, we compare the same PPO agent architecture
+    trained with different setups: (1) an agent trained on Crafter for 1.96M steps
+    and (2) an agent trained on Crafter${}^{\text{EnvGen}}$ 4 training cycles, see
+    [Sec. 2.2](#S2.SS2 "2.2 EnvGen Method Details ‣ 2 EnvGen: Generating and Adapting
+    Environments via LLMs for Training Embodied Agents ‣ EnvGen: Generating and Adapting
+    Environments via LLMs for Training Embodied Agents")) and then trained on Crafter
+    for 1M steps. We measure the success rate ([Fig. 5](#S4.F5 "In 4.2 Detailed Achievement
+    Analysis on Crafter Environment ‣ 4 Results and Analysis ‣ EnvGen: Generating
+    and Adapting Environments via LLMs for Training Embodied Agents")) of each achievement
+    and unlocking speed ([Fig. 6](#S4.F6 "In EnvGen helps RL agents to tackle challenging
+    long-horizon achievements. ‣ 4.2 Detailed Achievement Analysis on Crafter Environment
+    ‣ 4 Results and Analysis ‣ EnvGen: Generating and Adapting Environments via LLMs
+    for Training Embodied Agents")) of iron tools in the last 1M training steps, and
+    discuss the results below.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/ae140f7aaa8203de688990203b80bad2.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: Success rates for all the Crafter achievements of two PPO agents (Moon
+    et al., [2023](#bib.bib36)) – (1) Baseline: trained in Crafter for 1.96M steps,
+    and (2) Ours: trained in 0.96M steps in Crafter${}^{\text{EnvGen}}$ and 1M in
+    Crafter.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: EnvGen helps RL agents to tackle challenging long-horizon achievements.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: '[Fig. 5](#S4.F5 "In 4.2 Detailed Achievement Analysis on Crafter Environment
+    ‣ 4 Results and Analysis ‣ EnvGen: Generating and Adapting Environments via LLMs
+    for Training Embodied Agents") shows that training in Crafter${}^{\text{EnvGen}}$
+    can also improve the success rate of another challenging long-horizon achievement
+    – ‘collect diamond’.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8ecbf5dd04ce892d4a8a8ad8d2db769f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: Unlock times (the first moment when the agent completed an achievement)
+    for three long-horizon achievements (‘make stone pickaxe’, ‘make iron pickaxe’,
+    and ‘make iron sword’) of two PPO agents (Moon et al., [2023](#bib.bib36)) – (1)
+    Baseline: trained in Crafter for 1.96M steps, and (2) Ours: trained for 0.96M
+    steps in Crafter${}^{\text{EnvGen}}$ environments unlocks the achievements much
+    quicker than the baseline agent that was only trained in the Crafter environment.
+    As shown in [Fig. 3](#S3.F3 "In 3.1 Evaluated Benchmarks and Training Details
+    ‣ 3 Experimental Setup ‣ EnvGen: Generating and Adapting Environments via LLMs
+    for Training Embodied Agents"), these achievements have many prerequisites and
+    require long-term planning.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/779a1054de7377bf1c31685d1a2f0ef7.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7: Adaptation of training environments based on agent performance over
+    EnvGen cycles. At the end of each cycle, the RL agent’s performance is given to
+    the LLM as feedback (*e.g*., ‘Collect coal is 2%’). The LLM uses the feedback
+    to adaptively generate new environments that can help the agent progressively
+    tackle skills it was previously weak at. As the training proceeds, our RL agent
+    trained with EnvGen shows more rapid improvements than the baseline agent trained
+    only in Crafter, by adaptively focusing the learning on previously weaker skills
+    (*i.e*., ‘collect coal’ and ‘make stone pickaxe’).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 Adaptation of Training Environments Helps the Agent Improve Weaker Skills
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '[Fig. 7](#S4.F7 "In EnvGen helps RL agents to tackle challenging long-horizon
+    achievements. ‣ 4.2 Detailed Achievement Analysis on Crafter Environment ‣ 4 Results
+    and Analysis ‣ EnvGen: Generating and Adapting Environments via LLMs for Training
+    Embodied Agents") shows how the LLM adaptively generates new training environments
+    based on the intermediate performance of our PPO-based RL agent. In the intermediate
+    performance plots, we compare the baseline agent trained only in Crafter and our
+    RL agent trained in Crafter${}^{\text{EnvGen}}$. In the cycle 2, given the feedback
+    that the current RL agent is not good at collecting coal, the LLM could generate
+    an environment to help the agent focus on the skill, improving the agent performance
+    in ‘collect coal’. Likewise, in the cycle 3, given the feedback that the agent
+    is weak at making stone pickaxe, the LLM could generate an environment to help
+    the agent more easily craft the stone pickaxe, helping the agent improving the
+    score in ‘make stone pickaxe’. Powered by the adaptive LLM environment generation
+    of EnvGen, our agent learns to unlock these two achievements significantly faster
+    than the baseline agent.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | # Training Steps in Heist${}^{\text{EnvGen}}$ | # Training Steps
+    in Heist | Score (%) | Reward |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PPO | - | 25M | 25.9 $\pm$ 1.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PPO + EnvGen (Ours) | 5M | 20M | 37.7 $\pm$ 0.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: Evaluation results on Heist. Scores are computed as the average success
+    rate over 100 test episodes over 10 different seeds.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4 Evaluation on Heist Environment
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: EnvGen can generalize to Heist.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We also evaluate the effectiveness of EnvGen framework with another game environment
+    – Heist, a maze navigation game described in [Sec. 3.1](#S3.SS1 "3.1 Evaluated
+    Benchmarks and Training Details ‣ 3 Experimental Setup ‣ EnvGen: Generating and
+    Adapting Environments via LLMs for Training Embodied Agents"). We compare the
+    PPO-based agent trained with and without EnvGen (*i.e*., Heist${}^{\text{EnvGen}}$
+    7.5%).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.5 Additional Analysis and Ablation Studies
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In the following, we show comprehensive ablation studies of EnvGen method:
+    EnvGen *vs*. longer training in the original environment, dynamically updating
+    LLM environments (*i.e*., using adaptive environments) *vs*. using a fixed LLM
+    environment, different LLMs for generating environments, frequency of environment
+    updates, the number of LLM environments, and the ratio of training steps in the
+    LLM environments to the original environment. Unless otherwise noted, we use the
+    PPO-based agent (Moon et al., [2023](#bib.bib36)) (described in [Sec. 3.2](#S3.SS2
+    "3.2 Agent Architectures ‣ 3 Experimental Setup ‣ EnvGen: Generating and Adapting
+    Environments via LLMs for Training Embodied Agents")) on the Crafter (Hafner,
+    [2022](#bib.bib19)) benchmark (described in [Sec. 3.1](#S3.SS1 "3.1 Evaluated
+    Benchmarks and Training Details ‣ 3 Experimental Setup ‣ EnvGen: Generating and
+    Adapting Environments via LLMs for Training Embodied Agents")) with 0.96M steps
+    in Crafter${}^{\text{EnvGen}}$ and average results for 30 runs (10 different seeds,
+    3 different initial environments).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| # Training Steps in Crafter${}^{\text{EnvGen}}$ | # Training Steps in Crafter
+    | Score (%) | Reward |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (Total 1.24M steps) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| - | 1.24M | 21.1 $\pm$ 0.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 0.12M | 1.12M | 22.3 $\pm$ 0.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (Total 1.48M steps) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| - | 1.48M | 21.9 $\pm$ 0.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 0.24M | 1.24M | 27.9 $\pm$ 0.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (Total 1.96M steps) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| - | 1.96M | 26.4 $\pm$ 1.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 0.48M | 1.48M | 32.2 $\pm$ 0.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 3: RL agents trained in Crafter${}^{\text{EnvGen}}$ environments *vs*.
+    agents trained only in the Crafter environment. We calculate the scores based
+    on the last 1M training steps in Crafter.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: EnvGen *vs*. longer training in the original environment.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: '[Table 3](#S4.T3 "In 4.5 Additional Analysis and Ablation Studies ‣ 4 Results
+    and Analysis ‣ EnvGen: Generating and Adapting Environments via LLMs for Training
+    Embodied Agents") shows that when given an equivalent # of total training steps,
+    the agents trained with Crafter${}^{\text{EnvGen}}$ environments outperform the
+    agents only trained with Crafter (*e.g*., 22.3% *vs*. 21.1% for 1.24M total steps).
+    Although the agent performances tend to improve with longer training steps in
+    both settings, training with EnvGen shows stronger performance gains than only
+    training longer in Crafter (*e.g*., 32.2% *vs*. 26.4% for 1.96M total steps).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Crafter${}^{\text{EnvGen}}$ environments during training | Score (%) | Reward
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fixed | 29.9 $\pm$ 0.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Updated based on RL agent performance (default) | 32.2 $\pm$ 0.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 4: RL agents trained in Crafter${}^{\text{EnvGen}}$ times during training.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Adaptive environments: Fixed. vs. Updated based on RL agent performance.'
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: '[Table 4](#S4.T4 "In EnvGen vs. longer training in the original environment.
+    ‣ 4.5 Additional Analysis and Ablation Studies ‣ 4 Results and Analysis ‣ EnvGen:
+    Generating and Adapting Environments via LLMs for Training Embodied Agents") shows
+    that using LLM environments that are adaptively updated based on intermediate
+    agent performance to improve weaker skills results in overall higher scoring agents
+    than just using the initial LLM environments for the whole training (32.2% *vs*.
+    29.9%). These results indicate the effectiveness of the agent feedback and environment
+    updating (step 4 described in [Sec. 2](#S2 "2 EnvGen: Generating and Adapting
+    Environments via LLMs for Training Embodied Agents ‣ EnvGen: Generating and Adapting
+    Environments via LLMs for Training Embodied Agents")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| LLM | Score (%) | Reward |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Deepseek Coder 33B Instruct | 26.3 $\pm$ 0.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPT-3.5-Turbo | 21.5 $\pm$ 1.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPT-4-Turbo (default) | 29.9 $\pm$ 0.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 5: Ablation of employing different LLMs to generate the environments.
+    Agents are trained with 0.96M steps in Crafter${}^{\text{EnvGen}}$ and 1M steps
+    in the Crafter environment.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Different LLMs to generate environments.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'To figure out which LLM can generate more useful training environments, we
+    experiment with three different LLMs (GPT-4-Turbo, GPT-3.5-Turbo (OpenAI, [2023b](#bib.bib39)),
+    and Deepseek Coder 33B Instruct (Guo et al., [2024](#bib.bib18))) and use $N^{\text{Cycle}}=1$
+    (*i.e*., fixed environment). [Table 5](#S4.T5 "In Adaptive environments: Fixed.
+    vs. Updated based on RL agent performance. ‣ 4.5 Additional Analysis and Ablation
+    Studies ‣ 4 Results and Analysis ‣ EnvGen: Generating and Adapting Environments
+    via LLMs for Training Embodied Agents") shows that environments generated by GPT-4-Turbo
+    outperform that of other LLMs including GPT-3.5-Turbo and Deepseek Coder 33B Instruct.
+    We see that GPT-3.5-Turbo performs the worst with only a score of 21.5%, while
+    Deepseek 33B Instruct is able to get several points higher (26.3%) and GPT-4-Turbo,
+    our default LLM, gets a few extra points (29.9%).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Environment Update Frequency | # Training cycles $N^{\text{Cycle}}$ | Score
+    (%) | Reward |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Every 0.012M steps | 40 cycles | 30.8 $\pm$ 0.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Every 0.06M steps | 8 cycles | 32.1 $\pm$ 0.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Every 0.12M steps (default) | 4 cycles | 32.2 $\pm$ 0.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 6: Different frequencies to give feedback to the LLM and update the environments
+    (see [Sec. 2](#S2 "2 EnvGen: Generating and Adapting Environments via LLMs for
+    Training Embodied Agents ‣ EnvGen: Generating and Adapting Environments via LLMs
+    for Training Embodied Agents") for details). Agents are trained with 0.96M steps
+    in Crafter${}^{\text{EnvGen}}$ and 1M steps in Crafter environment.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Frequency of LLM feedback / environment updates.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: '[Table 6](#S4.T6 "In Different LLMs to generate environments. ‣ 4.5 Additional
+    Analysis and Ablation Studies ‣ 4 Results and Analysis ‣ EnvGen: Generating and
+    Adapting Environments via LLMs for Training Embodied Agents") shows that updating
+    the LLM environments at every 0.12M steps results in the best agent performance.
+    While increasing the cycles of environment feedback beyond 4 does not improve
+    further, we find that updating environments with feedback always helps improve
+    the RL agent’s performance compared to training only with the original Crafter
+    environment (26.4%) or the fixed LLM environment (29.9%).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| # LLM environments | Score (%) | Reward |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | 30.8 $\pm$ 0.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | 29.1 $\pm$ 0.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 (default) | 32.2 $\pm$ 0.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 31.0 $\pm$ 0.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 7: Different number of LLM environments being generated by the LLM per
+    cycle. Agents are trained with 0.96M steps in Crafter${}^{\text{EnvGen}}$ and
+    1M steps in the real Crafter environment.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Number of LLM environments.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: '[Table 7](#S4.T7 "In Frequency of LLM feedback / environment updates. ‣ 4.5
+    Additional Analysis and Ablation Studies ‣ 4 Results and Analysis ‣ EnvGen: Generating
+    and Adapting Environments via LLMs for Training Embodied Agents") shows that changing
+    the number of environments generated by the LLM at each cycle (*i.e*., 1, 2, 4,
+    and 8) can slightly affect agent performance. While training with four environments
+    produces the highest result, training with environments generated with any of
+    the tested configurations improves performance over training only with the original
+    Crafter environment (26.4%).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Ratio of Training Steps in Crafter${}^{\text{EnvGen}}$ : Crafter | Score
+    (%) | Reward |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 5:1 | 30.3 $\pm$ 0.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2:1 | 30.1 $\pm$ 0.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1:1 (default) | 32.2 $\pm$ 0.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 8: Different ratios of training steps in LLM-generated environments (Crafter${}^{\text{EnvGen}}$,
+    the RL agent gets one training step in Crafter). We keep the total number of training
+    steps constant at 1.96M.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Ratio of training steps: LLM environments *vs*. original environment.'
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'As mentioned in [Sec. 2.2](#S2.SS2 "2.2 EnvGen Method Details ‣ 2 EnvGen: Generating
+    and Adapting Environments via LLMs for Training Embodied Agents ‣ EnvGen: Generating
+    and Adapting Environments via LLMs for Training Embodied Agents"), in EnvGen,
+    we train the RL agent in LLM environments (step 2) and then in the original environment
+    (step 3) to mitigate the agent from overfitting to the LLM environments. We experiment
+    with different ratios of training steps in LLM environments (*i.e*., Crafter${}^{\text{EnvGen}}$,
+    the RL agent gets one training step in Crafter). As shown in [Table 8](#S4.T8
+    "In Number of LLM environments. ‣ 4.5 Additional Analysis and Ablation Studies
+    ‣ 4 Results and Analysis ‣ EnvGen: Generating and Adapting Environments via LLMs
+    for Training Embodied Agents"), while different ratios do not result in big differences,
+    the default 1:1 ratio provides the highest scores.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Related Works
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: LLMs as open-world game agents.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'As LLMs have shown rapid progress in various domains (Brown et al., [2020](#bib.bib7);
+    OpenAI, [2023a](#bib.bib38); Touvron et al., [2023a](#bib.bib48); [b](#bib.bib49);
+    Chowdhery et al., [2023](#bib.bib10); Anil et al., [2023](#bib.bib3); Gemini Team,
+    [2023](#bib.bib16)), recent works study using LLMs to create action plans (*i.e*.,
+    a list of subgoals or skills to target) for embodied agents in open-world games
+    like Minecraft and Crafter (Hafner, [2022](#bib.bib19)). Most of these methods
+    require calling LLMs frequently (*e.g*., at every step) for planning the next
+    steps (Yuan et al., [2023](#bib.bib61); Wang et al., [2023c](#bib.bib53); Wu et al.,
+    [2023](#bib.bib59); Wang et al., [2023a](#bib.bib51); [d](#bib.bib54); Zhao et al.,
+    [2023](#bib.bib62)). Other methods, such as Li et al. ([2024](#bib.bib30)); Kwon
+    et al. ([2023](#bib.bib28)); Ma et al. ([2023](#bib.bib34)); Du et al. ([2023](#bib.bib13)),
+    have used LLMs to create/adjust rewards to train agents. Although these works
+    show initial promising results leveraging the world knowledge of LLMs to tackle
+    long-horizon tasks, iteratively calling LLMs throughout episodes is prohibitively
+    slow and expensive (*e.g*., running a single episode in the Crafter environment
+    with SPRING (Wu et al., [2023](#bib.bib59)) costs around $270 USD as they have
+    2.7K LLM calls on average). EnvGen framework proposes an alternative: calling
+    LLMs only a few times (*e.g*., 4) throughout the learning process to create training
+    environments that focus on helping the RL agent progressively improve the skills
+    that the agent is weak at.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reward designs in reinforcement learning.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Finding good action trajectories is critical in reinforcement learning (RL) (Sutton
+    & Barto, [2018](#bib.bib46)). While classic random exploration algorithms such
+    as epsilon-greedy (Watkins, [1989](#bib.bib56)) work well in simple settings such
+    as multi-armed bandit, it is not the case for hard exploration problems where
+    the environment gives very sparse rewards (Weng, [2020](#bib.bib58)). A line of
+    work studies how to augment the original (extrinsic) rewards from the environment
+    with intrinsic rewards that encourage exploration (Bellemare et al., [2016](#bib.bib6);
+    Burda et al., [2018](#bib.bib8)). While such intrinsic rewards can help RL agents
+    discover novel states and improve their knowledge about the environment, it often
+    requires long pretraining and does not guarantee that the intrinsic reward can
+    help the target task. Another recent line of work studies using LLMs to adjust
+    reward functions to help RL agents progressively learn certain tasks (Li et al.,
+    [2024](#bib.bib30); Kwon et al., [2023](#bib.bib28); Ma et al., [2023](#bib.bib34);
+    Du et al., [2023](#bib.bib13)). Instead of designing new rewards, in EnvGen, an
+    LLM adaptively generates training environments that can help the RL agent learn
+    multiple skills it is weak at with fewer training steps than in the original environment;
+    reward design could be complementary to our method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Deep learning-based game/simulator content generation.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Procedural content generation (PCG) for games is about the automatic generation
+    of levels, landscapes, items, rules, quests, or other types of game contents (Shaker
+    et al., [2016](#bib.bib43)). While traditional PCG methods are based on search/solver/rule/grammar-based
+    methods, recent works study applying deep learning methods such as GAN (Goodfellow
+    et al., [2014](#bib.bib17)) for PCG (Liu et al., [2021](#bib.bib33); Kumaran et al.,
+    [2020](#bib.bib26); Schubert et al., [2022](#bib.bib40)). Several works have recently
+    explored using LLMs to generate game content such as difficulty levels (Sudhakaran
+    et al., [2023](#bib.bib45); Todd et al., [2023](#bib.bib47)) and scenes/environments (Kumaran
+    et al., [2023](#bib.bib27); Wang et al., [2023b](#bib.bib52); Afshar & Li, [2024](#bib.bib1)).
+    While these works study how to help developers create extra/new game content in
+    simulators, generated environments may not be good for teaching agents how to
+    play/be better in the original environment. Our work studies using LLMs to adaptively
+    generate training environments that teach multiple useful skills to produce better-performing
+    embodied RL agents. Beyond game content generation, several recent works investigate
+    visually augmenting vision-and-language navigation (VLN) simulators (*e.g*., rendering
+    the environments with different styles) using image generation models (Li et al.,
+    [2022b](#bib.bib32); Wang et al., [2023e](#bib.bib55); Li & Bansal, [2023](#bib.bib31)).
+    Such works could complement our LLM-based environment generation (*e.g*., rendering
+    our LLM-generated environments with diverse colors and textures).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We propose EnvGen, a novel framework to improve embodied agent performance by
+    utilizing the world knowledge of LLMs to adaptively generate customized training
+    environments that progressively teach agents different skills more effectively.
+    In EnvGen, we give an LLM a prompt describing a game/simulator and ask the LLM
+    to generate the configurations to create new environments that can teach different
+    skills. Next, we train the agents in the LLM-generated environments and give feedback
+    to the LLM by testing the agent performance in the original environments, and
+    then ask the LLM to update the environments to teach agents skills they are weaker
+    at. We experiment with two different games, Crafter and Heist, and find that our
+    EnvGen framework effectively can increase agent performance. We also demonstrate
+    that training in LLM-generated environments can be more effective than just training
+    longer in the original environments when learning long-horizon tasks. Moreover,
+    we show that a lightweight model ($<$ 5M parameters) trained with LLM-generated
+    environments can even outperform an LLM agent, with significantly fewer LLM calls.
+    We also show comprehensive analyses of our results and ablation studies validating
+    the design choices of EnvGen framework. We hope our work can guide future works
+    in leveraging LLMs for training embodied agents.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Acknowledgments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We thank Elias Stengel-Eskin for the thoughtful discussion. This work was supported
+    by DARPA ECOLE Program No. HR00112390060, NSF-AI Engage Institute DRL-2112635,
+    DARPA Machine Commonsense (MCS) Grant N66001-19-2-4031, ARO Award W911NF2110220,
+    ONR Grant N00014-23-1-2356, and a Bloomberg Data Science Ph.D. Fellowship. The
+    views contained in this article are those of the authors and not of the funding
+    agency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Afshar & Li (2024) Aida Afshar and Wenchao Li. Delf: Designing learning environments
+    with foundation models. In *AAAI Workshop*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ahn et al. (2022) Michael Ahn, Anthony Brohan, Noah Brown, Yevgen Chebotar,
+    Omar Cortes, Byron David, Chelsea Finn, Chuyuan Fu, Keerthana Gopalakrishnan,
+    Karol Hausman, Alex Herzog, Daniel Ho, Jasmine Hsu, Julian Ibarz, Brian Ichter,
+    Alex Irpan, Eric Jang, Rosario Jauregui Ruano, Kyle Jeffrey, Sally Jesmonth, Nikhil J.
+    Joshi, Ryan Julian, Dmitry Kalashnikov, Yuheng Kuang, Kuang Huei Lee, Sergey Levine,
+    Yao Lu, Linda Luu, Carolina Parada, Peter Pastor, Jornell Quiambao, Kanishka Rao,
+    Jarek Rettinghouse, Diego Reyes, Pierre Sermanet, Nicolas Sievers, Clayton Tan,
+    Alexander Toshev, Vincent Vanhoucke, Fei Xia, Ted Xiao, Peng Xu, Sichun Xu, Mengyuan
+    Yan, and Andy Zeng. Do As I Can, Not As I Say: Grounding Language in Robotic Affordances.
+    In *CoRL*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Anil et al. (2023) Rohan Anil, Andrew M. Dai, Orhan Firat, Melvin Johnson, Dmitry
+    Lepikhin, Alexandre Passos, Siamak Shakeri, Emanuel Taropa, Paige Bailey, Zhifeng
+    Chen, Eric Chu, Jonathan H. Clark, Laurent El Shafey, Yanping Huang, Kathy Meier-Hellstern,
+    Gaurav Mishra, Erica Moreira, Mark Omernick, Kevin Robinson, Sebastian Ruder,
+    Yi Tay, Kefan Xiao, Yuanzhong Xu, Yujing Zhang, Gustavo Hernandez Abrego, Junwhan
+    Ahn, Jacob Austin, Paul Barham, Jan Botha, James Bradbury, Siddhartha Brahma,
+    Kevin Brooks, Michele Catasta, Yong Cheng, Colin Cherry, Christopher A. Choquette-Choo,
+    Aakanksha Chowdhery, Clément Crepy, Shachi Dave, Mostafa Dehghani, Sunipa Dev,
+    Jacob Devlin, Mark Díaz, Nan Du, Ethan Dyer, Vlad Feinberg, Fangxiaoyu Feng, Vlad
+    Fienber, Markus Freitag, Xavier Garcia, Sebastian Gehrmann, Lucas Gonzalez, Guy
+    Gur-Ari, Steven Hand, Hadi Hashemi, Le Hou, Joshua Howland, Andrea Hu, Jeffrey
+    Hui, Jeremy Hurwitz, Michael Isard, Abe Ittycheriah, Matthew Jagielski, Wenhao
+    Jia, Kathleen Kenealy, Maxim Krikun, Sneha Kudugunta, Chang Lan, Katherine Lee,
+    Benjamin Lee, Eric Li, Music Li, Wei Li, YaGuang Li, Jian Li, Hyeontaek Lim, Hanzhao
+    Lin, Zhongtao Liu, Frederick Liu, Marcello Maggioni, Aroma Mahendru, Joshua Maynez,
+    Vedant Misra, Maysam Moussalem, Zachary Nado, John Nham, Eric Ni, Andrew Nystrom,
+    Alicia Parrish, Marie Pellat, Martin Polacek, Alex Polozov, Reiner Pope, Siyuan
+    Qiao, Emily Reif, Bryan Richter, Parker Riley, Alex Castro Ros, Aurko Roy, Brennan
+    Saeta, Rajkumar Samuel, Renee Shelby, Ambrose Slone, Daniel Smilkov, David R.
+    So, Daniel Sohn, Simon Tokumine, Dasha Valter, Vijay Vasudevan, Kiran Vodrahalli,
+    Xuezhi Wang, Pidong Wang, Zirui Wang, Tao Wang, John Wieting, Yuhuai Wu, Kelvin
+    Xu, Yunhan Xu, Linting Xue, Pengcheng Yin, Jiahui Yu, Qiao Zhang, Steven Zheng,
+    Ce Zheng, Weikang Zhou, Denny Zhou, Slav Petrov, and Yonghui Wu. Palm 2 technical
+    report, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Aytar et al. (2018) Yusuf Aytar, Tobias Pfaff, David Budden, Tom Le Paine, Ziyu
+    Wang, and Nando de Freitas. Playing hard exploration games by watching YouTube.
+    In *NeurIPS*, 2018. URL [http://arxiv.org/abs/1805.11592](http://arxiv.org/abs/1805.11592).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Ba et al. (2016) Jimmy Lei Ba, Jamie Ryan Kiros, and Geoffrey E. Hinton. Layer
+    Normalization. In *NIPS 2016 Deep Learning Symposium*, 2016. URL [http://arxiv.org/abs/1607.06450](http://arxiv.org/abs/1607.06450).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Bellemare et al. (2016) Marc G. Bellemare, Sriram Srinivasan, Georg Ostrovski,
+    Tom Schaul, David Saxton, and Rémi Munos. Unifying count-based exploration and
+    intrinsic motivation. In *NIPS*, 2016.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Brown et al. (2020) Tom B. Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah,
+    Jared Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry,
+    Amanda Askell, Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan,
+    Rewon Child, Aditya Ramesh, Daniel M. Ziegler, Jeffrey Wu, Clemens Winter, Christopher
+    Hesse, Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack
+    Clark, Christopher Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario
+    Amodei. Language Models are Few-Shot Learners. In *NeurIPS*, 2020. URL [http://arxiv.org/abs/2005.14165](http://arxiv.org/abs/2005.14165).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Burda et al. (2018) Yuri Burda, Harrison Edwards, Amos Storkey, and Oleg Klimov.
+    Exploration by Random Network Distillation. In *ICLR*, 2018.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chen et al. (2021) Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde
+    de Oliveira Pinto, Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, Greg
+    Brockman, Alex Ray, Raul Puri, Gretchen Krueger, Michael Petrov, Heidy Khlaaf,
+    Girish Sastry, Pamela Mishkin, Brooke Chan, Scott Gray, Nick Ryder, Mikhail Pavlov,
+    Alethea Power, Lukasz Kaiser, Mohammad Bavarian, Clemens Winter, Philippe Tillet,
+    Felipe Petroski Such, Dave Cummings, Matthias Plappert, Fotios Chantzis, Elizabeth
+    Barnes, Ariel Herbert-Voss, William Hebgen Guss, Alex Nichol, Alex Paino, Nikolas
+    Tezak, Jie Tang, Igor Babuschkin, Suchir Balaji, Shantanu Jain, William Saunders,
+    Christopher Hesse, Andrew N. Carr, Jan Leike, Josh Achiam, Vedant Misra, Evan
+    Morikawa, Alec Radford, Matthew Knight, Miles Brundage, Mira Murati, Katie Mayer,
+    Peter Welinder, Bob McGrew, Dario Amodei, Sam McCandlish, Ilya Sutskever, and
+    Wojciech Zaremba. Evaluating large language models trained on code, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chowdhery et al. (2023) Aakanksha Chowdhery, Sharan Narang, Jacob Devlin, Maarten
+    Bosma, Gaurav Mishra, Adam Roberts, Paul Barham, Hyung Won Chung, Charles Sutton,
+    Sebastian Gehrmann, Parker Schuh, Kensen Shi, Sasha Tsvyashchenko, Joshua Maynez,
+    Abhishek Rao, Parker Barnes, Yi Tay, Noam Shazeer, Vinodkumar Prabhakaran, Emily
+    Reif, Nan Du, Ben Hutchinson, Reiner Pope, James Bradbury, Jacob Austin, Michael
+    Isard, Guy Gur-Ari, Pengcheng Yin, Toju Duke, Anselm Levskaya, Sanjay Ghemawat,
+    Sunipa Dev, Henryk Michalewski, Xavier Garcia, Vedant Misra, Kevin Robinson, Liam
+    Fedus, Denny Zhou, Daphne Ippolito, David Luan, Hyeontaek Lim, Barret Zoph, Alexander
+    Spiridonov, Ryan Sepassi, David Dohan, Shivani Agrawal, Mark Omernick, Andrew M.
+    Dai, Thanumalayan Sankaranarayana Pillai, Marie Pellat, Aitor Lewkowycz, Erica
+    Moreira, Rewon Child, Oleksandr Polozov, Katherine Lee, Zongwei Zhou, Xuezhi Wang,
+    Brennan Saeta, Mark Diaz, Orhan Firat, Michele Catasta, Jason Wei, Kathy Meier-Hellstern,
+    Douglas Eck, Jeff Dean, Slav Petrov, and Noah Fiedel. PaLM: Scaling Language Modeling
+    with Pathways. *JMLR*, pp.  1–83, 2023. URL [http://arxiv.org/abs/2204.02311](http://arxiv.org/abs/2204.02311).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Cobbe et al. (2020) Karl Cobbe, Chris Hesse, Jacob Hilton, and John Schulman.
+    Leveraging procedural generation to benchmark reinforcement learning. In Hal Daumé
+    III and Aarti Singh (eds.), *Proceedings of the 37th International Conference
+    on Machine Learning*, volume 119 of *Proceedings of Machine Learning Research*,
+    pp.  2048–2056\. PMLR, 13–18 Jul 2020. URL [https://proceedings.mlr.press/v119/cobbe20a.html](https://proceedings.mlr.press/v119/cobbe20a.html).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Driess et al. (2023) Danny Driess, Fei Xia, Mehdi S. M. Sajjadi, Corey Lynch,
+    Aakanksha Chowdhery, Brian Ichter, Ayzaan Wahid, Jonathan Tompson, Quan Vuong,
+    Tianhe Yu, Wenlong Huang, Yevgen Chebotar, Pierre Sermanet, Daniel Duckworth,
+    Sergey Levine, Vincent Vanhoucke, Karol Hausman, Marc Toussaint, Klaus Greff,
+    Andy Zeng, Igor Mordatch, and Pete Florence. PaLM-E: An Embodied Multimodal Language
+    Model. In *ICML 2023*, 2023. URL [http://arxiv.org/abs/2303.03378](http://arxiv.org/abs/2303.03378).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Du et al. (2023) Yuqing Du, Olivia Watkins, Zihan Wang, Cédric Colas, Trevor
+    Darrell, Pieter Abbeel, Abhishek Gupta, and Jacob Andreas. Guiding Pretraining
+    in Reinforcement Learning with Large Language Models. In *ICML*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Duan et al. (2022) Jiafei Duan, Samson Yu, Hui Li Tan, Hongyuan Zhu, and Cheston
+    Tan. A survey of embodied ai: From simulators to research tasks. *IEEE Transactions
+    on Emerging Topics in Computational Intelligence*, 6(2):230–244, 2022. doi: 10.1109/TETCI.2022.3141105.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Espeholt et al. (2018) Lasse Espeholt, Hubert Soyer, Remi Munos, Karen Simonyan,
+    Volodymyr Mnih, Tom Ward, Boron Yotam, Firoiu Vlad, Harley Tim, Iain Dunning,
+    Shane Legg, and Koray Kavukcuoglu. IMPALA: Scalable Distributed Deep-RL with Importance
+    Weighted Actor-Learner Architectures. In *ICML*, 2018. ISBN 9781510867963.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Gemini Team (2023) Gemini Team. Gemini: A family of highly capable multimodal
+    models, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Goodfellow et al. (2014) Ian J. Goodfellow, Jean Pouget-Abadie, Mehdi Mirza,
+    Bing Xu, David Warde-Farley, Sherjil Ozair, Aaron Courville, and Yoshua Bengio.
+    Generative Adversarial Networks. In *NIPS*, 2014. ISBN 1406.2661. URL [http://arxiv.org/abs/1406.2661](http://arxiv.org/abs/1406.2661).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Guo et al. (2024) Daya Guo, Qihao Zhu, Dejian Yang, Zhenda Xie, Kai Dong, Wentao
+    Zhang, Guanting Chen, Xiao Bi, Y. Wu, Y.K. Li, Fuli Luo, Yingfei Xiong, and Wenfeng
+    Liang. Deepseek-coder: When the large language model meets programming – the rise
+    of code intelligence, 2024. URL [https://arxiv.org/abs/2401.14196](https://arxiv.org/abs/2401.14196).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hafner (2022) Danijar Hafner. Benchmarking the spectrum of agent capabilities.
+    In *ICLR*, 2022. URL [https://github.com/danijar/crafter](https://github.com/danijar/crafter).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hafner et al. (2020) Danijar Hafner, Timothy Lillicrap, Jimmy Ba, and Mohammad
+    Norouzi. Dream to Control: Learning Behaviors by Latent Imagination. In *ICLR*,
+    2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hafner et al. (2021) Danijar Hafner, Timothy Lillicrap, Mohammad Norouzi, and
+    Jimmy Ba. Mastering Atari with Discrete World Models. In *ICLR*, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hafner et al. (2023) Danijar Hafner, Jurgis Pasukonis, Jimmy Ba, and Timothy
+    Lillicrap. Mastering Diverse Domains through World Models, 2023. URL [http://arxiv.org/abs/2301.04104](http://arxiv.org/abs/2301.04104).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: He et al. (2016) Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Deep
+    Residual Learning for Image Recognition. In *CVPR*, 2016.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hessel et al. (2018) Matteo Hessel, Joseph Modayil, Hado Van Hasselt, Tom Schaul,
+    Georg Ostrovski, Will Dabney, Dan Horgan, Bilal Piot, Mohammad Azar, and David
+    Silver. Rainbow: Combining improvements in deep reinforcement learning. In *AAAI*,
+    2018. ISBN 9781577358008. doi: 10.1609/aaai.v32i1.11796.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kojima et al. (2022) Takeshi Kojima, Shixiang Shane Gu, Machel Reid, Yutaka
+    Matsuo, and Yusuke Iwasawa. Large Language Models are Zero-Shot Reasoners. In
+    *NeurIPS*, 2022. URL [http://arxiv.org/abs/2205.11916](http://arxiv.org/abs/2205.11916).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kumaran et al. (2020) Vikram Kumaran, Bradford W. Mott, and James C. Lester.
+    Generating game levels for multiple distinct games with a common latent space.
+    In *AIIDE*, pp.  109–115, 2020. ISBN 9781577358497. doi: 10.1609/aiide.v16i1.7485.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kumaran et al. (2023) Vikram Kumaran, Jonathan Rowe, Bradford Mott, and James
+    Lester. SCENECRAFT: Automating Interactive Narrative Scene Generation in Digital
+    Games with Large Language Models. In *AIIDE*, pp.  86–96, 2023. ISBN 157735883X.
+    doi: 10.1609/aiide.v19i1.27504.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kwon et al. (2023) Minae Kwon, Sang Michael Xie, Kalesha Bullard, and Dorsa
+    Sadigh. Reward design with language models. In *International Conference on Learning
+    Representations*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Li et al. (2022a) Andrew C Li, Pashootan Vaezipoor, Rodrigo Toro Icarte, and
+    Sheila A. McIlraith. Exploring long-horizon reasoning with deep RL in combinatorially
+    hard tasks. In *Decision Awareness in Reinforcement Learning Workshop at ICML
+    2022*, 2022a. URL [https://openreview.net/forum?id=7vPSZASOF0o](https://openreview.net/forum?id=7vPSZASOF0o).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. (2024) Hao Li, Xue Yang, Zhaokai Wang, Xizhou Zhu, Jie Zhou, Yu Qiao,
+    Xiaogang Wang, Hongsheng Li, Lewei Lu, and Jifeng Dai. Auto mc-reward: Automated
+    dense reward design with large language models for minecraft. In *IEEE/CVF Conference
+    on Computer Vision and Pattern Recognition*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li & Bansal (2023) Jialu Li and Mohit Bansal. Panogen: Text-conditioned panoramic
+    environment generation for vision-and-language navigation. *Advances in Neural
+    Information Processing Systems*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. (2022b) Jialu Li, Hao Tan, and Mohit Bansal. Envedit: Environment
+    editing for vision-and-language navigation. In *Proceedings of the IEEE/CVF Conference
+    on Computer Vision and Pattern Recognition*, 2022b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. (2021) Jialin Liu, Sam Snodgrass, Ahmed Khalifa, Sebastian Risi,
+    Georgios N. Yannakakis, and Julian Togelius. Deep learning for procedural content
+    generation. *Neural Comput. Appl.*, 33(1):19–37, jan 2021. ISSN 0941-0643. doi:
+    10.1007/s00521-020-05383-8. URL [https://doi.org/10.1007/s00521-020-05383-8](https://doi.org/10.1007/s00521-020-05383-8).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ma et al. (2023) Yecheng Jason Ma, William Liang, Guanzhi Wang, De-An Huang,
+    Osbert Bastani, Dinesh Jayaraman, Yuke Zhu, Linxi Fan, and Anima Anandkumar. Eureka:
+    Human-level reward design via coding large language models. *ArXiv*, abs/2310.12931,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Mojang Studios (2009) Mojang Studios. Minecraft, 2009. URL [https://www.minecraft.net/](https://www.minecraft.net/).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Moon et al. (2023) Seungyong Moon, Junyoung Yeom, Bumsoo Park, and Hyun Oh Song.
+    Discovering Hierarchical Achievements in Reinforcement Learning via Contrastive
+    Learning. In *NeurIPS*, 2023. URL [http://arxiv.org/abs/2307.03486](http://arxiv.org/abs/2307.03486).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Nye et al. (2021) Maxwell Nye, Anders Johan Andreassen, Guy Gur-Ari, Henryk
+    Michalewski, Jacob Austin, David Bieber, David Dohan, Aitor Lewkowycz, Maarten
+    Bosma, David Luan, Charles Sutton, and Augustus Odena. Show Your Work: Scratchpads
+    for Intermediate Computation with Language Models, 2021. URL [http://arxiv.org/abs/2112.00114](http://arxiv.org/abs/2112.00114).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: OpenAI (2023a) OpenAI. Gpt-4 technical report. *ArXiv*, 2023a. URL [https://api.semanticscholar.org/CorpusID:257532815](https://api.semanticscholar.org/CorpusID:257532815).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: OpenAI (2023b) OpenAI. Chatgpt. [https://openai.com/chatgpt](https://openai.com/chatgpt),
+    2023b.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Schubert et al. (2022) Frederik Schubert, Maren Awiszus, and Bodo Rosenhahn.
+    TOAD-GAN: A Flexible Framework for Few-Shot Level Generation in Token-Based Games.
+    *IEEE Transactions on Games*, 14(2):284–293, 2022. ISSN 24751510. doi: 10.1109/TG.2021.3069833.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Schulman et al. (2017) John Schulman, Filip Wolski, Prafulla Dhariwal, Alec
+    Radford, and Oleg Klimov. Proximal Policy Optimization Algorithms, 2017.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sekar et al. (2020) Ramanan Sekar, Oleh Rybkin, Kostas Daniilidis, Pieter Abbeel,
+    Danijar Hafner, and Deepak Pathak. Planning to explore via self-supervisedworld
+    models. In *ICML*, 2020. ISBN 9781713821120.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Shaker et al. (2016) Noor Shaker, Julian Togelius, and Mark J. Nelson. *Procedural
+    Content Generation in Games*. Springer Publishing Company, Incorporated, 1st edition,
+    2016. ISBN 3319427148.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Stanić et al. (2023) Aleksandar Stanić, Yujin Tang, David Ha, and Jürgen Schmidhuber.
+    Learning to generalize with object-centric agents in the open world survival game
+    crafter. *IEEE Transactions on Games*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sudhakaran et al. (2023) Shyam Sudhakaran, Miguel González-Duque, Claire Glanois,
+    Matthias Freiberger, Elias Najarro, and Sebastian Risi. MarioGPT: Open-Ended Text2Level
+    Generation through Large Language Models. In *NeurIPS*, 2023. URL [http://arxiv.org/abs/2302.05981](http://arxiv.org/abs/2302.05981).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sutton & Barto (2018) Richard S. Sutton and Andrew G. Barto. *Reinforcement
+    Learning: An Introduction*. The MIT Press, 2 edition, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Todd et al. (2023) Graham Todd, Sam Earle, Muhammad Umair Nasir, Michael Cerny
+    Green, and Julian Togelius. Level Generation Through Large Language Models. In
+    *FDG*, 2023. ISBN 9781450398565. doi: 10.1145/3582437.3587211.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023a) Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier
+    Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal,
+    Eric Hambro, Faisal Azhar, Aurelien Rodriguez, Armand Joulin, Edouard Grave, and
+    Guillaume Lample. Llama: Open and efficient foundation language models, 2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023b) Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert,
+    Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava,
+    Shruti Bhosale, Dan Bikel, Lukas Blecher, Cristian Canton Ferrer, Moya Chen, Guillem
+    Cucurull, David Esiobu, Jude Fernandes, Jeremy Fu, Wenyin Fu, Brian Fuller, Cynthia
+    Gao, Vedanuj Goswami, Naman Goyal, Anthony Hartshorn, Saghar Hosseini, Rui Hou,
+    Hakan Inan, Marcin Kardas, Viktor Kerkez, Madian Khabsa, Isabel Kloumann, Artem
+    Korenev, Punit Singh Koura, Marie-Anne Lachaux, Thibaut Lavril, Jenya Lee, Diana
+    Liskovich, Yinghai Lu, Yuning Mao, Xavier Martinet, Todor Mihaylov, Pushkar Mishra,
+    Igor Molybog, Yixin Nie, Andrew Poulton, Jeremy Reizenstein, Rashi Rungta, Kalyan
+    Saladi, Alan Schelten, Ruan Silva, Eric Michael Smith, Ranjan Subramanian, Xiaoqing Ellen
+    Tan, Binh Tang, Ross Taylor, Adina Williams, Jian Xiang Kuan, Puxin Xu, Zheng
+    Yan, Iliyan Zarov, Yuchen Zhang, Angela Fan, Melanie Kambadur, Sharan Narang,
+    Aurelien Rodriguez, Robert Stojnic, Sergey Edunov, and Thomas Scialom. Llama 2:
+    Open foundation and fine-tuned chat models, 2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Walker et al. (2023) Jacob Walker, Eszter Vértes, Yazhe Li, Gabriel Dulac-Arnold,
+    Ankesh Anand, Théophane Weber, and Jessica B. Hamrick. Investigating the Role
+    of Model-Based Learning in Exploration and Transfer. In *ICML*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wang et al. (2023a) Guanzhi Wang, Yuqi Xie, Yunfan Jiang, Ajay Mandlekar, Chaowei
+    Xiao, Yuke Zhu, Linxi Fan, and Anima Anandkumar. Voyager: An Open-Ended Embodied
+    Agent with Large Language Models, 2023a. URL [http://arxiv.org/abs/2305.16291](http://arxiv.org/abs/2305.16291).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wang et al. (2023b) Ruoyao Wang, Graham Todd, Xingdi Yuan, Ziang Xiao, Marc-Alexandre
+    Côté, and Peter Jansen. ByteSized32: A corpus and challenge task for generating
+    task-specific world models expressed as text games. In Houda Bouamor, Juan Pino,
+    and Kalika Bali (eds.), *Proceedings of the 2023 Conference on Empirical Methods
+    in Natural Language Processing*, pp.  13455–13471, Singapore, December 2023b.
+    Association for Computational Linguistics. doi: 10.18653/v1/2023.emnlp-main.830.
+    URL [https://aclanthology.org/2023.emnlp-main.830](https://aclanthology.org/2023.emnlp-main.830).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wang et al. (2023c) Zihao Wang, Shaofei Cai, Guanzhou Chen, Anji Liu, Xiaojian
+    Ma, and Yitao Liang. Describe, Explain, Plan and Select: Interactive Planning
+    with Large Language Models Enables Open-World Multi-Task Agents. In *NeurIPS*,
+    2023c. URL [http://arxiv.org/abs/2302.01560](http://arxiv.org/abs/2302.01560).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wang et al. (2023d) Zihao Wang, Shaofei Cai, Anji Liu, Yonggang Jin, Jinbing
+    Hou, Bowei Zhang, Haowei Lin, Zhaofeng He, Zilong Zheng, Yaodong Yang, Xiaojian
+    Ma, and Yitao Liang. JARVIS-1: Open-World Multi-task Agents with Memory-Augmented
+    Multimodal Language Models, 2023d. URL [http://arxiv.org/abs/2311.05997](http://arxiv.org/abs/2311.05997).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wang et al. (2023e) Zun Wang, Jialu Li, Yicong Hong, Yi Wang, Qi Wu, Mohit Bansal,
+    Stephen Gould, Hao Tan, and Yu Qiao. Scaling data generation in vision-and-language
+    navigation. In *ICCV*, 2023e.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Watkins (1989) Christopher J.C.H. Watkins. *Learning from Delayed Rewards*.
+    PhD thesis, University of Cambridge, England, May 1989.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wei et al. (2022) Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Brian
+    Ichter, Fei Xia, Ed Chi, Quoc Le, and Denny Zhou. Chain-of-Thought Prompting Elicits
+    Reasoning in Large Language Models. In *NeurIPS*, pp.  1–43, 2022. URL [http://arxiv.org/abs/2201.11903](http://arxiv.org/abs/2201.11903).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Weng (2020) Lilian Weng. Exploration strategies in deep reinforcement learning.
+    *lilianweng.github.io*, Jun 2020. URL [https://lilianweng.github.io/posts/2020-06-07-exploration-drl/](https://lilianweng.github.io/posts/2020-06-07-exploration-drl/).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wu et al. (2023) Yue Wu, Shrimai Prabhumoye, So Yeon Min, Yonatan Bisk, Ruslan
+    Salakhutdinov, Amos Azaria, Tom Mitchell, and Yuanzhi Li. SPRING: Studying the
+    Paper and Reasoning to Play Games. In *NeurIPS*, 2023. URL [http://arxiv.org/abs/2305.15486](http://arxiv.org/abs/2305.15486).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yao et al. (2023) Shunyu Yao, Jeffrey Zhao, Dian Yu, Nan Du, Izhak Shafran,
+    Karthik Narasimhan, and Yuan Cao. ReAct: Synergizing Reasoning and Acting in Language
+    Models. In *ICLR*, 2023. URL [http://arxiv.org/abs/2210.03629](http://arxiv.org/abs/2210.03629).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Yuan et al. (2023) Haoqi Yuan, Chi Zhang, Hongcheng Wang, Feiyang Xie, Penglin
+    Cai, Hao Dong, and Zongqing Lu. Skill Reinforcement Learning and Planning for
+    Open-World Long-Horizon Tasks. In *Foundation Models for Decision Making Workshop
+    at NeurIPS*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhao et al. (2023) Zhonghan Zhao, Wenhao Chai, Xuan Wang, Li Boyi, Shengyu
+    Hao, Shidong Cao, Tian Ye, Jenq-Neng Hwang, and Gaoang Wang. See and Think: Embodied
+    Agent in Virtual Environment, 2023. URL [http://arxiv.org/abs/2311.15209](http://arxiv.org/abs/2311.15209).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this appendix, we present additional experiment results with another RL
+    agent ([Appendix A](#A1 "Appendix A Additional Experiment Results with Another
+    RL Agent ‣ EnvGen: Generating and Adapting Environments via LLMs for Training
+    Embodied Agents")), RL agent implementation details ([Appendix B](#A2 "Appendix
+    B RL Agent Implementation Details ‣ EnvGen: Generating and Adapting Environments
+    via LLMs for Training Embodied Agents")), additional LLM details ([Appendix C](#A3
+    "Appendix C Additional LLM Details ‣ EnvGen: Generating and Adapting Environments
+    via LLMs for Training Embodied Agents")), and limitations ([Appendix D](#A4 "Appendix
+    D Limitations ‣ EnvGen: Generating and Adapting Environments via LLMs for Training
+    Embodied Agents")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix A Additional Experiment Results with Another RL Agent
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Achievement Distillation + EnvGen.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'As mentioned in the [Sec. 4.2](#S4.SS2 "4.2 Detailed Achievement Analysis on
+    Crafter Environment ‣ 4 Results and Analysis ‣ EnvGen: Generating and Adapting
+    Environments via LLMs for Training Embodied Agents"), we also experiment using
+    EnvGen with the Achievement Distillation (AD) (Moon et al., [2023](#bib.bib36))
+    agent. As shown in [Fig. 8](#A1.F8 "In Achievement Distillation + EnvGen. ‣ Appendix
+    A Additional Experiment Results with Another RL Agent ‣ EnvGen: Generating and
+    Adapting Environments via LLMs for Training Embodied Agents"), similar to our
+    results on the PPO-based agent, we find that by applying EnvGen, there is performance
+    gain in long-horizon tasks like making iron tools and collecting diamonds.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/eb8637a817492174003c59c5230faafc.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8: Success rates for all Crafter achievements of two Achievement Distillation
+    (AD) agents (Moon et al., [2023](#bib.bib36)): (1) Baseline: trained in Crafter
+    for 1.96M steps, and (2) Ours: trained in Crafter${}^{\text{EnvGen}}$ for 0.96M
+    steps and Crafter for 1M steps.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B RL Agent Implementation Details
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: PPO agent.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We use the PPO-based (Schulman et al., [2017](#bib.bib41)) agent used in (Moon
+    et al., [2023](#bib.bib36)), which modifies the default ResNet (He et al., [2016](#bib.bib23))
+    architecture in IMPALA (Espeholt et al., [2018](#bib.bib15)) by increasing channel
+    size and hidden size and adding a layer normalization Ba et al. ([2016](#bib.bib5))
+    before each linear/convolutional layer. We slightly modify this architecture further
+    to place the layer norm after the final linear layer instead of before. Hyperparameters
+    for this model are shown in Table 9.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Hyperparameter | Value |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Discount factor | 0.95 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GAE smoothing parameter | 0.65 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| # timesteps per rollout | 4096 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| # epochs per rollout | 3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| # mini-batches per epoch | 8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Entropy bonus | 0.01 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PPO clip range | 0.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Reward normalization | No |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EWMA decay rate | 0.99 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Learning rate | 3e-4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Max grad norm | 0.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Value function coefficient | 0.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 9: PPO agent hyperparameters. Hyperparameters are following Moon et al.
+    ([2023](#bib.bib36)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Hyperparameter | Value |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Policy regularizer coefficient | 1.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Value regularizer coefficient | 1.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Entropic regularizer coefficient | 0.05 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| # policy phases per auxiliary phase | 8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| # epochs per auxiliary phase | 6 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 10: Achievement Distillation hyperparameters. Hyperparameters are following
+    Moon et al. ([2023](#bib.bib36)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Achievement distillation (AD) agent.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Moon et al. ([2023](#bib.bib36)) builds upon its PPO-based agent model and
+    adds auxiliary training steps after the PPO policy updates. Their auxiliary training
+    consists of two parts: (1) intra-trajectory achievement prediction and (2) cross-trajectory
+    achievement matching. (1) Intra-trajectory achievement prediction maximizes the
+    similarity between state-action pairs and the corresponding next achievement that
+    needs to be unlocked in the achievement hierarchy within an episode. (2) Cross-trajectory
+    achievement matching maximizes the similarity between achievements across episodes.
+    Hyperparameters for this model are shown in Table 10.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix C Additional LLM Details
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Prompt Template.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'In [Fig. 9](#A3.F9 "In Prompt Template. ‣ Appendix C Additional LLM Details
+    ‣ EnvGen: Generating and Adapting Environments via LLMs for Training Embodied
+    Agents") (a), we show the LLM prompt template that is used to generate environments.
+    The contents of the prompt can vary slightly between different environments/games
+    though generally remain the same. In [Fig. 9](#A3.F9 "In Prompt Template. ‣ Appendix
+    C Additional LLM Details ‣ EnvGen: Generating and Adapting Environments via LLMs
+    for Training Embodied Agents") (b), we show the additional prompt template that
+    is used during the feedback step (step 4 in [Sec. 2.2](#S2.SS2 "2.2 EnvGen Method
+    Details ‣ 2 EnvGen: Generating and Adapting Environments via LLMs for Training
+    Embodied Agents ‣ EnvGen: Generating and Adapting Environments via LLMs for Training
+    Embodied Agents")). At each feedback cycle iteration, the additional prompt is
+    concatenated to the previous LLM output (*i.e*., maintaining a chat history).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/165331b1011055fc217823e79796b466.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 9: The prompts that are given to the LLM to generate environments in
+    step 1 of [Sec. 2.2](#S2.SS2 "2.2 EnvGen Method Details ‣ 2 EnvGen: Generating
+    and Adapting Environments via LLMs for Training Embodied Agents ‣ EnvGen: Generating
+    and Adapting Environments via LLMs for Training Embodied Agents").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: API Cost.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: As we use GPT-4-Turbo (1106-preview version) the API cost is $10.00 per 1M tokens
+    and $30.00 per 1M tokens. The initial environment generation cost is $0.03 and
+    then each iteration of the feedback cycle adds $0.04. Once the model is trained
+    via EnvGen it no longer requires any LLM calls for inference or further training
+    on the original environment. Works like SPRING (Wu et al., [2023](#bib.bib59))
+    require $270 USD and several thousand LLM calls per episode, which is much more
+    expensive than our work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix D Limitations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: EnvGen relies on strong LLMs (*e.g*., GPT-4). But note that one of the main
+    motivations of EnvGen is to more efficiently use LLMs to help train embodied agents,
+    and as such EnvGen requires very few LLM calls (*e.g*., 4 calls), which only costs
+    less than $1 USD during the entire training. We hope that advances in quantization/distillation
+    and open-source models will make strong LLMs more accessible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: EnvGen also requires that the environment simulators can (or be easily edited
+    to) accept configurations in standard formats (*e.g*., JSON, CSV, YAML, TOML *etc*.),
+    and the LLM can correctly generate configurations in such formats. Note that such
+    text configuration formats are widely used for managing game simulators. We empirically
+    find that environment configurations generated by GPT-4 can be easily parsed without
+    error.
+  prefs: []
+  type: TYPE_NORMAL
