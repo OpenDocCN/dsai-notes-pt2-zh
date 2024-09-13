@@ -1,0 +1,2297 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:36:11'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2406.02913](https://ar5iv.labs.arxiv.org/html/2406.02913)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Wentao Guo wg0420@princeton.edu, Princeton University Jikai Long {jlong1,yran1,xyu38,zxu79}@stevens.edu,
+    Stevens Institute of Technology Yimeng Zeng {yimengz,jacobrg,obastani}@seas.upenn.edu,
+    University of Pennsylvania Zirui Liu zl105@rice.edu, Rice University Xinyu Yang
+    {xinyuya2,beidic}@andrew.cmu.edu, Carnegie Mellon University Yide Ran {jlong1,yran1,xyu38,zxu79}@stevens.edu,
+    Stevens Institute of Technology Jacob R. Gardner {yimengz,jacobrg,obastani}@seas.upenn.edu,
+    University of Pennsylvania Osbert Bastani {yimengz,jacobrg,obastani}@seas.upenn.edu,
+    University of Pennsylvania Christopher De Sa cdesa@cs.cornell.edu, Cornell University
+    Xiaodong Yu {jlong1,yran1,xyu38,zxu79}@stevens.edu, Stevens Institute of Technology
+    Beidi Chen {xinyuya2,beidic}@andrew.cmu.edu, Carnegie Mellon University Zhaozhuo
+    Xu {jlong1,yran1,xyu38,zxu79}@stevens.edu, Stevens Institute of Technology
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Zeroth-order optimization (ZO) is a memory-efficient strategy for fine-tuning
+    Large Language Models using only forward passes. However, the application of ZO
+    fine-tuning in memory-constrained settings such as mobile phones and laptops is
+    still challenging since full precision forward passes are infeasible. In this
+    study, we address this limitation by integrating sparsity and quantization into
+    ZO fine-tuning of LLMs. Specifically, we investigate the feasibility of fine-tuning
+    an extremely small subset of LLM parameters using ZO. This approach allows the
+    majority of un-tuned parameters to be quantized to accommodate the constraint
+    of limited device memory. Our findings reveal that the pre-training process can
+    identify a set of “sensitive parameters” that can guide the ZO fine-tuning of
+    LLMs on downstream tasks. Our results demonstrate that fine-tuning 0.1% sensitive
+    parameters in the LLM with ZO can outperform the full ZO fine-tuning performance,
+    while offering wall-clock time speedup. Additionally, we show that ZO fine-tuning
+    targeting these 0.1% sensitive parameters, combined with 4 bit quantization, enables
+    efficient ZO fine-tuning of an Llama2-7B model on a GPU device with less than
+    8GiB of memory and notably reduced latency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Large language models (LLMs) have demonstrated superior performance in general-purpose
+    language generation [[1](#bib.bib1), [35](#bib.bib35), [22](#bib.bib22)]. Despite
+    their success, it remains necessary to fine-tune LLMs for specific tasks to achieve
+    optimal results. However, fine-tuning LLMs often requires much more memory compared
+    to the inference process. Specifically, there are mainly four parts that occupy
+    the memory during fine-tuning LLMs: (1) the weight parameter itself; (2) the optimizer
+    state, which contains the information about the past gradient [[16](#bib.bib16)];
+    (3) the weight gradient used to update the parameters; (4) the activation cached
+    to calculate the weight gradient [[25](#bib.bib25)]; In previous work like QLoRA
+    [[7](#bib.bib7)], it can reduce both (1) and (2) by combining weight quantization
+    and low-rank adaption [[12](#bib.bib12)], which enables fine-tuning huge LLMs
+    under data-center level GPUs. However, under more memory-constraint hardware like
+    cell phones, the memory of caching (3) weight gradient and (4) activation required
+    by backpropagation still cannot be overlooked. The disparity between the demand
+    of LLM fine-tuning and hardware capacity limits the adaptability of LLMs, especially
+    when personalizing them for edge devices.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exploring Zeroth-Order Optimization in LLM Fine-Tuning. Recently, there has
+    been a resurging interest in zeroth-order (ZO) optimization methods for LLM fine-tuning
+    [[27](#bib.bib27), [23](#bib.bib23), [3](#bib.bib3)]. ZO optimization method perturbs
+    model parameters in random directions and utilize the loss value difference to
+    compute the gradient direction for parameter update. One advantage of ZO methods
+    in LLM fine-tuning is that they do not require backpropagation procedures, which
+    significantly saves the computation and memory. In this way, ZO is backpropagation-free
+    and does not need to cache (3) weight gradients and (4) activations during fine-tuning.
+    In practice, ZO methods have demonstrated the potential to achieve performance
+    comparable to first-order methods in LLM fine-tuning, which opens the doors for
+    various efficient LLM adaptation strategies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/5fbd4cac51b7d68c96e4880d443af3af.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Training & inference speed of Llama2-7B. As the sensitive sparse
+    fine-tuning method achieves great performance via optimizing only 0.1% parameters
+    (performance comparable to ZO full fine-tuning and 10% random subsets), during
+    inference we achieve an end-to-end $1.49\times$ speedup at sparse operations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Efficient ZO LLM Fine-Tuning with Sparsity. Although ZO methods remove the
+    need for backpropagation, a significant drawback of these methods is the slow
+    convergence rate [[51](#bib.bib51), [23](#bib.bib23)]. A recent approach addresses
+    this by fine-tuning with a sparse mask [[23](#bib.bib23), [50](#bib.bib50)], achieving
+    approximately $\sim 75\%$ sparsity is still comparable to that of dense matrix
+    operations. This latency increase can greatly impact user experience on applications
+    such as personal assistants, where even a twofold increase in latency is perceptible.
+    In addition, merging the sparse weights back into the base model is impractical
+    on these devices due to memory constraints prohibiting dequantization and quantization.
+    Empirical evidence suggests that higher sparsity levels can significantly decrease
+    the time required for sparse matrix operations, as shown in Figure [1](#S1.F1
+    "Figure 1 ‣ 1 Introduction ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity").
+    This raises the question:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Is it possible to leverage the benefits of higher sparsity levels in reducing
+    inference latency while preserving performance on downstream tasks? If so, how
+    far can sparsity be pushed in this context?*'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our Proposal: ZO LLM Fine-Tuning with Fisher-Informed, Transferable Sparsity.
+    In this paper, we answer the raised research question by proposing an efficient
+    sparse ZO LLM fine-tuning strategy. We observe an extreme sparsity pattern in
+    LLM parameters: a subset, determined by selecting the top $k$ magnitude entries
+    from the empirical Fisher information matrix, is effective for ZO fine-tuning.
+    Moreover, we find this sparsity pattern can be obtained through LLM’s continuous
+    pre-training process and be transferred to various downstream tasks without modification.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Summary of Contributions. Building on these insights, our work proposes a comprehensive
+    framework for ZO fine-tuning, making the following contributions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We identify that only an extremely small portion (0.1%) of LLM parameters should
+    be updated during ZO LLM fine-tuning. Moreover, we utilize this insight to guide
+    the memory-efficient on-device personalization of LLMs by low-bit quantization
+    of model parameters.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We observe the sparsity pattern observed in LLM pre-training can be transferred
+    across different downstream tasks while still maintaining good ZO performance.
+    Based on this observation, we develop a computational framework to perform parameter-efficient
+    ZO fine-tuning of LLMs.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We conduct extensive experiments across various LLMs and demonstrate that our
+    method achieves competitive performance across various downstream tasks.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 2 Background and Related works
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we present the formulation for ZO optimization. We also discuss
+    related works about sparsity in LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.1 Zeroth-Order Optimization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: ZO surrogate gradient estimator. ZO optimizers have been studied widely in the
+    machine learning community. Given a dataset $\mathcal{D}=\{(\mathbf{x}_{1},y_{1}),\dots,(\mathbf{x}_{n},y_{n})\}$
+    via ZO surrogate gradient estimator. Simultaneous Perturbation Stochastic Approximation
+    (SPSA) [[39](#bib.bib39)] is such an estimator that would first sample a random
+    vector $\mathbf{z}\in\mathbb{R}^{d}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Definition 1  (Simultaneous Perturbation Stochastic Approximation (SPSA) [[39](#bib.bib39)]).
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'SPSA estimates the gradient w.r.t. $\mathbf{w}$ as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\hat{g}(\mathbf{w},(\mathbf{x},y),\mathbf{z})=\dfrac{f(\mathbf{w}+\epsilon\mathbf{z};(\mathbf{x},y))-f(\mathbf{w}-\epsilon\mathbf{z};(\mathbf{x},y))}{2\epsilon}\mathbf{z}$
+    |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: There are other ZO surrogate gradient estimators available [[21](#bib.bib21),
+    [31](#bib.bib31)], but in practice SPSA achieves good performance in ZO optimization,
+    particularly when fine-tuning LLMs. In addition, other ZO algorithms such as DeepZero
+    [[3](#bib.bib3)] would utilize the parameter-wise finite difference of loss values
+    to derive parameter-wise update directions. This would yield $O(d)$ query costs
+    per training step even when combining with certain sparse masking methods and
+    not practical for LLM fine-tuning scenarios. We therefore select SPSA with random
+    Gaussian perturbation as our ZO gradient estimator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'ZO-SGD algorithm. ZO-SGD is an optimizer similar to SGD but replaces the FO
+    gradient with ZO surrogate gradient estimate per training step, as defined below:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Definition 2  (ZO-SGD update rule).
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'ZO-SGD is an optimizer that uses ZO surrogate gradient to update parameters
+    $\mathbf{w}_{t}$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathbf{w}_{t+1}=\mathbf{w}_{t}-\eta_{t}\hat{g}_{\mathbf{w}}(\mathbf{w}_{t},(\mathbf{x}_{t},y_{t}),\mathbf{z}_{t})$
+    |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: MeZO [[27](#bib.bib27)] is a ZO-SGD algorithm that uses the "random seed trick"
+    to save the need of caching ZO surrogate gradient. The choice of optimizer (SGD)
+    is orthogonal to ZO optimization techniques, but in our preliminary experiments
+    we find adaptive optimizers such as Adam [[16](#bib.bib16)] would not necessarily
+    accelerate ZO convergence in LLM fine-tuning scenarios. There are other ZO optimizers
+    aware of the parameter-wise heterogeneity of loss curvatures to accelerate the
+    optimization convergence [[51](#bib.bib51)], and we leave how to combine our method
+    with theirs as future works.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2 Sparsity in LLMs
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Sparsity-driven techniques are widely adopted in improving ML model’s efficiency
+    [[42](#bib.bib42), [46](#bib.bib46), [24](#bib.bib24), [33](#bib.bib33), [8](#bib.bib8)]
+    and robustness [[53](#bib.bib53), [52](#bib.bib52)]. Frankle and Carbin [[8](#bib.bib8)]
+    showed that within large feed-forward networks, there exists a subnetwork that,
+    when trained in isolation, can achieve test accuracy comparable to that of the
+    original network. In the foundation models era, Liu et al. [[24](#bib.bib24)]
+    demonstrated that transformer-based models, such as OPT [[49](#bib.bib49)], exhibit
+    great sparsity ($\geq 95\%$ of that achieved by full fine-tuning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the context of ZO optimization, Liu et al. [[23](#bib.bib23)] and Zhang et al.
+    [[50](#bib.bib50)] also suggest that sparsity would potentially accelerate ZO
+    optimization convergence. We believe that ZO has an intrinsic need for sparse
+    training, as the procedure of ZO gradient estimator usually requires nearly uniform
+    coordinate-wise scale (in expectation) perturbation which grows with $d$ serves
+    as a Hessian-informed preconditioner) [[48](#bib.bib48), [51](#bib.bib51)]. However,
+    they do not provide a comprehensive investigation on massive parameter models
+    like LLMs. In particular, we also observe that during first-order (FO) fine-tuning
+    of LLMs, the FO gradient can be quite sparse. We will elaborate more on this insight
+    in the following section (see Figure [2](#S3.F2 "Figure 2 ‣ 3.1 Extreme Sparsity
+    Pattern in LLM ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order
+    Fine-Tuning of LLMs with Extreme Sparsity") and Figure [7](#A3.F7 "Figure 7 ‣
+    C.2 Gradient Sparsity During LLM Fine-Tuning ‣ Appendix C Supplementary Experiment
+    Details ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity")). We would
+    like to explore how sparsity can benefit the ZO LLM fine-tuning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we describe the extreme sparsity pattern we observed in LLMs
+    and how we utilize it for efficient ZO fine-tuning including on-device personalization
+    of LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Extreme Sparsity Pattern in LLM
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d11bdfad39bfde7625a64e0b066611d2.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Cumulative normalized sum of coordinate-wise gradient square $[\nabla\mathcal{F}(\mathbf{w})]_{i}^{2}$
+    std of all blue curves. More similar figures are in Figure [7](#A3.F7 "Figure
+    7 ‣ C.2 Gradient Sparsity During LLM Fine-Tuning ‣ Appendix C Supplementary Experiment
+    Details ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity"). We observe
+    that roughly 0.1% parameters in all linear layers contribute about 50% gradient
+    norm square.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ZO optimization with sensitive parameters. Given model parameters $\mathbf{w}$,
+    sensitive parameters are defined as parameters whose corresponding FO coordinate-wise
+    gradient square values are maximized.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Definition 3  (Sensitive parameter mask).
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: A sensitive sparse mask $\mathbf{m}_{k}\in\{0,1\}^{d}$) is defined as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathbf{m}_{k}=\text{argmax}_{\mathbf{m}}\&#124;\mathbf{m}\odot\nabla
+    f(\mathbf{w};(\mathbf{x},y))\&#124;_{2}^{2}.$ |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'In the context of ZO optimization, we will update sensitive parameters only.
+    Denote that ${\color[rgb]{0,0,1}\definecolor[named]{pgfstrokecolor}{rgb}{0,0,1}\bar{\mathbf{z}}}={\color[rgb]{0,0,1}\definecolor[named]{pgfstrokecolor}{rgb}{0,0,1}\mathbf{z}}\odot\mathbf{m}_{k}$,
+    and accordingly:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Definition 4  (Sensitive sparse ZO-SGD update rule).
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: '|  | $\mathbf{w}_{t+1}=\mathbf{w}_{t}-\eta_{t}\hat{g}_{\mathbf{w}}(\mathbf{w}_{t},(\mathbf{x}_{t},y_{t}),{\color[rgb]{0,0,1}\definecolor[named]{pgfstrokecolor}{rgb}{0,0,1}\bar{\mathbf{z}}_{t}})$
+    |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'The theoretical support of sensitive parameters can be derived from the lens
+    of SPSA gradient estimator and Fisher information matrix as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Maximum zeroth-order loss value changes, from the lens of SPSA estimator.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'The square (account for negativity) of loss value difference for $\hat{g}_{\mathbf{w}}(\mathbf{w}_{t},(\mathbf{x}_{t},y_{t}),{\color[rgb]{0,0,1}\definecolor[named]{pgfstrokecolor}{rgb}{0,0,1}\bar{\mathbf{z}}_{t}})$
+    is as follows:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathbb{E}_{{\color[rgb]{0,0,1}\definecolor[named]{pgfstrokecolor}{rgb}{0,0,1}\bar{\mathbf{z}}}}\{f(\mathbf{w}+\epsilon{\color[rgb]{0,0,1}\definecolor[named]{pgfstrokecolor}{rgb}{0,0,1}\bar{\mathbf{z}}};(\mathbf{x},y))-f(\mathbf{w}-\epsilon{\color[rgb]{0,0,1}\definecolor[named]{pgfstrokecolor}{rgb}{0,0,1}\bar{\mathbf{z}}};(\mathbf{x},y))\}^{2}$
+    |  | (5) |'
+  prefs:
+  - PREF_IND
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle=4\epsilon^{2}\&#124;{\color[rgb]{0,0,1}\definecolor[named]{pgfstrokecolor}{rgb}{0,0,1}\mathbf{m}_{k}\odot}\,\nabla_{\mathbf{w}}f(\mathbf{w};(\mathbf{x},y))\&#124;^{2}$
+    |  | (6) |'
+  prefs:
+  - PREF_IND
+  type: TYPE_TB
+- en: Since by Definition [3](#Thmdefinition3 "Definition 3 (Sensitive parameter mask).
+    ‣ 3.1 Extreme Sparsity Pattern in LLM ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning
+    ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity") our sensitive mask
+    would maximize $\|\mathbf{m}_{k}\odot\nabla_{\mathbf{w}}f(\mathbf{w};(\mathbf{x},y))\|^{2}$
+    for a given sparsity ratio, we would expect our sensitive mask to maximize the
+    magnitude of the loss value difference for any given sparsity ratio.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Maximum coverage of Hessian diagonal, from the lens of Fisher matrix.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'LLMs are often pre-trained on large text corpus to reach low perplexity before
+    entering the fine-tuning stage. In this case, we would assume $p_{\text{LLM}}(y|\mathbf{x})\sim
+    p_{\mathcal{D}}(y|\mathbf{x})$ as follows:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathbf{F}$ |  | (7) |'
+  prefs:
+  - PREF_IND
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  | (8) |'
+  prefs:
+  - PREF_IND
+  type: TYPE_TB
+- en: As we assume the empirical Fisher matrix approximates Fisher, which also approximates
+    the Hessian, and empirical Fisher’s diagonal is equal to the coordinate-wise gradient
+    square vector when computing with downstream task-specific loss, our sensitive
+    parameters would cover a large fraction of the largest Hessian diagonal entries.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'This idea of sensitive parameters has been studied in the quantization community
+    [[15](#bib.bib15), [11](#bib.bib11)] and FO optimization [[40](#bib.bib40)]. However,
+    we are the first one to leverage the extremely sparse sensitive parameters in
+    LLM fine-tuning to accelerate ZO fine-tuning with LLMs. When we have perturbation
+    and updating in the scale of billion parameters, finding which parameters to fine-tune
+    would be important for improving ZO performance. Notice that here we use sensitive
+    masks $\mathbf{m}_{k}$ for understanding purposes. In Section [3.4](#S3.SS4 "3.4
+    Our Proposal: ZO LLM Fine-Tuning with Fisher-Informed, Transferable Sparsity ‣
+    3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning of
+    LLMs with Extreme Sparsity"), we will discuss how to transform Definition [4](#Thmdefinition4
+    "Definition 4 (Sensitive sparse ZO-SGD update rule). ‣ 3.1 Extreme Sparsity Pattern
+    in LLM ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning
+    of LLMs with Extreme Sparsity") to a parameter-efficient optimization pipeline
+    by optimizing fixed sensitive parameters.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Theoretical Convergence Rate
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We would investigate the theoretical convergence of sensitive sparse ZO-SGD
+    on sensitive parameters under the non-convex optimization settings. Our assumptions
+    are included in Appendix [B.2](#A2.SS2 "B.2 Proof for Equation 9, Theorem 1 ‣
+    Appendix B Theoretical Convergence Rate ‣ Zeroth-Order Fine-Tuning of LLMs with
+    Extreme Sparsity").
+  prefs: []
+  type: TYPE_NORMAL
+- en: Theorem 1  (Convergence rate of sensitive sparse ZO-SGD (Definition [4](#Thmdefinition4
+    "Definition 4 (Sensitive sparse ZO-SGD update rule). ‣ 3.1 Extreme Sparsity Pattern
+    in LLM ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning
+    of LLMs with Extreme Sparsity"))).
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: If we pick $\eta_{t}=1/(L(k+2))$, under Assumptions [1](#Thmassumption1 "Assumption
+    1 (Bounded stochastic gradient errors). ‣ B.1 Assumptions ‣ Appendix B Theoretical
+    Convergence Rate ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity") (bounded
+    gradient error), [2](#Thmassumption2 "Assumption 2 (Lipschitz smoothness). ‣ B.1
+    Assumptions ‣ Appendix B Theoretical Convergence Rate ‣ Zeroth-Order Fine-Tuning
+    of LLMs with Extreme Sparsity") (Lipschitz smoothness), and [4](#Thmassumption4
+    "Assumption 4 (Sensitive parameters are sparse). ‣ B.1 Assumptions ‣ Appendix
+    B Theoretical Convergence Rate ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme
+    Sparsity") (sparse sensitive parameters), we would have
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | $1$2 |  | (9) |'
+  prefs: []
+  type: TYPE_TB
+- en: Moreover, if we still pick $\eta_{t}=1/(L(k+2))$, with an extra Assumption [3](#Thmassumption3
+    "Assumption 3 (PL inequality). ‣ B.1 Assumptions ‣ Appendix B Theoretical Convergence
+    Rate ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity") (P.L. condition),
+    we would have
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | $1$2 |  | (10) |'
+  prefs: []
+  type: TYPE_TB
+- en: The proof for Inequality [9](#S3.E9 "Equation 9 ‣ Theorem 1 (Convergence rate
+    of sensitive sparse ZO-SGD (Definition 4)). ‣ 3.2 Theoretical Convergence Rate
+    ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning
+    of LLMs with Extreme Sparsity") is in Appendix [B.2](#A2.SS2 "B.2 Proof for Equation
+    9, Theorem 1 ‣ Appendix B Theoretical Convergence Rate ‣ Zeroth-Order Fine-Tuning
+    of LLMs with Extreme Sparsity") and the proof for Inequality [10](#S3.E10 "Equation
+    10 ‣ Theorem 1 (Convergence rate of sensitive sparse ZO-SGD (Definition 4)). ‣
+    3.2 Theoretical Convergence Rate ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning
+    ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity") is in Appendix [B.3](#A2.SS3
+    "B.3 Proof for Equation 10, Theorem 1 ‣ Appendix B Theoretical Convergence Rate
+    ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity"). If we choose $k=d$.
+    As we assume $c\gg k/d$ are much lower than $O(d/T)+O(\text{constant})$ that zeroth-order
+    method will yield.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We want to emphasize that our contributions are more on empirical LLM fine-tuning
+    instead of general machine learning tasks, and in Section [4.1](#S4.SS1 "4.1 RQ1:
+    Effectiveness of Sparse ZO Fine-Tuning on Sensitive Parameters ‣ 4 Experiments
+    ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity") we extensively compare
+    our sparse ZO methods with other sparse ZO methods and we demonstrate its superiority
+    during LLM fine-tuning. We do not use the strict “local $r$-effective rank” assumption
+    that Malladi et al. [[27](#bib.bib27)] uses, and our Assumption [4](#Thmassumption4
+    "Assumption 4 (Sensitive parameters are sparse). ‣ B.1 Assumptions ‣ Appendix
+    B Theoretical Convergence Rate ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme
+    Sparsity") can be easily observed empirically in Figure [2](#S3.F2 "Figure 2 ‣
+    3.1 Extreme Sparsity Pattern in LLM ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning
+    ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity"). Liu et al. [[23](#bib.bib23)]
+    and Ohta et al. [[31](#bib.bib31)] also provide similar analysis on the convergence.
+    However, they do not include our sensitive sparse mask in their studies.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Transferability of LLM Pre-Training Sparsity Pattern in ZO Fine-Tuning
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Sparse fine-tuning with fixed sensitive parameters. Our Theorem [1](#Thmtheorem1
+    "Theorem 1 (Convergence rate of sensitive sparse ZO-SGD (Definition 4)). ‣ 3.2
+    Theoretical Convergence Rate ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning
+    ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity") focuses on dynamic
+    sparse fine-tuning. However, Panigrahi et al. [[32](#bib.bib32)] notice that in
+    real LLM fine-tuning scenario, the fine-tuning performance could be attributed
+    to a sparse subset of weights ($\sim 0.01\%$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The similarity of gradient features during fine-tuning would imply that we
+    do not need to re-select our sensitive parameters during fine-tuning i.e. select
+    once before fine-tuning should be sufficient. This hypothesis can be validated
+    by Figure [3](#S3.F3 "Figure 3 ‣ 3.3 Transferability of LLM Pre-Training Sparsity
+    Pattern in ZO Fine-Tuning ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning ‣
+    Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity") and Figure [5](#S4.F5
+    "Figure 5 ‣ 4.1 RQ1: Effectiveness of Sparse ZO Fine-Tuning on Sensitive Parameters
+    ‣ 4 Experiments ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity"). In
+    Figure [3](#S3.F3 "Figure 3 ‣ 3.3 Transferability of LLM Pre-Training Sparsity
+    Pattern in ZO Fine-Tuning ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning ‣
+    Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity"), the fact that “task
+    grad, static” does not vanish and still has a large ratio over “task grad, dyn.”
+    at the end of training demonstrate that we can select parameters before fine-tuning.
+    We also include similar figures for Mistral-7B and OPT-6.7B in Figure [8](#A3.F8
+    "Figure 8 ‣ C.3 Transferability of Gradient Features from Pre-Training Datasets
+    to Downstream Tasks ‣ Appendix C Supplementary Experiment Details ‣ Zeroth-Order
+    Fine-Tuning of LLMs with Extreme Sparsity") in Appendix [C.3](#A3.SS3 "C.3 Transferability
+    of Gradient Features from Pre-Training Datasets to Downstream Tasks ‣ Appendix
+    C Supplementary Experiment Details ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme
+    Sparsity"). We will describe Figure [5](#S4.F5 "Figure 5 ‣ 4.1 RQ1: Effectiveness
+    of Sparse ZO Fine-Tuning on Sensitive Parameters ‣ 4 Experiments ‣ Zeroth-Order
+    Fine-Tuning of LLMs with Extreme Sparsity") in Section [4.3](#S4.SS3 "4.3 RQ3:
+    On-Device Personalization ‣ 4 Experiments ‣ Zeroth-Order Fine-Tuning of LLMs with
+    Extreme Sparsity").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f3a0c9704d4a8d77c142271f8028cf84.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Cumulative normalized gradient square values of Llama2-7B model’s
+    linear layers during fine-tuning. For each line, the colors represent the fraction
+    of parameters and the line style represents the category. “task grad, dyn.” refers
+    to the sensitive parameters selected at the given timestep (x-axis), and “task
+    grad, static” refers to the sensitive parameters selected before fine-tuning.
+    “C4 grad, static” refers to the sensitive parameters selected with gradients taken
+    from causal language modeling on C4 datasets [[36](#bib.bib36)], and we keep it
+    unchanged during fine-tuning. More similar figures are in Figure [8](#A3.F8 "Figure
+    8 ‣ C.3 Transferability of Gradient Features from Pre-Training Datasets to Downstream
+    Tasks ‣ Appendix C Supplementary Experiment Details ‣ Zeroth-Order Fine-Tuning
+    of LLMs with Extreme Sparsity").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Surrogate sensitive sparse mask from pre-training datasets. Another observation
+    from Figure [3](#S3.F3 "Figure 3 ‣ 3.3 Transferability of LLM Pre-Training Sparsity
+    Pattern in ZO Fine-Tuning ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning ‣
+    Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity") is that the sensitive
+    parameters derived from pre-training datasets (C4) would still cover a large fraction
+    of model sensitivity. Therefore, we could use it as a surrogate sensitive sparse
+    mask when gradients on downstream tasks are unavailable, particularly in scenario
+    of on-device personalization. ¹¹1Obtaining gradients of LLMs on edge devices is
+    expensive, and we usually cannot transfer data from edge devices to the cloud
+    to compute the gradient on downstream tasks on cloud. In this case we would need
+    some surrogate gradient information to derive sensitive sparse masks on cloud.
+    We will discuss this in Section [3.5](#S3.SS5 "3.5 An Opportunity for On-Device
+    LLM Personalization ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order
+    Fine-Tuning of LLMs with Extreme Sparsity").
+  prefs: []
+  type: TYPE_NORMAL
+- en: '3.4 Our Proposal: ZO LLM Fine-Tuning with Fisher-Informed, Transferable Sparsity'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The sparse optimization on fixed parameters can be implemented as a parameter-efficient
+    optimization workflow, which will reduce the perturbation and updating time during
+    ZO optimization. Suppose we have derived a sensitive sparse mask $\mathbf{m}_{k}$
+    and extract the nonzero parts as below:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | ${\color[rgb]{0,0,1}\definecolor[named]{pgfstrokecolor}{rgb}{0,0,1}\mathbf{w}_{\text{sparse}}}=\mathbf{w}\odot\mathbf{m}_{k},\quad\mathbf{w}_{\text{dense}}=\mathbf{w}\odot(\mathbf{1}_{d}-\mathbf{m}_{k})$
+    |  | (11) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Denote $\mathbf{z}_{k,t}\sim\mathcal{N}(\mathbf{0}_{k},\mathbf{I}_{k})$ only
+    and leave $\mathbf{w}_{\text{dense}}$ frozen during fine-tuning. In this case,
+    our sensitive sparse ZO-SGD update rule will become:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | ${\color[rgb]{0,0,1}\definecolor[named]{pgfstrokecolor}{rgb}{0,0,1}\mathbf{w}_{\text{sparse},t+1}}={\color[rgb]{0,0,1}\definecolor[named]{pgfstrokecolor}{rgb}{0,0,1}\mathbf{w}_{\text{sparse},t}}-\eta_{t}\hat{g}({\color[rgb]{0,0,1}\definecolor[named]{pgfstrokecolor}{rgb}{0,0,1}\mathbf{w}_{\text{sparse},t}},(\mathbf{x}_{t},y_{t}),{\color[rgb]{0,0,1}\definecolor[named]{pgfstrokecolor}{rgb}{0,0,1}\mathbf{z}_{k,t}})$
+    |  | (12) |'
+  prefs: []
+  type: TYPE_TB
+- en: In Section [3.5](#S3.SS5 "3.5 An Opportunity for On-Device LLM Personalization
+    ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning
+    of LLMs with Extreme Sparsity"), we describe how this decomposition would seamlessly
+    combine with existing post-training quantization (PTQ) methods, which creates
+    an opportunity for on-device personalization. In Appendix [C.6](#A3.SS6 "C.6 Implementation
+    of Sparse Operations in Linear Layers ‣ Appendix C Supplementary Experiment Details
+    ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity"), we discuss efficient
+    implementations of linear layers after our decomposition.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.5 An Opportunity for On-Device LLM Personalization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/6974f68286fa9ee28ecf6b06873e6ffb.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: On-device LLM personalization workflow via integrating sensitive
+    sparse ZO optimization with quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As LLMs are often pre-trained with user-agnostic public datasets, personalizing
+    LLMs with individual user’s preferences and meet user’s specific needs before
+    real-world deployment are vital. [[41](#bib.bib41), [26](#bib.bib26)] However,
+    transferring the user-specific data to upstream cloud before fine-tuning LLMs
+    would raise privacy concerns. [[47](#bib.bib47)] On the other hand, personal devices
+    usually have less computational budget and are more memory-constrained than the
+    cloud [[54](#bib.bib54)], and performing full fine-tuning would easily exceed
+    the device memory budget.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we want to fine-tune a 7B-level model (like Llama2-7B) on memory-constrained
+    devices, we need to reduce the memory consumption on model weights, gradients,
+    forward activations, and optimizer states:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Model weights. We would quantize the $\mathbf{w}_{\text{dense}}$ to 4 bits,
+    which reduces the model size of a Llama2-7B model from 13.5 to 3.4 GiB.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Forward activations. ZO optimization already saves the need of caching activations.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Gradients. We would use the “random seed trick” same as MeZO [[27](#bib.bib27)]
+    to reproduce layer-wise gradients instead of caching them.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Optimizer states. We use SGD. Our method can also be implemented as a parameter-efficient
+    optimization method which is also memory-efficient with other optimizers (even
+    with Adam).
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'As a result, our memory consumption is nearly minimum: we can fine-tune a Llama2-7B
+    model under 8 GiB GPU memory without any offloading. This would satisfy the memory
+    constraint by a wide range of edge or mobile devices as illustrated in Table [3](#A3.T3
+    "Table 3 ‣ C.1 On-Device Memory Constraints ‣ Appendix C Supplementary Experiment
+    Details ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Integration with quantization. In Section [3.4](#S3.SS4 "3.4 Our Proposal:
+    ZO LLM Fine-Tuning with Fisher-Informed, Transferable Sparsity ‣ 3 Chasing Extreme
+    Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme
+    Sparsity"), we know that we can obtain surrogate sensitive sparse masks before
+    fine-tuning. We would first decompose sensitive $\mathbf{w}$. During this process,
+    we will use surrogate gradient information that many PTQ algorithms already have:
+    they need gradients to calibrate their quantization errors.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our method also does not put strict constraints on specific choices of quantization
+    algorithms since any algorithm [[2](#bib.bib2), [30](#bib.bib30), [9](#bib.bib9),
+    [20](#bib.bib20), [15](#bib.bib15)] that aims to minimize the quantization error
+    term or its variant would suffice:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $Q(\mathbf{w})=\text{argmin}_{Q(\mathbf{w})}\mathbb{E}_{\mathbf{x}}\&#124;(\mathbf{w}-Q(\mathbf{w}))\mathbf{x}\&#124;_{2}^{2}$
+    |  | (13) |'
+  prefs: []
+  type: TYPE_TB
+- en: On-device personalization workflow. The workflow is illustrated in Figure [4](#S3.F4
+    "Figure 4 ‣ 3.5 An Opportunity for On-Device LLM Personalization ‣ 3 Chasing Extreme
+    Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme
+    Sparsity"). The high-level overview is that we use surrogate gradient information
+    from pre-training datasets $\nabla_{\mathbf{w}}p_{\text{LLM}}(y|\mathbf{x})$ (Step
+    1-4). We send $\mathbf{w}_{\text{sparse}}$ (Step 6).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section, we want to validate the effectiveness of our sensitive sparse
+    ZO optimization method. We also investigate the effectiveness of our on-device
+    personalization recipe in Figure [4](#S3.F4 "Figure 4 ‣ 3.5 An Opportunity for
+    On-Device LLM Personalization ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning
+    ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity"). There are a few research
+    questions we want to answer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'RQ1: Is optimizing sensitive parameters more effective than optimizing other
+    subset of parameters during ZO fine-tuning? Can we optimize surrogate sensitive
+    sparse parameters when downstream gradient information is unavailable?'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'RQ2: Can optimizing extremely sparse and fixed parameters (Equation [12](#S3.E12
+    "Equation 12 ‣ 3.4 Our Proposal: ZO LLM Fine-Tuning with Fisher-Informed, Transferable
+    Sparsity ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning
+    of LLMs with Extreme Sparsity")) lead to iteration-wise and total wall-clock time
+    speedup?'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'RQ3: Can we match the full performance of ZO full fine-tuning by employing
+    our on-device personalization recipe (Figure [4](#S3.F4 "Figure 4 ‣ 3.5 An Opportunity
+    for On-Device LLM Personalization ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning
+    ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity"))?'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: We focus on 7B LLM models (Llama2-7B [[43](#bib.bib43)], Mistral-7B [[13](#bib.bib13)],
+    OPT-6.7B [[49](#bib.bib49)]) as they would fit with common on-device memory constraints
+    (8 GiB) listed on Table [3](#A3.T3 "Table 3 ‣ C.1 On-Device Memory Constraints
+    ‣ Appendix C Supplementary Experiment Details ‣ Zeroth-Order Fine-Tuning of LLMs
+    with Extreme Sparsity") after applying quantization. We use SST-2 [[38](#bib.bib38)],
+    RTE [[44](#bib.bib44)], CB [[6](#bib.bib6)], BoolQ [[4](#bib.bib4)], WSC [[17](#bib.bib17)],
+    WiC [[34](#bib.bib34)], and COPA [[37](#bib.bib37)] datasets. We follow standard
+    ZO fine-tuning settings and use the same codebases as in Malladi et al. [[27](#bib.bib27)].
+    More details of our experiments (hyperparameters, task-specific prompts, etc.)
+    are in Appendix [C](#A3 "Appendix C Supplementary Experiment Details ‣ Zeroth-Order
+    Fine-Tuning of LLMs with Extreme Sparsity").
+  prefs: []
+  type: TYPE_NORMAL
+- en: '4.1 RQ1: Effectiveness of Sparse ZO Fine-Tuning on Sensitive Parameters'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We first investigate the performance of optimizing our sensitive parameters
+    versus other subsets of parameters. Our baseline sparsity methods are random subsets
+    and weight outliers. As illustrated in Figure [5](#S4.F5 "Figure 5 ‣ 4.1 RQ1:
+    Effectiveness of Sparse ZO Fine-Tuning on Sensitive Parameters ‣ 4 Experiments
+    ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity"), we can find that ZO
+    fine-tuning would benefit from sparse optimization, as all methods would achieve
+    higher than ZO full fine-tuning at 90% sparsity. However, only sensitive parameters
+    would maintain its performance as we move to the extreme sparsity region <math
+    id="S4.SS1.p1.1.m1.1" class="ltx_Math" alttext="(></math> less parameters compared
+    with random and weight outliers and still get same performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We also validate whether optimizing fixed and surrogate sensitive parameters
+    should still yield satisfactory performance. In Figure [5](#S4.F5 "Figure 5 ‣
+    4.1 RQ1: Effectiveness of Sparse ZO Fine-Tuning on Sensitive Parameters ‣ 4 Experiments
+    ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity"), we compare the performance
+    of optimizing sensitive parameters with C4 gradients with its theoretical upper
+    bound: fixed sensitive parameters derived from task-specific gradients as the
+    solid line and its dynamic version as the dash-dotted line. We also include the
+    fixed and dynamic random subset parameters as a baseline. We can find that the
+    gap of sensitive parameters between deriving from C4 gradients and task-specific
+    gradients at sparsity level 99.9% is small and blue line is still far above the
+    random and full fine-tuning baseline. We also present a summary of our approaches
+    with 99.9% sparsity on various datasets and models in Table [1](#S4.T1 "Table
+    1 ‣ 4.1 RQ1: Effectiveness of Sparse ZO Fine-Tuning on Sensitive Parameters ‣
+    4 Experiments ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a7a566966705fbd4ab41af91cc901b5e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Optimizing sensitive parameters with C4 gradients versus optimizing weights
+    with largest magnitude (weight outliers) and random subsets of weights. The trainable
+    parameters are all determined before fine-tuning and other parameters are kept
+    unchanged.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/6b27809cd99c9fc38b02ad96b7de2759.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Optimizing sensitive parameters with C4 gradients versus task-specific gradients.
+    “Static” means the parameters to optimize are determined before fine-tuning and
+    other parameters are kept unchanged during fine-tuning. “Dyn.” means the parameters
+    to optimize will be updated every 100 training steps.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 5: Performance of optimizing sensitive parameters in Llama2-7B fine-tuning
+    on RTE, WiC, and COPA tasks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f4ad5017b8ef6aff11ee38def02bb876.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: Iteration-wise & wall-clock convergence time of sensitive sparse
+    fine-tuning on fixed parameters (“Sensitive”) versus ZO full fine-tuning (“Full”)
+    for Llama2-7B. Here we use the 16-bit model as the base model for fine-tuning.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: Performance of difference methods on Llama2-7B fine-tuning tasks.
+    In the first column, “Q” means the full model is quantized with 4-bit quantization
+    method (SqueezeLLM [[15](#bib.bib15)]), and “ZO” means the model is fine-tuned
+    with ZO-SGD optimizer. For each cell, we use the same hyperparameters and repeat
+    it with 3 random seeds. We report the average and standard deviation of test set
+    accuracy in the format of $\text{mean}_{\text{std}}$. In last 2 columns, “Acc”
+    means the average test set accuracy and “Rank” means the average rank among all
+    methods across tasks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: (a) Llama2-7B
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | Methods | SST-2 | RTE | CB | BoolQ | WSC | WiC | COPA | Acc | Rank |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Q, ZO | Sensitive (C4, static) | $\textbf{94.7}_{0.4}$ | $57.4_{3.9}$ | 75.2
+    | 2.43 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | LoRA | $93.8_{0.6}$ | $\textbf{61.5}_{2.1}$ | 72.9 | 4.29 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Prefix | $80.5_{4.3}$ | $54.5_{11.4}$ | 69.2 | 5.86 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ZO | Sensitive (task, static) | $\textbf{94.8}_{0.1}$ | $57.4_{4.7}$ | 75.2
+    | 2.29 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Random (static) | $94.1_{0.3}$ | $\textbf{59.6}_{3.6}$ | 73.1 | 4.14 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Full fine-tuning | $94.6_{0.5}$ | $58.0_{4.3}$ | 74.2 | 3.57 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Zero-shot | $89.0_{0.0}$ | $50.2_{0.0}$ | 59.2 | 7.29 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | ICL | $94.8_{0.2}$ | $53.2_{1.1}$ | 74.0 | 3.43 |'
+  prefs: []
+  type: TYPE_TB
+- en: (b) Mistral-7B
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Q, ZO | Sensitive (C4, static) | $\textbf{94.0}_{0.3}$ | $59.6_{4.9}$ | 74.7
+    | 2.86 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | LoRA | $\textbf{94.0}_{0.4}$ | $\textbf{60.9}_{3.7}$ | 72.1 | 3.57 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Prefix | $86.9_{2.1}$ | $60.3_{4.6}$ | 65.8 | 4.86 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ZO | Sensitive (task, static) | $\textbf{94.7}_{0.3}$ | $\textbf{58.0}_{4.3}$
+    | 75.4 | 1.86 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Random (static) | $87.9_{1.9}$ | $57.6_{1.4}$ | 66.0 | 5.29 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Full fine-tuning | $94.6_{0.1}$ | $54.8_{6.2}$ | 74.3 | 2.86 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Zero-shot | $54.8_{0.0}$ | $50.8_{0.0}$ | 50.6 | 7.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | ICL | $60.7_{16.7}$ | $50.4_{0.6}$ | 57.0 | 5.43 |'
+  prefs: []
+  type: TYPE_TB
+- en: (c) OPT-6.7B
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Q, ZO | Sensitive (C4, static) | $\textbf{94.9}_{0.5}$ | $\textbf{59.3}_{5.3}$
+    | 75.5 | 1.29 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | LoRA | $94.2_{0.2}$ | $57.1_{9.1}$ | 71.4 | 4.57 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Prefix | $93.3_{0.4}$ | $62.5_{2.4}$ | 72.5 | 4.14 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ZO | Sensitive (task, static) | $\textbf{94.5}_{0.4}$ | $\textbf{57.4}_{5.2}$
+    | 75.1 | 2.14 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Random (static) | $87.3_{2.0}$ | $58.0_{7.0}$ | 69.4 | 5.71 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Full fine-tuning | $94.4_{0.3}$ | $\textbf{57.4}_{4.6}$ | 74.1 | 3.29
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Zero-shot | $61.0_{0.0}$ | $55.5_{0.0}$ | 56.1 | 7.71 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | ICL | $74.0_{14.6}$ | $53.2_{1.7}$ | 62.5 | 6.57 |'
+  prefs: []
+  type: TYPE_TB
+- en: '4.2 RQ2: Wall-Clock Time Efficiency'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'By employing parameter-efficient ZO fine-tuning with extreme sparsity, we also
+    achieve 1.2 - 2.5$\times$ wall-clock time convergence speedup compared with ZO
+    full fine-tuning as we nearly eliminate the ZO perturbation and optimizer update
+    time, as Figure [6](#S4.F6 "Figure 6 ‣ 4.1 RQ1: Effectiveness of Sparse ZO Fine-Tuning
+    on Sensitive Parameters ‣ 4 Experiments ‣ Zeroth-Order Fine-Tuning of LLMs with
+    Extreme Sparsity") shows. This also boosts the GPU utilization rate as large-batched
+    ZO forward is often compute-bounded while the perturbation and optimization steps
+    are often memory-bounded. Furthermore, the reduced memory footprint of parameter-efficient
+    ZO fine-tuning allows for training larger models on the same hardware, potentially
+    leading to even better performance. As a result, we answer this question that
+    optimizing extremely sparse and fixed parameters leads to substantial iteration-wise
+    and total wall-clock time improvements.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '4.3 RQ3: On-Device Personalization'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We validate whether our sensitive sparse ZO optimization method would fit with
+    on-device personalization pipeline described in Section [3.5](#S3.SS5 "3.5 An
+    Opportunity for On-Device LLM Personalization ‣ 3 Chasing Extreme Sparsity in
+    ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity")
+    with Table [1](#S4.T1 "Table 1 ‣ 4.1 RQ1: Effectiveness of Sparse ZO Fine-Tuning
+    on Sensitive Parameters ‣ 4 Experiments ‣ Zeroth-Order Fine-Tuning of LLMs with
+    Extreme Sparsity"). We follow the exact recipe as described Figure [4](#S3.F4
+    "Figure 4 ‣ 3.5 An Opportunity for On-Device LLM Personalization ‣ 3 Chasing Extreme
+    Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme
+    Sparsity") to report a number as “Sensitive (C4, static)”, where we only optimize
+    0.1% sensitive parameters on top of a 4-bit quantized model. As ZO fine-tuning
+    happens after model is quantized, ablating on extracting 0.1% random subsets of
+    parameters would produce a different quantized model. So we choose to report the
+    result for optimizing a fixed random subset on top of the 16-bit model as the
+    “Random (static)”.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We also compare with optimizing with LoRA [[12](#bib.bib12)] and Prefix Tuning
+    [[19](#bib.bib19)] with ZO-SGD optimizer on top of the same quantized model. We
+    follow the LoRA $r$ and prefix length shown in Malladi et al. [[27](#bib.bib27)],
+    and for LoRA, we add it to all linear layers same as where our sensitive parameters
+    are extracted. We find that integrating sensitive sparse ZO optimization with
+    on-device personalization pipelines would still yield good performance exceeding
+    all baselines across models and tasks. Particularly, the performance is higher
+    than ICL, and ZO full fine-tuning in 16 bits. In addition, we have surpassed other
+    ZO-PEFT methods and random sparse ZO fine-tuning methods. This demonstrates the
+    superiority of optimizing sensitive parameters only in ZO fine-tuning recipes.
+    We also notice that optimizing sensitive parameters derived from C4 gradients
+    still produce close results as from task-specific gradients (in average less than
+    1% accuracy difference). This indicates optimizing surrogate sensitive parameters
+    is still empirically successful.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We have shown that the sensitive parameters provided by the pre-training process
+    can effectively assist in ZO LLMs fine-tuning. Our experiments suggest that the
+    ZO fine-tuning guided by 0.1% sensitive parameters in the LLM can even perform
+    better than the full parameter ZO fine-tuning. The experiment results also demonstrate
+    that the quantization of parameters other than sensitive parameters allows us
+    to perform ZO fine-tuning of an LLM on limited memory devices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Brown et al. [2020] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D
+    Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda
+    Askell, et al. Language models are few-shot learners. *Advances in neural information
+    processing systems*, 33:1877–1901, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chee et al. [2024] Jerry Chee, Yaohui Cai, Volodymyr Kuleshov, and Christopher M
+    De Sa. Quip: 2-bit quantization of large language models with guarantees. *Advances
+    in Neural Information Processing Systems*, 36, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chen et al. [2024] Aochuan Chen, Yimeng Zhang, Jinghan Jia, James Diffenderfer,
+    Jiancheng Liu, Konstantinos Parasyris, Yihua Zhang, Zheng Zhang, Bhavya Kailkhura,
+    and Sijia Liu. Deepzero: Scaling up zeroth-order optimization for deep model training.
+    In *International Conference on Learning Representations*, 2024. doi: 10.48550/arXiv.2310.02025.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Clark et al. [2019] Christopher Clark, Kenton Lee, Ming-Wei Chang, Tom Kwiatkowski,
+    Michael Collins, and Kristina Toutanova. Boolq: Exploring the surprising difficulty
+    of natural yes/no questions. In *Proceedings of the 2019 Conference of the North
+    American Chapter of the Association for Computational Linguistics: Human Language
+    Technologies, Volume 1 (Long and Short Papers)*, pages 2924–2936, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dao [2023] Tri Dao. Flashattention-2: Faster attention with better parallelism
+    and work partitioning. *arXiv preprint arXiv:2307.08691*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'De Marneffe et al. [2019] Marie-Catherine De Marneffe, Mandy Simons, and Judith
+    Tonhauser. The commitmentbank: Investigating projection in naturally occurring
+    discourse. In *Proceedings of Sinn und Bedeutung*, pages 107–124, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. [2023] Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, and Luke
+    Zettlemoyer. Qlora: Efficient finetuning of quantized llms. In A. Oh, T. Naumann,
+    A. Globerson, K. Saenko, M. Hardt, and S. Levine, editors, *Advances in Neural
+    Information Processing Systems*, volume 36, pages 10088–10115\. Curran Associates,
+    Inc., 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Frankle and Carbin [2019] Jonathan Frankle and Michael Carbin. The lottery
+    ticket hypothesis: Finding sparse, trainable neural networks. In *International
+    Conference on Learning Representations*, 2019. doi: 10.48550/arXiv.1803.03635.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Frantar et al. [2022] Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan
+    Alistarh. Gptq: Accurate post-training quantization for generative pre-trained
+    transformers. *arXiv preprint arXiv:2210.17323*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Gim and Ko [2022] In Gim and JeongGil Ko. Memory-efficient dnn training on mobile
+    devices. In *Proceedings of the 20th Annual International Conference on Mobile
+    Systems, Applications and Services*, pages 464–476, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Guo et al. [2023] Han Guo, Philip Greengard, Eric Xing, and Yoon Kim. Lq-lora:
+    Low-rank plus quantized matrix decomposition for efficient language model finetuning.
+    In *The Twelfth International Conference on Learning Representations*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hu et al. [2021] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu,
+    Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. Lora: Low-rank adaptation of
+    large language models. *arXiv preprint arXiv:2106.09685*, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Jiang et al. [2023] Albert Q Jiang, Alexandre Sablayrolles, Arthur Mensch, Chris
+    Bamford, Devendra Singh Chaplot, Diego de las Casas, Florian Bressand, Gianna
+    Lengyel, Guillaume Lample, Lucile Saulnier, et al. Mistral 7b. *arXiv preprint
+    arXiv:2310.06825*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kaplan et al. [2020] Jared Kaplan, Sam McCandlish, Tom Henighan, Tom B Brown,
+    Benjamin Chess, Rewon Child, Scott Gray, Alec Radford, Jeffrey Wu, and Dario Amodei.
+    Scaling laws for neural language models. *arXiv preprint arXiv:2001.08361*, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kim et al. [2023] Sehoon Kim, Coleman Hooper, Amir Gholami, Zhen Dong, Xiuyu
+    Li, Sheng Shen, Michael W Mahoney, and Kurt Keutzer. Squeezellm: Dense-and-sparse
+    quantization. *arXiv preprint arXiv:2306.07629*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kingma and Ba [2015] Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic
+    optimization. In *International Conference on Learning Representations*, 2015.
+    doi: 10.48550/arXiv.1412.6980.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Levesque et al. [2012] Hector Levesque, Ernest Davis, and Leora Morgenstern.
+    The winograd schema challenge. In *Thirteenth international conference on the
+    principles of knowledge representation and reasoning*, 2012.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. [2024] Luchang Li, Sheng Qian, Jie Lu, Lunxi Yuan, Rui Wang, and
+    Qin Xie. Transformer-lite: High-efficiency deployment of large language models
+    on mobile phone gpus. *arXiv preprint arXiv:2403.20041*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li and Liang [2021] Xiang Lisa Li and Percy Liang. Prefix-tuning: Optimizing
+    continuous prompts for generation. *arXiv preprint arXiv:2101.00190*, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lin et al. [2023] Ji Lin, Jiaming Tang, Haotian Tang, Shang Yang, Xingyu Dang,
+    and Song Han. Awq: Activation-aware weight quantization for llm compression and
+    acceleration. *arXiv preprint arXiv:2306.00978*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. [2020] Sijia Liu, Pin-Yu Chen, Bhavya Kailkhura, Gaoyuan Zhang,
+    Alfred O Hero III, and Pramod K Varshney. A primer on zeroth-order optimization
+    in signal processing and machine learning: Principals, recent advances, and applications.
+    *IEEE Signal Processing Magazine*, 37(5):43–54, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. [2019] Yinhan Liu, Myle Ott, Naman Goyal, Jingfei Du, Mandar Joshi,
+    Danqi Chen, Omer Levy, Mike Lewis, Luke Zettlemoyer, and Veselin Stoyanov. Roberta:
+    A robustly optimized bert pretraining approach. *arXiv preprint arXiv:1907.11692*,
+    2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. [2024a] Yong Liu, Zirui Zhu, Chaoyu Gong, Minhao Cheng, Cho-Jui
+    Hsieh, and Yang You. Sparse mezo: Less parameters for better performance in zeroth-order
+    llm fine-tuning. *arXiv preprint arXiv:2402.15751*, 2024a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. [2023] Zichang Liu, Jue Wang, Tri Dao, Tianyi Zhou, Binhang Yuan,
+    Zhao Song, Anshumali Shrivastava, Ce Zhang, Yuandong Tian, Christopher Re, et al.
+    Deja vu: Contextual sparsity for efficient llms at inference time. In *International
+    Conference on Machine Learning*, pages 22137–22176\. PMLR, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Liu et al. [2024b] Zirui Liu, Guanchu Wang, Shaochen Henry Zhong, Zhaozhuo Xu,
+    Daochen Zha, Ruixiang Ryan Tang, Zhimeng Stephen Jiang, Kaixiong Zhou, Vipin Chaudhary,
+    Shuai Xu, et al. Winner-take-all column row sampling for memory efficient adaptation
+    of language model. *Advances in Neural Information Processing Systems*, 36, 2024b.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Mairittha et al. [2020] Nattaya Mairittha, Tittaya Mairittha, and Sozo Inoue.
+    Improving activity data collection with on-device personalization using fine-tuning.
+    In *Adjunct Proceedings of the 2020 ACM International Joint Conference on Pervasive
+    and Ubiquitous Computing and Proceedings of the 2020 ACM International Symposium
+    on Wearable Computers*, pages 255–260, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Malladi et al. [2023a] Sadhika Malladi, Tianyu Gao, Eshaan Nichani, Alex Damian,
+    Jason D Lee, Danqi Chen, and Sanjeev Arora. Fine-tuning language models with just
+    forward passes. *Advances in Neural Information Processing Systems*, 36:53038–53075,
+    2023a.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Malladi et al. [2023b] Sadhika Malladi, Alexander Wettig, Dingli Yu, Danqi Chen,
+    and Sanjeev Arora. A kernel-based view of language model fine-tuning. In *International
+    Conference on Machine Learning*, pages 23610–23641\. PMLR, 2023b.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Merity et al. [2016] Stephen Merity, Caiming Xiong, James Bradbury, and Richard
+    Socher. Pointer sentinel mixture models. In *International Conference on Learning
+    Representations*, 2016.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Nagel et al. [2020] Markus Nagel, Rana Ali Amjad, Mart Van Baalen, Christos
+    Louizos, and Tijmen Blankevoort. Up or down? adaptive rounding for post-training
+    quantization. In *International Conference on Machine Learning*, pages 7197–7206\.
+    PMLR, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ohta et al. [2020] Mayumi Ohta, Nathaniel Berger, Artem Sokolov, and Stefan
+    Riezler. Sparse perturbations for improved convergence in stochastic zeroth-order
+    optimization. In *Machine Learning, Optimization, and Data Science: 6th International
+    Conference, LOD 2020, Siena, Italy, July 19–23, 2020, Revised Selected Papers,
+    Part II 6*, pages 39–64\. Springer, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Panigrahi et al. [2023] Abhishek Panigrahi, Nikunj Saunshi, Haoyu Zhao, and
+    Sanjeev Arora. Task-specific skill localization in fine-tuned language models.
+    In *International Conference on Machine Learning*, pages 27011–27033\. PMLR, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Peng et al. [2013] Zhimin Peng, Ming Yan, and Wotao Yin. Parallel and distributed
+    sparse optimization. In *2013 Asilomar conference on signals, systems and computers*,
+    pages 659–646\. IEEE, 2013.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Pilehvar and Camacho-Collados [2019] Mohammad Taher Pilehvar and Jose Camacho-Collados.
+    Wic: the word-in-context dataset for evaluating context-sensitive meaning representations.
+    In *Proceedings of the 2019 Conference of the North American Chapter of the Association
+    for Computational Linguistics: Human Language Technologies, Volume 1 (Long and
+    Short Papers)*, pages 1267–1273, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Radford et al. [2019] Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario
+    Amodei, Ilya Sutskever, et al. Language models are unsupervised multitask learners.
+    *OpenAI blog*, 1(8):9, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Raffel et al. [2019] Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee,
+    Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter J. Liu. Exploring
+    the limits of transfer learning with a unified text-to-text transformer. *arXiv
+    e-prints*, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Roemmele et al. [2011] Melissa Roemmele, Cosmin Adrian Bejan, and Andrew S
+    Gordon. Choice of plausible alternatives: An evaluation of commonsense causal
+    reasoning. In *2011 AAAI Spring Symposium Series*, 2011.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Socher et al. [2013] Richard Socher, Alex Perelygin, Jean Wu, Jason Chuang,
+    Christopher D Manning, Andrew Y Ng, and Christopher Potts. Recursive deep models
+    for semantic compositionality over a sentiment treebank. In *Proceedings of the
+    2013 conference on empirical methods in natural language processing*, pages 1631–1642,
+    2013.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Spall [1992] James C Spall. Multivariate stochastic approximation using a simultaneous
+    perturbation gradient approximation. *IEEE transactions on automatic control*,
+    37(3):332–341, 1992.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sung et al. [2021] Yi-Lin Sung, Varun Nair, and Colin A Raffel. Training neural
+    networks with fixed sparse masks. *Advances in Neural Information Processing Systems*,
+    34:24193–24205, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Tan et al. [2024a] Zhaoxuan Tan, Qingkai Zeng, Yijun Tian, Zheyuan Liu, Bing
+    Yin, and Meng Jiang. Democratizing large language models via personalized parameter-efficient
+    fine-tuning. *arXiv preprint arXiv:2402.04401*, 2024a.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Tan et al. [2024b] Zhen Tan, Tianlong Chen, Zhenyu Zhang, and Huan Liu. Sparsity-guided
+    holistic explanation for llms with interpretable inference-time intervention.
+    In *Proceedings of the AAAI Conference on Artificial Intelligence*, pages 21619–21627,
+    2024b.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. [2023] Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert,
+    Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava,
+    Shruti Bhosale, et al. Llama 2: Open foundation and fine-tuned chat models. *arXiv
+    preprint arXiv:2307.09288*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wang et al. [2018] Alex Wang, Amanpreet Singh, Julian Michael, Felix Hill,
+    Omer Levy, and Samuel Bowman. Glue: A multi-task benchmark and analysis platform
+    for natural language understanding. In *Proceedings of the 2018 EMNLP Workshop
+    BlackboxNLP: Analyzing and Interpreting Neural Networks for NLP*, pages 353–355,
+    2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Xi et al. [2023] Haocheng Xi, Changhao Li, Jianfei Chen, and Jun Zhu. Training
+    transformers with 4-bit integers. *Advances in Neural Information Processing Systems*,
+    36:49146–49168, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xia et al. [2023] Haojun Xia, Zhen Zheng, Yuchao Li, Donglin Zhuang, Zhongzhu
+    Zhou, Xiafei Qiu, Yong Li, Wei Lin, and Shuaiwen Leon Song. Flash-llm: Enabling
+    cost-effective and highly-efficient large generative model inference with unstructured
+    sparsity. In *Proceedings of the VLDB Endowment, Vol. 17, No. 2*, 2023. doi: 10.14778/3626292.3626303.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xu et al. [2018] Mengwei Xu, Feng Qian, Qiaozhu Mei, Kang Huang, and Xuanzhe
+    Liu. Deeptype: On-device deep learning for input personalization service with
+    minimal privacy concern. *Proceedings of the ACM on Interactive, Mobile, Wearable
+    and Ubiquitous Technologies*, 2(4):1–26, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Ye et al. [2018] Haishan Ye, Zhichao Huang, Cong Fang, Chris Junchi Li, and
+    Tong Zhang. Hessian-aware zeroth-order optimization for black-box adversarial
+    attack. *arXiv preprint arXiv:1812.11377*, 2018.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. [2022] Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe,
+    Moya Chen, Shuohui Chen, Christopher Dewan, Mona Diab, Xian Li, Xi Victoria Lin,
+    et al. Opt: Open pre-trained transformer language models. *arXiv preprint arXiv:2205.01068*,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. [2024] Yihua Zhang, Pingzhi Li, Junyuan Hong, Jiaxiang Li, Yimeng
+    Zhang, Wenqing Zheng, Pin-Yu Chen, Jason D Lee, Wotao Yin, Mingyi Hong, et al.
+    Revisiting zeroth-order optimization for memory-efficient llm fine-tuning: A benchmark.
+    *arXiv preprint arXiv:2402.11592*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhao et al. [2024] Yanjun Zhao, Sizhe Dang, Haishan Ye, Guang Dai, Yi Qian,
+    and Ivor W Tsang. Second-order fine-tuning without pain for llms: A hessian informed
+    zeroth-order optimizer. *arXiv preprint arXiv:2402.15173*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Zhong et al. [2021] Shaochen Zhong, Guanqun Zhang, Ningjia Huang, and Shuai
+    Xu. Revisit kernel pruning with lottery regulated grouped convolutions. In *International
+    Conference on Learning Representations*, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhong et al. [2024] Shaochen Henry Zhong, Zaichuan You, Jiamu Zhang, Sebastian
+    Zhao, Zachary LeClaire, Zirui Liu, Daochen Zha, Vipin Chaudhary, Shuai Xu, and
+    Xia Hu. One less reason for filter pruning: Gaining free adversarial robustness
+    with structured grouped kernel pruning. *Advances in Neural Information Processing
+    Systems*, 36, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhu et al. [2023] Ligeng Zhu, Lanxiang Hu, Ji Lin, Wei-Ming Chen, Wei-Chen
+    Wang, Chuang Gan, and Song Han. Pockengine: Sparse and efficient fine-tuning in
+    a pocket. In *Proceedings of the 56th Annual IEEE/ACM International Symposium
+    on Microarchitecture*, pages 1381–1394, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In Section [A](#A1 "Appendix A Notations ‣ Zeroth-Order Fine-Tuning of LLMs
+    with Extreme Sparsity") we describe all notations used in this paper. In Section [B](#A2
+    "Appendix B Theoretical Convergence Rate ‣ Zeroth-Order Fine-Tuning of LLMs with
+    Extreme Sparsity"), we include the assumption and exact proof on the convergence
+    rate (Theorem [1](#Thmtheorem1 "Theorem 1 (Convergence rate of sensitive sparse
+    ZO-SGD (Definition 4)). ‣ 3.2 Theoretical Convergence Rate ‣ 3 Chasing Extreme
+    Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme
+    Sparsity")). In Section [C](#A3 "Appendix C Supplementary Experiment Details ‣
+    Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity"), we describe all details
+    in our experiments and provide a high-level recommendation on how to efficiently
+    implement our sensitive sparse ZO fine-tuning in forward passes of linear layers
+    with existing quantization methods or training / inference workflow.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix A Notations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We present the notations used in this work as follows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 2: Notations'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Term/Symbol |  | Explanation |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $f$ |  | loss function |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $t$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $(\mathbf{x}_{t},y_{t})$ as a pair of input vector and training target |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\mathbf{w}_{t}\in\mathbb{R}^{d}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $f(\mathbf{w};(\mathbf{x},y))$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\mathcal{F}(\mathbf{w})$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\epsilon$ |  | a small perturbation scaling constant (close to 0) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\mathbf{z}_{t}\in\mathbb{R}^{d}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\hat{g}(\mathbf{w},(\mathbf{x},y),\mathbf{z})$ (Definition [1](#Thmdefinition1
+    "Definition 1 (Simultaneous Perturbation Stochastic Approximation (SPSA) [39]).
+    ‣ 2.1 Zeroth-Order Optimization ‣ 2 Background and Related works ‣ Zeroth-Order
+    Fine-Tuning of LLMs with Extreme Sparsity")) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\eta_{t}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\mathbf{m}_{k}\in\{0,1\}^{d}$ nonzero entries (Definition [3](#Thmdefinition3
+    "Definition 3 (Sensitive parameter mask). ‣ 3.1 Extreme Sparsity Pattern in LLM
+    ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning
+    of LLMs with Extreme Sparsity")) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\mathbf{m}_{k,t}\in\{0,1\}^{d}$. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\tilde{\mathbf{I}}_{d,\mathbf{m}_{k}}=\mathbf{m}_{k}\mathbf{m}_{k}^{\top}$
+    with main diagonal masked by $\mathbf{m}_{k}$. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\bar{\mathbf{z}}_{t}=\mathbf{z}_{t}\odot\mathbf{m}_{k}$. Notice that $\bar{\mathbf{z}}$
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\mathbf{1}_{d}$ with all entries equal to 1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\operatorname{Tr}$ |  | trace operation |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $Q(\mathbf{w})$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\mathbf{F}$ |  | (true) Fisher information matrix |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\hat{\mathbf{F}}$ |  | empirical Fisher information matrix |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $p_{\text{LLM}}$ |  | LLM as a probabilistic model |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $p_{\mathcal{D}}$ |  | true data distribution |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\mathbf{w}_{\text{sparse}}=\mathbf{w}\odot\mathbf{m}_{k}$ (Equation [11](#S3.E11
+    "Equation 11 ‣ 3.4 Our Proposal: ZO LLM Fine-Tuning with Fisher-Informed, Transferable
+    Sparsity ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning
+    of LLMs with Extreme Sparsity")) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $L$ |  | Lipschitz constant in Assumption [2](#Thmassumption2 "Assumption
+    2 (Lipschitz smoothness). ‣ B.1 Assumptions ‣ Appendix B Theoretical Convergence
+    Rate ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity") |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\mu$ |  | PL condition number in Assumption [3](#Thmassumption3 "Assumption
+    3 (PL inequality). ‣ B.1 Assumptions ‣ Appendix B Theoretical Convergence Rate
+    ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity") |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\sigma^{2}$ |  | stochastic gradient error term in Assumption [1](#Thmassumption1
+    "Assumption 1 (Bounded stochastic gradient errors). ‣ B.1 Assumptions ‣ Appendix
+    B Theoretical Convergence Rate ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme
+    Sparsity") |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $W_{K}$ in attention layers |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $W_{V}$ in attention layers |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix B Theoretical Convergence Rate
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: B.1 Assumptions
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We start with listing standard assumptions in nonconvex optimization literature:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Assumption 1  (Bounded stochastic gradient errors).
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: For any data example $(\mathbf{x},y)\in\mathcal{D}$, we have
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\&#124;\nabla_{\mathbf{w}}f(\mathbf{w};(\mathbf{x},y))-\nabla_{\mathbf{w}}\mathcal{F}(\mathbf{w})\&#124;^{2}\leq\sigma^{2}.$
+    |  | (14) |'
+  prefs: []
+  type: TYPE_TB
+- en: Assumption 2  (Lipschitz smoothness).
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: We assume that $f(\mathbf{w},\mathbf{x})$,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\&#124;\nabla_{\mathbf{w}}f(\mathbf{w};(\mathbf{x},y))-\nabla_{\mathbf{w}}f(\mathbf{w}^{\prime};(\mathbf{x},y))\&#124;\leq
+    L\&#124;\mathbf{w}-\mathbf{w}^{\prime}\&#124;.$ |  | (15) |'
+  prefs: []
+  type: TYPE_TB
+- en: Assumption 3  (PL inequality).
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: We assume that $\mathcal{F}(\mathbf{w})$
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (16) |'
+  prefs: []
+  type: TYPE_TB
+- en: Inspired by Figure [7](#A3.F7 "Figure 7 ‣ C.2 Gradient Sparsity During LLM Fine-Tuning
+    ‣ Appendix C Supplementary Experiment Details ‣ Zeroth-Order Fine-Tuning of LLMs
+    with Extreme Sparsity"), we would assume the sensitive parameters of $\mathbf{w}$
+    are sparse.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Assumption 4  (Sensitive parameters are sparse).
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: We assume at timestep $t$ such that
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Here we assume $c\gg k/d$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: B.2 Proof for Equation [9](#S3.E9 "Equation 9 ‣ Theorem 1 (Convergence rate
+    of sensitive sparse ZO-SGD (Definition 4)). ‣ 3.2 Theoretical Convergence Rate
+    ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning
+    of LLMs with Extreme Sparsity"), Theorem [1](#Thmtheorem1 "Theorem 1 (Convergence
+    rate of sensitive sparse ZO-SGD (Definition 4)). ‣ 3.2 Theoretical Convergence
+    Rate ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning
+    of LLMs with Extreme Sparsity")
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Lemma 1  (Sparse ZO surrogate gradient covariance).
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: '|  |  | $\displaystyle~{}\mathbb{E}_{\bar{\mathbf{z}}}\hat{g}(\mathbf{w},(\mathbf{x},y),\bar{\mathbf{z}})\hat{g}(\mathbf{w},(\mathbf{x},y),y),\bar{\mathbf{z}})^{\top}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle=$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle=$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle=$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle=$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Proof for Equation [9](#S3.E9 "Equation 9 ‣ Theorem 1 (Convergence rate of sensitive
+    sparse ZO-SGD (Definition 4)). ‣ 3.2 Theoretical Convergence Rate ‣ 3 Chasing
+    Extreme Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning of LLMs with
+    Extreme Sparsity"), Theorem [1](#Thmtheorem1 "Theorem 1 (Convergence rate of sensitive
+    sparse ZO-SGD (Definition 4)). ‣ 3.2 Theoretical Convergence Rate ‣ 3 Chasing
+    Extreme Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning of LLMs with
+    Extreme Sparsity").
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'Denote $\tilde{\mathbf{I}}_{d,\mathbf{m}_{k}}\in\mathbb{R}^{d\times d}$ nonzero
+    entries:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\text{diag}(\tilde{\mathbf{I}}_{d,\mathbf{m}_{k}})$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle f(\mathbf{w}_{t+1},\mathbf{x}_{t})$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\mathbb{E}_{\bar{\mathbf{z}}}f(\mathbf{w}_{t+1},\mathbf{x}_{t})$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\mathbb{E}_{\bar{\mathbf{z}}}f(\mathbf{w}_{t+1},\mathbf{x}_{t})$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\mathbb{E}_{\bar{\mathbf{z}},(\mathbf{x},y)}\mathcal{F}(\mathbf{w}_{t+1})$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\mathbb{E}_{\bar{\mathbf{z}},(\mathbf{x},y)}\mathcal{F}(\mathbf{w}_{t+1})$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Denote $\alpha=Lc(k+2)$, we will have
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathbb{E}_{\bar{\mathbf{z}},(\mathbf{x},y)}\mathcal{F}(\mathbf{w}_{t+1})$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Set $\eta_{t}<\dfrac{c}{\alpha}=\dfrac{1}{L(k+2)}$, we have
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathbb{E}_{\bar{\mathbf{z}},(\mathbf{x},y)}\mathcal{F}(\mathbf{w}_{t+1})$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: If we apply our sparse ZO update rule recursively for $T$ steps,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\dfrac{1}{T}\sum_{t=0}^{T-1}\mathbb{E}_{\bar{\mathbf{z}},(\mathbf{x},y)}\&#124;\nabla_{\mathbf{w}}\mathcal{F}(\mathbf{w}_{t})\&#124;^{2}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle\leq\dfrac{2\alpha}{Tc^{2}}(\mathcal{F}(\mathbf{w}_{0})-\mathcal{F}^{*})+(2\sigma^{2}+\sigma^{2})$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle\leq\dfrac{2L(k+2)}{c}\dfrac{1}{T}(\mathcal{F}(\mathbf{w}_{0})-\mathcal{F}^{*})+3\sigma^{2}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle\leq O\left(\dfrac{k}{c}\cdot\dfrac{L}{T}\right)(\mathcal{F}(\mathbf{w}_{0})-\mathcal{F}^{*})+3\sigma^{2}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: ∎
+  prefs: []
+  type: TYPE_NORMAL
+- en: B.3 Proof for Equation [10](#S3.E10 "Equation 10 ‣ Theorem 1 (Convergence rate
+    of sensitive sparse ZO-SGD (Definition 4)). ‣ 3.2 Theoretical Convergence Rate
+    ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning
+    of LLMs with Extreme Sparsity"), Theorem [1](#Thmtheorem1 "Theorem 1 (Convergence
+    rate of sensitive sparse ZO-SGD (Definition 4)). ‣ 3.2 Theoretical Convergence
+    Rate ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning
+    of LLMs with Extreme Sparsity")
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Lemma 2  (Sparse ZO surrogate gradient norm).
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathbb{E}_{\bar{\mathbf{z}}}[\&#124;\hat{g}(\mathbf{w}_{t},\mathbf{x}_{t},\bar{\mathbf{z}}_{t})\&#124;^{2}]$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Proof for Equation [10](#S3.E10 "Equation 10 ‣ Theorem 1 (Convergence rate of
+    sensitive sparse ZO-SGD (Definition 4)). ‣ 3.2 Theoretical Convergence Rate ‣
+    3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning of
+    LLMs with Extreme Sparsity"), Theorem [1](#Thmtheorem1 "Theorem 1 (Convergence
+    rate of sensitive sparse ZO-SGD (Definition 4)). ‣ 3.2 Theoretical Convergence
+    Rate ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning
+    of LLMs with Extreme Sparsity").
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Denote $\kappa$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathbb{E}_{\bar{\mathbf{z}},(\mathbf{x},y)}\mathcal{F}(\mathbf{w}_{t+1})$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\mathbb{E}_{\bar{\mathbf{z}},(\mathbf{x},y)}\{\mathcal{F}(\mathbf{w}_{t+1})-\mathcal{F}^{*}\}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\mathbb{E}_{\bar{\mathbf{z}},(\mathbf{x},y)}\{\mathcal{F}(\mathbf{w}_{t+1})-\mathcal{F}^{*}\}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Plugging in $\eta_{t}\leq\dfrac{c}{\alpha}$ iterations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathbb{E}_{\bar{\mathbf{z}},(\mathbf{x},y)}\{\mathcal{F}(\mathbf{w}_{T})-\mathcal{F}^{*}\}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle\leq(1-\dfrac{c\kappa}{(k+2)})^{T}(\mathcal{F}(\mathbf{w}_{0})-\mathcal{F}^{*})+\dfrac{3\sigma^{2}c}{2L(k+2)}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: ∎
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix C Supplementary Experiment Details
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: C.1 On-Device Memory Constraints
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We include a table of common memory constraints imposed by edge or mobile devices
+    as Table [3](#A3.T3 "Table 3 ‣ C.1 On-Device Memory Constraints ‣ Appendix C Supplementary
+    Experiment Details ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity").
+    We can find that a wide range of these devices impose a memory constraint of 8
+    GiB as our main constraint that we consider when we develop our on-device personalization
+    recipe in Section [3.5](#S3.SS5 "3.5 An Opportunity for On-Device LLM Personalization
+    ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning
+    of LLMs with Extreme Sparsity").
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 3: Device memory of some mobile devices or consumer-graded GPUs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Devices | Memory |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Nvidia GeForce GTX 1080 Ti | 11 GiB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Nvidia GeForce RTX 3060 Ti | 8 GiB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Nvidia Jetson TX2 | 8 GiB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPPO Find X7 Ultra [[18](#bib.bib18)] | 12 GiB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Samsung Galaxy S10 with Mali-G76 GPU [[10](#bib.bib10)] | 8 GiB |'
+  prefs: []
+  type: TYPE_TB
+- en: C.2 Gradient Sparsity During LLM Fine-Tuning
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In Figure [2](#S3.F2 "Figure 2 ‣ 3.1 Extreme Sparsity Pattern in LLM ‣ 3 Chasing
+    Extreme Sparsity in ZO LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning of LLMs with
+    Extreme Sparsity"), we explore the FO gradient sparsity of Llama2-7B during fine-tuning
+    (at Epoch 5). Here we follow the identical setting and plot the FO gradient sparsity
+    for Llama2-7B, Mistral-7B, and OPT-6.7B during epoch 1, 5, and 10 (end of fine-tuning).
+  prefs: []
+  type: TYPE_NORMAL
+- en: We observe that the gradient sparsity is exhibited throughout the fine-tuning
+    with slightly increasing towards the end. OPT-6.7B which uses ReLU as the activation
+    function would demonstrate greater sparsity across tasks compared with Llama2-7B
+    and Mistral-7B which uses SwiGLU and SiLU respectively. Nevertheless, the gradient
+    sparsity pattern holds across architectures, tasks, and fine-tuning time in general.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/db45c71c2845fff2d6497e14c4d8f9d8.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Llama2-7B
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/0a267da58b54ee9abca12d6bafa66735.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Mistral-7B
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/5850fc073b659522447c062dea8e31de.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (c) OPT-6.7B
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 7: Cumulative normalized sum of coordinate-wise gradient square $[\nabla\mathcal{F}(\mathbf{w})]_{i}^{2}$
+    std of all blue curves.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: C.3 Transferability of Gradient Features from Pre-Training Datasets to Downstream
+    Tasks
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In Figure [3](#S3.F3 "Figure 3 ‣ 3.3 Transferability of LLM Pre-Training Sparsity
+    Pattern in ZO Fine-Tuning ‣ 3 Chasing Extreme Sparsity in ZO LLM Fine-Tuning ‣
+    Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity"), we explore the transferability
+    of gradient features from pre-training datasets (C4) to downstream tasks, and
+    here we will also validate this phenomenon across models, as shown in Figure [8](#A3.F8
+    "Figure 8 ‣ C.3 Transferability of Gradient Features from Pre-Training Datasets
+    to Downstream Tasks ‣ Appendix C Supplementary Experiment Details ‣ Zeroth-Order
+    Fine-Tuning of LLMs with Extreme Sparsity"). As there are no solid lines (top-(1e-2,1e-3,1e-4))
+    parameters with C4 gradient entries prior to fine-tuning) vanish to 0, we know
+    the transferability of gradient features from C4 datasets to downstream datasets
+    hold across models and downstream tasks. In this case, sensitive parameters determined
+    from C4 gradients would still be similar to sensitive parameters determined from
+    downstream task-specific gradients across models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/5a8cacf776f5baaa8925a3be7642969e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Llama2-7B
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8d96f39e3f6cdf0642e92c715a3e4e6b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Mistral-7B
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/649c25c64d71b92682b81336ee72ea35.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (c) OPT-6.7B
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 8: Cumulative normalized gradient square values of Llama2-7B (subfigure [8](#A3.F8
+    "Figure 8 ‣ C.3 Transferability of Gradient Features from Pre-Training Datasets
+    to Downstream Tasks ‣ Appendix C Supplementary Experiment Details ‣ Zeroth-Order
+    Fine-Tuning of LLMs with Extreme Sparsity")), Mistral-7B (subfigure [8](#A3.F8
+    "Figure 8 ‣ C.3 Transferability of Gradient Features from Pre-Training Datasets
+    to Downstream Tasks ‣ Appendix C Supplementary Experiment Details ‣ Zeroth-Order
+    Fine-Tuning of LLMs with Extreme Sparsity")), and OPT-6.7B (subfigure [8](#A3.F8
+    "Figure 8 ‣ C.3 Transferability of Gradient Features from Pre-Training Datasets
+    to Downstream Tasks ‣ Appendix C Supplementary Experiment Details ‣ Zeroth-Order
+    Fine-Tuning of LLMs with Extreme Sparsity"))’s linear layers during FO fine-tuning.
+    For a given model and training checkpoint, we report the average value across
+    all linear layers as a line in each subfigure. For each line, the colors represent
+    the fraction of parameters (1e-2,1e-3,1e-4) and the line style represents the
+    category. “task grad, dyn.” refers to the sensitive parameters selected at the
+    given timestep (x-axis), and “task grad, static” refers to the sensitive parameters
+    selected before fine-tuning. “C4 grad, static” refers to the sensitive parameters
+    selected with gradients taken from causal language modeling on C4 datasets, and
+    we keep it unchanged during fine-tuning.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: C.4 Hyperparameters in Experiments
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: For all experiments, we use 20,000 training steps with ZO-SGD optimizer (Definition [2](#Thmdefinition2
+    "Definition 2 (ZO-SGD update rule). ‣ 2.1 Zeroth-Order Optimization ‣ 2 Background
+    and Related works ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity")).
+    We will save a model checkpoint every 500 steps, and load the checkpoint with
+    the lowest loss on the validation set at the end of the training, and report its
+    test set accuracy as result. Usually, the training/validation set will be sampled
+    from the original dataset with size 1000/500 respectively and the test set is
+    of size $\min(1000,|\text{original test set}|)$, except for CB and COPA that we
+    use 100 for the validation set size. For all ZO experiments (Table [4](#A3.T4
+    "Table 4 ‣ C.4 Hyperparameters in Experiments ‣ Appendix C Supplementary Experiment
+    Details ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity") and Table [5](#A3.T5
+    "Table 5 ‣ C.4 Hyperparameters in Experiments ‣ Appendix C Supplementary Experiment
+    Details ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity")), we use batch
+    size of 16\. This experiment setting is identical to Malladi et al. [[27](#bib.bib27)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4: The chosen hyperparameters for experiments in Table [1](#S4.T1 "Table
+    1 ‣ 4.1 RQ1: Effectiveness of Sparse ZO Fine-Tuning on Sensitive Parameters ‣
+    4 Experiments ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity"). We repeat
+    each hyperparameters for 3 random trials and report the average and standard deviation
+    in Table [1](#S4.T1 "Table 1 ‣ 4.1 RQ1: Effectiveness of Sparse ZO Fine-Tuning
+    on Sensitive Parameters ‣ 4 Experiments ‣ Zeroth-Order Fine-Tuning of LLMs with
+    Extreme Sparsity").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: (a) Llama2-7B
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | Methods | SST-2 | RTE | CB | BoolQ | WSC | WiC | COPA |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Q, ZO | Sensitive (C4, static) ($\epsilon=$1e-3) | 5e-7 | 1e-6 | 1e-6 | 1e-6
+    | 5e-7 | 1e-6 | 1e-6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | LoRA ($\epsilon=$1e-3) | 1e-5 | 5e-5 | 1e-5 | 2e-5 | 1e-5 | 2e-5 | 1e-5
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Prefix ($\epsilon=$1e-2) | 1e-4 | 2e-4 | 5e-4 | 5e-4 | 1e-4 | 5e-4 | 2e-4
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ZO | Sensitive (task, static) ($\epsilon=$1e-3) | 5e-7 | 1e-6 | 1e-6 | 1e-6
+    | 1e-6 | 1e-6 | 2e-6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Random (static) ($\epsilon=$1e-3) | 2e-4 | 5e-4 | 2e-4 | 5e-4 | 2e-4 |
+    5e-4 | 5e-4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Full fine-tuning ($\epsilon=$1e-3) | 5e-7 | 5e-7 | 5e-7 | 5e-7 | 2e-7
+    | 5e-7 | 5e-7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | ICL (#examples) | 16 | 16 | 16 | 8 | 16 | 8 | 8 |'
+  prefs: []
+  type: TYPE_TB
+- en: (b) Mistral-7B
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Q, ZO | Sensitive (C4, static) ($\epsilon=$1e-4) | 2e-8 | 5e-8 | 2e-8 | 2e-8
+    | 1e-8 | 2e-8 | 2e-8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | LoRA ($\epsilon=$1e-4) | 2e-6 | 5e-6 | 2e-6 | 2e-6 | 2e-6 | 2e-6 | 2e-6
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Prefix ($\epsilon=$1e-3) | 1e-3 | 2e-3 | 1e-3 | 1e-2 | 5e-4 | 1e-3 | 5e-4
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ZO | Sensitive (task, static) ($\epsilon=$1e-4) | 5e-8 | 5e-8 | 2e-8 | 2e-8
+    | 2e-8 | 2e-8 | 2e-8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Random (static) ($\epsilon=$1e-4) | 1e-5 | 2e-6 | 5e-6 | 1e-5 | 1e-6 |
+    2e-6 | 2e-5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Full fine-tuning ($\epsilon=$1e-4) | 2e-8 | 2e-8 | 1e-8 | 1e-8 | 1e-8
+    | 1e-8 | 2e-8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | ICL (#examples) | 4 | 8 | 4 | 16 | 4 | 4 | 8 |'
+  prefs: []
+  type: TYPE_TB
+- en: (c) OPT-6.7B
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Q, ZO | Sensitive (C4, static) ($\epsilon=$1e-3) | 2e-7 | 5e-7 | 5e-7 | 5e-7
+    | 2e-7 | 5e-7 | 2e-7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | LoRA ($\epsilon=$1e-3) | 1e-5 | 2e-5 | 1e-5 | 2e-5 | 1e-5 | 2e-5 | 2e-5
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Prefix ($\epsilon=$1e-2) | 2e-3 | 1e-2 | 1e-3 | 5e-3 | 5e-3 | 1e-2 | 5e-3
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ZO | Sensitive (task, static) ($\epsilon=$1e-3) | 2e-7 | 5e-7 | 5e-7 | 2e-7
+    | 2e-7 | 5e-7 | 2e-7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Random (static) ($\epsilon=$1e-3) | 1e-4 | 5e-5 | 2e-5 | 5e-5 | 2e-4 |
+    5e-5 | 5e-5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Full fine-tuning ($\epsilon=$1e-3) | 2e-7 | 2e-7 | 2e-7 | 2e-7 | 2e-7
+    | 2e-7 | 5e-7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | ICL (#examples) | 16 | 4 | 16 | 16 | 16 | 8 | 16 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 5: The chosen hyperparameters for experiments in Figure [5](#S4.F5 "Figure
+    5 ‣ 4.1 RQ1: Effectiveness of Sparse ZO Fine-Tuning on Sensitive Parameters ‣
+    4 Experiments ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity") and Figure [5](#S4.F5
+    "Figure 5 ‣ 4.1 RQ1: Effectiveness of Sparse ZO Fine-Tuning on Sensitive Parameters
+    ‣ 4 Experiments ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity"). We
+    repeat each hyperparameters for 3 random trials and report the average to draw
+    a line in Figure [5](#S4.F5 "Figure 5 ‣ 4.1 RQ1: Effectiveness of Sparse ZO Fine-Tuning
+    on Sensitive Parameters ‣ 4 Experiments ‣ Zeroth-Order Fine-Tuning of LLMs with
+    Extreme Sparsity") and Figure [5](#S4.F5 "Figure 5 ‣ 4.1 RQ1: Effectiveness of
+    Sparse ZO Fine-Tuning on Sensitive Parameters ‣ 4 Experiments ‣ Zeroth-Order Fine-Tuning
+    of LLMs with Extreme Sparsity"), and we use Llama2-7B for all experiments. For
+    each subtable, we include the fraction to optimize on its header and report the
+    chosen learning rate on each cell.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: (a) RTE
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Methods | 1e-5 | 1e-4 | 1e-3 | 1e-2 | 1e-1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Sensitive (C4, static) ($\epsilon=$1e-3) | 1e-5 | 1e-6 | 1e-6 | 1e-6 | 1e-6
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Sensitive (task-specific, static) ($\epsilon=$1e-3) | 1e-5 | 1e-6 | 1e-6
+    | 1e-6 | 1e-6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Sensitive (task-specific, dynamic) ($\epsilon=$1e-3) | 1e-5 | 1e-6 | 1e-6
+    | 1e-6 | 1e-6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Random (static) ($\epsilon=$1e-3) | 2e-2 | 5e-3 | 5e-4 | 5e-5 | 5e-5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Random (dynamic) ($\epsilon=$1e-3) | 2e-2 | 5e-3 | 2e-4 | 5e-5 | 5e-6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Weight outliers (static) ($\epsilon=$1e-3) | 2e-3 | 1e-3 | 2e-4 | 5e-5 |
+    1e-5 |'
+  prefs: []
+  type: TYPE_TB
+- en: (b) WiC
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Methods | 1e-5 | 1e-4 | 1e-3 | 1e-2 | 1e-1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Sensitive (C4, static) ($\epsilon=$1e-3) | 1e-5 | 2e-6 | 1e-6 | 1e-6 | 1e-6
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Sensitive (task-specific, static) ($\epsilon=$1e-3) | 1e-5 | 2e-6 | 1e-6
+    | 1e-6 | 1e-6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Sensitive (task-specific, dynamic) ($\epsilon=$1e-3) | 1e-5 | 2e-6 | 1e-6
+    | 1e-6 | 1e-6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Random (static) ($\epsilon=$1e-3) | 2e-2 | 5e-3 | 5e-4 | 5e-5 | 5e-6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Random (dynamic) ($\epsilon=$1e-3) | 2e-2 | 5e-3 | 5e-4 | 5e-5 | 5e-6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Weight outliers (static) ($\epsilon=$1e-3) | 1e-3 | 5e-4 | 2e-4 | 1e-4 |
+    2e-5 |'
+  prefs: []
+  type: TYPE_TB
+- en: (c) COPA
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Methods | 1e-5 | 1e-4 | 1e-3 | 1e-2 | 1e-1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Sensitive (C4, static) ($\epsilon=$1e-3) | 5e-6 | 1e-6 | 1e-6 | 1e-6 | 5e-7
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Sensitive (task-specific, static) ($\epsilon=$1e-3) | 5e-6 | 2e-6 | 2e-6
+    | 1e-6 | 1e-6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Sensitive (task-specific, dynamic) ($\epsilon=$1e-3) | 5e-6 | 1e-6 | 1e-6
+    | 1e-6 | 1e-6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Random (static) ($\epsilon=$1e-3) | 1e-2 | 2e-3 | 5e-4 | 5e-5 | 5e-6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Random (dynamic) ($\epsilon=$1e-3) | 2e-3 | 1e-3 | 2e-4 | 2e-5 | 2e-6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Weight outliers (static) ($\epsilon=$1e-3) | 1e-3 | 5e-4 | 5e-4 | 1e-4 |
+    1e-5 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Our hyperparameters (learning rate $\eta$ throughout our experiments. We also
+    report the chosen hyperparameter for Figure [5](#S4.F5 "Figure 5 ‣ 4.1 RQ1: Effectiveness
+    of Sparse ZO Fine-Tuning on Sensitive Parameters ‣ 4 Experiments ‣ Zeroth-Order
+    Fine-Tuning of LLMs with Extreme Sparsity") and Figure [5](#S4.F5 "Figure 5 ‣
+    4.1 RQ1: Effectiveness of Sparse ZO Fine-Tuning on Sensitive Parameters ‣ 4 Experiments
+    ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity") in Table [5](#A3.T5
+    "Table 5 ‣ C.4 Hyperparameters in Experiments ‣ Appendix C Supplementary Experiment
+    Details ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity"). For LoRA,
+    we always add to all linear layers with $r=8$ with length as 5, as what Malladi
+    et al. [[27](#bib.bib27)] uses.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: C.5 Task-Specific Prompts in Experiments
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We describe our task templates in Table [6](#A3.T6 "Table 6 ‣ C.5 Task-Specific
+    Prompts in Experiments ‣ Appendix C Supplementary Experiment Details ‣ Zeroth-Order
+    Fine-Tuning of LLMs with Extreme Sparsity").
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 6: Task templates for all experiments. On the left column we include
+    the task name and the model name, and on the right column we describe the exact
+    prompt with answer candidates.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Task |  | Prompts |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SST-2 (Llama2-7B) |  | ### Sentence: <text> ### Sentiment: negative/positive
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SST-2 (Mistral-7B, OPT-6.7B) |  | <text> It was terrible/great |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTE (Llama2-7B) |  | Suppose "<premise>" Can we infer that "<hypothesis>"?
+    Yes or No? Yes/No |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTE (Mistral-7B, OPT-6.7B) |  | <premise> Does this mean that "<hypothesis>"
+    is true? Yes or No?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Yes/No |
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| CB (Llama2-7B, Mistral-7B, OPT-6.7B) |  | Suppose <premise> Can we infer
+    that "<hypothesis>"? Yes, No, or Maybe? Yes/No/Maybe |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BoolQ (Llama2-7B) |  | <passage> <question>? Yes/No |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BoolQ (Mistral-7B, OPT-6.7B) |  | <passage> <question>? Yes/No |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WSC (Llama2-7B, Mistral-7B, OPT-6.7B) |  | <text> In the previous sentence,
+    does the pronoun "<span2>" refer to <span1>? Yes or No?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Yes/No |
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| WiC (Llama2-7B, Mistral-7B, OPT-6.7B) |  | Does the word "<word>" have the
+    same meaning in these two sentences? Yes, No? <sent1>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: <sent2>
+  prefs: []
+  type: TYPE_NORMAL
+- en: Yes/No |
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| COPA (Llama2-7B, Mistral-7B, OPT-6.7B) |  | <premise> so/because <candidate>
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: C.6 Implementation of Sparse Operations in Linear Layers
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Linear layers in LLMs often contribute most parameters [[14](#bib.bib14)].
+    Since from Equation [11](#S3.E11 "Equation 11 ‣ 3.4 Our Proposal: ZO LLM Fine-Tuning
+    with Fisher-Informed, Transferable Sparsity ‣ 3 Chasing Extreme Sparsity in ZO
+    LLM Fine-Tuning ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity") we
+    know'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | ${\color[rgb]{0,0,1}\definecolor[named]{pgfstrokecolor}{rgb}{0,0,1}\mathbf{w}_{\text{sparse}}}=\mathbf{w}\odot\mathbf{m}_{k},\quad\mathbf{w}_{\text{dense}}=\mathbf{w}\odot(\mathbf{1}_{d}-\mathbf{m}_{k}),\quad\mathbf{w}={\color[rgb]{0,0,1}\definecolor[named]{pgfstrokecolor}{rgb}{0,0,1}\mathbf{w}_{\text{sparse}}}+\mathbf{w}_{\text{dense}}$
+    |  | (17) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'and since $\mathbf{w}_{\text{dense}}$ to improve the computational efficiency
+    of linear layers after extracting the sparse parameters. In this case, we would
+    have two different methods to implement the forward pass of linear layers (with
+    induced sparse operation colored in red):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\ \mathbf{w}\mathbf{x}$ |  | (18) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle={\color[rgb]{1,0,0}\definecolor[named]{pgfstrokecolor}{rgb}{1,0,0}\mathrm{SparseAddMM}}(\mathrm{DenseMM}(\mathbf{w}_{\text{dense}},\mathbf{x}),{\color[rgb]{0,0,1}\definecolor[named]{pgfstrokecolor}{rgb}{0,0,1}\mathbf{w}_{\text{sparse}}},\mathbf{x})$
+    | faster with token generation |  | (19) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle=(\mathbf{w}_{\text{dense}}{\color[rgb]{1,0,0}\definecolor[named]{pgfstrokecolor}{rgb}{1,0,0}+\mathbf{w}_{\text{sparse}}})\mathbf{x}$
+    |  | (20) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle=\mathrm{DenseMM}({\color[rgb]{1,0,0}\definecolor[named]{pgfstrokecolor}{rgb}{1,0,0}\mathrm{SparseAdd}}({\color[rgb]{0,0,1}\definecolor[named]{pgfstrokecolor}{rgb}{0,0,1}\mathbf{w}_{\text{sparse}}},\mathbf{w}_{\text{dense}}),\mathbf{x})$
+    | faster with ZO training |  | (21) |'
+  prefs: []
+  type: TYPE_TB
+- en: '![Refer to caption](img/9518e7e597646bb27839a3c196936b30.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 9: Time of SparseAdd (Equation [21](#A3.E21 "Equation 21 ‣ C.6 Implementation
+    of Sparse Operations in Linear Layers ‣ Appendix C Supplementary Experiment Details
+    ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity")) versus SparseAddMM
+    (Equation [19](#A3.E19 "Equation 19 ‣ C.6 Implementation of Sparse Operations
+    in Linear Layers ‣ Appendix C Supplementary Experiment Details ‣ Zeroth-Order
+    Fine-Tuning of LLMs with Extreme Sparsity")) in Llama2-7B ZO training forward
+    & inference. In subfigure 1 and 3, we use Nvidia RTX A6000 and Intel Xeno Gold
+    6342 CPUs, with PyTorch version 2.2, HuggingFace version 4.36, and CUDA 12.2\.
+    In subfigure 2 and 4, we use Nvidia A100-SXM4 (40 GiB) and AMD EPYC 7543P 32-Core
+    CPU with PyTorch version 2.1, HuggingFace version 4.38.2, and CUDA 12.2\. We use
+    Flash Attention 2 [[5](#bib.bib5)] for all 4 subfigures.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The specific choice of employing Equation [19](#A3.E19 "Equation 19 ‣ C.6 Implementation
+    of Sparse Operations in Linear Layers ‣ Appendix C Supplementary Experiment Details
+    ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity") or Equation [21](#A3.E21
+    "Equation 21 ‣ C.6 Implementation of Sparse Operations in Linear Layers ‣ Appendix
+    C Supplementary Experiment Details ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme
+    Sparsity") needs careful consideration and benchmarking, but here we can provide
+    a general guideline based on the size of input vector (or arithmetic intensity)
+    and potential integration with weight quantization method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Size of input vectors $\mathbf{x}$ would be large enough such that Equation [19](#A3.E19
+    "Equation 19 ‣ C.6 Implementation of Sparse Operations in Linear Layers ‣ Appendix
+    C Supplementary Experiment Details ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme
+    Sparsity") would induce large computational overhead, as shown in subfigure 1
+    of Figure [9](#A3.F9 "Figure 9 ‣ C.6 Implementation of Sparse Operations in Linear
+    Layers ‣ Appendix C Supplementary Experiment Details ‣ Zeroth-Order Fine-Tuning
+    of LLMs with Extreme Sparsity"). In contrast, the computational complexity of
+    Equation [21](#A3.E21 "Equation 21 ‣ C.6 Implementation of Sparse Operations in
+    Linear Layers ‣ Appendix C Supplementary Experiment Details ‣ Zeroth-Order Fine-Tuning
+    of LLMs with Extreme Sparsity") is independent of $\mathbf{x}$ is large, we would
+    expect Equation [21](#A3.E21 "Equation 21 ‣ C.6 Implementation of Sparse Operations
+    in Linear Layers ‣ Appendix C Supplementary Experiment Details ‣ Zeroth-Order
+    Fine-Tuning of LLMs with Extreme Sparsity") is much faster than Equation [19](#A3.E19
+    "Equation 19 ‣ C.6 Implementation of Sparse Operations in Linear Layers ‣ Appendix
+    C Supplementary Experiment Details ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme
+    Sparsity"). As an example, we use sequence length of 512 and batch size 16 sampled
+    from WikiText-2 dataset [[29](#bib.bib29)] as a representative computational intensity
+    for ZO training in subfigures 1 and 2 in Figure [9](#A3.F9 "Figure 9 ‣ C.6 Implementation
+    of Sparse Operations in Linear Layers ‣ Appendix C Supplementary Experiment Details
+    ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity").
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, during autoregressive token generation, on each step we would only
+    append a single token to the previously cached embeddings, and in this case $\mathbf{x}$
+    is already sparse. This is also illustrated in subfigure 3 and 4 in Figure [9](#A3.F9
+    "Figure 9 ‣ C.6 Implementation of Sparse Operations in Linear Layers ‣ Appendix
+    C Supplementary Experiment Details ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme
+    Sparsity"). However, we note that the specific implementation choice is hardware
+    and task dependent and requires thorough benchmarking and we will leave it as
+    a future work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We recommend using Equation [21](#A3.E21 "Equation 21 ‣ C.6 Implementation of
+    Sparse Operations in Linear Layers ‣ Appendix C Supplementary Experiment Details
+    ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity") during large-batched
+    ZO training and Equation [19](#A3.E19 "Equation 19 ‣ C.6 Implementation of Sparse
+    Operations in Linear Layers ‣ Appendix C Supplementary Experiment Details ‣ Zeroth-Order
+    Fine-Tuning of LLMs with Extreme Sparsity") during small-batched autoregressive
+    token generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In light of this observation, in our Figure [1](#S1.F1 "Figure 1 ‣ 1 Introduction
+    ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity"), we implement both
+    “SparseAdd” and “SparseAddMM” methods for “Sensitive (0.1%)” and “Random (10%)”.
+    For each method we report the lowest time out of these 2 implementations: for
+    “Sensitive (0.1%)” training and “Random (10%)” training and inference, we use
+    “SparseAdd” approach. For “Sensitive (0.1%)” inference, we use the “SparseAddMM”
+    approach.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Integration with weight quantization method. Weight quantization algorithms
+    can be categorized into 2 categories: uniform quantization method and non-uniform
+    quantization method. For uniform quantization method, Xi et al. [[45](#bib.bib45)]
+    indicates that we could use integer matrix multiplication to compute $Q(\mathbf{w}_{\text{dense}})\mathbf{x}$.
+    In this case, we also have 3 different implementations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\ Q(\mathbf{w})\mathbf{x}$ |  | (22) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle={\color[rgb]{1,0,0}\definecolor[named]{pgfstrokecolor}{rgb}{1,0,0}\mathrm{SparseAddMM}}\Bigl{(}\mathrm{Dequantize}\bigl{(}\mathrm{IntMM}(Q(\mathbf{w}_{\text{dense}}),\mathbf{x})\bigr{)},{\color[rgb]{0,0,1}\definecolor[named]{pgfstrokecolor}{rgb}{0,0,1}\mathbf{w}_{\text{sparse}}},\mathbf{x}\Bigr{)}\quad\text{fits
+    with integer matmul }$ |  | (23) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle={\color[rgb]{1,0,0}\definecolor[named]{pgfstrokecolor}{rgb}{1,0,0}\mathrm{SparseAddMM}}\Bigl{(}\text{Dequantize}(Q(\mathbf{w}_{\text{dense}})),\mathbf{x},{\color[rgb]{0,0,1}\definecolor[named]{pgfstrokecolor}{rgb}{0,0,1}\mathbf{w}_{\text{sparse}}}\Bigr{)}$
+    |  | (24) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle=(\mathrm{Dequantize}(Q(\mathbf{w}_{\text{dense}})){\color[rgb]{1,0,0}\definecolor[named]{pgfstrokecolor}{rgb}{1,0,0}+}{\color[rgb]{0,0,1}\definecolor[named]{pgfstrokecolor}{rgb}{0,0,1}\mathbf{w}_{\text{sparse}}})\mathbf{x}$
+    |  | (25) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle=\mathrm{DenseMM}({\color[rgb]{1,0,0}\definecolor[named]{pgfstrokecolor}{rgb}{1,0,0}\mathrm{SparseAdd}}\left({\color[rgb]{0,0,1}\definecolor[named]{pgfstrokecolor}{rgb}{0,0,1}\mathbf{w}_{\text{sparse}}},\mathrm{Dequantize}(Q(\mathbf{w}_{\text{dense}})),\mathbf{x}\right)$
+    |  | (26) |'
+  prefs: []
+  type: TYPE_TB
+- en: Equation [23](#A3.E23 "Equation 23 ‣ C.6 Implementation of Sparse Operations
+    in Linear Layers ‣ Appendix C Supplementary Experiment Details ‣ Zeroth-Order
+    Fine-Tuning of LLMs with Extreme Sparsity") would compute $\mathrm{IntMM}(Q(\mathbf{w}_{\text{dense}}),\mathbf{x})$
+    in last paragraph. We will leave a practical implementation and thorough benchmarking
+    into a future work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We recommend using Equation [23](#A3.E23 "Equation 23 ‣ C.6 Implementation of
+    Sparse Operations in Linear Layers ‣ Appendix C Supplementary Experiment Details
+    ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity") when we use efficient
+    integer matmul to compute $Q(\mathbf{w}_{\text{dense}})\mathbf{x}$ and in other
+    cases, using Equation [24](#A3.E24 "Equation 24 ‣ C.6 Implementation of Sparse
+    Operations in Linear Layers ‣ Appendix C Supplementary Experiment Details ‣ Zeroth-Order
+    Fine-Tuning of LLMs with Extreme Sparsity") or Equation [26](#A3.E26 "Equation
+    26 ‣ C.6 Implementation of Sparse Operations in Linear Layers ‣ Appendix C Supplementary
+    Experiment Details ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity")
+    follows our previous recommendation based on the size of input vectors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: C.7 Hardware, Platform, Libraries, and Other Details for Benchmarking
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Figure [1](#S1.F1 "Figure 1 ‣ 1 Introduction ‣ Zeroth-Order Fine-Tuning of
+    LLMs with Extreme Sparsity"), Figure [6](#S4.F6 "Figure 6 ‣ 4.1 RQ1: Effectiveness
+    of Sparse ZO Fine-Tuning on Sensitive Parameters ‣ 4 Experiments ‣ Zeroth-Order
+    Fine-Tuning of LLMs with Extreme Sparsity"), and Figure [9](#A3.F9 "Figure 9 ‣
+    C.6 Implementation of Sparse Operations in Linear Layers ‣ Appendix C Supplementary
+    Experiment Details ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity")
+    (subfigure 1 and 3) are trained and evaluated on an internal cluster with 8 Nvidia
+    RTX A6000 GPUs and 2 Intel Xeon Gold 6342 CPUs, with PyTorch version 2.2, HuggingFace
+    version 4.36, and CUDA 12.2\. In subfigure 2 and 4 in Figure [9](#A3.F9 "Figure
+    9 ‣ C.6 Implementation of Sparse Operations in Linear Layers ‣ Appendix C Supplementary
+    Experiment Details ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity"),
+    we use Nvidia A100-SXM4 (40 GiB) and AMD EPYC 7543P 32-Core CPU with PyTorch version
+    2.1, HuggingFace version 4.38.2, and CUDA 12.2\. We use Flash Attention 2 [[5](#bib.bib5)]
+    throughout our experiments, and the base model for benchmarking is always Llama2-7B
+    with Float16 datatype.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In Figure [1](#S1.F1 "Figure 1 ‣ 1 Introduction ‣ Zeroth-Order Fine-Tuning
+    of LLMs with Extreme Sparsity") and Figure [9](#A3.F9 "Figure 9 ‣ C.6 Implementation
+    of Sparse Operations in Linear Layers ‣ Appendix C Supplementary Experiment Details
+    ‣ Zeroth-Order Fine-Tuning of LLMs with Extreme Sparsity"), we use sequence length
+    of 512 and batch size 16 sampled from WikiText-2 dataset [[29](#bib.bib29)] as
+    a representative computational intensity for ZO training, and for inference we
+    generate 128 tokens with top-$p$) sampling from the prompt “Please describe the
+    effect of sparse zeroth-order optimization methods on memory-efficient LLM fine-tuning:
+    ”.'
+  prefs: []
+  type: TYPE_NORMAL

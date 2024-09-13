@@ -1,0 +1,1670 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 19:05:18'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When Less is More: Investigating Data Pruning for Pretraining LLMs at Scale'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2309.04564](https://ar5iv.labs.arxiv.org/html/2309.04564)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: name=Max Marion    affiliation=Cohere for AI    email=maxwell@cohere.com   
+    name=Ahmet Üstün    affiliation=Cohere for AI    email=ahmet@cohere.com    name=Luiza
+    Pozzobon    affiliation=Cohere for AI    email=luiza@cohere.com    name=Alex Wang
+       affiliation=Cohere    email=alexwang@cohere.com    name=Marzieh Fadaee    affiliation=Cohere
+    for AI    email=marzieh@cohere.com    name=Sara Hooker    affiliation=Cohere for
+    AI    email=sarahooker@cohere.com
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Large volumes of text data have contributed significantly to the development
+    of large language models (LLMs) in recent years. This data is typically acquired
+    by scraping the internet, leading to pretraining datasets comprised of noisy web
+    text. To date, efforts to prune these datasets down to a higher quality subset
+    have relied on hand-crafted heuristics encoded as rule-based filters. In this
+    work, we take a wider view and explore scalable estimates of data quality that
+    can be used to systematically measure the quality of pretraining data. We perform
+    a rigorous comparison at scale of the simple data quality estimator of perplexity,
+    as well as more sophisticated and computationally intensive estimates of the Error
+    L2-Norm and memorization. These metrics are used to rank and prune pretraining
+    corpora, and we subsequently compare LLMs trained on these pruned datasets. Surprisingly,
+    we find that the simple technique of perplexity outperforms our more computationally
+    expensive scoring methods. We improve over our no-pruning baseline while training
+    on as little as 30% of the original training dataset. Our work sets the foundation
+    for unexplored strategies in automatically curating high quality corpora and suggests
+    the majority of pretraining data can be removed while retaining performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A reigning belief in machine learning is that more data leads to better performance.
+    Recent years of progress in scaling large language models (LLMs) have shown strong
+    evidence to support this with remarkable gains in language understanding and generation
+    capabilities (Brown et al., [2020](#bib.bib9); Touvron et al., [2023](#bib.bib41);
+    Kaplan et al., [2020](#bib.bib20); Anil et al., [2023](#bib.bib3)). When training
+    language models, common practice is to use massive datasets such as C4 (Raffel
+    et al., [2020](#bib.bib35)), RefinedWeb (Penedo et al., [2023](#bib.bib31)), and
+    The Pile (Gao et al., [2021](#bib.bib17)). These datasets are typically compiled
+    by scraping raw web pages from the internet, leading to a substantial portion
+    of the text being noisy and of low quality (Dodge et al., [2021](#bib.bib14);
+    Kreutzer et al., [2022](#bib.bib22); Luccioni & Viviano, [2021](#bib.bib25)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Practitioners have established a number of standard filtering techniques to
+    remove low-quality examples from these datasets. These techniques are predominantly
+    rule-based heuristics: removing documents containing repetitive text (Zhang et al.,
+    [2022](#bib.bib47); Raffel et al., [2020](#bib.bib35); Rae et al., [2022](#bib.bib34);
+    Hernandez et al., [2022](#bib.bib19); Penedo et al., [2023](#bib.bib31)), special
+    characters, or non-English text (Wenzek et al., [2020](#bib.bib44)); ignoring
+    data from a manually curated list of “blocklist” websites (Dodge et al., [2021](#bib.bib14);
+    Rae et al., [2022](#bib.bib34)); or eliminating documents based on certain length
+    thresholds. While these hand-curated filters can eliminate certain noisy examples,
+    they are not a substitute for a measure of “quality” for individual training examples,
+    for which there are currently no established best practices (Mitchell et al.,
+    [2023](#bib.bib27)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/47af5ae29a04cbadde59b00cd6018635.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Demonstration of our pruning methodology.For each sequence $z_{i}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this work, we take a wider view and ask if we can arrive at a rigorous estimator
+    of data quality through data pruning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Data pruning attempts to isolate a subset of a larger training dataset such
+    that a model trained on said subset preserves or improves performance over a model
+    trained on the full dataset. To date, the majority of work on data pruning has
+    centered on supervised computer vision settings (Qin et al., [2023](#bib.bib32);
+    Sorscher et al., [2023](#bib.bib39); Raju et al., [2021](#bib.bib36); Paul et al.,
+    [2023](#bib.bib30); He et al., [2023](#bib.bib18)), with far fewer works focusing
+    on language. Those that have either studied the fine-tuning setting, which typically
+    has an order of magnitude less data and thus tolerates more computational complexity
+    (Fayyaz et al., [2022](#bib.bib15); Attendu & Corbeil, [2023](#bib.bib4); Cao
+    et al., [2023](#bib.bib10)) or based their method on hand picking high-quality
+    corpora (Gao, [2021](#bib.bib16); Wenzek et al., [2020](#bib.bib44); Brown et al.,
+    [2020](#bib.bib9)). Specifically, we try to answer the following: Can we remove
+    the least impactful examples from a pretraining dataset and achieve similar or
+    better performance? Do simpler techniques for estimating data quality outperform
+    more sophisticated and computationally expensive methods? What aspects of training
+    dynamics signal data quality the best?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We answer these questions by rigorously evaluating three automatic pruning
+    metrics. One simple estimator of quality, perplexity, and two more complex, and
+    EL2N (Paul et al., [2023](#bib.bib30)) memorization factor. These methods all
+    rely solely on model outputs and do not require a preselected high-quality dataset.
+    This lack of dependence on human judgments of data quality make them a promising
+    direction for automatic selection of high quality corpora. We perform extensive
+    experiments evaluating models ranging from 124M to 1.5B parameters across different
+    pretrained corpora. Our contributions are the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We extensively benchmark data pruning based on perplexity, EL2N, and memorization
+    in the LLM pretraining setting. Surprisingly, we find the simple technique of
+    ranking examples based on their perplexity outperforms far more complex techniques
+    such as memorization. A model trained on 50% of the dataset pruned based on perplexity
+    achieves 1.33% and 1.77% improvement over the most performant models pruned to
+    50% of the dataset with EL2N and memorization factor respectively. A model trained
+    on 30% of the dataset pruned with perplexity achieves a 2.1% and 1.6% improvement
+    over the most performant models pruned to 30% of the dataset with EL2N and memorization
+    factor.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: To comprehensively cover multiple facets of data pruning, we provide a unified
+    and general framework to identify and treat different data subsets present in
+    a dataset. We compare models trained on datasets pruned to 10, 30, 50, and 70%
+    of the training set while retaining either the bottom, middle, or top of the pruning
+    scores’ distributions. We test seven different reference models across pruning
+    variations, investigating the impact of parameter count, training dataset, and
+    total training steps on the reference models’ pruning capabilities. Finally, we
+    finetune a selection of our models on six tasks from the GLUE benchmark (Wang
+    et al., [2019](#bib.bib43)) to evaluate the effect of pruning on downstream generalization.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '3.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We test our pruning methods at scale, achieving a 1% improvement in test set
+    perplexity using half of the dataset over a baseline model trained on the entire
+    dataset. We show this scales to 1.5B parameter models, achieving 1.5% improvement
+    in test set perplexity over a no-pruning baseline of the same size.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 2 Methodology
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Given a large-scale dataset $\mathcal{D}$ with instances that fit our selection
+    criteria:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathcal{P}_{\xi}=\{z_{i}\in\mathcal{D}\ &#124;\ Criteria(Score_{\xi}(z_{i}))\}$
+    |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'By removing $\mathcal{P}_{\xi}$, the remaining instances are described as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\hat{\mathcal{D}}_{\xi}=\mathcal{D}\setminus\mathcal{P}_{\xi}$ |  | (2)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Our goal is to choose the pruning algorithm $\xi$, the model’s performance
+    is not diminished:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathbb{P}_{\tau}(\mathcal{M}_{\hat{\mathcal{D}}_{\xi}})\geq\mathbb{P}_{\tau}(\mathcal{M}_{\mathcal{D}})$
+    |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\mathcal{M}_{\hat{\mathcal{D}}_{\xi}}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In particular, we evaluate different reference models $\tilde{\mathcal{M}}$
+    share the same context length to ensure consistency between the contexts for which
+    pruning metrics are calculated and trained models are trained.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For each metric, we consider three different selection criteria to determine
+    $\mathcal{P}_{\xi}$ as the data to be kept. We pretrain separate models using
+    these criteria with different percentages of the dataset to understand the dynamics
+    and impact of each pruning metric. Since the effectiveness of these metrics in
+    this specific context remains uncertain, we opt for these contrasting subsets
+    to clarify the relationship between each metric and the overall model performance.
+    Figure [1](#S1.F1 "Figure 1 ‣ 1 Introduction ‣ When Less is More: Investigating
+    Data Pruning for Pretraining LLMs at Scale") demonstrates our experimental setup.
+    We focus on static pruning, in which data is pruned once before training. This
+    is in contrast to adaptive pruning, in which data is pruned as training is happening,
+    such as in (Fayyaz et al., [2022](#bib.bib15); Park et al., [2022](#bib.bib29)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.1 Pruning Methods
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Here, we briefly describe data pruning algorithms that we benchmark in this
+    work. Our goal is to rigorously compare simple and computationally inexpensive
+    ranking approaches such as perplexity and random ranking against more sophisticated
+    and computationally expensive techniques such as memorization scores and EL2N.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.1.1 Selection via Perplexity
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Perplexity measures how probable a given piece of text is based on a particular
+    language model. For each instance $z_{i}$, we compute the perplexity metric as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $PPL(z_{i})=\exp\big{(}\frac{1}{&#124;z_{i}&#124;}\sum_{t_{j}\in z_{i}}NLL(t_{j})\big{)}$
+    |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $NLL(t_{j})$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle NLL(t_{j})=-\log P(t_{j}&#124;t_{<j};\theta)$ |  | (5)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: A lower perplexity score indicates that the model assigns a high probability
+    to the text.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.1.2 Selection via EL2N
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'The Error L2-Norm (EL2N) score was originally proposed in a computer vision
+    setting to identify which samples are important for learning (Paul et al., [2023](#bib.bib30)).
+    It measures each sample’s importance using the model’s early learning signals.
+    We define the EL2N score on text sequences as the average $L_{2}$ is the one-hot
+    encoded representation of the ground truth:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\text{EL2N}(z_{i})=\frac{1}{t}\sum_{i}^{t}\&#124;\hat{y}_{t}-y_{t}\&#124;_{2}$
+    |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: We first evaluate the pruning efficacy of EL2N scores obtained from a single
+    reference model at two different checkpoints, trained on 14% and 55% of the training
+    dataset $\mathcal{D}$ corresponding to 250 and 1000 steps respectively, to determine
+    the required number of steps needed before a usable pruning signal emerges. We
+    then train ten different reference models with different random initializations
+    and average the EL2N score from all ten models to obtain our final EL2N score.
+    The authors suggest that exhibiting a low EL2N score are typically those the model
+    learns in its early stages of training, likely because they are relatively easier.
+    Inversely, examples with higher EL2N scores are hypothesized to indicate that
+    the model continues to incur a significant loss for them and may require additional
+    iterations to learn.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.1.3 Memorization Ranking
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Memorization in language models is a well-studied phenomenon (Carlini et al.,
+    [2023](#bib.bib12), [2021](#bib.bib11); Biderman et al., [2023a](#bib.bib6)).
+    In this work we explore memorization scores applied as a data pruning ranking.
+    We use the memorization score as defined by Biderman et al. ([2023a](#bib.bib6)):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $score(M,N)=\frac{1}{N}\sum_{i}^{N}1(z_{M+i}=\hat{z}_{M+i})$ |  | (7)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: where $z$. We note that the authors did not originally propose this as data
+    pruning metric, but we hypothesize that it can be a valuable ranking to identity
+    examples which require additional learning. We use reference models guaranteed
+    to have seen the full training set to ensure the applicability of memorization
+    scores. A high memorization score indicates the model reproduces more of the text
+    verbatim.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.1.4 Random Pruning
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We also evaluate a lower bound of expected performance: pruning a random selection
+    of samples. This allows us to ask the question “are proposed pruning methods any
+    better than a *random guess*?”'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 3.1 Model
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We train autoregressive decoder-only Transformer models (Vaswani et al., [2023](#bib.bib42))
+    with a standard language modeling objective. Given an input sequence of $z_{i}=$
+    is trained to minimize the negative log-likelihood loss as defined in Equation
+    [5](#S2.E5 "Equation 5 ‣ 2.1.1 Selection via Perplexity ‣ 2.1 Pruning Methods
+    ‣ 2 Methodology ‣ When Less is More: Investigating Data Pruning for Pretraining
+    LLMs at Scale"). Our language models follow the traditional GPT-style architecture
+    (Radford et al., [2018](#bib.bib33)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: While training our models, we use AdamW (Loshchilov & Hutter, [2019](#bib.bib24))
+    with linear cosine scaling and a batch size of 2048\. The 124M parameter models
+    are trained for 8000 steps, which amounts to a total of 33B tokens with a learning
+    rate that linearly increases from 0 to 1.5e-4 over the course of training. This
+    is approximately 4.4 epochs over the unpruned dataset. We tokenize the data with
+    Byte Pair Encoding (Sennrich et al., [2016](#bib.bib37)) with a vocabulary of
+    51200. Due to the memory and computational costs of training 1.5B parameter models,
+    our experiments at this size are trained with a batch size of 512 for 14568 steps.
+    As such, the models see only 7.6B tokens, equivalent to a single epoch of our
+    unpruned dataset. The learning rate for 1.5B parameter models linearly increases
+    from 0 to 1.2e-4 over the course of training. All models use a context window
+    length of 2048.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Data
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We use a random sample of the May 2022 snapshot of CommonCrawl¹¹1https://data.commoncrawl.org/
+    in our experiments. After downsampling the unpruned dataset has 7.6B tokens, about
+    20% of the full snapshot. This downsampling is required due to the computational
+    cost of our various ablation experiments, which each require pretraining a new
+    model from random initialization. This dataset is prefiltered using a combination
+    of automatic and hand-crafted filters, as we aim to further improve data quality
+    beyond common rule-based filters. The filters exclude repetitive documents, documents
+    with percentages of special characters, and documents that contain explicit words
+    and toxic text, similar to deduplication steps seen in Taylor et al. ([2022](#bib.bib40));
+    Kocetkov et al. ([2022](#bib.bib21)). Our Wikipedia dataset contains 5.3M tokens
+    and only includes English pages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Ablations
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '| Experimental axes | Choices |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Pruning Metric | Perplexity, EL2N, Memorization |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Pct. Data Remaining | 10, 30, 50, 70 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Pruning Subset | Bottom, Middle, Top |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Reference Model Size | 124M, 6B, 13B, 52B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Reference Model Epoch Perc. | 14%, 55%, 440%, Full |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Reference Model Tr. Data | CC, Wiki, Web-scale |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Trained Model Size | 124M, 1.5B |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 1: Pruning choices explored in the experiments. Under “Reference Model
+    Training Steps”, “Full” refers to the fully trained Cohere LLMs. Under “Reference
+    Model Training Data”, “Web-scale” refers to the significantly larger training
+    datasets used by the Cohere reference models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For all techniques, we compare performance when only 10%, 30%, 50%, and 70%
+    of all data is preserved. We compare retaining the top, middle, and bottom subsets
+    according to the pruning ranking, e.g., when retaining 30% of the bottom of the
+    pruning metric’s distribution over the training set, we calculate the 30th percentile
+    of the pruning metric’s distribution and remove all data points with perplexity
+    above it. When retaining the middle 30%, we calculate the 35th and 65th percentile
+    and remove all data points above and below those numbers respectively. Each ablation
+    study(pruning method, percent data remaining, section of distribution preserved)
+    requires training a new model from random initialization. We train a minimum of
+    nine models with 124M parameters from scratch for each experimental variant.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table [1](#S3.T1 "Table 1 ‣ 3.3 Ablations ‣ 3 Experiments ‣ When Less is More:
+    Investigating Data Pruning for Pretraining LLMs at Scale") summarizes the perplexity
+    pruning variations we explore in this paper. For perplexity, we use a separate
+    model to compute perplexity from the model trained on the pruned data. We call
+    models used to compute the perplexity ranking reference models and the models
+    trained on the pruned datasets pruned models. We conduct a rigorous evaluation
+    of what impacts the quality of the ranking by varying different factors that affect
+    the perplexity distribution:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Reference Model Size To explore how reference model size impacts the rating
+    quality, we compare perplexity computations using 6B, 13B, and 52B Cohere models
+    trained on full web-scale datasets.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Reference Model Training Data To isolate the impact of training data, we compute
+    perplexity using 124M parameter reference models trained on either CommonCrawl
+    or Wikipedia.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '3.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Total Reference Model Training Steps To isolate the impact of early training
+    signals, we compute perplexity and EL2N using 124M parameter models trained on
+    CommonCrawl data for approximately 14% and 55% of total training steps. Reference
+    models trained on CommonCrawl are trained on a non-overlapping subset from the
+    CommonCrawl dataset that is pruned and used to train the student model.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 3.4 Evaluation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We report perplexity on a test set from the same CommonCrawl snapshot with identical
+    prefiltering as the training data. This test set contains 266M tokens, equivalent
+    to about 3.5% of the training set.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We also finetune a subset of our models on six different classification tasks
+    from GLUE (Wang et al., [2019](#bib.bib43)).We do not prune the task dataset,
+    as our aim is to analyze the pruning methods’ effects on pretraining. We compare
+    performance after 8000 steps (approximately 4.4 epochs of the pretraining dataset),
+    chosen to compare performance after models have saturated their capacity by training
+    enough steps to plateau on validation metrics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Results and Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/91c0e61745fc42d357b8d6aac02d2fdf.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: The effect of employing reference models of different sizes on the
+    computation of pruning perplexity scores and its subsequent influence on test
+    set perplexity. The three subset selection approaches for each set of experiments
+    are showcased separately (keeping bottom, middle, or top of the pruning score
+    distribution).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Removing Easy Instances Improves Performance
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Though the most competitive variant for each pruning method varies based on
+    the subset of the scoring distribution retained (top, middle, or bottom), we observe
+    a consistent pattern: the highest performant variants are *not* the subsets that
+    correspond to the “easier” data. The interpretation of the term “easy” varies
+    according to the measurement employed. When employing the Perplexity metric, it
+    refers to the bottom samples with the lowest perplexity. With the EL2N metric,
+    it also pertains to the bottom samples exhibiting the lowest initial loss. In
+    the context of memorization, it relates to the top samples that have been most
+    thoroughly memorized.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure [2](#S4.F2 "Figure 2 ‣ 4 Results and Discussion ‣ When Less is More:
+    Investigating Data Pruning for Pretraining LLMs at Scale") demonstrates this pattern
+    when using Perplexity. In contrast to the middle or top subsets, the bottom subset
+    has much less variance in results between reference models of varying sizes, indicating
+    the bottom subset may not be suitable for training. The middle experiments achieve
+    consistently low test set perplexities for various reference model sizes and pruning
+    ratios. Generally, performance monotonically degrades as the amount of data remaining
+    shrinks - except for the middle subset for the best-performing reference models.
+    In these cases, retaining only 50% and even 30% of the dataset outperforms retaining
+    70% of the dataset.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, Figure [3(b)](#S4.F3.sf2 "Figure 3(b) ‣ Figure 3 ‣ 4.1 Removing Easy
+    Instances Improves Performance ‣ 4 Results and Discussion ‣ When Less is More:
+    Investigating Data Pruning for Pretraining LLMs at Scale")(a) shows the results
+    for the EL2N metric.The middle subset is also the best variant for EL2N. While
+    the best performing run does not outperform the baseline, the best performance
+    is achieved when retaining 50% of the middle subset, outperforming the model trained
+    on 70% of the dataset, similar to the results when using perplexity. As the middle
+    subset grows, it begins to overlap with the easiest examples, degrading performance.
+    In section [4.5](#S4.SS5 "4.5 Early Reference Model Checkpoints Serve as Effective
+    Scoring Models ‣ 4 Results and Discussion ‣ When Less is More: Investigating Data
+    Pruning for Pretraining LLMs at Scale"), we discuss how different model checkpoints
+    influence the effectiveness of the EL2N metric.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, when using memorization factor as a pruning metric, keeping the least
+    memorized samples (bottom subset) generally performs best. Figure [3(b)](#S4.F3.sf2
+    "Figure 3(b) ‣ Figure 3 ‣ 4.1 Removing Easy Instances Improves Performance ‣ 4
+    Results and Discussion ‣ When Less is More: Investigating Data Pruning for Pretraining
+    LLMs at Scale")(b) shows model performances for this metric. We observe that the
+    most competitive variant of the memorization metric is the bottom 70% of the distribution.
+    Memorization never outperforms the no-pruning baseline.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a2694aecf530153d35cfd50da2b609bd.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) EL2N
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/467a3152f4b06afd274eb0ddfb1ad842.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Memorization
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 3: Evaluation of different subset selection criteria for two pruning
+    metrics: (a) EL2N and (b) Memorization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Simple Pruning Metrics Outperform More Sophisticated Approaches
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In Figure [4](#S4.F4 "Figure 4 ‣ 4.2 Simple Pruning Metrics Outperform More
+    Sophisticated Approaches ‣ 4 Results and Discussion ‣ When Less is More: Investigating
+    Data Pruning for Pretraining LLMs at Scale") we present results comparing the
+    performance of the best variant of each pruning metric: (1) retaining the middle
+    of the distribution of Perplexity scores by the fully trained 52B reference model,
+    (2) retaining the bottom of the distribution of the Memorization Factor (least
+    memorized samples), and (3) retaining the middle of the distribution of EL2N scores
+    from the 1000 step checkpoint. We also include results for our baselines: a model
+    trained on the entirety of the training data $\mathcal{D}$ and models trained
+    on randomly pruned data. Our results show that training on the middle subset using
+    Perplexity outperforms other pruning metrics across all dataset sizes. For some
+    variants, it also outperforms training on the entire dataset. For example, at
+    30% and 50% of the original dataset size, Perplexity outperforms the full dataset
+    size. Compared with the no-pruning baseline, pruning to the middle 50% of the
+    perplexity distribution leads to a 0.97% improvement in perplexity. Using only
+    the middle 30% of the data achieves nearly the same performance, with a 0.80%
+    improvement over the no-pruning baseline.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7c7083b796df47578b3f79c62bf548fd.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: The top performing variants of the different pruning methods, compared
+    across various dataset sizes. Random pruning and no-pruning are included as baselines.
+    Perplexity-based pruning consistently surpasses both alternative metrics and the
+    no pruning experiments. See Section [4.2](#S4.SS2 "4.2 Simple Pruning Metrics
+    Outperform More Sophisticated Approaches ‣ 4 Results and Discussion ‣ When Less
+    is More: Investigating Data Pruning for Pretraining LLMs at Scale") for details
+    on the featured variants.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Compared with random selection, pruning using Perplexity results in significantly
+    higher model performance than random pruning across all data ratios (Figure [4](#S4.F4
+    "Figure 4 ‣ 4.2 Simple Pruning Metrics Outperform More Sophisticated Approaches
+    ‣ 4 Results and Discussion ‣ When Less is More: Investigating Data Pruning for
+    Pretraining LLMs at Scale")). For memorization and EL2N pruning metrics, both
+    achieve similar performances to random pruning despite being far more computationally
+    expensive.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 Pruning Benefits from Using Larger Reference Models
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Given that the most competitive variant perplexity uses a reference model to
+    compute scores, we expect that the size of the reference model will have a significant
+    impact on the data pruned. Figure [2](#S4.F2 "Figure 2 ‣ 4 Results and Discussion
+    ‣ When Less is More: Investigating Data Pruning for Pretraining LLMs at Scale")
+    shows the trained model performances after pruning with perplexity calculated
+    with reference models ranging from 124M to 52B parameters. We find that increasing
+    reference model size improves trained model performance over the no-pruning baseline
+    when either the middle or top subsets are used. Data pruning using the perplexity
+    scores generated from a 52B parameter reference model achieves a 2.2% improvement
+    in perplexity over the best-performing trained model from the 124M parameter reference
+    model experiments. Furthermore, for 13B and 52B reference models, we observe better
+    performances with less training data when keeping the middle and top subsets.
+    For both of these larger models, retaining the middle 30% and 50% of the training
+    data produces pruned models that outperform the pruned models trained on the middle
+    70% of the training set.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/bb8e8c07dc513dadcef4eea3a13ae0ae.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: Performance of different pruning strategies using two different reference
+    models: one trained on Wikipedia and one trained on CommonCrawl. A reference model
+    trained on Wikipedia (an example of a clean noise-free corpus) achieves consistently
+    lower validation perplexity compared to a reference model trained on a noisier
+    CommonCrawl in our two robust settings (middle and top).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We note that the effects of subset selection, such as the bottom subset performing
+    worse, approximately scale with the size of the reference models. The larger reference
+    models’ bottom subset training runs perform even worse than their smaller counterparts
+    when retaining the same percentage of the training set. This overall points to
+    the consistent finding that larger models are better calibrated at computing a
+    useful data pruning ranking.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4 Improved Pruning Signals Result from Reference Models Trained on Cleaner
+    Data
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In this section we ask: does the data the reference model is trained on impact
+    the quality of the ranking? We compare the perplexity rankings generated by reference
+    models trained on two different corpora: Wikipedia and CommonCrawl. We investigate
+    whether a model trained on Wikipedia, a dataset frequently hand-picked as a high-quality
+    dataset (Xie et al., [2023b](#bib.bib46); Wenzek et al., [2020](#bib.bib44)),
+    generates more effective pruning signals for perplexity rankings. In Figure [5](#S4.F5
+    "Figure 5 ‣ 4.3 Pruning Benefits from Using Larger Reference Models ‣ 4 Results
+    and Discussion ‣ When Less is More: Investigating Data Pruning for Pretraining
+    LLMs at Scale"), we compare the performance of the two variants across different
+    pruning percentages and subset selections. We observe that in the two optimal
+    selection variants from the general reference models (middle and top) a model
+    trained on Wikipedia consistently yields lower validation perplexity compared
+    to a model trained on CommonCrawl. Wikipedia’s best variant, pruning to the middle
+    70%, outperforms CommonCrawl’s best variant, also pruning to the middle 70%, by
+    0.69%. This finding overall suggests that investing in a high quality reference
+    model to generate rankings results in more effective data pruning. Reference models
+    trained on higher quality data are better at identifying a subset of data points
+    most conducive to model performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.5 Early Reference Model Checkpoints Serve as Effective Scoring Models
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/bc94fda04d7698f21bc6c033f69448f7.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: The impact of using an early checkpoint of the reference model in
+    pruning based on Perplexity and EL2N metrics.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Motivated by several works that have found that there is a signal in early
+    training checkpoints (Paul et al., [2023](#bib.bib30); Agarwal et al., [2022](#bib.bib2);
+    Siddiqui et al., [2022](#bib.bib38)), we investigate whether early checkpoint
+    of a reference model during training offers adequate signal for calculating discriminative
+    pruning scores. We study perplexity and EL2N scores obtained from two early checkpoints:
+    after training on approximately 14% and 55% of the full training dataset (250
+    and 1000 training steps respectively). Figure [6](#S4.F6 "Figure 6 ‣ 4.5 Early
+    Reference Model Checkpoints Serve as Effective Scoring Models ‣ 4 Results and
+    Discussion ‣ When Less is More: Investigating Data Pruning for Pretraining LLMs
+    at Scale") showcases the results of these experiments. Examining the 14% checkpoint
+    for both perplexity and EL2N, we notice minimal variance across percentages and
+    subset selection criteria. Performance across subsets changes considerably less
+    than either the 55% checkpoint or the fully trained models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Given this, we deduce that training on only 14% of the data is inadequate for
+    our reference model to offer precise pruning scores. In contrast, the 55% reference
+    models perform in a similar manner to the fully trained models, performing best
+    with the middle subset, worst with the bottom subset, and comparably with the
+    top subset. Fully training the reference model is shown not to be necessary to
+    uphold comparable performance. Halving the reference model training steps proves
+    effective, enabling the utilization of early checkpoints. In practice, we expect
+    many practitioners to use off the shelf models for computing perplexity and may
+    not need to carry the cost of pretraining a reference model from random initialization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We also show performance for EL2N scores averaged across 10 reference models,
+    initialized with different random seeds. We selected the 55% reference models
+    given our previous result.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While the best pruned models using the averaged EL2N score did not outperform
+    the best pruned models trained on only one reference model’s EL2N score, the pattern
+    of performance more similarly mirrors what we see with the larger, fully trained
+    reference models. Specifically, in the middle subset, using 50% of the dataset
+    outperforms using 70%. When constrained to the bottom subset, performance more
+    clearly monotonically degrades when using less data than when using the 55% reference
+    model, whereas the earlier checkpoint has comparable performance when retaining
+    30, 50, and 70% of the data. This implies that averaging scores across reference
+    models helps hone the pruning signal, identifying subsets “easy" or “hard" subsets
+    in more similar ways to larger models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.6 Perplexity-based Pruning Improvements Generalize to Larger Scale Models
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d6e609d60dfb401ff85735e71fce6284.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7: Comparing the best performing pruning method (keeping the middle
+    subset using a 52B parameter reference model) with random pruning at two distinct
+    pruned model scales. The improvement in performance of a perplexity-based pruning
+    approach carries from 124M to 1.5B parameter models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We take our strongest pruning variant – perplexity computed using a 52B parameter
+    reference model while retaining the middle subset – to explore the robustness
+    of our findings at a larger scale by validating our findings on a 1.5B model.
+    Figure [7](#S4.F7 "Figure 7 ‣ 4.6 Perplexity-based Pruning Improvements Generalize
+    to Larger Scale Models ‣ 4 Results and Discussion ‣ When Less is More: Investigating
+    Data Pruning for Pretraining LLMs at Scale") shows pruning scaling from 124M to
+    1.5B parameter models. Training a 1.5B model, we observe that random pruning performs
+    considerably well, even reaching levels below the no-pruning run. Nonetheless,
+    perplexity-based pruning achieves better results than random pruning across all
+    pruning percentages. The improvement observed with perplexity-based pruning over
+    random pruning follows a consistent pattern for both the 124M and 1.5B models.
+    This demonstrates the scalability of our approach to a large-scale pretraining
+    setting.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.7 Downstream Evaluation on GLUE
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Table 2: Mean accuracy and standard deviation of the best variants of each
+    pruning algorithm for GLUE classification tasks. Underlined results surpass the
+    baseline performance with no pruning. The best results for each task are marked
+    in bold. Results are reported for 5 runs of each model, trained for 3 epochs with
+    a learning rate of $1e-5$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | Data Remaining | SST2 | MRPC | QQP | QNLI | RTE | WNLI |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| No Pruning | 100% | 78.15[0.002] | 64.32[0.021] | 76.55[0.001] | 65.40[0.006]
+    | 49.69[0.024] | 51.56[0.040] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Random Pruning | 70% | 77.92[0.002] | 65.21[0.017] | 76.58[0.002] | 65.11[0.006]
+    | 49.69[0.013] | 48.44[0.038] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 50% | 78.19[0.003] | 65.16[0.020] | 76.40[0.001] | 65.44[0.006] | 49.92[0.009]
+    | 49.69[0.062] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 30% | 77.29[0.007] | 66.04[0.017] | 76.36[0.001] | 65.22[0.005] | 51.33[0.024]
+    | 50.31[0.057] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10% | 76.44[0.006] | 65.83[0.021] | 75.91[0.001] | 64.40[0.007] | 50.70[0.007]
+    | 50.62[0.016] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Memorization Bottom subset | 70% | 77.29[0.006] | 64.38[0.016] | 76.42[0.001]
+    | 66.03[0.007] | 49.06[0.021] | 49.06[0.042] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 50% | 77.89[0.006] | 65.47[0.017] | 76.51[0.001] | 65.99[0.005] | 49.77[0.013]
+    | 50.31[0.048] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 30% | 78.52[0.004] | 65.89[0.016] | 76.48[0.001] | 65.91[0.006] | 50.31[0.009]
+    | 54.38[0.061] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10% | 76.64[0.004] | 65.16[0.015] | 76.11[0.001] | 64.61[0.006] | 50.39[0.016]
+    | 51.88[0.059] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EL2N Middle subset | 70% | 78.61[0.008] | 66.46[0.018] | 76.93[0.001] | 67.00[0.005]
+    | 48.67[0.017] | 50.00[0.058] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 50% | 79.17[0.007] | 65.42[0.016] | 76.35[0.001] | 62.43[0.007] | 51.41[0.028]
+    | 51.56[0.049] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 30% | 78.98[0.005] | 65.41[0.012] | 77.47[0.001] | 68.63[0.005] | 49.69[0.022]
+    | 55.31[0.067] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10% | 78.31[0.006] | 63.38[0.016] | 76.93[0.001] | 65.34[0.006] | 51.95[0.021]
+    | 51.25[0.064] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Perplexity (52B) Middle subset | 70% | 78.40[0.004] | 64.43[0.020] | 76.68[0.001]
+    | 66.74[0.007] | 50.16[0.023] | 49.06[0.012] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 50% | 78.01[0.006] | 64.37[0.021] | 76.82[0.001] | 66.00[0.004] | 50.62[0.023]
+    | 50.31[0.021] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 30% | 77.34[0.005] | 64.84[0.023] | 76.76[0.001] | 65.89[0.002] | 50.86[0.009]
+    | 50.94[0.031] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10% | 77.66[0.006] | 65.36[0.017] | 76.40[0.001] | 66.52[0.007] | 51.17[0.012]
+    | 53.44[0.040] |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Previously, we demonstrated various ways of pruning the pretraining data and
+    training models with different data sizes. Considering that the pretraining stage
+    primarily focuses on knowledge acquisition (Zhou et al., [2023](#bib.bib48)),
+    we inquire about the potential ripple effects of pruning data during pretraining
+    when these models are subsequently finetuned on downstream tasks. To analyze the
+    impact of different pruning strategies on LLM capabilities, we finetune and evaluate
+    models on a subset of the GLUE tasks (Wang et al., [2019](#bib.bib43)). Results
+    are presented in Table [2](#S4.T2 "Table 2 ‣ 4.7 Downstream Evaluation on GLUE
+    ‣ 4 Results and Discussion ‣ When Less is More: Investigating Data Pruning for
+    Pretraining LLMs at Scale"). We observe that pruning the pretraining dataset consistently
+    improves performance across all tasks. While no single pruning strategy (combining
+    both pruning metric and percentage of remaining data) stands out as superior across
+    all tasks, the absence of a universally dominant approach is consistent with earlier
+    findings in the literature (Gao, [2021](#bib.bib16)). We observe that retaining
+    only 30% of the least memorized instances yields optimal results for SST2 and
+    WNLI tasks. With perplexity based pruning, the best performance is obtained on
+    QQP and QNLI tasks by keeping 50% and 70% of the training data, respectively.
+    Even random pruning shows improvements in certain tasks, underscoring the significance
+    of downsampling when handling noisy data during the pretraining stage to mitigate
+    potential learning degradation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 5.1 Rule-Based Data Pruning in NLP
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Significant portions of web-scraped data used for language model pretraining
+    have been shown to be of low quality, machine-generated spam, pornographic content (Kreutzer
+    et al., [2022](#bib.bib22)). Selection processes to determine what should be included
+    in large-scale datasets have centered on rule-based filters and heuristics (Bane
+    et al., [2022](#bib.bib5)), such as keeping only text written in English (Raffel
+    et al., [2020](#bib.bib35); Rae et al., [2022](#bib.bib34)) or removing sequences
+    containing blocklisted words (Raffel et al., [2020](#bib.bib35)). There are also
+    quality-based rules such as removing duplicated samples (Zhang et al., [2022](#bib.bib47))
+    or filtering sentences that do not fit a certain amount of words (Raffel et al.,
+    [2020](#bib.bib35); Rae et al., [2022](#bib.bib34)). Rule-based approaches for
+    data filtering have shown controversial effects on model performance, with some
+    works advertising improvements on language modeling capabilities (Penedo et al.,
+    [2023](#bib.bib31); Raffel et al., [2020](#bib.bib35)), while others do not (Black
+    et al., [2022](#bib.bib8); Biderman et al., [2023b](#bib.bib7)). Also, heuristics
+    are prone to undesired outcomes due to their simplicity. For instance  Dodge et al.
+    ([2021](#bib.bib14)) show how removing blocklisted words disproportionately removes
+    text from and about minority individuals.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.2 Metric-Based Data Pruning in NLP
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Recent work on metric-based pruning has mainly focused on pruning data from
+    the fine-tuning stage of LLMs (Attendu & Corbeil, [2023](#bib.bib4); Xie et al.,
+    [2023b](#bib.bib46)) most probably due to the prohibitive cost of pruning at the
+    pretraining scale. Attendu & Corbeil ([2023](#bib.bib4)) perform dynamic pruning
+    during the fine-tuning stage by establishing a curriculum of samples based on
+    their EL2N scores (Paul et al., [2023](#bib.bib30)). Similarly, we benchmark EL2N
+    as a static data-pruning metric for language datasets. Our work joins the few
+    others that aim to reduce pretraining dataset sizes (Xie et al., [2023a](#bib.bib45);
+    Chen, [2023](#bib.bib13); Abbas et al., [2023](#bib.bib1)). Abbas et al. ([2023](#bib.bib1))
+    apply their deduplication method based on embeddings to further improve the performance
+    of a previously filtered dataset. We also perform pruning on previously filtered
+    datasets, aiming to enhance performance further. Previously, perplexity has been
+    used to filter datasets (Muennighoff et al., [2023](#bib.bib28); Wenzek et al.,
+    [2020](#bib.bib44); Laurençon et al., [2023](#bib.bib23)), but its pruning capabilities
+    have been underexplored. Laurençon et al. ([2023](#bib.bib23)) and Muennighoff
+    et al. ([2023](#bib.bib28)) filter out high-perplexity samples from their corpus
+    as those are framed as unnatural language and harmful for performance according
+    to their reference domain, which is Wikipedia. In contrast, we benchmark pruning
+    to low perplexity values and high and medium-valued subsets of a dataset’s distribution
+    to understand which is the most valuable section for pretraining at scale. We
+    also explore different reference model sizes and training sets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.3 Data pruning in Computer Vision
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The majority of work to date on data pruning (Sorscher et al., [2023](#bib.bib39))
+    and isolating data subsets (Siddiqui et al., [2022](#bib.bib38); Mindermann et al.,
+    [2022](#bib.bib26)) using model signal has centered on computer vision. These
+    are typically structured in a supervised setting. In contrast, our focus is on
+    a large-scale NLP pretraining where the objective is unsupervised pretraining.
+    Most relevant to our method is work by Sorscher et al. ([2023](#bib.bib39)) which
+    empirically studies reducing datasets in a teacher/trained regime, using a teacher
+    model’s margin as a pruning metric. They find that, with abundant data, training
+    only on the hardest examples yields better performance, while conversely when
+    data is scarce, training on only the easiest example yields better performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this study, we thoroughly investigate diverse data pruning methods for pretraining
+    LLMs with billions of parameters and with datasets containing billions of tokens.
+    We showed that when properly applied, data pruning consistently improves model
+    performance. We also find that training on the “easiest" examples in a dataset
+    degrades performance, where “easiest" is defined as the lowest scoring examples
+    according to a metric based on a reference model. Simple methods that rank instances
+    based on their perplexity demonstrate superior performance compared to more elaborate
+    approaches such as memorization. Models trained on as little as half of the data
+    selected by perplexity achieve up to 1.5% improvement over models trained on the
+    full dataset. Additionally, we establish the consistency of our findings as we
+    scale the model sizes. While scaling up the amount of data LLMs are trained on
+    remains a popular avenue for improving models, our work demonstrates that carefully
+    pruning these large training corpora is also a fruitful direction for making models
+    better.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Abbas et al. (2023) Amro Abbas, Kushal Tirumala, Dániel Simig, Surya Ganguli,
+    and Ari S. Morcos. Semdedup: Data-efficient learning at web-scale through semantic
+    deduplication, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Agarwal et al. (2022) Chirag Agarwal, Daniel D’souza, and Sara Hooker. Estimating
+    example difficulty using variance of gradients. In *Proceedings of the IEEE/CVF
+    Conference on Computer Vision and Pattern Recognition (CVPR)*, pp.  10368–10378,
+    June 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Anil et al. (2023) Rohan Anil, Andrew M. Dai, Orhan Firat, Melvin Johnson, Dmitry
+    Lepikhin, Alexandre Passos, Siamak Shakeri, Emanuel Taropa, Paige Bailey, Zhifeng
+    Chen, Eric Chu, Jonathan H. Clark, Laurent El Shafey, Yanping Huang, Kathy Meier-Hellstern,
+    Gaurav Mishra, Erica Moreira, Mark Omernick, Kevin Robinson, Sebastian Ruder,
+    Yi Tay, Kefan Xiao, Yuanzhong Xu, Yujing Zhang, Gustavo Hernandez Abrego, Junwhan
+    Ahn, Jacob Austin, Paul Barham, Jan Botha, James Bradbury, Siddhartha Brahma,
+    Kevin Brooks, Michele Catasta, Yong Cheng, Colin Cherry, Christopher A. Choquette-Choo,
+    Aakanksha Chowdhery, Clément Crepy, Shachi Dave, Mostafa Dehghani, Sunipa Dev,
+    Jacob Devlin, Mark Díaz, Nan Du, Ethan Dyer, Vlad Feinberg, Fangxiaoyu Feng, Vlad
+    Fienber, Markus Freitag, Xavier Garcia, Sebastian Gehrmann, Lucas Gonzalez, Guy
+    Gur-Ari, Steven Hand, Hadi Hashemi, Le Hou, Joshua Howland, Andrea Hu, Jeffrey
+    Hui, Jeremy Hurwitz, Michael Isard, Abe Ittycheriah, Matthew Jagielski, Wenhao
+    Jia, Kathleen Kenealy, Maxim Krikun, Sneha Kudugunta, Chang Lan, Katherine Lee,
+    Benjamin Lee, Eric Li, Music Li, Wei Li, YaGuang Li, Jian Li, Hyeontaek Lim, Hanzhao
+    Lin, Zhongtao Liu, Frederick Liu, Marcello Maggioni, Aroma Mahendru, Joshua Maynez,
+    Vedant Misra, Maysam Moussalem, Zachary Nado, John Nham, Eric Ni, Andrew Nystrom,
+    Alicia Parrish, Marie Pellat, Martin Polacek, Alex Polozov, Reiner Pope, Siyuan
+    Qiao, Emily Reif, Bryan Richter, Parker Riley, Alex Castro Ros, Aurko Roy, Brennan
+    Saeta, Rajkumar Samuel, Renee Shelby, Ambrose Slone, Daniel Smilkov, David R.
+    So, Daniel Sohn, Simon Tokumine, Dasha Valter, Vijay Vasudevan, Kiran Vodrahalli,
+    Xuezhi Wang, Pidong Wang, Zirui Wang, Tao Wang, John Wieting, Yuhuai Wu, Kelvin
+    Xu, Yunhan Xu, Linting Xue, Pengcheng Yin, Jiahui Yu, Qiao Zhang, Steven Zheng,
+    Ce Zheng, Weikang Zhou, Denny Zhou, Slav Petrov, and Yonghui Wu. Palm 2 technical
+    report, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Attendu & Corbeil (2023) Jean-Michel Attendu and Jean-Philippe Corbeil. Nlu
+    on data diets: Dynamic data subset selection for nlp classification tasks, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bane et al. (2022) Fred Bane, Celia Soler Uguet, Wiktor Stribiżew, and Anna
+    Zaretskaya. A comparison of data filtering methods for neural machine translation.
+    In *Proceedings of the 15th Biennial Conference of the Association for Machine
+    Translation in the Americas (Volume 2: Users and Providers Track and Government
+    Track)*, pp.  313–325, Orlando, USA, September 2022\. Association for Machine
+    Translation in the Americas. URL [https://aclanthology.org/2022.amta-upg.22](https://aclanthology.org/2022.amta-upg.22).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Biderman et al. (2023a) Stella Biderman, USVSN Sai Prashanth, Lintang Sutawika,
+    Hailey Schoelkopf, Quentin Anthony, Shivanshu Purohit, and Edward Raff. Emergent
+    and predictable memorization in large language models, 2023a.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Biderman et al. (2023b) Stella Biderman, Hailey Schoelkopf, Quentin Anthony,
+    Herbie Bradley, Kyle O’Brien, Eric Hallahan, Mohammad Aflah Khan, Shivanshu Purohit,
+    USVSN Sai Prashanth, Edward Raff, Aviya Skowron, Lintang Sutawika, and Oskar van der
+    Wal. Pythia: A suite for analyzing large language models across training and scaling,
+    2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Black et al. (2022) Sidney Black, Stella Biderman, Eric Hallahan, Quentin Anthony,
+    Leo Gao, Laurence Golding, Horace He, Connor Leahy, Kyle McDonell, Jason Phang,
+    Michael Pieler, Usvsn Sai Prashanth, Shivanshu Purohit, Laria Reynolds, Jonathan
+    Tow, Ben Wang, and Samuel Weinbach. GPT-NeoX-20B: An open-source autoregressive
+    language model. In *Proceedings of BigScience Episode #5 – Workshop on Challenges
+    & Perspectives in Creating Large Language Models*, pp. 95–136, virtual+Dublin,
+    May 2022\. Association for Computational Linguistics. [10.18653/v1/2022.bigscience-1.9](https:/doi.org/10.18653/v1/2022.bigscience-1.9).
+    URL [https://aclanthology.org/2022.bigscience-1.9](https://aclanthology.org/2022.bigscience-1.9).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Brown et al. (2020) Tom B. Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah,
+    Jared Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry,
+    Amanda Askell, Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan,
+    Rewon Child, Aditya Ramesh, Daniel M. Ziegler, Jeffrey Wu, Clemens Winter, Christopher
+    Hesse, Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack
+    Clark, Christopher Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario
+    Amodei. Language models are few-shot learners, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Cao et al. (2023) Yihan Cao, Yanbin Kang, and Lichao Sun. Instruction mining:
+    High-quality instruction data selection for large language models, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Carlini et al. (2021) Nicholas Carlini, Florian Tramer, Eric Wallace, Matthew
+    Jagielski, Ariel Herbert-Voss, Katherine Lee, Adam Roberts, Tom Brown, Dawn Song,
+    Ulfar Erlingsson, Alina Oprea, and Colin Raffel. Extracting training data from
+    large language models, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Carlini et al. (2023) Nicholas Carlini, Daphne Ippolito, Matthew Jagielski,
+    Katherine Lee, Florian Tramer, and Chiyuan Zhang. Quantifying memorization across
+    neural language models, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chen (2023) Wenhu Chen. Large language models are few(1)-shot table reasoners.
+    In *Findings of the Association for Computational Linguistics: EACL 2023*, pp. 
+    1120–1130, Dubrovnik, Croatia, May 2023\. Association for Computational Linguistics.
+    URL [https://aclanthology.org/2023.findings-eacl.83](https://aclanthology.org/2023.findings-eacl.83).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dodge et al. (2021) Jesse Dodge, Maarten Sap, Ana Marasović, William Agnew,
+    Gabriel Ilharco, Dirk Groeneveld, Margaret Mitchell, and Matt Gardner. Documenting
+    large webtext corpora: A case study on the colossal clean crawled corpus, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Fayyaz et al. (2022) Mohsen Fayyaz, Ehsan Aghazadeh, Ali Modarressi, Mohammad Taher
+    Pilehvar, Yadollah Yaghoobzadeh, and Samira Ebrahimi Kahou. Bert on a data diet:
+    Finding important examples by gradient-based pruning, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Gao (2021) Leo Gao. An empirical exploration in quality filtering of text data,
+    2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Gao et al. (2021) Leo Gao, Stella Biderman, Sid Black, Laurence Golding, Travis
+    Hoppe, Charles Foster, Jason Phang, Horace He, Anish Thite, Noa Nabeshima, Shawn
+    Presser, and Connor Leahy. The pile: An 800gb dataset of diverse text for language
+    modeling. *CoRR*, abs/2101.00027, 2021. URL [https://arxiv.org/abs/2101.00027](https://arxiv.org/abs/2101.00027).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: He et al. (2023) Muyang He, Shuo Yang, Tiejun Huang, and Bo Zhao. Large-scale
+    dataset pruning with dynamic uncertainty, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hernandez et al. (2022) Danny Hernandez, Tom Brown, Tom Conerly, Nova DasSarma,
+    Dawn Drain, Sheer El-Showk, Nelson Elhage, Zac Hatfield-Dodds, Tom Henighan, Tristan
+    Hume, Scott Johnston, Ben Mann, Chris Olah, Catherine Olsson, Dario Amodei, Nicholas
+    Joseph, Jared Kaplan, and Sam McCandlish. Scaling laws and interpretability of
+    learning from repeated data, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kaplan et al. (2020) Jared Kaplan, Sam McCandlish, Tom Henighan, Tom B. Brown,
+    Benjamin Chess, Rewon Child, Scott Gray, Alec Radford, Jeffrey Wu, and Dario Amodei.
+    Scaling laws for neural language models, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kocetkov et al. (2022) Denis Kocetkov, Raymond Li, Loubna Ben Allal, Jia Li,
+    Chenghao Mou, Carlos Muñoz Ferrandis, Yacine Jernite, Margaret Mitchell, Sean
+    Hughes, Thomas Wolf, Dzmitry Bahdanau, Leandro von Werra, and Harm de Vries. The
+    stack: 3 tb of permissively licensed source code, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kreutzer et al. (2022) Julia Kreutzer, Isaac Caswell, Lisa Wang, Ahsan Wahab,
+    Daan van Esch, Nasanbayar Ulzii-Orshikh, Allahsera Tapo, Nishant Subramani, Artem
+    Sokolov, Claytone Sikasote, Monang Setyawan, Supheakmungkol Sarin, Sokhar Samb,
+    Benoît Sagot, Clara Rivera, Annette Rios, Isabel Papadimitriou, Salomey Osei,
+    Pedro Ortiz Suarez, Iroro Orife, Kelechi Ogueji, Andre Niyongabo Rubungo, Toan Q.
+    Nguyen, Mathias Müller, André Müller, Shamsuddeen Hassan Muhammad, Nanda Muhammad,
+    Ayanda Mnyakeni, Jamshidbek Mirzakhalov, Tapiwanashe Matangira, Colin Leong, Nze
+    Lawson, Sneha Kudugunta, Yacine Jernite, Mathias Jenny, Orhan Firat, Bonaventure
+    F. P. Dossou, Sakhile Dlamini, Nisansa de Silva, Sakine Çabuk Ballı, Stella Biderman,
+    Alessia Battisti, Ahmed Baruwa, Ankur Bapna, Pallavi Baljekar, Israel Abebe Azime,
+    Ayodele Awokoya, Duygu Ataman, Orevaoghene Ahia, Oghenefego Ahia, Sweta Agrawal,
+    and Mofetoluwa Adeyemi. Quality at a Glance: An Audit of Web-Crawled Multilingual
+    Datasets. *Transactions of the Association for Computational Linguistics*, 10:50–72,
+    01 2022. ISSN 2307-387X. [10.1162/tacl_a_00447](https:/doi.org/10.1162/tacl_a_00447).
+    URL [https://doi.org/10.1162/tacl_a_00447](https://doi.org/10.1162/tacl_a_00447).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Laurençon et al. (2023) Hugo Laurençon, Lucile Saulnier, Thomas Wang, Christopher
+    Akiki, Albert Villanova del Moral, Teven Le Scao, Leandro Von Werra, Chenghao
+    Mou, Eduardo González Ponferrada, Huu Nguyen, Jörg Frohberg, Mario Šaško, Quentin
+    Lhoest, Angelina McMillan-Major, Gerard Dupont, Stella Biderman, Anna Rogers,
+    Loubna Ben allal, Francesco De Toni, Giada Pistilli, Olivier Nguyen, Somaieh Nikpoor,
+    Maraim Masoud, Pierre Colombo, Javier de la Rosa, Paulo Villegas, Tristan Thrush,
+    Shayne Longpre, Sebastian Nagel, Leon Weber, Manuel Muñoz, Jian Zhu, Daniel Van
+    Strien, Zaid Alyafeai, Khalid Almubarak, Minh Chien Vu, Itziar Gonzalez-Dios,
+    Aitor Soroa, Kyle Lo, Manan Dey, Pedro Ortiz Suarez, Aaron Gokaslan, Shamik Bose,
+    David Adelani, Long Phan, Hieu Tran, Ian Yu, Suhas Pai, Jenny Chim, Violette Lepercq,
+    Suzana Ilic, Margaret Mitchell, Sasha Alexandra Luccioni, and Yacine Jernite.
+    The bigscience roots corpus: A 1.6tb composite multilingual dataset, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Loshchilov & Hutter (2019) Ilya Loshchilov and Frank Hutter. Decoupled weight
+    decay regularization. In *International Conference on Learning Representations*,
+    2019. URL [https://openreview.net/forum?id=Bkg6RiCqY7](https://openreview.net/forum?id=Bkg6RiCqY7).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Luccioni & Viviano (2021) Alexandra Luccioni and Joseph Viviano. What’s in
+    the box? an analysis of undesirable content in the Common Crawl corpus. In *Proceedings
+    of the 59th Annual Meeting of the Association for Computational Linguistics and
+    the 11th International Joint Conference on Natural Language Processing (Volume
+    2: Short Papers)*, pp.  182–189, Online, August 2021\. Association for Computational
+    Linguistics. [10.18653/v1/2021.acl-short.24](https:/doi.org/10.18653/v1/2021.acl-short.24).
+    URL [https://aclanthology.org/2021.acl-short.24](https://aclanthology.org/2021.acl-short.24).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Mindermann et al. (2022) Sören Mindermann, Jan Brauner, Muhammed Razzak, Mrinank
+    Sharma, Andreas Kirsch, Winnie Xu, Benedikt Höltgen, Aidan N. Gomez, Adrien Morisot,
+    Sebastian Farquhar, and Yarin Gal. Prioritized training on points that are learnable,
+    worth learning, and not yet learnt, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Mitchell et al. (2023) Margaret Mitchell, Alexandra Sasha Luccioni, Nathan Lambert,
+    Marissa Gerchick, Angelina McMillan-Major, Ezinwanne Ozoani, Nazneen Rajani, Tristan
+    Thrush, Yacine Jernite, and Douwe Kiela. Measuring data, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Muennighoff et al. (2023) Niklas Muennighoff, Alexander M. Rush, Boaz Barak,
+    Teven Le Scao, Aleksandra Piktus, Nouamane Tazi, Sampo Pyysalo, Thomas Wolf, and
+    Colin Raffel. Scaling data-constrained language models, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Park et al. (2022) Dongmin Park, Dimitris Papailiopoulos, and Kangwook Lee.
+    Active learning is a strong baseline for data subset selection. In *Has it Trained
+    Yet? NeurIPS 2022 Workshop*, 2022. URL [https://openreview.net/forum?id=PAgpyQ5rGS](https://openreview.net/forum?id=PAgpyQ5rGS).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Paul et al. (2023) Mansheej Paul, Surya Ganguli, and Gintare Karolina Dziugaite.
+    Deep learning on a data diet: Finding important examples early in training, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Penedo et al. (2023) Guilherme Penedo, Quentin Malartic, Daniel Hesslow, Ruxandra
+    Cojocaru, Alessandro Cappelli, Hamza Alobeidli, Baptiste Pannier, Ebtesam Almazrouei,
+    and Julien Launay. The refinedweb dataset for falcon llm: Outperforming curated
+    corpora with web data, and web data only, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Qin et al. (2023) Ziheng Qin, Kai Wang, Zangwei Zheng, Jianyang Gu, Xiangyu
+    Peng, Daquan Zhou, and Yang You. Infobatch: Lossless training speed up by unbiased
+    dynamic data pruning, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Radford et al. (2018) Alec Radford, Karthik Narasimhan, Tim Salimans, Ilya Sutskever,
+    et al. Improving language understanding by generative pre-training. 2018.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Rae et al. (2022) Jack W. Rae, Sebastian Borgeaud, Trevor Cai, Katie Millican,
+    Jordan Hoffmann, Francis Song, John Aslanides, Sarah Henderson, Roman Ring, Susannah
+    Young, Eliza Rutherford, Tom Hennigan, Jacob Menick, Albin Cassirer, Richard Powell,
+    George van den Driessche, Lisa Anne Hendricks, Maribeth Rauh, Po-Sen Huang, Amelia
+    Glaese, Johannes Welbl, Sumanth Dathathri, Saffron Huang, Jonathan Uesato, John
+    Mellor, Irina Higgins, Antonia Creswell, Nat McAleese, Amy Wu, Erich Elsen, Siddhant
+    Jayakumar, Elena Buchatskaya, David Budden, Esme Sutherland, Karen Simonyan, Michela
+    Paganini, Laurent Sifre, Lena Martens, Xiang Lorraine Li, Adhiguna Kuncoro, Aida
+    Nematzadeh, Elena Gribovskaya, Domenic Donato, Angeliki Lazaridou, Arthur Mensch,
+    Jean-Baptiste Lespiau, Maria Tsimpoukelli, Nikolai Grigorev, Doug Fritz, Thibault
+    Sottiaux, Mantas Pajarskas, Toby Pohlen, Zhitao Gong, Daniel Toyama, Cyprien de Masson d’Autume,
+    Yujia Li, Tayfun Terzi, Vladimir Mikulik, Igor Babuschkin, Aidan Clark, Diego
+    de Las Casas, Aurelia Guy, Chris Jones, James Bradbury, Matthew Johnson, Blake
+    Hechtman, Laura Weidinger, Iason Gabriel, William Isaac, Ed Lockhart, Simon Osindero,
+    Laura Rimell, Chris Dyer, Oriol Vinyals, Kareem Ayoub, Jeff Stanway, Lorrayne
+    Bennett, Demis Hassabis, Koray Kavukcuoglu, and Geoffrey Irving. Scaling language
+    models: Methods, analysis and insights from training gopher, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Raffel et al. (2020) Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee,
+    Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter J. Liu. Exploring
+    the limits of transfer learning with a unified text-to-text transformer, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Raju et al. (2021) Ravi S Raju, Kyle Daruwalla, and Mikko Lipasti. Accelerating
+    deep learning with dynamic data pruning, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sennrich et al. (2016) Rico Sennrich, Barry Haddow, and Alexandra Birch. Neural
+    machine translation of rare words with subword units, 2016.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Siddiqui et al. (2022) Shoaib Ahmed Siddiqui, Nitarshan Rajkumar, Tegan Maharaj,
+    David Krueger, and Sara Hooker. Metadata archaeology: Unearthing data subsets
+    by leveraging training dynamics, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sorscher et al. (2023) Ben Sorscher, Robert Geirhos, Shashank Shekhar, Surya
+    Ganguli, and Ari S. Morcos. Beyond neural scaling laws: beating power law scaling
+    via data pruning, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Taylor et al. (2022) Ross Taylor, Marcin Kardas, Guillem Cucurull, Thomas Scialom,
+    Anthony Hartshorn, Elvis Saravia, Andrew Poulton, Viktor Kerkez, and Robert Stojnic.
+    Galactica: A large language model for science, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023) Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier
+    Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal,
+    Eric Hambro, Faisal Azhar, Aurelien Rodriguez, Armand Joulin, Edouard Grave, and
+    Guillaume Lample. Llama: Open and efficient foundation language models, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Vaswani et al. (2023) Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit,
+    Llion Jones, Aidan N. Gomez, Lukasz Kaiser, and Illia Polosukhin. Attention is
+    all you need, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wang et al. (2019) Alex Wang, Amanpreet Singh, Julian Michael, Felix Hill,
+    Omer Levy, and Samuel R. Bowman. Glue: A multi-task benchmark and analysis platform
+    for natural language understanding, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wenzek et al. (2020) Guillaume Wenzek, Marie-Anne Lachaux, Alexis Conneau,
+    Vishrav Chaudhary, Francisco Guzmán, Armand Joulin, and Edouard Grave. CCNet:
+    Extracting high quality monolingual datasets from web crawl data. In *Proceedings
+    of the Twelfth Language Resources and Evaluation Conference*, pp.  4003–4012,
+    Marseille, France, May 2020\. European Language Resources Association. ISBN 979-10-95546-34-4.
+    URL [https://aclanthology.org/2020.lrec-1.494](https://aclanthology.org/2020.lrec-1.494).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xie et al. (2023a) Sang Michael Xie, Hieu Pham, Xuanyi Dong, Nan Du, Hanxiao
+    Liu, Yifeng Lu, Percy Liang, Quoc V Le, Tengyu Ma, and Adams Wei Yu. Doremi: Optimizing
+    data mixtures speeds up language model pretraining. *arXiv preprint arXiv:2305.10429*,
+    2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Xie et al. (2023b) Sang Michael Xie, Shibani Santurkar, Tengyu Ma, and Percy
+    Liang. Data selection for language models via importance resampling, 2023b.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. (2022) Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe,
+    Moya Chen, Shuohui Chen, Christopher Dewan, Mona Diab, Xian Li, Xi Victoria Lin,
+    Todor Mihaylov, Myle Ott, Sam Shleifer, Kurt Shuster, Daniel Simig, Punit Singh
+    Koura, Anjali Sridhar, Tianlu Wang, and Luke Zettlemoyer. Opt: Open pre-trained
+    transformer language models, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhou et al. (2023) Chunting Zhou, Pengfei Liu, Puxin Xu, Srini Iyer, Jiao Sun,
+    Yuning Mao, Xuezhe Ma, Avia Efrat, Ping Yu, Lili Yu, Susan Zhang, Gargi Ghosh,
+    Mike Lewis, Luke Zettlemoyer, and Omer Levy. Lima: Less is more for alignment,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Metric Distributions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We present the total distributions of the pruning metrics used in our analysis
+    in Figure [8](#A1.F8 "Figure 8 ‣ Appendix A Metric Distributions ‣ When Less is
+    More: Investigating Data Pruning for Pretraining LLMs at Scale").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/04ee8d19d57359157bb3e505eec5e3c5.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Distributions of Perplexity from different reference models. The dotted
+    lines are placed at each 10th percentile. Please note the differences in axes
+    between graphs. Fewer than .1% of examples on the extreme high end have been truncate
+    to better display the overall distribution
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/c45ed0532421cbd25deed1157c933606.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Distributions of the EL2N and Memorization Factor metrics. The dotted lines
+    are placed at each 10th percentile and omitted from Memorization Factor due to
+    overlap. Please note the log-scaled y-axis.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/9c2ce03b44bbce52d2b3f697943cd85e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '(c) Distributions of Perplexity from reference models trained on Wikipedia
+    and CommonCrawl. The CommonCrawl model is the same as the 124M parameter model
+    in Figure [8(a)](#A1.F8.sf1 "Figure 8(a) ‣ Figure 8 ‣ Appendix A Metric Distributions
+    ‣ When Less is More: Investigating Data Pruning for Pretraining LLMs at Scale").
+    The dotted lines are placed at each 10th percentile.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 8: Distributions of different pruning metrics and reference models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B Examples from different selection criteria
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Examples from the pretraining data, drawn from distinct subsets (keep bottom,
+    keep middle, keep top), are presented in Tables  [3](#A2.T3 "Table 3 ‣ Appendix
+    B Examples from different selection criteria ‣ When Less is More: Investigating
+    Data Pruning for Pretraining LLMs at Scale"), [4](#A2.T4 "Table 4 ‣ Appendix B
+    Examples from different selection criteria ‣ When Less is More: Investigating
+    Data Pruning for Pretraining LLMs at Scale"), [5](#A2.T5 "Table 5 ‣ Appendix B
+    Examples from different selection criteria ‣ When Less is More: Investigating
+    Data Pruning for Pretraining LLMs at Scale"), [6](#A2.T6 "Table 6 ‣ Appendix B
+    Examples from different selection criteria ‣ When Less is More: Investigating
+    Data Pruning for Pretraining LLMs at Scale"), and [7](#A2.T7 "Table 7 ‣ Appendix
+    B Examples from different selection criteria ‣ When Less is More: Investigating
+    Data Pruning for Pretraining LLMs at Scale"), with rankings based on perplexity.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 3: Samples from different distribution subsets using perplexity of a
+    52B reference model trained on CommonCrawl.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Bottom 10% | Middle 10% | Top 10% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Submissions, you hereby grant Company a license to translate, modify (for
+    technical purposes, for example making sure your content is viewable on an iPhone
+    as well as a computer) and reproduce and otherwise act with respect to such User
+    Submissions, in each case to enable us to operate the Services, as described in
+    more detail below. This is a license only – your ownership in User Submissions
+    is […] | House Municipal Heritage Building is a two-storey, wooden, vernacular
+    building with a low-hipped roof, and is located at the Norris Point Lookout, 104
+    Main Road, Norris Point, Newfoundland and Labrador. The former family dwelling
+    now operates as a heritage museum with a view of the Tablelands of Gros Morne
+    National Park located on the great Northern Peninsula. The municipal heritage
+    designation […] | and a nice book as a nice price. Postage is via Royal Mail 1st
+    Class in the UK. If you are buying from overseas then please contact me before
+    completing your purchase for a quote. I will always combine P&P so if ordering
+    multiple books, please wait for the invoice so that discounts can be applied.
+    We are slowly populating our store with post war Wisden’s so if there is anything
+    you need that […] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| provided on the Site is not intended for distribution to or use by any person
+    or entity in any jurisdiction or country where such distribution or use would
+    be contrary to law or regulation or which would subject us to any registration
+    requirement within such jurisdiction or country. Accordingly, those persons who
+    choose to access the Site from other locations do so on their own initiative and
+    are […] | selection of fuel type and input of soot index, coefficient of fuel,
+    selection of measurement units, input of date and time with keyboard and via RS232
+    or RS485 Procedure of industrial emissions monitoring with the use of AHKAT-410
+    has been agreed in FSUE "SRI Atmosphere" AHKAT-410-16 is approved for diesel locomotive
+    and diesel train emission monitoring at environment monitoring stations in […]
+    | can be returned up to 28 days after the date of purchase. Please note, we cannot
+    offer refunds on beauty, pierced jewellery or on swimwear if the hygiene seal
+    is not in place or has been broken. We now offer FREE label-free returns with
+    InPost Lockers (available 24/7), FREE Doddle Returns to all UK customers as well
+    as a FREE UK Collect+ returns service via over 5,900 local stores nationwide.[…]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| license only – your ownership in User Submissions is not affected. You agree
+    that the licenses you grant are royalty-free, perpetual, sublicensable, irrevocable,
+    and worldwide. Any information or content publicly posted or privately transmitted
+    through the Services is the sole responsibility of the person from whom such content
+    originated, and you access all such information and content at your […] | 1 1/2
+    " steel plate, all weld construction Hammer mill machine manufacturers, suppliers,
+    exporters, dealers and traders in India and worldwide hammer mill machines from
+    Gujarat and Mumbai since 1960 as per the ISO standards with required industrial
+    features and specifications Replaceable bar type grate is available for specific
+    applications SPECIFICATIONS : Hammer stone crusher is a kind of equip […] | several
+    turns. Nearly a month after a foreclosure lawsuit was filed against Freestyle
+    Music Park and its parent company, more than a dozen former department heads have
+    sued seeking more than $232,000 in unpaid wages and bonuses, according to court
+    papers filed late Friday. Seventeen employees are listed as plaintiffs. Backpay
+    I can understand, but can you honestly expect any kind of bonuses […] |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 4: Samples from different distribution subsets using perplexity of a
+    124M reference model trained on CommonCrawl.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Bottom 10% | Middle 10% | Top 10% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| risk your food going bad in a lukewarm fridge when you can lease kitchen
+    appliances in West Hollywood through Acima! Are you a budding DJ? A bit of a high-fidelity
+    audio snub? Love to level up with the latest video game system? Level up your
+    entertainment at home and on the road with sound systems for lease in West Hollywood.
+    You can make flexible lease renewal payments on the best in-home sound […] | gratitude
+    exercise. Before you get out of bed, think of five things you are most grateful
+    for. If your Life Path number is 2, you have a duality fit for any earthly experience.
+    You are deeply rooted in balance and harmony when dealing with the other numbers.
+    In order to stay connected to your community, start your day by connecting with
+    your friends and family. Instead of hopping on social […] | keepers" definitely
+    won’t help! Then there are those whose idea of a school librarian is based on
+    one they remember from their childhood, who perhaps didn’t let them borrow from
+    the adult shelves or maybe told them to be quiet. You know - the cliched woman
+    with glasses and a bun? I wear glasses myself and ended up haing to get a haircut
+    to avoid the cliche. In summer, of course I had to put my […] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| the-art mixed-use development that features a wide variety of shops, services,
+    and restaurants, along with over 950 luxury apartments. The sprawling urban village
+    is pedestrian-friendly and is the perfect place if you want to indulge in a shopping
+    spree or treat your taste buds to a hearty meal. If you’re thinking about looking
+    for the perfect home in Brookhaven, I’m ready to help! Get in touch […] | it as
+    a stand-alone piece but later experimented performing it as my written prediction,
+    confabulation style, Closing Effect. It’s still a work in progress but I did receive
+    some "Standing Ovations!" ALAN ARITA "I received a copy of GAME NIGHT and IT IS
+    EXCELLENT! First, the quality of the book is outstanding; everything from the
+    artwork, layout, hidden gems, and of course the precision cut […] | and view the
+    supernal beauty that lies beyond. (I wish I’d have said that first; actually I
+    stole it from a guy who wrote it a hundred years ago!*) But if I couldn’t see
+    into the future for a few years, there wouldn’t be a Christmas story today. I’ve
+    a whole lot of notes still in my jeans. One’s about Rabbi Frankel of the Synagogue
+    across West Street from old Reno High School. He was a pretty […] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| toilet drains are overwhelmed with toilet paper or clogged by non-flushable
+    things that find their way into the drain. If that’s the case, it may be time
+    to call a plumbing technician. Unexpected toilet issues interrupt your daily routine,
+    turning what you expected to be a good day right into a stressful one. You need
+    help ASAP! Best quality Plumbing is ready to solve your toilet troubles no […]
+    | who offer 3D printing services these days. Try searching for someone who offers
+    them in your area.Last week, Apple announced the new A15 processor in a peculiar
+    way: by comparing its new chip to the Android competition, rather than the A14
+    that powered last year’s generation of iPhones. We were all left to try to infer
+    the speed of the A15 based on Apple’s claims, and wondering if the company was
+    […] | floor study, family room, kitchen, unfinished basement for future expansion
+    & 2 car garage. Lennar seamlessly blended & showcased the unparalleled beauty
+    of Colorado with the most innovative homes, energy efficient technologies & modern
+    conveniences, bringing the best of both worlds together. Beautiful finishes and
+    upgrades throughout. Lennar provides the latest in energy efficiency and state
+    of […] |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 5: Samples from different distribution subsets using perplexity of a
+    124M reference model trained on Wikipedia.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Bottom 10% | Middle 10% | Top 10% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| of our kids, demonstrated ability to create meaningful change, a strong commitment
+    to learning, and an ability to work in partnership with others." Individuals accepted
+    to this program agree to a two-year teaching commitment. If you become a core
+    member you are required to attend an intensive summer training program to prepare
+    for your two-year commitment. Each region has different requirements b […] | HST
+    single cylinder hydraulic cone crusher. HST single cylinder hydraulic cone crusher
+    integrates mechanical, hydraulic, electrical, automation, intelligent control
+    and other technologies, which can be widely used in medium, fine and ultra-fine
+    crushing operations in metal and non-metal mines, cement, sandstone, metallurgy
+    and other industries… 1,214 roller cone crusher products are offered […] | active
+    play outdoor. Users without a subscription are not able to see the full content
+    on this page. Please subscribe or login.On the net betting houses include was
+    able to offer followers a fabulous best range of luring optimistic aspects. A
+    style of online casino money provides consistently continually really been ornamented
+    and acquired in reaction to make sure you basic safety issues. Insi […] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| to be that way. Weight loss surgery in Hanover is a great option for those
+    who are at least fifty pounds overweight and have struggled with weight loss over
+    the years. There are a number of surgical weight loss procedures available to
+    those seeking treatment, and Nusbaum Weight Loss Centers of New Jersey, with offices
+    and bariatric surgeons in Morristown, Morris County, Morris County, and surrou
+    […] | sperm whales. Learn firsthand about Sri Lanka’s amazing biodiversity on
+    this private tour to the Kanneliya Rainforest. With a dedicated guide leading
+    you, explore the UNESCO-listed biosphere reserve, home to monkeys, snakes, chameleons,
+    and a wide range of bird life. Learn about the flora and fauna through commentary
+    tailored to your interests and enjoy plenty of chances to ask questions. Explo
+    […] | row for spotting this Sabal Trail posting within minutes.The skin has become
+    delicate. I just received the goods and I didn’t know how to use it. I consulted
+    the customer service. I didn’t expect the customer service person to be super
+    good and the introduction was super careful. I have been so successful and happy
+    trading with you every time.. I hope we have more transactions in the future…
+    Ha […] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| to which coverage is thereby to be granted; and (2) Shall insure the person
+    named therein and any other person, as insured, using any such motor vehicle or
+    motor vehicles with the express or implied permission of such named insured against
+    loss from the liability imposed by law for damages arising out of the ownership,
+    maintenance, or use of such motor vehicle or motor vehicles within the United
+    […] | Also, I have attached a brief presentation of our work for better understanding.A
+    two-year solar energy project at the University of Sheffield has shown almost
+    all of the 2,000 systems in the scheme are still performing better than expected.
+    Researchers running Sheffield Solar Farm, which was launched in August 2010, say
+    98 per cent of more than 2,000 systems involved in the scheme are working […]
+    | It exposes a design and construction system for horizontal plates to work as
+    slabs in regular concrete buildings. Based to an evolutionary finite-element analysis
+    of the topological configuration to get a curved design with a 50% reduction of
+    traditional volume, that provide lower cost, less carbon foot-print, better performance
+    and innovative ceiling. A library of profiles is elaborated according […] |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 6: Samples from different distribution subsets using EL2N from a 124M
+    reference model trained on CommonCrawl.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Bottom 10% | Middle 10% | Top 10% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| a handle on how many elevators they are supposed to oversee. Those officials
+    have repeatedly deflected requests from reporters to detail the count of elevators
+    in Chicago requiring inspection. Frydland, during her interview, said she doesn’t
+    know how many elevators her office is responsible for inspecting because city
+    records lump elevators into the same class of devices as escalators, […] | there’s
+    a possibility that you may come across a property that’s sharing a driveway with
+    the home next door. That means that one driveway needs to be shared between the
+    two adjoining neighbors. Many real estate investors rent out their properties
+    in order to reap the benefits of passive monthly income while increasing their
+    equity and building wealth over time. Not only are they benefiting […] | We have
+    all spent happy hours listening to and sharing music we love with those closest
+    to us. Many of the people we serve in ubu are incredibly gifted and play a wide
+    range of musical instruments and enjoy singing and performing for other people.
+    Judith is enabled by ubu to live more independently in Knaresborough, North Yorkshire,
+    and has started taking singing lessons in order to ’grow’ her […] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ians 4:3? Jesus addressed this very issue with his disciples on the night
+    of his betrayal. He would be leaving them soon, but he promised the Holy Spirit
+    would come to comfort and aide them, "I will not leave you as orphans; I will
+    come to you."-John 14:18\. Jesus refers to the Holy Spirit as himself because,
+    "the Helper, the Holy Spirit, whom the Father will send in my name, he will teach
+    you all […] | the standard as far as cement manufacturing goes several cement
+    manufacturers still prefer ball mills for cement production when they want to
+    design new grinding plants or a new integrated 3D design and analysis of the crushing
+    roller of The crushing roller is one of the main parts of a highpressure grinding
+    roller which is a type of highly efficient ore crushing equipment In the work
+    reported […] | range (Table 1). Active-Controlled Study: CRESTOR was compared
+    with the HMG-CoA reductase inhibitors atorvastatin, simvastatin, and pravastatin
+    in a multicenter, open-label, dose-ranging study of 2,240 patients with Type IIa
+    and IIb hypercholesterolemia. After randomization, patients were treated for 6
+    weeks with a single daily dose of either CRESTOR, atorvastatin, simvastatin, or
+    pravastatin […] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Most past attemptsto define socioeconomics as a science in its own right
+    may have been motivated tocounter such a simplistic understanding of socioeconomics.In
+    this chapter, we review past attempts to define socioeconomics before theapproach
+    is chosen that we applied in this book. This book, by a leading expert in urban
+    agriculture, offers a genuine solution to today’s global food crisis. By […] |
+    which adopted our buttons such that when we went to Boston.com (part of NY times)
+    branding was not part of our discussions. Of course, we had matured in our thinking
+    and offered them a co-branded offer hosted by Coola. When Switchboard did not
+    work for us, we went to their competition Infospace.com, which was much larger
+    than them. They accepted a branded Coola button but offered a complex deal […]
+    | Trend.com: I had no idea this was coming. There’d been talk over the years about
+    setting up a sort of business portal that integrated all of Trend’s regular and
+    annual publications, but there was never enough momentum to actually get it going.
+    Trend had a regular spot on the Times’ online Business section, but it was a pretty
+    low-impact thing (even though quite a bit of traffic would come to the […] |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 7: Samples from different distribution subsets using memorization of
+    a 124M reference model trained on CommonCrawl.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Mem. Factor = 0 | Mem. Factor = 0.5 | Mem. Factor = 1.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| doesn’t prevent you from clearly seeing the road. Hi, thank you so much for
+    your words, appreciate it! Moreover, we noted your comments, we’ll think what
+    can be done, for sharing more ideas, feel free to contact us at support@hudwayapp.com
+    any time. Happy to help you always! I do a lot of mudding. And it’s got a pitch
+    and roll gauge, which I like when I’m in the hole, do I don’t flip my truck. […]
+    | 160 countries. There are abundant hot-selling projects accessible to you. Cheap
+    and environmentally friendly: Factory-direct sale, fast delivery with guaranteed
+    quality at factory price, in line with the concept of environmental development.
+    Feb 19 2021 should pelletisation of sulfide solidelectrolytesafterball millinghas
+    to be done in argon atmosphere question 7 answers i am using a spex 8000b […]
+    | reference. My company’s NACHI 230/600E bearing price concessions, adequate inventory,
+    and other similar products are available for recommendation 1 . Less than 45 KGS,
+    we will send by express. (Door to Door, Convenient) 2 . 45 - 200 KGS , we will
+    send by air transport . (Fastest and safest, but expensive) 3 . More than 200
+    KGS, we will send by sea . ( Cheapest and common use ) The bearing 240/8 […] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| disposal and processing of contaminated suspensions such as drilling mud,
+    road sweepings and similar. The rising demand on the international market to meet
+    current as well as future environmental regulations is the main driver for the
+    development in this area of our work," explains Managing Director Ing. Mag. Erich
+    Trunkenpolz. "The plants are currently developed for stationary and semi-mobile
+    du […] | $97 monthly subscription package. If you decide to make an annual payment
+    of $997, you get two free months. I started with this basic package but I later
+    decided to upgrade to Etison Suite since this one has some limitations. As a marketer,
+    I was only allowed to use 3 custom domains, get a limit of 20,000 visitors, and
+    make a maximum of 100 web pages. I discovered that some advanced features are
+    […] | takes your bank to process our refund request (5 to 10 business days). If
+    you need to return an item, simply login to your account, view the order using
+    the ’Complete Orders’ link under the My Account menu and click the Return Item(s)
+    button. We’ll notify you via e-mail of your refund once we’ve received and processed
+    the returned item. We can ship to virtually any address in the world. Note the
+    […] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| time:If you’re looking into faster-than-light fiber internet, there’s a Verizon
+    Fios deal for you in Silver Spring, MD. Want more than a Verizon Fios internet-only
+    plan? Open your home up to more entertainment choices with Verizon Fios packages.
+    Ready to improve your home with the best internet available? Get lightspeed internet
+    with Verizon plans that suit every lifestyle. Whether you only need […] | Select
+    options that apply then copy and paste the RDF/HTML data fragment to include in
+    your application Note: Adjust the width and height settings defined in the RDF/HTML
+    code fragment to best match your requirementsCause.—Upon the ascension of William
+    and Mary to the throne of England, the Protestants of Maryland demanded the Colonial
+    management of the Territory. The Roman Catholics, after rep […] | to assess the
+    success of our marketing and advertising campaigns). Finally, we may also share
+    your Personal Information to comply with applicable laws and regulations, to respond
+    to a subpoena, search warrant or other lawful request for information we receive,
+    or to otherwise protect our rights. Additionally, you can opt out of some of these
+    services by visiting the Digital Advertising Alliance […] |'
+  prefs: []
+  type: TYPE_TB

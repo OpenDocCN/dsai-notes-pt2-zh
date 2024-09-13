@@ -1,0 +1,937 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 19:03:54'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: A RAG Method for Source Code Inquiry Tailored to Long-Context LLMs
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2404.06082](https://ar5iv.labs.arxiv.org/html/2404.06082)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Toshihiro Kamiya
+  prefs: []
+  type: TYPE_NORMAL
+- en: Institute of Science and Engineering, Shimane University
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The development of text generation AI (large language models; LLMs) has been
+    remarkable. LLMs have started to be used in software development as well, and
+    AI assistant tools such as GitHub Copilot have emerged. However, there are still
+    challenges with LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One of the issues frequently pointed out with LLMs is the context length limitation.
+    The context length limitation refers to the upper bound on the length of context
+    that an LLM can consider when generating text. For example, the LLM called `gpt-4-32k`
+    from OpenAI has a context length limitation of 32k tokens (approximately 60k characters
+    in English). In user interfaces like ChatGPT’s chat interface, it is common to
+    implement an error when the input text exceeds this limit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While LLMs that support long context input have emerged, even with such LLMs,
+    according to research by Levy et al. [[2](#bib.bib2)], the inference performance
+    of LLMs decreases as the input text becomes longer, leading to the so-called needle
+    in a haystack problem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Source code for software can easily exceed tens of thousands of lines, so inquiries
+    that include source code may exceed the context length limitation, making it difficult
+    to obtain high-quality answers. In current software development, extensive reuse
+    is practiced. Even if the product being developed has a small or compact source
+    code, it is common for the code to expand by dozens of times when including the
+    source code of the reused libraries, including frameworks. Therefore, the context
+    length limitation of LLMs becomes an issue when making inquiries such as identifying
+    the cause of a bug or investigating the implementation of a specific feature.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One method to mitigate the context length limitation of LLMs is RAG (Retrieval-Augmented
+    Generation) [[3](#bib.bib3)]. In RAG, documents relevant to the inquiry in the
+    prompt are retrieved and filtered from a database, web search, or some other method,
+    and these documents are added to the original prompt as input to the LLM, allowing
+    for answers based on the content of the documents. For example, if the prompt
+    is ”Tell me about the habits of cats,” the Wikipedia article ”Cat” can be searched
+    and its text added to the prompt to obtain a more detailed answer. For inquiries
+    about a software product, the source code of the product itself or the products
+    being reused can be used as the documents to be added to the original prompt in
+    RAG.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another method to mitigate the context length limitation of LLMs is to use LLMs
+    with larger contexts from the beginning. However, for the Transformer-based LLMs
+    that are widely used today, the computational cost is proportional to the square
+    of the context length, so increasing the context length directly leads to an increase
+    in computational cost.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this research, we propose a RAG method for inquiries about the source code
+    of software products. The proposed method aims to mitigate and solve the needle
+    in a haystack problem by obtaining accurate answers without referring to the entire
+    source code, by executing the product to obtain an execution trace (log of called
+    functions), extracting the call tree and source code of the called functions from
+    the execution trace, and inputting them to the LLM as documents for RAG.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Related Research
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As research on applying LLMs to software development, a study [[1](#bib.bib1)]
+    on using LLMs for bug localization proposes a method where error messages from
+    failed test cases are input to the LLM to identify the cause, and further, to
+    identify the location of the bug.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tools have been proposed that incorporate LLMs into IDEs to assist developers
+    in understanding source code and APIs [[4](#bib.bib4)]. The goal is to improve
+    the efficiency of developers’ work by answering their questions and automatically
+    displaying summaries of the code, without interrupting their concentration.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The literature [[6](#bib.bib6)] points out that existing benchmarks may not
+    be able to accurately evaluate the performance of LLMs because the training data
+    includes answer examples. This issue is also partially encountered in the experiment
+    described in Section [4.4](#S4.SS4 "4.4 Experiment 1 ‣ 4 Experiments ‣ A RAG Method
+    for Source Code Inquiry Tailored to Long-Context LLMs").
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A blog post¹¹1Using GitHub Copilot in your IDE: Tips, tricks, and best practices,
+    https://github.blog/2024-03-25-how-to-use-github-copilot-in-your-ide-tips-tricks-and-best-practices/
+    for the GitHub Copilot software development AI assistant tool states that to obtain
+    appropriate responses from the AI, you should open files related to the task you
+    are currently working on, in order to provide the LLM with the appropriate context.
+    The method proposed in this research automatically identifies the source code
+    that should be shown to the LLM by dynamically analyzing the target product.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Approach
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The proposed method takes a user inquiry and the execution trace of the software
+    as input, and identifies the corresponding source code through the following steps,
+    which is then input to the LLM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Step 1. The user inputs an inquiry about a software product and the trace (log
+    of called functions) collected when executing the feature related to that inquiry.
+    The execution trace is obtained using the trace collection tool `rapt` developed
+    by the author. This tool executes the target Python script and collects a log
+    of the called functions. The location information (source file and line number)
+    of the functions in the source code is also collected. For example, in the experiment
+    described in Section [4.4](#S4.SS4 "4.4 Experiment 1 ‣ 4 Experiments ‣ A RAG Method
+    for Source Code Inquiry Tailored to Long-Context LLMs"), an inquiry is made about
+    the feature of formatting and displaying CSV files in the `rich-cli` command-line
+    interface (CLI) tool, and the execution trace is collected by displaying a CSV
+    file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Step 2. Analyze the execution trace and identify the executed functions and
+    methods, as well as their call relationships.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Step 3. Identify the corresponding source code file and the location of the
+    function within it from the names of the called functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Step 4. Create a call graph (a graph representing the call relationships between
+    functions) from the call relationships, and further generate a call tree (tree
+    structure) by removing loops and other constructs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Step 5. Input the prompt, which is the inquiry text appended with the call tree
+    and the source code of the functions within the call tree, to the LLM and output
+    the response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this case, the source code of the functions is arranged in the order they
+    appear in the call tree. In other words, if a function `f` calls another function
+    `g`, the source code of `g` is placed after the source code of `f`. This ordering
+    is intended to make it easier for the LLM to follow the execution flow by showing
+    the lines of source code in the order they are executed. The experiment described
+    in Section [4.4](#S4.SS4 "4.4 Experiment 1 ‣ 4 Experiments ‣ A RAG Method for
+    Source Code Inquiry Tailored to Long-Context LLMs") evaluates the effect of this
+    ordering.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Practical Considerations
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In the implementation of the proposed method, the following processing is performed
+    to represent the call tree in a compact form:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: (1) When a function calls the same function multiple times, the called function
+    is represented as a single node. Also, when a function is called from different
+    functions, the called function nodes are represented separately (not merged).
+  prefs: []
+  type: TYPE_NORMAL
+- en: As a result, such a call tree becomes a tree obtained by removing recursion
+    (i.e., cycles in the graph) and merging (i.e., parts of the graph where nodes
+    have multiple incoming edges) from the call graph represented as a directed graph.
+    By representing it as a tree structure, it is expected to become easier to determine
+    the order in which to append the source code to the prompt.
+  prefs: []
+  type: TYPE_NORMAL
+- en: (2) When there is a recursive call, the hierarchy up to the node where the first
+    recursive call occurs is represented, and nodes for deeper recursive calls are
+    omitted. Recursive calls are sometimes used for iteration, and this avoids generating
+    an excessively large call tree in such cases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: (3) Other considerations and limitations
+  prefs: []
+  type: TYPE_NORMAL
+- en: The execution trace collection tool `rapt` only records the calls of functions
+    within the modules specified by the user. Calls to built-in functions (e.g., `print`)
+    or functions in the standard library are not recorded.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`rapt` adopts a method of wrapping functions and logging their calls during
+    the execution of the target product. However, due to the limitations of this implementation
+    method, it is not possible to record calls to functions of dynamically (lazily)
+    loaded modules or functions that are not in the global scope (such as lambdas).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In general, programs perform module imports and initialization during startup.
+    Since there may be cases where such processing needs to be excluded from the analysis,
+    a branch pruning function for the call tree was implemented. To perform branch
+    pruning, first, an execution trace is obtained by executing the program without
+    running its functionality (by immediately exiting after program start). The functions
+    included in such a call tree are considered to be related to startup, and if the
+    same node (same function call) is present in the leaves of the call tree being
+    analyzed, it is removed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we evaluate the proposed method by applying it to an open-source
+    product. We prepared specific inquiries that could occur during software development
+    and criteria for evaluating the quality of responses to those inquiries (described
+    later). We create variants by changing the content of the prompt (presence or
+    order of the call tree and function source code) and analyze whether the proposed
+    method contributes to the quality of the response by making inquiries with these
+    variants and evaluating the quality of the responses (evaluation criteria described
+    later).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Target Product
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: For the experiment, we selected the OSS command-line tool `rich-cli`²²2rich-cli
+    https://github.com/Textualize/rich-cli as the target. The reasons for choosing
+    this tool are that it is feature-rich and has an appropriate scale (approximately
+    220k lines) for the experiment, and because it is a CLI tool, it is easy to maintain
+    consistent conditions when running repeatedly (high reproducibility). The `rich-cli`
+    tool has the ability to take files in formats such as CSV, Markdown, and ReStructuredText
+    as input, and format and display them in the terminal with syntax highlighting,
+    among other features.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table [1](#S4.T1 "Table 1 ‣ 4.1 Target Product ‣ 4 Experiments ‣ A RAG Method
+    for Source Code Inquiry Tailored to Long-Context LLMs") shows the line counts
+    (measured using the `cloc`³³3Cloc https://github.com/AlDanial/cloc tool) of Python
+    source files for the target product and the libraries (packages) it directly and
+    indirectly depends on. The target product `rich-cli` itself is only 900 lines,
+    as it is a tool that allows the functionality of libraries such as `rich` and
+    `rich-rst` to be accessed from the command line. However, including the dependent
+    libraries, the total is approximately 220k lines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: Packages that make up the target product'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Package | Version | Python Lines |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| certifi | 2024.2.2 | 63 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| charset-normalizer | 3.3.2 | 4,022 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| click | 8.1.7 | 5,659 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| docutils | 0.20.1 | 28,303 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| idna | 3.6 | 11,142 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| linkify-it-py | 2.0.3 | 2,032 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| markdown-it-py | 3.0.0 | 4,226 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| mdit-py-plugins | 0.4.0 | 2,440 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| mdurl | 0.1.2 | 342 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Pygments | 2.17.2 | 94,240 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| requests | 2.31.0 | 2,904 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| rich | 13.7.1 | 19,638 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| rich-cli | 1.8.0 | 900 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| rich-rst | 1.2.0 | 569 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| textual | 0.54.0 | 33,438 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| typing_extensions | 4.10.0 | 1,633 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| uc-micro-py | 1.0.3 | 14 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| urllib3 | 2.2.1 | 6,419 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (Total) |  | 217,984 |'
+  prefs: []
+  type: TYPE_TB
+- en: 4.2 LLMs Used in the Experiment
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Table [2](#S4.T2 "Table 2 ‣ 4.2 LLMs Used in the Experiment ‣ 4 Experiments
+    ‣ A RAG Method for Source Code Inquiry Tailored to Long-Context LLMs") shows the
+    context length limits (in tokens) of the LLMs Gemini 1.5 Pro [[5](#bib.bib5)],
+    Claude 3 Sonnet, and ChatGPT-4 used in the experiment. As described in Section
+    [4.5](#S4.SS5 "4.5 Experiment 2 ‣ 4 Experiments ‣ A RAG Method for Source Code
+    Inquiry Tailored to Long-Context LLMs") below, the length of the generated prompts
+    can reach up to around 87k tokens, so LLMs capable of handling relatively large
+    contexts were selected. In all cases, the responses were generated by pasting
+    the prompts into a chat-style UI, without using an API. Each LLM uses a different
+    tokenizer (a function that splits text into tokens), so the token count for the
+    same text will differ, making the context length limit only a rough guideline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 2: LLMs used in the experiment'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| LLM | c. | Service Used |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Gemini 1.5 Pro | 1M | Accessed from Google AI Studio |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Claude 3 Sonnet | 200K | Accessed from poe.com |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ChatGPT-4 | 128K | Accessed from poe.com |'
+  prefs: []
+  type: TYPE_TB
+- en: The c. column shows the context length limit (in tokens).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 Prompt Variants
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The proposed method includes the call tree and source code in the prompt. To
+    experimentally evaluate the effect of including these in the prompt, we create
+    variants by removing or reordering them from the prompt generated by the proposed
+    method and evaluate the quality of the responses. Table [3](#S4.T3 "Table 3 ‣
+    4.3 Prompt Variants ‣ 4 Experiments ‣ A RAG Method for Source Code Inquiry Tailored
+    to Long-Context LLMs") shows the variants of the prompt used in the experiment.
+    Figure [1](#S4.F1 "Figure 1 ‣ 4.3 Prompt Variants ‣ 4 Experiments ‣ A RAG Method
+    for Source Code Inquiry Tailored to Long-Context LLMs") shows an example of the
+    prompt used in the following Section [4.4](#S4.SS4 "4.4 Experiment 1 ‣ 4 Experiments
+    ‣ A RAG Method for Source Code Inquiry Tailored to Long-Context LLMs").
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 3: Prompt Variants'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Variant | Description |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| full | The prompt generated by the proposed method itself, including the
+    inquiry text, call tree, and source code of the functions within the call tree
+    in the order they appear in the call tree. If the same function appears multiple
+    times in the call tree, its source code is included multiple times in the prompt.
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| A | Same as full, but the source code within the call tree is sorted by function
+    name (including module name). If the same function appears multiple times in the
+    call tree, its source code is included only once in the prompt without duplication.
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| C | Excludes the call tree from full. The source code of the functions is
+    included in the order they appear in the call tree. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CA | Excludes the call tree from full. The source code of the functions is
+    sorted and duplicates are removed. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| T | Excludes the source code from full. |'
+  prefs: []
+  type: TYPE_TB
+- en: '![Refer to caption](img/0331e5e026b434e60ba61d7ec10b9418.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Example prompt'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4 Experiment 1
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We create prompts following the proposed method for specific inquiries that
+    could arise during software development, input them to LLMs, and evaluate their
+    responses according to the evaluation criteria. In this experiment, the response
+    generation is performed only once for each prompt variant and each LLM. With the
+    chat-style UI of the LLM services, a random number is used, so the content of
+    the response differs each time it is generated. In that sense as well, the evaluation
+    of the responses is not absolute, but should be noted as an assessment of the
+    overall trend.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4.1 Prompt 1
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: The tool has a feature to format and display CSV files in the terminal. This
+    feature uses line characters to create the appearance of a table. The inquiry
+    asks what function determines this appearance (such as the type of line or right
+    alignment) and how to change the appearance. The command line of the tool does
+    not provide a way to change the format, so the source code needs to be modified.
+    The correct answer for the location to be modified was determined by considering
+    the ability to confirm that the change would modify the functionality of the product,
+    that no modifications other than the indicated location are necessary, and that
+    the impact on other features of the product should be minimized as much as possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The author visually inspected each response and evaluated it on a 4-point scale
+    according to the following criteria. Items in the response that were deemed to
+    be incorrect explanations or hallucinations were deducted points.
+  prefs: []
+  type: TYPE_NORMAL
+- en: \Circled
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 The name of the class or function that implements the feature can be output
+    (1 point). If multiple instances are mentioned and the correct one is included,
+    0.5 points.
+  prefs: []
+  type: TYPE_NORMAL
+- en: \Circled
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 In addition to lines, elements such as color and padding that affect the appearance
+    of the table are explained (1 point).
+  prefs: []
+  type: TYPE_NORMAL
+- en: \Circled
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 The content of the change (the modified code or how to modify it) can be output
+    (1 point). If multiple instances are mentioned and the correct one is included,
+    0.5 points.
+  prefs: []
+  type: TYPE_NORMAL
+- en: \Circled
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 The location to be modified can be output by function name (1 point). If multiple
+    instances are mentioned and the correct one is included, 0.5 points.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The results for Prompt 1 are shown in Table [4](#S4.T4 "Table 4 ‣ 4.4.1 Prompt
+    1 ‣ 4.4 Experiment 1 ‣ 4 Experiments ‣ A RAG Method for Source Code Inquiry Tailored
+    to Long-Context LLMs"). The evaluation scores for the responses obtained from
+    all LLMs and all variants were high. However, for the T variant, which included
+    only the inquiry text and the call tree where function names are nodes, some responses
+    included the name of a global variable. This could be due to hallucination or
+    the possibility that the LLM’s training data included information about the `rich`
+    package, causing the response to be generated based on the learned information
+    rather than the content of the prompt (suspected data leakage).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4: Evaluation scores for Prompt 1 responses'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| LLM | full | A | C | CA | T |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Gemini 1.5 Pro | 4.0 | 4.0 | 4.0 | 3.0 | 4.0* |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Claude 3 Sonnet | 4.0 | 4.0 | 4.0 | 4.0 | 4.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ChatGPT-4 | 3.0 | 4.0 | 4.0 | 3.0 | 4.0* |'
+  prefs: []
+  type: TYPE_TB
+- en: The numbers marked with * indicate that the name of a global variable not included
+    in the call tree was included in the response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4.2 Prompt 2
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: The tool has a feature to format and display Markdown files containing tables
+    in the terminal. Similar to Prompt 1, we inquired about how to change the appearance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since Markdown has many formatting options besides tables, such as lists and
+    quotes, the parsing performed is more complex compared to processing CSV files.
+    As a result, there are more classes and methods involved in the processing, making
+    it more difficult than Prompt 1. The same evaluation criteria as Prompt 1 were
+    used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The results for Prompt 2 are shown in Table [5](#S4.T5 "Table 5 ‣ 4.4.2 Prompt
+    2 ‣ 4.4 Experiment 1 ‣ 4 Experiments ‣ A RAG Method for Source Code Inquiry Tailored
+    to Long-Context LLMs"). For all LLMs, the maximum evaluation score was obtained
+    from the responses generated by the full or A variants. Additionally, as with
+    Prompt 1, the responses for the T variant included suspected data leakage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 5: Evaluation scores for Prompt 2 responses'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| LLM | full | A | C | CA | T |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Gemini 1.5 Pro | 4.0 | 4.0 | 4.0 | 2.0 | 3.0* |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Claude 3 Sonnet | 2.0 | 3.5 | 1.5 | 2.5 | 2.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ChatGPT-4 | 4.0 | 3.0 | 3.0 | 3.0 | 3.5* |'
+  prefs: []
+  type: TYPE_TB
+- en: The numbers marked with * indicate that the name of a global variable not included
+    in the call tree was included in the response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4.3 Prompt 3
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We compared the feature used in Prompt 1 to format and display CSV files in
+    the terminal and the feature used in Prompt 2 to format and display Markdown files
+    containing tables in the terminal. Specifically, we inquired about the differences
+    and similarities in implementation, differences in control flow and data structures,
+    and differences in table-related functionality. Prompt 3 was the longest in the
+    experiment and serves as a benchmark for testing the scalability of the proposed
+    method. The following evaluation criteria were used:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: \Circled
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Differences and similarities in implementation are explained (1 point).
+  prefs: []
+  type: TYPE_NORMAL
+- en: \Circled
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Names of important functions or methods that illustrate differences in control
+    flow are provided. 1 point if both are correct. 0.5 points if one is correct.
+  prefs: []
+  type: TYPE_NORMAL
+- en: \Circled
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Differences in the data structures used are explained by class names. 1 point
+    if both are correct. 0.5 points if one is correct.
+  prefs: []
+  type: TYPE_NORMAL
+- en: \Circled
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Differences in table-related functionality between the two (e.g., right alignment)
+    are explained (1 point). General Markdown features (such as links) are excluded.
+    If specific examples like right alignment are not provided and only terms like
+    ”styles” are used, 0.5 points.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Since Prompt 3 requires comparing two executions, the content of the prompt
+    was arranged in the following order: the inquiry text, the call tree of the first
+    execution, the sequence of source code of functions included in the call tree
+    of the first execution, the call tree of the second execution, and the sequence
+    of source code of functions included in the call tree of the second execution.
+    However, for the CA variant prompt, the content was the inquiry text and the source
+    code of functions included in either execution call tree, sorted by function name.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The results for Prompt 3 are shown in Table [6](#S4.T6 "Table 6 ‣ 4.4.3 Prompt
+    3 ‣ 4.4 Experiment 1 ‣ 4 Experiments ‣ A RAG Method for Source Code Inquiry Tailored
+    to Long-Context LLMs"). The low evaluation score for the full variant of ChatGPT-4
+    is notable. This is mere speculation, but since the full variant of Prompt 3 is
+    also the longest prompt in this experiment (as described in Section [4.5](#S4.SS5
+    "4.5 Experiment 2 ‣ 4 Experiments ‣ A RAG Method for Source Code Inquiry Tailored
+    to Long-Context LLMs")), it may have approached the LLM’s context length limit,
+    resulting in a degradation of response quality (suspected context length limit
+    issue).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 6: Evaluation scores for Prompt 3 responses'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| LLM | full | A | C | CA | T |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Gemini 1.5 Pro | 3.5 | 4.0 | 2.0 | 3.0 | 1.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Claude 3 Sonnet | 2.0 | 2.0 | 1.5 | 2.0 | 3.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ChatGPT-4 | 1.0 | 3.5 | 2.5 | 1.0 | 3.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: 4.4.4 Prompt 4
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: The tool has a command line option `--emoji` that converts emoji codes (`:sparkle:`,
+    etc.) to actual emoji when outputting text. This option works when the text is
+    provided as a command line argument, but not when it is provided from a file.
+    We inquired about the cause and how to fix it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since the implementation differs between text provided as a command line argument
+    and text provided from a file, the emoji processing needs to be added to the file
+    processing part. Branching based on the presence of the option is also necessary.
+    Additionally, to maintain consistency in the tool’s functionality, modifications
+    that reuse existing processing are preferable, so reuse was added as an evaluation
+    item. Prompt 4 requires making a design decision on where to add the necessary
+    processing within the product, making it more difficult compared to the previous
+    prompts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The evaluation criteria were as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: \Circled
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 The cause can be output (1 point). If multiple causes are mentioned and the
+    correct one is included, 0.5 points.
+  prefs: []
+  type: TYPE_NORMAL
+- en: \Circled
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 The content of the change (the modified code or how to modify it) can be output
+    (1 point). If multiple instances are mentioned and the correct one is included,
+    0.5 points.
+  prefs: []
+  type: TYPE_NORMAL
+- en: \Circled
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 The location to be modified can be output by function name (1 point). If multiple
+    instances are mentioned and the correct one is included, 0.5 points.
+  prefs: []
+  type: TYPE_NORMAL
+- en: \Circled
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 A modification plan that reuses existing functionality can be output (1 point).
+    If the plan is to create new functionality, 0.5 points.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The results for Prompt 4 are shown in Table [7](#S4.T7 "Table 7 ‣ 4.4.4 Prompt
+    4 ‣ 4.4 Experiment 1 ‣ 4 Experiments ‣ A RAG Method for Source Code Inquiry Tailored
+    to Long-Context LLMs"). For all LLMs, the maximum evaluation score was obtained
+    from the full variant (however, for ChatGPT-4, the evaluation score was 2.5 for
+    all variants).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 7: Evaluation scores for Prompt 4 responses'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| LLM | full | A | C | CA | T |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Gemini 1.5 Pro | 4.0 | 2.5 | 2.0 | 3.0 | 1.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Claude 3 Sonnet | 4.0 | 3.0 | 2.0 | 2.0 | 3.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ChatGPT-4 | 2.5 | 2.5 | 2.5 | 2.5 | 2.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: 4.4.5 Analysis
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Figure [2](#S4.F2 "Figure 2 ‣ 4.4.5 Analysis ‣ 4.4 Experiment 1 ‣ 4 Experiments
+    ‣ A RAG Method for Source Code Inquiry Tailored to Long-Context LLMs") shows a
+    line graph representing the average of Prompts 1 to 4 for each variant (full,
+    A, C, CA, T), with the horizontal axis representing the prompt variants and the
+    vertical axis representing the aggregated evaluation scores. The solid black line
+    (AVE1) uses the raw experimental results, while the black dotted line (AVE2) excludes
+    the suspected data leakage observed in Prompts 1 and 2. For example, the black
+    circle on the far left indicates that the average evaluation score for the full
+    variant across all LLMs and all prompts (1 to 4) is 3.17.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/ec9569bb1b199102d4831a83b3fa55ae.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Trend of evaluation scores'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The lines other than the solid black line show the scores aggregated and classified
+    by LLM. The drop in evaluation scores at full could be due to the influence of
+    the context length limit, as observed in Prompt 3 of Experiment 1.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since this experiment has a small sample size, statistical judgments cannot
+    be made, but overall trends can be discussed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, looking at Gemini 1.5 Pro, which has the largest context, the evaluation
+    score for the full variant is the highest, followed by A, C, CA, and T in that
+    order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Focusing on the presence or absence of source code, the evaluation score for
+    the T variant, which does not include source code, does not reach the scores of
+    the full or A variants, which include both source code and the call tree. This
+    suggests a trend that including the call tree and source code in the prompt contributes
+    to the quality of the response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Looking at the variants that include source code, i.e., full, A, C, and CA,
+    the only variant that does not include the order in which functions are called
+    is CA. The other variants, full, A, and C, include information about the order
+    in which functions are called, either through the call tree or the ordering of
+    the function source code. The lower evaluation score for the CA variant suggests
+    a trend that the order in which functions are called contributes to the quality
+    of the response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Further examining the full, A, and C variants, the C variant presents the order
+    in which functions are called through the ordering of the source code, while full
+    and A present the order in which functions are called through the call tree. Excluding
+    the suspected context length limit issue described in Prompt 3 of Experiment 1,
+    there appears to be a trend that presenting the order through the call tree contributes
+    to the quality of the response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.5 Experiment 2
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We evaluate the size of the prompts generated by the proposed method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: (1) Examine how the prompt size compares to the LLM’s context length limit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table [8](#S4.T8 "Table 8 ‣ 4.5 Experiment 2 ‣ 4 Experiments ‣ A RAG Method
+    for Source Code Inquiry Tailored to Long-Context LLMs") shows the prompt lengths
+    of Prompts 1 to 4 measured using the ChatGPT-4 tokenizer⁴⁴4The Tokenizer Playground
+    https://huggingface.co/spaces/Xenova/the-tokenizer-playground was used.. The maximum
+    is the full variant of Prompt 3 with 87,950 tokens. Theoretically, this reaches
+    nearly 70% of the context length limit of the ChatGPT-4 used in this experiment.
+    Additionally, when measured with the Gemini (Gemma) tokenizer, this prompt becomes
+    106,875 tokens, revealing a difference of around 20% in token counts between LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 8: Prompt sizes (in ChatGPT-4 tokens)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Prompt | full | A | C | CA | T |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Prompt 1 | 32,250 | 19,949 | 22,079 | 18,768 | 1,279 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Prompt 2 | 64,838 | 53,537 | 61,238 | 49,943 | 3,711 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Prompt 3 | 87,950 | 73,338 | 83,198 | 50,528 | 4,876 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Prompt 4 | 26,104 | 23,984 | 24,489 | 18,792 | 1,751 |'
+  prefs: []
+  type: TYPE_TB
+- en: In terms of prompt size, the full variant is the largest for all prompts from
+    1 to 4\. The C variant is smaller because it does not include the call graph.
+    The A variant is smaller because it does not include duplicate function source
+    code. The T variant is smaller because it does not include source files.
+  prefs: []
+  type: TYPE_NORMAL
+- en: (2) Examine how the prompt size compares to the source files of the target product.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table [9](#S4.T9 "Table 9 ‣ 4.5 Experiment 2 ‣ 4 Experiments ‣ A RAG Method
+    for Source Code Inquiry Tailored to Long-Context LLMs") shows the number of Python
+    source files included in Prompts 1 to 4 and the total number of lines in those
+    source files. For comparison, the number of lines in the full variant prompt is
+    also included. Table [1](#S4.T1 "Table 1 ‣ 4.1 Target Product ‣ 4 Experiments
+    ‣ A RAG Method for Source Code Inquiry Tailored to Long-Context LLMs") showed
+    that the total line count for the target product was approximately 220k lines,
+    so in comparison to inputting the entire source code of the target product into
+    the LLM, the number of lines in the prompts is less than 1/20.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 9: Python source code referenced by the prompts'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Prompt | File Count | File Lines | Full Variant Lines |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Prompt 1 | 14 | 11,552 | 2,549 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Prompt 2 | 53 | 18,799 | 7,079 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Prompt 3 | 53 | 18,799 | 9,626 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Prompt 4 | 18 | 13,757 | 2,737 |'
+  prefs: []
+  type: TYPE_TB
+- en: Prompts 2 and 3 reference the same set of source files,
+  prefs: []
+  type: TYPE_NORMAL
+- en: hence the file count and file lines are the same.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With the proposed method, the necessary source files are identified by executing
+    the target product, eliminating the need for the user (developer) to manually
+    select source files. Even if developers could select source files, the proposed
+    method extracts the source code at the function level and appends it to the prompt,
+    allowing for smaller prompts. For example, the full variant of Prompt 1 is 22%
+    (=2549/11552) in terms of line count.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Summary and Future Prospects
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this research, we proposed a RAG method for inquiries about source code.
+    The proposed method extracts the call tree and the source code of the called functions
+    from the execution trace of a software product and appends them to the prompt.
+    This enables inquiries that require considering the product’s design, such as
+    investigating differences in functionality or determining where functionality
+    should be implemented.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the experiment, we used an open-source product of approximately 220k lines,
+    including dependencies, as the target and evaluated the responses by inputting
+    the created prompts into LLMs for specific inquiries that could arise during software
+    development. The experimental results showed a trend of improved response quality
+    when including the call tree and source code in the prompt. In particular, it
+    was found that including the order in which functions are called in the prompt
+    is important. On the other hand, there were cases where the quality of the response
+    degraded when the prompt size became large, depending on the LLM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Future tasks include automating prompt generation to reduce manual effort by
+    the user and establishing a method for creating prompts that can handle various
+    software tasks. It will also be necessary to investigate more effective methods
+    for addressing the context length limit of LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[1] M. Jin, S. Shahriar, M. Tufano, X. Shi, S. Lu, N. Sundaresan, A. Svyatkovski,
+    InferFix: End-to-End Program Repair with LLMs, ESEC/FSE 2023, pp. 1646–1656, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[2] M. Levy, A. Jacoby, Y. Goldberg, Same Task, More Tokens: the Impact of
+    Input Length on the Reasoning Performance of Large Language Models, arXiv:2402.14848v1,
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[3] P. Lewis, E. Perez, A. Piktus, et al., Retrieval-Augmented Generation for
+    Knowledge-Intensive NLP Tasks, arXiv:2005.11401v4, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[4] D. Nam, A. Macvean, V. Hellendoorn, B. Vasilescu, B. Myers, Using an LLM
+    to Help With Code Understanding, ICSE 2024, p. 881, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[5] M. Reid, N. Savinov, D. Teplyashin, et al., Gemini 1.5: Unlocking multimodal
+    understanding across millions of tokens of context, arXiv:2403.05530v1, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[6] C. S. Xia, Y. Deng, L. Zhang, Top Leaderboard Ranking = Top Coding Proficiency,
+    Always? EvoEval: Evolving Coding Benchmarks via LLM, arXiv:2403.19114v1, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[7] J. Xu, Z. Cui, Y. Zhao, et al., UniLog: Automatic Logging via LLM and In-Context
+    Learning, ICSE 2024, pp. 1–12, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

@@ -1,0 +1,1128 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 19:04:44'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'LightSeq: Sequence Level Parallelism for Distributed Training of Long Context
+    Transformers'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2310.03294](https://ar5iv.labs.arxiv.org/html/2310.03294)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: 'Dacheng Li   ²²footnotemark: 2 &Rulin Shao ¹¹footnotemark: 1  ³³footnotemark:
+    3 &Anze Xie ⁴⁴footnotemark: 4 &Eric P. Xing ⁸⁸footnotemark: 8 \ANDJoseph E. Gonzalez ²²footnotemark:
+    2 &Ion Stoica ²²footnotemark: 2 &Xuezhe Ma ⁷⁷footnotemark: 7 &Hao Zhang ⁴⁴footnotemark:
+    4 &'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^b UC Berkeley     ^w University of Washington     ^s UCSD     ^c CMU     ^m
+    MBZUAI     ^u USC Authors contributed equally.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Increasing the context length of large language models (LLMs) unlocks fundamentally
+    new capabilities, but also significantly increases the memory footprints of training.
+    Previous model-parallel systems such as Megatron-LM partition and compute different
+    attention heads in parallel, resulting in large communication volumes, so they
+    cannot scale beyond the number of attention heads, thereby hindering its adoption.
+    In this paper, we introduce a new approach, LightSeq, for long-context LLMs training.
+    LightSeq has many notable advantages. First, LightSeq partitions over the sequence
+    dimension, hence is agnostic to model architectures and readily applicable for
+    models with varying numbers of attention heads, such as Multi-Head, Multi-Query
+    and Grouped-Query attention. Second, LightSeq not only requires up to 4.7$\times$
+    longer sequence length on models with fewer heads, compared to Megatron-LM. Codes
+    will be available at [https://github.com/RulinShao/LightSeq](https://github.com/RulinShao/LightSeq).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Transformers with long-context capabilities have enabled fundamentally new applications,
+    such as comprehensive document understanding, generating a complete codebase,
+    and extended interactive chatting (Osika, [2023](#bib.bib18); Liu et al., [2023](#bib.bib15);
+    Li et al., [2023](#bib.bib11)). However, training LLMs with long sequences induces
+    large activation memory footprints, posing new challenges to existing distributed
+    systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One effective method for reducing these large activation memory footprints is
+    to partition the activation across devices. To achieve this, existing systems
+    like Megatron-LM (Korthikanti et al., [2023](#bib.bib9); Shoeybi et al., [2019](#bib.bib21))
+    usually partition the attention heads. However, this design poses a strong assumption
+    that the number of attention heads must be divisible by the parallelism degree,
+    which does not hold for many model architectures. For example, Llama-33B has 52
+    attention heads, which is not divisible by commonly chosen parallelism degrees
+    such as 8, 16, and 32, according to the topology of NVIDIA clusters. In addition,
+    partitioning attention heads restricts the maximum parallelism degree to be no
+    greater than the number of attention heads. However, many popular LLMs do not
+    have enough attention heads for it to scale up, e.g., CodeGen (Nijkamp et al.,
+    [2022](#bib.bib17)) only has 16 attention heads. Moreover, many works have shown
+    that the future Transformer architecture design may have even fewer attention
+    heads. For example, Bian et al. ([2021](#bib.bib2)) demonstrates that Transformers
+    with a single head outperforms its multi-head counterparts, representing a challenging
+    scenario for solutions like Megatron-LM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To scale beyond the number of heads, we propose partitioning solely the input
+    tokens (i.e., sequence parallelism) rather than the attention heads. We present
+    a solution that is agnostic to the model architecture and exhibits a maximal parallelism
+    degree that scales with the sequence length. Specifically, we introduce a parallelizable
+    and memory-efficient exact attention mechanism, DistAttn, in (§[3.1](#S3.SS1 "3.1
+    DistAttn: distributed memory-efficient attention ‣ 3 Method ‣ LightSeq: Sequence
+    Level Parallelism for Distributed Training of Long Context Transformers")). Our
+    design enables opportunities for overlapping, where we can hide communication
+    into attention computation(§ [3.2](#S3.SS2 "3.2 Load balanced scheduling with
+    communication and computation overlap ‣ 3 Method ‣ LightSeq: Sequence Level Parallelism
+    for Distributed Training of Long Context Transformers")). We also propose a load-balancing
+    technique to avoid the computation bubble caused by the unbalanced workload in
+    causal language modeling (§[3.2](#S3.SS2 "3.2 Load balanced scheduling with communication
+    and computation overlap ‣ 3 Method ‣ LightSeq: Sequence Level Parallelism for
+    Distributed Training of Long Context Transformers")). While extending the FlashAttention (Dao,
+    [2023](#bib.bib5)) algorithm to DistAttn, we found a way to leverage the underlying
+    rematerialization logic to si gnificantly improve the speed of gradient checkpointing
+    training (§ [3.3](#S3.SS3 "3.3 Rematerialization-aware checkpointing strategy
+    ‣ 3 Method ‣ LightSeq: Sequence Level Parallelism for Distributed Training of
+    Long Context Transformers")). This technique also applies to non-distributed usage
+    of memory-efficient attention, and in our experiments translates to an additional
+    1.31$\times$ speedup (§ [4.3](#S4.SS3 "4.3 Ablation Study ‣ 4 Experiments ‣ LightSeq:
+    Sequence Level Parallelism for Distributed Training of Long Context Transformers")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our main contributions are:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We design LightSeq, a long-context LLM training prototype based on sequence-level
+    parallelism. We develop a distributed memory-efficient exact attention DistAttn,
+    with novel load balancing and communication overlapping scheduling for causal
+    language modeling.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We propose a novel checkpointing strategy that bypasses one attention forward
+    pass when using memory-efficient attention with gradient checkpointing training.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '3.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We evaluate LightSeq on Llama-7B and its variants with different attention heads
+    patterns, and demonstrate up to 2.01$\times$ longer sequences training.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 2 Related work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Memory-efficient attention.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Dao et al. ([2022](#bib.bib6)) and Lefaudeux et al. ([2022](#bib.bib10)) propose
+    to use an online normalizer (Milakov & Gimelshein, [2018](#bib.bib16)) to compute
+    the attention in a blockwise and memory-efficient way. It reduces peak memory
+    usage by not materializing large intermediate states, e.g. the attention matrix
+    or the up projection matrix output of the MLP layers (Liu & Abbeel, [2023](#bib.bib13)).
+    Instead, the attentions are computed in smaller blocks and only the final activation
+    are stored. In the backward pass, the intermediate states need to be recomputed.
+    Research on sparse attention computes only a sparse subset of the attention score,
+    which also reduces the memory footprints yet may lead to inferior performance (Beltagy
+    et al., [2020](#bib.bib1); Sun et al., [2022](#bib.bib22); Zaheer et al., [2020](#bib.bib26)).
+    In this work, we limit our scope to exact attention.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sequence parallelism, model parallelism, and FSDP.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Li et al. ([2021](#bib.bib12)) is among the first to parallelize along the sequence
+    dimension. However, it is not optimized for the computational pattern of causal
+    language modeling and is incompatible with memory-efficient attention, which are
+    crucial to long-context LLM training. Model parallelism partitions model parameters
+    and also distributes the activation in parallel LLM training. Megatron-LM (Korthikanti
+    et al., [2023](#bib.bib9)) proposes a hybrid usage of tensor parallelism and sequence
+    parallelism to better reduce the activation on a single device and is the main
+    baseline of the paper. Fully sharded data-parallelism (FSDP) (Zhao et al., [2023](#bib.bib27);
+    Rajbhandari et al., [2020](#bib.bib20)) distributes optimizer states, gradients,
+    and model parameters onto different devices and gathers them on-the-fly. It is
+    orthogonal to our work, and we use LightSeq in tandem with FSDP to further reduce
+    memory acquired by models in experiments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Gradient checkpointing.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Gradient checkpointing (Chen et al., [2016](#bib.bib4)) trades computation for
+    memory by not storing the activation for certain layers and recomputing their
+    activations during forward. Selective checkpointing (Korthikanti et al., [2023](#bib.bib9))
+    proposes to only recompute the attention module as it requires large memory but
+    with small FLOPs (in smaller context length). Checkmate (Jain et al., [2020](#bib.bib7))
+    searches optimal checkpointing using integer linear programming. However, none
+    of these designs have considered memory-efficient attention kernels which perform
+    recomputation inside the computational kernel to avoid materializing large tensors.
+    As a result, many previous recomputation policies become less effective. In this
+    work, we focus on checkpointing at the boundary of every transformer layer, which
+    is a popular strategy adopted by many current open-sourced projects such as FastChat (Zheng
+    et al., [2023](#bib.bib28)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/c69a50b39096e966b8dafb393b184ee0.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Left: Sequence parallelism in LightSeq. The input sequence is split
+    into chunks along the sequence dimension and distributed to different workers
+    (8 workers in the illustration). During forward and backward, only the attention
+    module, DistAttn, requires communication of intermediate tensors like $k$. Some
+    modules like LayerNorm are ignored for simplicity. Right: Illustration of the
+    load-balanced scheduling. “Bubble size” represents the times that a worker is
+    idle. Causal language modeling naturally introduces imbalanced workloads, e.g.,
+    worker 1 is idle from time step 2 to time step 8 before balancing. We reduce the
+    bubble fraction by allocating computation from the busy worker (e.g., worker 8)
+    to the idle worker (e.g., worker 1), so worker 1 is only idle at time step 5 after
+    balancing.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/bcbdd1ebd17667b0680f45cb12c1900d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Forward pass example of overlapping communication using worker 7
+    out of 8 workers. $o$ to the remote worker $p_{8}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Method
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section, we describe the design of the key components in LightSeq.
+    We first introduce a distributed memory-efficient attention, DistAttn (§[3.1](#S3.SS1
+    "3.1 DistAttn: distributed memory-efficient attention ‣ 3 Method ‣ LightSeq: Sequence
+    Level Parallelism for Distributed Training of Long Context Transformers")) which
+    parallelizes the computation along the sequence dimension. We then introduce a
+    load-balanced scheduling for causal language modeling to reduce the computation
+    bubble as well as an asynchronous communication design that overlaps the communication
+    into computation (§[3.2](#S3.SS2 "3.2 Load balanced scheduling with communication
+    and computation overlap ‣ 3 Method ‣ LightSeq: Sequence Level Parallelism for
+    Distributed Training of Long Context Transformers")). Finally, we propose a rematerialization-aware
+    checkpointing strategy (§[3.3](#S3.SS3 "3.3 Rematerialization-aware checkpointing
+    strategy ‣ 3 Method ‣ LightSeq: Sequence Level Parallelism for Distributed Training
+    of Long Context Transformers")) which effectively cuts off the recomputation time
+    in gradient checkpointing.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '3.1 DistAttn: distributed memory-efficient attention'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The core idea in DistAttn is to split the input sequence consisting of $N$ tokens.
+    For modules like the Feed Forward Layer (FFN), Layer Norm (LN), and the embedding
+    layer the tokens can be computed independently without coordination (embarrasingly
+    parallel) and the work is balanced across workers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unfortunately, for the attention modules where local tokens may need to attend
+    to remote tokens, coordination is required. To address this, each worker collects
+    all the keys and values associated with other tokens and then locally computes
+    the attention following Dao ([2023](#bib.bib5)). To address the memory pressure
+    introduced by collecting all other keys and values, this process is done online
+    by streaming the key and values from workers with earlier tokens to workers with
+    later tokens. More formally, denote $\mathbf{q}_{p}$-th worker ($p=\{1,\cdots,P\}$-th
+    chunk of the key and value, denote $p_{\text{local}}\in\{1,\cdots,P\}$ and $\mathbf{v}_{p_{\text{remote}}}$-th
+    worker where there are $P$ total workers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Load balanced scheduling with communication and computation overlap
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Load balanced scheduling.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Causal language modeling objective (Brown et al., [2020](#bib.bib3); Touvron
+    et al., [2023](#bib.bib24)) is one of the most prevalent objectives for LLMs,
+    where each token only attends to its previous tokens. This naturally introduces
+    a work imbalance between workers in our block-wise attention: as shown in Figure [1](#S2.F1
+    "Figure 1 ‣ Gradient checkpointing. ‣ 2 Related work ‣ LightSeq: Sequence Level
+    Parallelism for Distributed Training of Long Context Transformers") (“Before Balancing”),
+    in an 8-worker ($P=8$ when $P\rightarrow\infty$ compute ${attn}(\mathbf{q}_{8},\mathbf{k}_{1},\mathbf{v}_{1})$
+    when scaling to more number of workers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Communication and computation overlap.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'DistAttn relies on peer-to-peer (P2P) communication to fetch the $\mathbf{k},\mathbf{v}$
+    chunks in the load balanced scheduling) from remote devices before computing the
+    corresponding attention block. However, these communications can be easily overlapped
+    with the computation of the former blocks. For instance, When the first worker
+    is computing attention for its local token, it can pre-fetch the next chunk of
+    tokens it needs for the next time step. In modern accelerators, this can be done
+    by placing the attention computation kernel in the main GPU stream, and the P2P
+    communication kernel in another stream, where they can run in parallel (Zhao et al.,
+    [2023](#bib.bib27)). We demonstrate the overlapped scheduling for worker 7 on
+    the 8 workers example in Figure. [2](#S2.F2 "Figure 2 ‣ Gradient checkpointing.
+    ‣ 2 Related work ‣ LightSeq: Sequence Level Parallelism for Distributed Training
+    of Long Context Transformers"). Empirically, we find this optimization greatly
+    reduces the communication overhead (§[4.3](#S4.SS3 "4.3 Ablation Study ‣ 4 Experiments
+    ‣ LightSeq: Sequence Level Parallelism for Distributed Training of Long Context
+    Transformers")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/ef3017aa3585ae28e7072805e4013ca7.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Time breakdown of attention versus other modules in a forward pass.
+    Time measured with Flash-Attention (Dao, [2023](#bib.bib5)) (Unit ms).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Rematerialization-aware checkpointing strategy
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The de-facto way of training transformers requires gradient checkpointing.
+    Often, the system uses heuristics to insert gradient checkpoints at each Transformer
+    layer (Wolf et al., [2019](#bib.bib25)). However, with the presence of Dao et al.
+    ([2022](#bib.bib6)), we found the previous gradient checkpointing strategy will
+    cause an extra recomputation of the flash attention forward kernel. Concretely,
+    when computing the gradient of the MLP layer, Wolf et al. ([2019](#bib.bib25))
+    will re-compute the forward of the entire Transformer layer, including the one
+    in flash attention. However, when computing the gradient of the flash attention
+    kernel, it needs to re-compute the forward of the flash attention again. Essentially,
+    this is because flash attention will not materialize the intermediate values during
+    the forward, and will recompute it during the backward, regardless of the re-computation
+    strategy in the outer system level. To tackle this, we propose to insert checkpoints
+    at the output of the flash attention kernel, instead of at the Transformer layer
+    boundary. In this case, we only need to recompute the forward of flash attention
+    once, effectively saving a forward of attention for each Transformer layer as
+    shown in Figure. [4](#S3.F4 "Figure 4 ‣ 3.3 Rematerialization-aware checkpointing
+    strategy ‣ 3 Method ‣ LightSeq: Sequence Level Parallelism for Distributed Training
+    of Long Context Transformers"). In Figure. [3](#S3.F3 "Figure 3 ‣ Communication
+    and computation overlap. ‣ 3.2 Load balanced scheduling with communication and
+    computation overlap ‣ 3 Method ‣ LightSeq: Sequence Level Parallelism for Distributed
+    Training of Long Context Transformers"), we show the attention time dominates
+    in the forward pass when scaling up the sequence length, which indicates our method
+    can save $\sim 0.23\times 32$) seconds when training a 64K sequence example on
+    Llama-7b using the local version of flash attention. In addition, this saves a
+    communication brought by our DistAttn forward in the distributed training scenario.
+    We benchmark the end-to-end speedup brought by this materialization-aware checkpointing
+    strategy in §[4.3](#S4.SS3 "4.3 Ablation Study ‣ 4 Experiments ‣ LightSeq: Sequence
+    Level Parallelism for Distributed Training of Long Context Transformers").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/14b14ee7899d18f6b2fe1cf5fc1d8db2.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: Comparison of HuggingFace gradient checkpointing strategy and our
+    materialization-aware gradient checkpointing strategy. Note that our checkpointing
+    strategy saves an entire flash attention forward per layer in recomputation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Communication and memory analysis Denote the hidden dimension as $d$. With the
+    causal language objective, half of the keys and values do not need to be attended,
+    halving the forward communication volume to $Nd$ size tensor, thus giving a total
+    communication volume of $10Nd$ because of the rematerialization-aware strategy.
+    In conclusion, LightSeq achieves 4.7x communication volume reduction compared
+    with Megatron-LM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In practice, we combine LightSeq with FSDP to also distribute the model weights
+    for large models. We note that the communication introduced by FSDP is only proportional
+    to the size of model weights, which does not scale up with long sequence length.
+    We show the end-to-end speedup with FSDP in Table [1](#S4.T1 "Table 1 ‣ Implementation.
+    ‣ 4 Experiments ‣ LightSeq: Sequence Level Parallelism for Distributed Training
+    of Long Context Transformers"). In the situations where the model uses MQA or
+    GQA, LightSeq further saves the communication volumes by the shared key and values,
+    which we discuss in detail in § [4.1](#S4.SS1 "4.1 faster training speed and better
+    support for different model architectures ‣ 4 Experiments ‣ LightSeq: Sequence
+    Level Parallelism for Distributed Training of Long Context Transformers"). However,
+    we also note that this is a theoretical analysis, where the wall-clock time may
+    differ because of factors such as implementations. In the experiment section,
+    we provide wall-clock end-to-end results for comparison.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section, we evaluate LightSeq against Megatron-LM (Korthikanti et al.,
+    [2023](#bib.bib9)) and show:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: LightSeq has faster training speed on a wide range of models. It achieves up
+    to 2.01$\times$ speedup over Megatron-LM on various MHA and GQA models.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: LightSeq supports longer sequence length by scaling beyond the number of attention
+    heads. We show our method can support 2x-8x longer sequences than Megatron-LM.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'In the ablation study, we provide the gain from each component of LightSeq:
+    Load balancing, computation-communication overlapping, and rematerialization-aware
+    checkpointing.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cluster setup.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We evaluate our method and the baseline in (1) A single A100 DGX box with 8x80
+    GB GPUs. These GPUs are connected with NVLink; (2) 2 DGX boxes with the same setting.
+    These two boxes are interconnected by 100 Gbps Infiniband. This is representative
+    of cross-node training, where the communication overhead has a larger effect.
+    (3) Our in-house cluster with 2x8 A100 40GB GPUs without Inifiniband. We report
+    some results on this cluster where conclusions can be drawn from a single-node
+    setup or without involving cross-node training time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Model setup.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We evaluate our system on Llama-7B and its variants of different representative
+    families: (1) Multi-head attention(MHA) models: LLama-7B with 4096 hidden size
+    and 32 query(key and value) heads (Touvron et al., [2023](#bib.bib24)); (2) Grouped-Query
+    attention (GQA) models: Llama-GQA, same as Llama-7B but with 8 key and value heads;
+    (3) models with more general number of attention heads: Llama-33H same as Llama-7B
+    but with 33 query (key and value) attention heads. (4) models with fewer attention
+    heads: we design Llama-16H, Llama-8H, Llama-4H, Llama-2H with 16, 8, 4, and 2
+    heads. According to Liu et al. ([2021](#bib.bib14)), we keep the number of attention
+    heads by scaling the number of layers properly and keep the intermediate FFN layer
+    size the same to make the model sizes still comparable. For example, Llama-16H
+    has 16 attention heads per layer, a hidden size of 2048, an FFN layer of size
+    11008, and 64 layers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementation.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'LightSeq is a lightweight scheduling level prototype. In particular, we implement
+    the load balancing and overlapping in Python and NCCL Pytorch bindings in 1000
+    lines of codes (Paszke et al., [2019](#bib.bib19); Jeaugey, [2017](#bib.bib8)),
+    and the checkpointing strategy in 600 lines of Pytorch. It is attention backend
+    agnostic. To reduce the memory consumption and reach faster speed in the attention
+    module, we use the FlashAttention2 algorithm (Dao, [2023](#bib.bib5)). We use
+    the triton (Tillet et al., [2019](#bib.bib23)) implementation and minimally modify
+    it to keep around statistics in the flash attention algorithm. We tweak all block
+    sizes to 128 and the number of stages to 1 for the best performance in our cluster.
+    We reuse the C++ backward kernels of FlashAttention2 because we do not need to
+    modify the backward logic. We run LightSeq using FSDP to reduce the memory footprint
+    of data parallelism (Zhao et al., [2023](#bib.bib27)). For fair comparisons, we
+    run all comparisons using the same attention backend. We also add support for
+    Megatron-LM so that comparing with them can produce a more insightful analysis:
+    (1) not materializing the causal attention mask, greatly reducing the memory footprint.
+    For instance, without this support, Megatron-LM will run out of memory with Llama-7B
+    at a sequence length of 16K per GPU. (2) head padding where the attention heads
+    cannot be divided by device number. All results are gathered with Adam optimizer,
+    10 iterations of warm-up, and averaged over the additional 10 iterations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: Per iteration wall-clock time of LightSeq and Megatron-LM (Korthikanti
+    et al., [2023](#bib.bib9)) (Unit: seconds). Speedup in bold denotes the better
+    of the two systems in the same configuration.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | # GPUs | Sequence Length | Llama-7B | Llama-GQA | Llama-33H |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | Per GPU | Total | Time | speedup | Time | speedup | Time | speedup
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Megatron-LM | 1x8 | 4K | 32K | 2.54 | 1.0x | 2.43 | 1.0x | 3.15 | 1.0x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1x8 | 8K | 64K | 6.81 | 1.0x | 6.60 | 1.0x | 8.37 | 1.0x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1x8 | 16K | 128K | 20.93 | 1.0x | 20.53 | 1.0x | 25.75 | 1.0x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1x8 | 32K | 256K | 72.75 | 1.0x | 71.93 | 1.0x | 90.21 | 1.0x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LightSeq | 1x8 | 4K | 32K | 2.50 | 1.02x | 2.30 | 1.06x | 2.58 | 1.22x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1x8 | 8K | 64K | 5.98 | 1.14x | 5.61 | 1.18x | 6.08 | 1.38x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1x8 | 16K | 128K | 17.26 | 1.21x | 16.86 | 1.22x | 17.77 | 1.45x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1x8 | 32K | 256K | 58.46 | 1.24x | 57.01 | 1.26x | 59.96 | 1.50x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Megatron-LM | 2x8 | 4K | 64K | 5.29 | 1.0x | 5.26 | 1.0x | 7.52 | 1.0x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 8K | 128K | 14.26 | 1.0x | 14.21 | 1.0x | 20.63 | 1.0x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 16K | 256K | 43.44 | 1.0x | 43.20 | 1.0x | 62.78 | 1.0x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 32K | 512K | 147.06 | 1.0x | 146.38 | 1.0x | 216.70 | 1.0x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LightSeq | 2x8 | 4K | 64K | 6.85 | 0.77x | 4.92 | 1.07x | 7.03 | 1.07x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 8K | 128K | 12.75 | 1.12x | 9.74 | 1.46x | 13.12 | 1.57x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 16K | 256K | 30.21 | 1.44x | 28.49 | 1.52x | 31.33 | 2.00x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 32K | 512K | 106.37 | 1.38x | 102.34 | 1.43x | 107.76 | 2.01x |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: The maximal sequence length Per GPU supported by LightSeq and Megatron-LM
+    with tensor parallelism and pipeline parallelism on 16xA100 40GB GPUs.  LightSeq
+    supports 512K sequence length in all models, while Megatron-LM strategy maximal
+    sequence length decreases with fewer heads, with either data parallelism or pipeline
+    parallelism.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | Llama-16H | Llama-8H | Llama-4H | Llama-2H |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Megatron TP+DP | 512K | 256K | 128K | 64K |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Megatron-LM TP+PP | 512K | 256K | 256K | 128K |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  LightSeq | 512K | 512K | 512K | 512K |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 4.1 faster training speed and better support for different model architectures
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In this section, we compare our method with Megatron-LM on three settings:
+    (1) the multi-head attention (MHA) models where the number of key and value heads
+    equals the number of query heads; (2) the grouped-query attention (GQA) models
+    where the number of key and value heads is less than the number of query heads;
+    (3) the models with arbitrary numbers of heads, i.e. the number heads is unnecessarily
+    a multiple of the parallelism degree.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Multi-head attention (MHA).
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'On the Llama-7B model, our method achieves 1.24$\times$ speedup compared to
+    Megatron-LM in single node and cross node setting, up to the longest sequence
+    length we experiment. This is a joint result of our overlapping communication
+    technique and our rematerialization-aware checkpointing strategy. We analyze how
+    much each factor contributes to this result in the ablation study ( § [4.3](#S4.SS3
+    "4.3 Ablation Study ‣ 4 Experiments ‣ LightSeq: Sequence Level Parallelism for
+    Distributed Training of Long Context Transformers")). We do note that our method
+    does not achieve better performance in shorter sequences, such as per GPU 4K setting
+    for cross node. This is because the communication dominates the training run-time,
+    where our overlapping technique has not been able to reduce much. We leave the
+    optimization of P2P communication on MHA models and shorter sequence length as
+    an exciting future work.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Grouped-query attention (GQA).
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: On LLama-GQA model, our method achieves better speedup because our communication
+    of key and value vectors significantly reduces. Note that our communication time
+    is proportional to the sum of query, key, value, and output (for load balancing)
+    vectors, where reducing key and value sizes to 8 almost half-en our communication
+    time. On the contrary, the communication time in Megatron-LM does not decrease
+    because its communication happens outside of the attention module, i.e. not influenced
+    by optimization inside the attention module. Thus, its overall training run-time
+    does not decrease as much as  LightSeq.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We take the 4K per-GPU sequence length and 2x8 GPUs as an example for analysis.
+    In the MHA experiment, the communication in a forward and a backward pass of a
+    single attention module is roughly 143ms and the computation time is roughly 53ms.
+    In addition, our overlapping technique is able to hide 45ms into the computation,
+    resulting in a total run-time of 151ms and a net communication overhead of 98
+    ms. As a reference, the communication in Megatron-LM takes 33ms, which is why
+    Megatron-LM is faster than LightSeq under this particular setting in the MHA experiment.
+    When considering the GQA case, the communication in LightSeq roughly reduces to
+    71 ms. Overlapping with the computation, the communication overhead is now less
+    than that of Megatron-LM. Combined with the checkpointing technique, we are seeing
+    a positive speedup gain at 4K per-GPU sequence length. As the sequence length
+    increases, our overlapping technique, driven by the fact that computation time
+    surpasses communication time, and our checkpointing method, due to the rising
+    ratio of a single attention forward, both contribute to greater speedup. Overall,
+    we can observe speedups up to 1.52$\times$ on the cross-node setting, making an
+    additional eight percent enhancement compared to the results in the MHA experiment
+    of the same setting.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In support of arbitrary numbers of heads.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: With Llama-33H models, Megatron-LM exhibits an additional performance decline
+    compared to LightSeq. This is due to its requirement to pad the number of attention
+    heads so that the number of attention heads is divisible by the number of devices.
+    On the other hand,  LightSeq does not need to partition attention heads and can
+    support an arbitrary number of heads efficiently. For instance, when using 8 GPUs,
+    Megatron-LM must pad the attention heads to 40, resulting in 21.2% of the computation
+    being wasted. In the case of 16 GPUs, Megatron-LM is compelled to pad the attention
+    heads to 48, leading to a more substantial computation wastage of 45.5%. This
+    roughly corresponds to a 1.21$\times$ speedup (an additional 20% and 45% speedup
+    compared to Llama-7B cases, aligned with the theoretical analysis).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Scaling beyond the number of heads.
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Assuming the number of heads being a multiple of the tensor parallelism degree
+    constraints Megatron-LM to scale its tensor parallelism degree beyond the number
+    of heads, thus limiting its scaling ability to longer sequence lengths. When the
+    number of GPUs exceeds the number of attention heads, there will be three possible
+    solutions to use Megatron-LM. First, the user can pad dummy heads as in the Llama-33H
+    scenario. However, when scaling to longer sequences, the percentage of dummy heads
+    padded almost directly translates to the percentage of slowdown. For instance,
+    for Llama-8H, this solution pads 2$\times$ longer sequences.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 Ablation Study
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Effect of load balancing.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We study the effect of load balancing using the forward pass of an attention
+    operation in Llama-7B model, on 8 A100 40GB GPUs. The backward pass follows a
+    similar analysis. With an unbalanced schedule (Figure  [1](#S2.F1 "Figure 1 ‣
+    Gradient checkpointing. ‣ 2 Related work ‣ LightSeq: Sequence Level Parallelism
+    for Distributed Training of Long Context Transformers")), the total work done
+    is 36, where the total work could be done in 8 units of time is 64\. Thus, the
+    expected maximal speedup is 4.5x. In the balanced schedule, the expected maximal
+    speedup is 7.2x. We scale the total sequence length from 4K to 256K. The unbalanced
+    version saturates in  4.5x speedup compared to a single GPU implementation, while
+    the balanced version saturates  7.5x ¹¹1We find the single machine attention flops
+    drop with very long sequence length, resulting in a slightly higher speedup than
+    assuming its perfect scalability. speedup. Both of them align with our earlier
+    theoretical analysis and show the importance of our balanced scheduling.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/2664a01862a3803521ec7b6084c13446.png)![Refer to caption](img/1fec7276ed901b66c49fe3d84ad164c1.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: Ablation on the effect of balanced schedule (left) and the effect
+    of overlapping (right).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Effect of overlapping communication and computation.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We study the benefits of overlapping communication on Llama-7B and 2 DGX boxes.
+    We find that overlapping greatly reduce the communication overhead. For instance,
+    on a global sequence length of 128K, the communication overhead is reduced from
+    105% to 44%. This overlapping scheme maximizes its functionality when the communication
+    overhead is less than 100%, where all communication can be potentially overlapped.
+    Empirically, we find the system only exhibits 8% and 1% overhead in these cases,
+    showing a close performance to an ideal system without communication.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Effect of materialization-aware checkpointing.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We show in Table. [3](#S4.T3 "Table 3 ‣ Effect of materialization-aware checkpointing.
+    ‣ 4.3 Ablation Study ‣ 4 Experiments ‣ LightSeq: Sequence Level Parallelism for
+    Distributed Training of Long Context Transformers") the ablation results of our
+    rematerialization-aware gradient checkpointing. Our method achieves 1.16x, 1.24x,
+    and 1.31x speedup at the sequence length of 8K, 16K, and 32K per GPU respectively.
+    The materialization-aware checkpointing strategy speeds up more at longer sequence
+    lengths because it saves an entire attention forward which dominates the computation
+    at longer sequence lengths.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 3: Ablation study on the effect of the rematerialization-aware gradient
+    checkpointing on 8 A100s in a single node with a batch size of 1\. We report the
+    end-to-end run time in seconds and show the speedup of our gradient checkpointing
+    strategy (“Our ckpt”) over the HuggingFace gradient checkpointing strategy (“HF
+    ckpt”).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Ckpt Method | Sequence Length Per GPU |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 1K | 2K | 4K | 8K | 16K | 32K |'
+  prefs: []
+  type: TYPE_TB
+- en: '| HF ckpt | 0.84 | 1.29 | 2.64 | 6.93 | 21.44 | 76.38 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Our ckpt | 0.84 | 1.36 | 2.50 | 5.98 | 17.26 | 58.46 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Speedup | 1.0x | 0.94x | 1.06x | 1.16x | 1.24x | 1.31x |'
+  prefs: []
+  type: TYPE_TB
+- en: 4.4 Discussion
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In this section, we first discuss the future directions that can further improve
+    LightSeq. We then compare our method with one concurrent open-sourced project
+    which also splits the attention heads. Finally, we discuss the role of pipeline
+    parallelism in supporting long sequence training and shows it is less effective
+    than tensor parallelism, which is the reason we do not consider it as a major
+    baseline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Optimizing P2P communication and better support for shorter context length.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'As shown in §[4.1](#S4.SS1 "4.1 faster training speed and better support for
+    different model architectures ‣ 4 Experiments ‣ LightSeq: Sequence Level Parallelism
+    for Distributed Training of Long Context Transformers"),  LightSeq may be slower
+    in shorter context length and MHA models (Llama-7B on per GPU sequence length
+    4K). Based on our preliminary investigation, this is because our usage of P2P
+    is not as optimized as primitives used in tensor model parallelism, such as all-gather
+    kernels. For instance, they are not aware of the underlying cluster topology.
+    In the future, we plan to implement the P2P scheduling in a topology-aware way
+    to further improve the communication time.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Comparison to DeepSpeed Ulysses.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'DeepSpeed-Ulysses ²²2[https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-ulysses](https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-ulysses)
+    is a concurrent open-sourced implementation, which uses all-to-all communication
+    primitive to reduce the communication volume. In our testing, we verified that
+    their communication is lower than Megatron-LM. Yet, as it is also partitioning
+    the attention head dimension, it suffers from similar problems as analyzed above.
+    We provide some end-to-end comparisons in Appendix [B](#A2 "Appendix B Comparison
+    with DeepSpeed Ulysses ‣ LightSeq: Sequence Level Parallelism for Distributed
+    Training of Long Context Transformers"). We note that the communication in DeepSpeed
+    Ulysses can be faster than LightSeq, especially with shorter context length and
+    slower network, where the overlapping technique in LightSeq cannot perfectly hide
+    all the communication. This can be potentially addressed by optimizing the P2P
+    communication as discussed above.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pipeline parallelism.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Pipeline parallelism also partitions the activation. However, as mentioned
+    in § [4.2](#S4.SS2 "4.2 Scaling beyond the number of heads. ‣ 4 Experiments ‣
+    LightSeq: Sequence Level Parallelism for Distributed Training of Long Context
+    Transformers"), it does not partition the activations evenly across stage, leaving
+    high memory pressure to the first stage. Thus, we mainly focus on comparing with
+    tensor model parallelism (combined with sequence parallelism) in this work and
+    only consider including pipeline parallelism for comparison when the tensor parallelism
+    is limited by the number of heads.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this work, we introduce LightSeq, a sequence parallel prototype for long-context
+    transformer training. LightSeq presents novel system optimizations including load
+    balancing for causal language modelings, overlapped communication with computation
+    in the distributed attention computation, and a re-materialization-aware checkpointing
+    strategy. Our experiments evaluate multiple families of transformer models and
+    on different cluster types, showing that it achieves up to 2.01$\times$ speedup
+    and scales up to 8x longer sequences, compared to another popular system, Megatron-LM,.
+    Future directions include implementing topology-aware P2P operations to further
+    reduce training time in lower sequence lengths.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Beltagy et al. (2020) Iz Beltagy, Matthew E Peters, and Arman Cohan. Longformer:
+    The long-document transformer. *arXiv preprint arXiv:2004.05150*, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bian et al. (2021) Yuchen Bian, Jiaji Huang, Xingyu Cai, Jiahong Yuan, and
+    Kenneth Church. On attention redundancy: A comprehensive study. In *Proceedings
+    of the 2021 conference of the north american chapter of the association for computational
+    linguistics: human language technologies*, pp.  930–945, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Brown et al. (2020) Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D
+    Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda
+    Askell, et al. Language models are few-shot learners. *Advances in neural information
+    processing systems*, 33:1877–1901, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chen et al. (2016) Tianqi Chen, Bing Xu, Chiyuan Zhang, and Carlos Guestrin.
+    Training deep nets with sublinear memory cost. *arXiv preprint arXiv:1604.06174*,
+    2016.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dao (2023) Tri Dao. Flashattention-2: Faster attention with better parallelism
+    and work partitioning. *arXiv preprint arXiv:2307.08691*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dao et al. (2022) Tri Dao, Dan Fu, Stefano Ermon, Atri Rudra, and Christopher
+    Ré. Flashattention: Fast and memory-efficient exact attention with io-awareness.
+    *Advances in Neural Information Processing Systems*, 35:16344–16359, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Jain et al. (2020) Paras Jain, Ajay Jain, Aniruddha Nrusimha, Amir Gholami,
+    Pieter Abbeel, Joseph Gonzalez, Kurt Keutzer, and Ion Stoica. Checkmate: Breaking
+    the memory wall with optimal tensor rematerialization. *Proceedings of Machine
+    Learning and Systems*, 2:497–511, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Jeaugey (2017) Sylvain Jeaugey. Nccl 2.0. In *GPU Technology Conference (GTC)*,
+    volume 2, 2017.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Korthikanti et al. (2023) Vijay Anand Korthikanti, Jared Casper, Sangkug Lym,
+    Lawrence McAfee, Michael Andersch, Mohammad Shoeybi, and Bryan Catanzaro. Reducing
+    activation recomputation in large transformer models. *Proceedings of Machine
+    Learning and Systems*, 5, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lefaudeux et al. (2022) Benjamin Lefaudeux, Francisco Massa, Diana Liskovich,
+    Wenhan Xiong, Vittorio Caggiano, Sean Naren, Min Xu, Jieru Hu, Marta Tintore,
+    Susan Zhang, Patrick Labatut, and Daniel Haziza. xformers: A modular and hackable
+    transformer modelling library. [https://github.com/facebookresearch/xformers](https://github.com/facebookresearch/xformers),
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Li et al. (2023) Dacheng Li, Rulin Shao, Anze Xie, Ying Sheng, Lianmin Zheng,
+    Joseph E Gonzalez, Ion Stoica, Xuezhe Ma, and Hao Zhang. How long can open-source
+    llms truly promise on context length, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. (2021) Shenggui Li, Fuzhao Xue, Yongbin Li, and Yang You. Sequence
+    parallelism: Making 4d parallelism possible. *arXiv preprint arXiv:2105.13120*,
+    2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Liu & Abbeel (2023) Hao Liu and Pieter Abbeel. Blockwise parallel transformer
+    for long context large models. *arXiv preprint arXiv:2305.19370*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Liu et al. (2021) Liyuan Liu, Jialu Liu, and Jiawei Han. Multi-head or single-head?
+    an empirical comparison for transformer training. *arXiv preprint arXiv:2106.09650*,
+    2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. (2023) Nelson F Liu, Kevin Lin, John Hewitt, Ashwin Paranjape, Michele
+    Bevilacqua, Fabio Petroni, and Percy Liang. Lost in the middle: How language models
+    use long contexts. *arXiv preprint arXiv:2307.03172*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Milakov & Gimelshein (2018) Maxim Milakov and Natalia Gimelshein. Online normalizer
+    calculation for softmax. *arXiv preprint arXiv:1805.02867*, 2018.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Nijkamp et al. (2022) Erik Nijkamp, Bo Pang, Hiroaki Hayashi, Lifu Tu, Huan
+    Wang, Yingbo Zhou, Silvio Savarese, and Caiming Xiong. Codegen: An open large
+    language model for code with multi-turn program synthesis. *arXiv preprint arXiv:2203.13474*,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Osika (2023) Anton Osika. gpt-engineer, 2023. URL [https://github.com/AntonOsika/gpt-engineer](https://github.com/AntonOsika/gpt-engineer).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Paszke et al. (2019) Adam Paszke, Sam Gross, Francisco Massa, Adam Lerer, James
+    Bradbury, Gregory Chanan, Trevor Killeen, Zeming Lin, Natalia Gimelshein, Luca
+    Antiga, et al. Pytorch: An imperative style, high-performance deep learning library.
+    *Advances in neural information processing systems*, 32, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Rajbhandari et al. (2020) Samyam Rajbhandari, Jeff Rasley, Olatunji Ruwase,
+    and Yuxiong He. Zero: Memory optimizations toward training trillion parameter
+    models. In *SC20: International Conference for High Performance Computing, Networking,
+    Storage and Analysis*, pp.  1–16\. IEEE, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Shoeybi et al. (2019) Mohammad Shoeybi, Mostofa Patwary, Raul Puri, Patrick
+    LeGresley, Jared Casper, and Bryan Catanzaro. Megatron-lm: Training multi-billion
+    parameter language models using model parallelism. *arXiv preprint arXiv:1909.08053*,
+    2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sun et al. (2022) Yutao Sun, Li Dong, Barun Patra, Shuming Ma, Shaohan Huang,
+    Alon Benhaim, Vishrav Chaudhary, Xia Song, and Furu Wei. A length-extrapolatable
+    transformer. *arXiv preprint arXiv:2212.10554*, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Tillet et al. (2019) Philippe Tillet, Hsiang-Tsung Kung, and David Cox. Triton:
+    an intermediate language and compiler for tiled neural network computations. In
+    *Proceedings of the 3rd ACM SIGPLAN International Workshop on Machine Learning
+    and Programming Languages*, pp.  10–19, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023) Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier
+    Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal,
+    Eric Hambro, Faisal Azhar, et al. Llama: Open and efficient foundation language
+    models. *arXiv preprint arXiv:2302.13971*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wolf et al. (2019) Thomas Wolf, Lysandre Debut, Victor Sanh, Julien Chaumond,
+    Clement Delangue, Anthony Moi, Pierric Cistac, Tim Rault, Rémi Louf, Morgan Funtowicz,
+    et al. Huggingface’s transformers: State-of-the-art natural language processing.
+    *arXiv preprint arXiv:1910.03771*, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zaheer et al. (2020) Manzil Zaheer, Guru Guruganesh, Kumar Avinava Dubey, Joshua
+    Ainslie, Chris Alberti, Santiago Ontanon, Philip Pham, Anirudh Ravula, Qifan Wang,
+    Li Yang, et al. Big bird: Transformers for longer sequences. *Advances in neural
+    information processing systems*, 33:17283–17297, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhao et al. (2023) Yanli Zhao, Andrew Gu, Rohan Varma, Liang Luo, Chien-Chin
+    Huang, Min Xu, Less Wright, Hamid Shojanazeri, Myle Ott, Sam Shleifer, et al.
+    Pytorch fsdp: experiences on scaling fully sharded data parallel. *arXiv preprint
+    arXiv:2304.11277*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Zheng et al. (2023) Lianmin Zheng, Wei-Lin Chiang, Ying Sheng, Siyuan Zhuang,
+    Zhanghao Wu, Yonghao Zhuang, Zi Lin, Zhuohan Li, Dacheng Li, Eric. P Xing, Hao
+    Zhang, Joseph E. Gonzalez, and Ion Stoica. Judging llm-as-a-judge with mt-bench
+    and chatbot arena, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Appendix A Using DistAttn in LightSeq
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Algorithm 1 DistAttn in LightSeq (forward pass)
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:Matrices $\mathbf{Q}^{p},\mathbf{K}^{p},\mathbf{V}^{p}\in\mathbb{R}^{\frac{N}{\mathbb{P}}\times
+    d}$, m, causal, last)3:     Divide $q$ each,4:     and divide $k,v$, of size $B_{c}\times
+    d$ of size $B_{r}\times d$ of size $B_{r}$, $\ell_{i}\in\mathbb{R}^{B_{r}}$, $m_{i}^{(0)}$
+    from HBM to on-chip SRAM.14:               On chip, compute $s_{i}^{(j)}=q_{i}k^{T}_{j}\in\mathbb{R}^{B_{r}\times
+    B_{c}}$.16:               On chip, compute $o_{i}^{(j)}=\mathrm{diag}(e^{m_{i}^{(j-1)}-m_{i}^{(j)}})^{-1}o_{i}^{(j-1)}+\tilde{p}_{i}^{(j)}v^{p}_{j}$-th
+    block of $o$-th block of $L$.28:$\mathbf{O}^{p}$ = standalone_fwd($\mathbf{Q}^{p},\mathbf{K}^{p},\mathbf{V}^{p}$,
+    True, p=1)29:for $1\leq r<p$ into HBM.31:     $\mathbf{O}^{p}$ = standalone_fwd($\mathbf{Q}^{p},\mathbf{K}^{y},\mathbf{V}^{y}$,
+    False, r=(p-1)32:     Delete $\mathbf{K}^{r}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this section, we provide more details of DistAttn, and how it can be used
+    with the outer LightSeq logic of the forward pass (Alg [1](#alg1 "Algorithm 1
+    ‣ Appendix A Using DistAttn in LightSeq ‣ LightSeq: Sequence Level Parallelism
+    for Distributed Training of Long Context Transformers")). For conceptual simplicity,
+    we demonstrate it in the most vanilla version, without the actual scheduling (e.g.
+    load balancing and overlapping). We also demonstrate it with the causal language
+    modeling objective. The standalone attention is mainly borrowed from the FlashAttention2
+    paper (Dao, [2023](#bib.bib5)). To make it compatible with DistAttn, we mainly
+    revised the several points:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Accumulate results statistics $o$ from previous computation, instead of initializing
+    them inside the function.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Pass an extra argument ”last”, which means whether this is the last chunk of
+    attention computation. Only when it is true, we compute the logsumexp $L$.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: At a high level, on a worker $p$ (the ”last” variable in the algorithm). At
+    the end of the forward pass, worker $p$. Instead, we only need to use the logsumexp
+    stored in the forward pass.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B Comparison with DeepSpeed Ulysses
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '| Method | # GPUs | Sequence Length | Time | Speedup |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | Per GPU | Total |  |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Llama-7B |  |  |  |  |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Megatron-LM | 2x8 | 4K | 64K | 5.29 | 1.0x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 8K | 128K | 14.26 | 1.0x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 16K | 256K | 43.44 | 1.0x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 32K | 512K | 147.06 | 1.0x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DeepSpeed-Ulysses | 2x8 | 4K | 64K | 4.29 | 1.23x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 8K | 128K | 11.61 | 1.23x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 16K | 256K | 37.53 | 1.16x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 32K | 512K | 134.09 | 1.10x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LightSeq | 2x8 | 4K | 64K | 6.85 | 0.77x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 8K | 128K | 12.75 | 1.12x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 16K | 256K | 30.21 | 1.44x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 32K | 512K | 106.37 | 1.38x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Llama-33H |  |  |  |  |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Megatron-LM | 2x8 | 4K | 64K | 7.52 | 1.0x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 8K | 128K | 20.63 | 1.0x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 16K | 256K | 62.78 | 1.0x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 32K | 512K | 216.70 | 1.0x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DeepSpeed-Ulysses | 2x8 | 4K | 64K | 6.42 | 1.17x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 8K | 128K | 17.47 | 1.18x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 16K | 256K | 56.63 | 1.11x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 32K | 512K | 202.89 | 1.07x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LightSeq | 2x8 | 4K | 64K | 7.03 | 1.07x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 8K | 128K | 13.12 | 1.57x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 16K | 256K | 31.33 | 2.00x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2x8 | 32K | 512K | 107.76 | 2.01x |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 4: Per iteration wall-clock time of LightSeq, Megatron-LM (Korthikanti
+    et al., [2023](#bib.bib9)) and DeepSpeed Ulysses (Unit: seconds). Speedup in bold
+    denotes the better of the three systems. We calculate the speedup based on Megatron-LM
+    iteration time.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We run a subset of the experiments compared with DeepSpeed-Ulysses. Firstly,
+    DeepSpeed-Ulysses does reduce the communication overhead, and thus better than
+    Megatron-LM on scenarios listed in Table [4](#A2.T4 "Table 4 ‣ Appendix B Comparison
+    with DeepSpeed Ulysses ‣ LightSeq: Sequence Level Parallelism for Distributed
+    Training of Long Context Transformers").  LightSeq achieves better performance
+    than DeepSpeed-Ulysses on longer sequences or models with a more general number
+    of heads (e.g. Llama-33H). We also note that DeepSpeed-Ulysses can not scale beyond
+    the number of attention heads because it also relies on sharding the attention
+    heads. However, we need to point out that in shorter sequences and MHA models
+    (where  LightSeq does not have a communication advantage, compared to GQA/MQA
+    models), the communication primitives used in DeepSpeed-Ulysses are more advantageous.
+    We leave our further optimization in P2P in shorter sequences and MHA models as
+    an exciting future work.'
+  prefs: []
+  type: TYPE_NORMAL

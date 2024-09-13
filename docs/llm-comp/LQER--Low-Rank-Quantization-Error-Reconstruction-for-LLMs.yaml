@@ -1,0 +1,1722 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:50:21'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'LQER: Low-Rank Quantization Error Reconstruction for LLMs'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2402.02446](https://ar5iv.labs.arxiv.org/html/2402.02446)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Cheng Zhang1, Jianyi Cheng2, George A. Constantinides1, Yiren Zhao1 1Department
+    of Electrical and Electronic Engineering
+  prefs: []
+  type: TYPE_NORMAL
+- en: Imperial College London
+  prefs: []
+  type: TYPE_NORMAL
+- en: London, United Kingdom 2Department of Computer Science and Technology
+  prefs: []
+  type: TYPE_NORMAL
+- en: University of Cambridge
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cambridge, United Kingdom
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Email: cheng.zhang122@imperial.ac.uk, jianyi.cheng@cl.cam.ac.uk, g.constantinides@imperial.ac.uk,
+    a.zhao@imperial.ac.uk'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Post-training quantization of Large Language Models (LLMs) is challenging. In
+    this work, we introduce Low-rank Quantization Error Reduction (LQER), which combines
+    quantization and low-rank approximation to recover the model capbility. LQER leverages
+    an activation-induced scale matrix to drive the singular value distribution of
+    quantization error towards a desirable distribution, which enables nearly-lossless
+    W4A8 quantization on various LLMs and downstream tasks without the need for knowledge
+    distillation, grid search, or gradient-base iterative optimization. Unlike existing
+    methods, the computation pattern of LQER eliminates the need for specialized Scatter
+    and Gather processes to collect high-precision weights from irregular memory locations.
+    Our W4A8 LLMs achieve near-lossless performance on six popular downstream tasks,
+    while using $1.36\times$ fewer hardware resources than the leading state-of-the-art
+    method. We will open-source our framework once the paper is accepted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: I Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Large Language Models (LLMs) have exhibited impressive capability on various
+    natural language processing (NLP) tasks [[1](#bib.bib1)]. However, the substantial
+    model size and its associated computation costs demand considerable energy and
+    hardware resources. For instance, deploying BLOOM-176B [[2](#bib.bib2)] requires
+    16 NVIDIA A100 GPUs and consumes more than 2000 Watts of total power  [[3](#bib.bib3)].
+    Meanwhile, empirical evidence suggests that only models with a sufficiently large
+    parameter count begin to show emergent capabilities [[4](#bib.bib4)], thereby
+    motivates the construction of even larger models. Quantization then emerges as
+    a promising technique to enhance the accessibility of LLMs by reducing the model
+    size and simplifying inference computation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/4554936e00460182255f63c6da7ac313.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: ((a)) Singular value distributions of quantization error
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/efce5c9ff605cb2b8151c5635c834d32.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: ((b)) LLM.int8() v.s. LQER
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 1: Motivation and computation pattern of LQER. (a) We apply SVD to the
+    quantization error $E_{q}=W-W_{q}$. Both components are inexpensive to compute.
+    This estbalishes a regular computation pattern that eliminates the need for irregular
+    memory access like the Scatter and Gather operations in LLM.int8().'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Low-precision Post-Training Quantization (PTQ) of LLMs has recently become an
+    attractive solution for reducing computational and memory cost [[5](#bib.bib5)].
+    However, it remains challenging due to the fact that 1) no further weight training
+    is allowed and 2) the presence of magnitude outliers in model weights and activations.
+    PTQ is a technique that quantizes a pre-trained LLM directly, without additional
+    training, as fine-tuning LLMs usually requires substantial resources. Many researchers
+    have observed that the main building block of LLMs, the transformer layer, produces
+    magnitude outliers in weights and activations [[6](#bib.bib6), [7](#bib.bib7),
+    [8](#bib.bib8)]. A simple fixed-point quantization then either suffers from considerable
+    clipping or overflow error or from considerable rounding error, depending on the
+    choice of scaling. In both cases, the quantization error propagates and accumulates
+    through the LLMs, leading to substantial task accuracy degradation. To overcome
+    this challenge, recent LLM PTQ methods investigate the statistical properties
+    of LLMs and propose various fine-grained solutions to accommodate [[9](#bib.bib9),
+    [10](#bib.bib10)], mitigate [[11](#bib.bib11), [12](#bib.bib12)], or eliminate [[13](#bib.bib13),
+    [14](#bib.bib14)] these numerical outliers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, fine-grained treatments to numerical outliers usually come with a high
+    optimization and/or hardware cost. The optimization cost mainly stems from iterative
+    optimization. For example, OmniQuant [[15](#bib.bib15)] takes 7.3 hours to quantize
+    a LLaMA-30B model with 20 iterations on a single NVIDIA A100 GPU [[16](#bib.bib16)].
+    The popular weight-only quantization setup, such as GPTQ [[10](#bib.bib10)] and
+    AWQ [[17](#bib.bib17)], dequantizes 4-bit weights to FP16 at runtime, which actually
+    impedes inference on models larger than 7B [[18](#bib.bib18)]. Concurrently, many
+    existing quantization frameworks select values from irregular positions for high-precision
+    computation, while maintaining other values in low-precision formats [[19](#bib.bib19),
+    [20](#bib.bib20)]. For instance, LLM.int8() [[9](#bib.bib9)] selects activation
+    outliers to compute in half-precision floating-point, while casting the rest to
+    integers. In this work, we propose a simple and efficient LLM PTQ framework that
+    avoids iterative optimization and irregular computation patterns.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Optimizing weight quantization can be considered as a process of minimizing
+    the quantization error $E_{q}=W-W_{q}$ establishes a regular computation pattern
+    that eliminates need of having the Scatter and Gather operations to fetch and
+    store values from irregular memory locations like LLM.int8() ([Figure 1(b)](#S1.F1.sf2
+    "In Figure 1 ‣ I Introduction ‣ LQER: Low-Rank Quantization Error Reconstruction
+    for LLMs")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'TABLE I: A summary of recent LLM PTQ methods. Weight-only ($w$ that achieves
+    almost lossless performance on downstream tasks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Q setup | WxAy^∗ | Quantization function | Inference-time | Methods |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $w$ | GPTQ [[10](#bib.bib10)], AWQ [[17](#bib.bib17)], Z-fold [[21](#bib.bib21)],
+    QuiP [[22](#bib.bib22)], FlexRound [[20](#bib.bib20)], LRQ [[23](#bib.bib23)]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $w\&amp;a$ | SmoothQuant [[11](#bib.bib11)], OS+[[13](#bib.bib13)], AQAS [[12](#bib.bib12)],
+    OmniQuant [[15](#bib.bib15)] |'
+  prefs: []
+  type: TYPE_TB
+- en: 'In this study, we explore optimizations for $W_{q}$.. This observation then
+    further motivates our LLM Post-Training Quantization (PTQ) method, Left-multiply
+    LQER (L²QER), designed to recover the performance loss caused by quantization.
+    We make the following contributions in this work:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We introduce a novel quantized LLM inference framework termed Low-rank Quantization
+    Error Reduction (LQER) which combines quantization and low-rank approximation.
+    Unlike existing methods that require gathering values from irregular memory locations,
+    LQER boasts a blocked and regular computation pattern and employs a unified number
+    format for both memory and computation.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We then propose L²QER, a straightforward but efficient quantization method on
+    top of LQER. L²QER does not need any expensive knowledge distillation, hyper-parameter
+    search, or other forms of iterative optimization. We showcase L²QER’s competitiveness
+    with current state-of-the-art methods. L²QER quantizes both weights and activations,
+    it extends pushes the limit to W4A6, matching the perplexity of OmniQuant (W6A6)
+    on WikiText. Compared to weight-only ($w$-only) quantization methods, our approach
+    outperforms AWQ (W4A16) and maintains quantization activations staying at 8-bit
+    (W4A8).
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: II Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: II-A Post-Training Quantization of LLMs
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Post training quantization of LLMs is a challenging task due to presence of
+    numerical outliers. Existing methods can be broadly categorized into two setups:
+    weight-only ($w$) quantizations. Recent works within these two setups are summarized
+    in [Table I](#S1.T1 "In I Introduction ‣ LQER: Low-Rank Quantization Error Reconstruction
+    for LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Weight-only quantization
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Weight-only quantization usually partitions the trained weight matrix $W$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $(W_{q},\mathbf{s})=\mathrm{q}(W)$ |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $W_{q}$ is dequantized back to FP16 before the weight-activation matrix
+    multiply:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\widetilde{Y}=X\mathrm{dq}(W_{q},\mathbf{s})$ |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: Here $X$ is the output. The runtime dequantization cost is negligible in memory-bound
+    scenarios, e.g., small models at small batch sizes. This cost escalates with model
+    sizes, and eventually impedes inference in compute-bound scenarios [[18](#bib.bib18)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: GPTQ [[10](#bib.bib10)] and AWQ [[17](#bib.bib17)] are two representative $w$-only
+    setup include Z-Fold [[21](#bib.bib21)] and QuiP [[22](#bib.bib22)], following
+    GPTQ to correct quantization error. FlexRound [[20](#bib.bib20)], and LRQ [[23](#bib.bib23)]
+    follow AWQ to study finer-grained weight scaling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Weight-activation quantization
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: '$w\&amp;a$ to reduce the magnitude range of activations before quantization:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $(X_{q},\mathbf{s}_{t})=\mathrm{q}(XS)$ |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $\mathbf{s}_{t}$ is fused into the weights of the preceding layer before
+    quantization:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $(W_{q},\mathbf{s}_{c})=\mathrm{q}(S^{-1}W)$ |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\mathbf{s}_{c}$ quantization methods lower than 8-bit precision usually
+    suffer from an average downstraem task accuracy drop larger than 1% [[15](#bib.bib15),
+    [27](#bib.bib27)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'SmoothQuant [[11](#bib.bib11)] pioneered fusion of an invertible scale matrix
+    into its preceding layer. Outlier Suppression+ [[13](#bib.bib13)] further introduces
+    a bias matrix to [Equation 4](#S2.E4 "In Weight-activation quantization ‣ II-A
+    Post-Training Quantization of LLMs ‣ II Related Work ‣ LQER: Low-Rank Quantization
+    Error Reconstruction for LLMs") to shift the mean of activations towards zero
+    and update the layer bias accordingly. Recent works following this line of research
+    include AQAS [[12](#bib.bib12)], and OmniQuant [[15](#bib.bib15)].'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another unique $w\&amp;a$ quantization method, LLM.int8() decomposes the FP16
+    matrix multiplication into a 8-bit fixed-point and an FP16 sub-matrix multiplication
+    using activation thresholds. Despite achieving the closest model capability to
+    FP16, the thresholding, Scatter and Gather operations of LLM.int8() are expensive
+    in large models. Similar to LLM.int8(), SpQR [[19](#bib.bib19)] and EasyQuant [[8](#bib.bib8)]
+    are recent works that retains salient weights in FP16 at finer granularity while
+    quantizing the rest to low-precision.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this work, we propose a fundamentally different PTQ framework that approximates
+    the real value of weight through two components ($W=\widetilde{E_{q}}+W_{q}$ configuration.
+  prefs: []
+  type: TYPE_NORMAL
+- en: II-B The MXINT Arithmetic
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Block floating point is a family of number formats that represents a vector
+    of numbers using a shared exponent or exponent bias. Various block floating point
+    formats have been explored for efficient training or inference in the past few
+    years [[28](#bib.bib28), [29](#bib.bib29), [30](#bib.bib30), [31](#bib.bib31)].
+    One notable representative is MXINT, introduced for hardware-efficient post training
+    quantization [[28](#bib.bib28), [32](#bib.bib32)], this number format has recently
+    been standardized by AMD, Arm, Intel, Meta, Microsoft, NVIDIA, and Qualcomm, for
+    next-generation AI facilities [[33](#bib.bib33)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 2](#S2.F2 "In II-B The MXINT Arithmetic ‣ II Related Work ‣ LQER: Low-Rank
+    Quantization Error Reconstruction for LLMs") illustrates an example of an MXINT
+    vector sharing a 4-bit exponent across four 4-bit mantissas. MXINT excels in hardware
+    efficiency compared to floating point, as the inner product of two MXINT vectors
+    can be computed as a inner product of two fixed-point numbers plus an exponent
+    addition. Meanwhile, the shared exponent provides a larger dynamic range than
+    fixed point numbers. Recent works indicate that this extended dynamic range fits
+    the activation outliers well in LLM PTQ tasks [[34](#bib.bib34), [24](#bib.bib24)].
+    In this work, We adopt MXINT as the default number format while the idea can be
+    applied to other formats.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/1ba9b681725278928a53a7becf7ee6a0.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: MXINT number format  [[24](#bib.bib24)]. MXINT places a shared exponent
+    across a group of fixed-point numbers. MXINT is more hardware effcient than floating
+    point for its simplified vector inner product, and provides a large dynamic range
+    compared to fixed-point numbers. MXINT has been standardized recently for next
+    generation AI hardware systems [[33](#bib.bib33)].'
+  prefs: []
+  type: TYPE_NORMAL
+- en: II-C Low-Rank Adapters for Fine-Tuning
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Low-rank adapter (LoRA) [[35](#bib.bib35)] is a parameter efficient fine-tuning
+    method for saving GPU memory. LoRA freezes the pretrained weight $W$ it in the
+    forward pass to further reduce fine-tuning memory footprints:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\begin{split}Y^{\text{BF16}}=X^{\text{BF16}}\mathrm{ddq}(c_{1}^{\text{FP32}},c_{2}^{\text{k-bit}},W^{\text{NF4}})\\
+    +X^{\text{BF16}}L_{1}^{\text{BF16}}L_{2}^{\text{BF16}}\end{split}$ |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'The advantage of LoRA-based methods is that the fine-tuned model can be deployed
+    without extra cost as the low-rank matrices are fused into the pretrained weights
+    after fine-tuning . For qLoRA, the fusion can be expressed as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $W^{\text{BF16}}_{\text{new}}=\mathrm{ddq}(c_{1}^{\text{FP32}},c_{2}^{\text{k-bit}},W^{\text{NF4}})+L_{1}^{\text{BF16}}L_{2}^{\text{BF16}}$
+    |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: LoftQ [[37](#bib.bib37)] initializes $L_{1}$ with the Singular Value Decompostion
+    (SVD) of quantization errors to achieves a faster fine-tuning convergence than
+    qLoRA.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To our knowledge, LoftQ is the closest work to ours. However, our LQER framework
+    is fundamentally different from the above as it is a PTQ method that does not
+    target fine-tuning. The core idea of LQER is that shaping the singular value distribution
+    of quantization error approximator ($\widetilde{E_{q}}$) and the low-rank high-precision
+    matrices to happen in parallel at inference time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: III Method
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We aim to approximate the multiplication by a large dense weight matrix $W$
+    and then correct the error induced using a high-precision low-rank correction
+    term as illustrated in [Figure 1(b)](#S1.F1.sf2 "In Figure 1 ‣ I Introduction
+    ‣ LQER: Low-Rank Quantization Error Reconstruction for LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'III-A LQER: Approximated $E_{q}$ using SVD'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8d3862cc35578b4dd0e4f720406c685c.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Perplexity ($\downarrow$) and quantization error reconstruction between
+    LQER and L²QER.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our idea is to reconstruct the quantization error matrix $E_{q}$ is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $E_{q}=W-W_{q}$ |  | (7) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $W_{q}=\mathrm{q}(W)$ represents the quantization function. A straightforward
+    way to reconstruct the error is to use SVD-based low-rank approximation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $E_{q}=U\Sigma V^{T}\approx U_{k}\Sigma_{k}V_{k}^{T}$ |  | (8) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $U\in\mathbb{R}^{m\times m}$ singular values.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If two high-precision matrices $A_{k}=U_{k}$, the linear layer can be approximated
+    as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $$\begin{split}\widetilde{Y}&amp;=XW_{q}+(XA_{k})B_{k}\\ &amp;=X(W_{q}+A_{k}B_{k})\\'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&amp;=X(W_{q}+\widetilde{E_{q}})\\'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&amp;\approx X(W_{q}+E_{q})\\'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&amp;=XW\end{split}$$ |  | (9) |'
+  prefs: []
+  type: TYPE_NORMAL
+- en: where $X\in\mathbb{R}^{t\times m}$, means that we compensate the quantization
+    error of 3-bit weight using two 8-bit low-rank matrices. We refer to this design
+    of the inference flow as LQER.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'At inference-time, LQER runs one low-precision but large matrix multiplication
+    ($XW_{q}$ allows tuning the trade-off between the computational cost and the model
+    accuracy. Specifically:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In LLMs, $W\in\mathbb{R}^{m\times n}$.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Two high-precision but small matrices $A_{k}\in\mathbb{R}^{m\times k}$.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: The ideal case is that a small $k\ll\min(m,n)$ value by analytically scaling
+    the error term.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'III-B L²QER: Shape Singular Value Distribution of Quantization Errors using
+    Activation Statistics'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Recent works have shown that partially preserving the weight precision according
+    to activation magnitude recovers the model’s accuracy/perplexity. LLM.int8() decomposes
+    an FP16 matrix multiply into one FP16 sub-matrix multiply for large activation
+    magnitudes and one 8-bit fixed-point sub-matrix multiply for the rest at runtime.
+    AWQ also presents an experiment that effectively recovers accuracy by preserving
+    the 1% salient weights corresponding to large activation magnitudes in FP16, and
+    quantizing other weights to 4-bit grouped fixed-point.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Motivated by this phenomenon, we propose a novel quantization error reconstruction
+    method, named L²QER, that scales the quantization error matrix $E_{q}$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $SE_{q}=U^{\prime}\Sigma^{\prime}V^{\prime T}\approx U^{\prime}_{k}\Sigma^{\prime}_{k}{V^{\prime}}_{k}^{T}$
+    |  | (10) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $S$ is in [Appendix A](#A1 "Appendix A Data Calibration ‣ LQER: Low-Rank
+    Quantization Error Reconstruction for LLMs"). The calibration requires no training.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The intuition behind the scaling is that the quantization error corresponds
+    to large activation magnitudes, i.e., the salient weights identified by corresponding
+    activation magnitudes, should be more precisely approximated. Hence, we scale
+    up these quantization errors before SVD.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'High precision $A^{\prime}_{k}$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\left\{\begin{aligned} A^{\prime}_{k}&amp;=S^{-1}U^{\prime}_{k}\\ B^{\prime}_{k}&amp;=\Sigma^{\prime}_{k}{V^{\prime}}_{k}^{T}\end{aligned}\right.$
+    |  | (11) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $S^{-1}$ is zero (no channels in LLM activations are always zero). Now
+    we approximate the linear layer similarly to LQER:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $$\begin{split}\widetilde{Y}&amp;=XW_{q}+(XA^{\prime}_{k})B^{\prime}_{k}\\
+    &amp;=XW_{q}+(XS^{-1}U^{\prime}_{k})(\Sigma^{\prime}_{k}{V^{\prime}}_{k}^{T})\\'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&amp;=X\left(W_{q}+S^{-1}\widetilde{(SE_{q})}_{k}\right)\\'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&amp;\approx XW\end{split}$$ |  | (12) |'
+  prefs: []
+  type: TYPE_NORMAL
+- en: where $\widetilde{Y}$ is the approximated quantization error.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As shown in [Figure 1(a)](#S1.F1.sf1 "In Figure 1 ‣ I Introduction ‣ LQER:
+    Low-Rank Quantization Error Reconstruction for LLMs"), $S$. In [Section IV-C](#S4.SS3
+    "IV-C Comparing with Existing Quantization Methods ‣ IV Experiments ‣ LQER: Low-Rank
+    Quantization Error Reconstruction for LLMs"), we will show that L²QER achieves
+    nearly lossless W4A6 LLM PTQ results comparable to state-of-the-art W6A6/W4A16
+    methods but with higher hardware efficiency.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: IV Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'TABLE II: Perplexity ($\downarrow$ in L²QER.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | MXINT | LQER | L²QER | FP16 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-1.3B | 16.42 | 15.28 | 15.02 | 14.63 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\Delta$) | +1.78 | +0.65 | +0.39 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-7B | 6.17 | 6.06 | 5.89 | 5.67 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\Delta$) | +0.50 | +0.39 | +0.22 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: IV-A Experimental Setup
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Quantization
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We use MXINT as the number format of LQER if not specified. In [Section IV-C](#S4.SS3
+    "IV-C Comparing with Existing Quantization Methods ‣ IV Experiments ‣ LQER: Low-Rank
+    Quantization Error Reconstruction for LLMs"), we use W4A8 L²QER with $k=32$).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Models and Baselines
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We benchmarked our methods on the OPT family [[26](#bib.bib26)], the LLaMA family
+    (including LLaMA [[38](#bib.bib38)], LLaMA-2 [[39](#bib.bib39)], Vicuna-v1.5 [[40](#bib.bib40)]),
+    and Mistral [[41](#bib.bib41)]. These are the representative or state-of-the-art
+    model open-sourced for research across various model sizes and architectures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'TABLE III: A comparison of perplexity($\downarrow$ means OmniQuant and AQAS
+    use per-channel and per-token scaled quantization. ^‡ means LLaMA-2 results were
+    not available in [[12](#bib.bib12)] and the author has not open-sourced AQAS code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Q Setup | Method | Q Config | OPT | LLaMA | LLaMA-2 | Avg. $\Delta$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 6.7B | 13B | 30B | 7B | 13B | 33B | 7B | 13B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| - | FP16 | - | 10.86 | 10.13 | 9.56 | 5.67 | 5.10 | 4.10 | 5.48 | 4.90 |
+    - | 16 | 1$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $w$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | INT4, g128 | 10.93 | 10.21 | 9.59 | 5.78 | 5.20 | 4.22 | 5.61 | 4.98
+    | 0.09 | 4.1 | 13.99$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| L²QER-INT | INT4, g128 | 10.99 | 10.24 | 9.57 | 5.89 | 5.20 | 4.24 | 5.58
+    | 4.96 | 0.11 | 4.3 | 1.34$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $w\&amp;a$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant ${\dagger}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AQAS ${\dagger}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| L²QER-INT | W4A8, g128 | 11.10 | 10.38 | 9.72 | 6.09 | 5.31 | 4.35 | 5.85
+    | 5.10 | 0.25 | 4.1 | 0.33$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| L²QER-MXINT | W4A6 | 11.03 | 10.32 | 9.72 | 5.92 | 5.24 | 4.28 | 5.73 | 5.05
+    | 0.18 | 4.3 | 0.23$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| L²QER-MXINT | W4A8 | 11.00 | 10.27 | 9.69 | 5.89 | 5.21 | 4.25 | 5.69 | 5.02
+    | 0.15 | 4.3 | 0.33$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: We compare our methods with FP16 model, LLM.int4()³³3LLM.int4() denotes the
+    4-bit verision of LLM.int8() open-sourced in bitsandbytes., GPTQ, AWQ, AQAS, OmniQuant⁴⁴4We
+    take W6A6 OmniQuant as an weight-activation quantization baseline, and W2A16 as
+    a 2-bit weight-only quantization baseline., and QuiP. The later two have variants
+    optimized for extremely low-precision quantization. We take the reported WikiText2
+    perplexity or downstream task accuracy from the original papers if available.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Evaluation
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We report the perplexity on WikiText-2 [[42](#bib.bib42)] and the accuracy
+    on ARC (easy) [[43](#bib.bib43)], ARC (challenge) [[43](#bib.bib43)], LAMBADA [[44](#bib.bib44)],
+    PIQA [[45](#bib.bib45)], OpenBookQA [[46](#bib.bib46)], and BoolQ [[47](#bib.bib47)]
+    using the lm-eval-harness evaluation flow [[48](#bib.bib48)]. Ideally a calibration
+    dataset should be sampled from the pretraining dataset to calculate the activation-induced
+    scale matrix $S$. However, none of the LLMs mentioned above open-sourced their
+    pretraining datasets. We create a subset of SlimPajama [[49](#bib.bib49)] with
+    Wikipedia texts excluded as the calibration dataset. This calibration dataset
+    contains only 32 samples of 2048 tokens. As metnioned previously in [Section III-B](#S3.SS2
+    "III-B L2QER: Shape Singular Value Distribution of Quantization Errors using Activation
+    Statistics ‣ III Method ‣ LQER: Low-Rank Quantization Error Reconstruction for
+    LLMs"), this calibration simply profiles values without having any training. We
+    also report the weight average bitwidth for memory efficiency and estimate the
+    circuit area for the hardware cost. Circuit area is estimated with the number
+    of Look Up Tables (LUTs) of the processing engines (PEs) if implemented on FPGAs,
+    which is also approximately proportional to the number of gates if implemented
+    as ASICs. We have faithfully implemented these arithmetic cores and inputted them
+    into FPGA synthesis flows, obtaining results for circuit area. This is because
+    MXINT is a newly release arithmetic standard [[33](#bib.bib33)]. [Appendix D](#A4
+    "Appendix D Estimate Hardware Cost ‣ LQER: Low-Rank Quantization Error Reconstruction
+    for LLMs") provides the detailed circuit area estimation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: IV-B LQER and L²QER
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We first focus on comparing variants of LQER in [Table II](#S4.T2 "In IV Experiments
+    ‣ LQER: Low-Rank Quantization Error Reconstruction for LLMs"). We evaluate the
+    variants in a W4A8 $w\&amp;a$ quantization setup on both OPT-1.3B and LLaMA-7B.
+    We show the results of plain MXINT, LQER, and L²QER, where plain MXINT means the
+    whole network is simply MXINT quantized without any special treatmetns.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Table II](#S4.T2 "In IV Experiments ‣ LQER: Low-Rank Quantization Error Reconstruction
+    for LLMs") indicates that a plain W4A8 MXINT quantization leads to substantial
+    performance degradation ($\Delta\text{PPL}$ in L²QER further pushes the performance
+    of LQER to be even closer to the FP16 baseline. In the following sections, we
+    then mainly focus on presenting L²QER results.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: IV-C Comparing with Existing Quantization Methods
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'TABLE IV: A comparison of downstream task accuracy ($\uparrow$), averaged across
+    six downstream tasks. Bold text indicates the best results, while underscore denotes
+    the second-best. L²QER achieves the best accuracy among all LLaMA models, and
+    nearly lossless (around 0.3% drop) compared to the FP16 baseline. ^∗ means the
+    results are not available in the original GPTQ paper, and we did not find open-source
+    implementations and/or model checkpoints to run evaluation. ^† means the results
+    of OPT and LLaMA-2 are not reported in the original OmniQuant paper. For LLaMA-1,
+    LAMBADA and OpenbookQA are not included in OmniQuant either, thus we replace the
+    results of these two tasks with FP16 resutls as an estimated upper limit of OmniQuant.
+    OmniQuant-r is the results we replicated using the official implementation^([5](#footnote5
+    "Footnote 5 ‣ Downstream task accuracy ‣ IV-C Comparing with Existing Quantization
+    Methods ‣ IV Experiments ‣ LQER: Low-Rank Quantization Error Reconstruction for
+    LLMs")) and checkpoints^([6](#footnote6 "Footnote 6 ‣ Downstream task accuracy
+    ‣ IV-C Comparing with Existing Quantization Methods ‣ IV Experiments ‣ LQER: Low-Rank
+    Quantization Error Reconstruction for LLMs")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Q Config | OPT | LLaMA | LLaMA-2 | Avg. $\Delta$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 6.7B | 13B | 30B | 7B | 13B | 33B | 7B | 13B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | - | 55.6% | 56.2% | 59.1% | 63.2% | 65.0% | 68.4% | 63.5% | 66.5%
+    | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | INT4, g128 | 55.4% | 56.4% | -^∗ | 60.8% | 64.7% | 66.7% | 62.2% |
+    65.9% | -0.9% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | INT4, g128 | 55.3% | 56.4% | 58.9% | 62.5% | 64.8% | 68.0% | 62.9%
+    | 65.9% | -0.4% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM.int4() | $\tau=6.0$ | 55.4% | 55.9% | 58.0% | 62.2% | 64.6% | 67.7% |
+    62.6% | 65.8% | -0.7% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant^† | W6A6, per-c/t | - | - | - | 58.4% | 59.2% | 61.0% | - | - |
+    -6.0% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant-r^† | W6A6, per-c/t | 55.4% | 56.1% | 58.6% | 47.0% | 48.2% | 49.9%
+    | 47.2% | 49.4% | -11.0% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| L²QER-INT | W4A8, g128 | 54.1% | 56.2% | 57.7% | 61.7% | 64.4% | 67.4% |
+    62.2% | 65.9% | -1.0% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| L²QER-MXINT | W4A6 | 54.7% | 56.2% | 58.5% | 62.7% | 64.9% | 67.8% | 63.0%
+    | 65.8% | -0.5% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| L²QER-MXINT | W4A8 | 55.1% | 56.5% | 58.4% | 63.0% | 64.8% | 68.0% | 63.1%
+    | 66.1% | -0.3% |'
+  prefs: []
+  type: TYPE_TB
+- en: 'We present the perplexity ($\downarrow$ methods in [Table III](#S4.T3 "In Models
+    and Baselines ‣ IV-A Experimental Setup ‣ IV Experiments ‣ LQER: Low-Rank Quantization
+    Error Reconstruction for LLMs"). Then we exclude the methods with obvious performance
+    degradation and evaluate the average downstream task performance in [Table IV](#S4.T4
+    "In IV-C Comparing with Existing Quantization Methods ‣ IV Experiments ‣ LQER:
+    Low-Rank Quantization Error Reconstruction for LLMs"). We additionally include
+    a fixed-point version of  L²QER as a baseline. Best results in each setup are
+    marked in bold and second best results are underlined.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: WikiText-2
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: In the $w$ higher than OmniQuant on the OPT family, but consistently outperforms
+    OmniQuant on LLaMA family. Note that OmniQuant was trained on WikiText2 for 20
+    epochs [[15](#bib.bib15)], but L²QER only proifles the activation magnitudes using
+    32 samples from a calibration dataset with Wikipedia texts excluded. L²QER is
+    also significantly smaller in terms of circut area.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'TABLE V: 2-bit quantization perplexity ($\downarrow$) on WikiText2. OmniQuant
+    and QuiP#^([7](#footnote7 "Footnote 7 ‣ IV-D 2-bit Quantization ‣ IV Experiments
+    ‣ LQER: Low-Rank Quantization Error Reconstruction for LLMs")) are two state-of-the-art
+    methods for extremely low-precision LLM quantization. We found 2-bit quantization
+    is still challenging for existing methods.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Q Setup | Method | Q Config | 7B | 13B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| - | FP16 | - | 5.67 | 5.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $w$-only | AWQ | INT2 g128 | 2.6e5 | 2.8e5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| QuiP# | INT2 g128 | 10.97 | 8.43 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant | INT2 g128 | 12.97 | 10.36 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $w\&amp;a$ | 10.30 | 8.42 |'
+  prefs: []
+  type: TYPE_TB
+- en: Downstream task accuracy
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We conduct a thorough evaluation on downstream tasks, including ARC (easy),
+    ARC (challenge), LAMBADA, PIQA, OpenBookQA and BoolQ and report the results in
+    [Table IV](#S4.T4 "In IV-C Comparing with Existing Quantization Methods ‣ IV Experiments
+    ‣ LQER: Low-Rank Quantization Error Reconstruction for LLMs"). The average accuracy
+    of L²QER on the six downstream tasks is better than other quantization methods
+    on LLaMA models, and nearly lossless (around 0.3% drop) compared to the FP16 baseline.
+    We reproduced the WikiText2 perplexity reported in OmniQuant paper [[15](#bib.bib15)]
+    using the official implementation⁵⁵5[https://github.com/OpenGVLab/OmniQuant](https://github.com/OpenGVLab/OmniQuant)
+    and checkpoints⁶⁶6[https://huggingface.co/ChenMnZ/OmniQuant/tree/main](https://huggingface.co/ChenMnZ/OmniQuant/tree/main),
+    but failed to reproduce their downstream accuracy performance on LLaMA models.
+    We refer to this mismatched OmniQuant results as OmniQuant-r in [Table IV](#S4.T4
+    "In IV-C Comparing with Existing Quantization Methods ‣ IV Experiments ‣ LQER:
+    Low-Rank Quantization Error Reconstruction for LLMs"). We attribute the inconsistant
+    behaviour of OmniQuant to its iterative quantization parameter training on WikiText2,
+    which is further discussed in [Appendix C](#A3 "Appendix C Inconsistant performance
+    of OmniQuant on WikiText2 and downstream tasks ‣ LQER: Low-Rank Quantization Error
+    Reconstruction for LLMs"). Nevertheless, our method has demonstrated substantially
+    better downstream task capabiliteis, with a much lower hardware cost (circuit
+    area in [Table III](#S4.T3 "In Models and Baselines ‣ IV-A Experimental Setup
+    ‣ IV Experiments ‣ LQER: Low-Rank Quantization Error Reconstruction for LLMs")).
+    A detailed discussion about hardware cost is in [Appendix D](#A4 "Appendix D Estimate
+    Hardware Cost ‣ LQER: Low-Rank Quantization Error Reconstruction for LLMs"). A
+    complete table including the accuracy of each individual task is in [Appendix E](#A5
+    "Appendix E More evaluation results ‣ LQER: Low-Rank Quantization Error Reconstruction
+    for LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Optimization cost
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: The optimization of LQER is also efficient. The calibration and quantiation
+    of LLaMA-33B takes around 1.2 hour in total on a single NVIDIA A100 GPU. In contrast,
+    OmniQuant takes 7.3 hours to optimize the quantization parameters for LLaMA-33B.
+    Furthermore, the optimization of LQER can be fully parallelized to be faster,
+    since there is no dependency between the quantization of each linear layer such
+    as fusing the scale matrices to preceding layers in SmoothQuant or knwoledge distillation
+    in LLM-QAT [[50](#bib.bib50)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: IV-D $2$-bit Quantization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'To explore the limit of L²QER, we evaluate L²QER in the 2-bit quantization
+    setup.  [Table V](#S4.T5 "In WikiText-2 ‣ IV-C Comparing with Existing Quantization
+    Methods ‣ IV Experiments ‣ LQER: Low-Rank Quantization Error Reconstruction for
+    LLMs") compares L²QER with OmniQuant and QuiP#⁷⁷7QuiP# is an improved version
+    of QuiP released by the same research group: [https://github.com/Cornell-RelaxML/quip-sharp](https://github.com/Cornell-RelaxML/quip-sharp),
+    which are both recent works optimized for extremely low-precision LLM quantization.
+    We observe that 2-bit quantization is challenging for existing methods including
+    L²QER. These methods perform inconsistently with model sizes and families ([Table XVII](#A5.T17
+    "In Appendix E More evaluation results ‣ LQER: Low-Rank Quantization Error Reconstruction
+    for LLMs") in [Appendix E](#A5 "Appendix E More evaluation results ‣ LQER: Low-Rank
+    Quantization Error Reconstruction for LLMs")). Unlike a simple rank $k=32$ for
+    2-bit quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: IV-E L²QER with Different Model Familities
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'To fully evaluate the adaptiveness of L²QER across model families, we have
+    also conducted experiments to evaluate its effectivess on Vicuna and Mistral.
+    The results of Vicuna-v1.5-7B/13B and Mistral-7B are included in [Appendix E](#A5
+    "Appendix E More evaluation results ‣ LQER: Low-Rank Quantization Error Reconstruction
+    for LLMs"). These results reveal a pattern consistent with other models, indicating
+    that L²QER is agnostic to various LLM families.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: V Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this work, we propose a novel LLM post-training quantization framework, LQER,
+    which judiciously combine quantization and low-rank approximation to recover model
+    capbility. We then further propose L²QER, which leverages an activation-induced
+    scale matrix to shape the singular values of quantization error towards a desirable
+    distribution that can be accurate approximated. L²QER achieves nearly-losses perplexity
+    (around $0.15$ on six different downstream tasks. The regular computation pattern
+    of LQER ensures a higher hardware efficiency than existing methods and takes 67%
+    smaller circuit area than FP16.
+  prefs: []
+  type: TYPE_NORMAL
+- en: VI Broader Impacts
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This paper presents work whose goal is to advance the field of Machine Learning.
+    There are many potential societal consequences of our work, none which we feel
+    must be specifically highlighted here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[1] T. Brown, B. Mann, N. Ryder, M. Subbiah, J. D. Kaplan, P. Dhariwal, A. Neelakantan,
+    P. Shyam, G. Sastry, A. Askell *et al.*, “Language models are few-shot learners,”
+    *Advances in neural information processing systems*, vol. 33, pp. 1877–1901, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[2] B. Workshop, T. L. Scao, A. Fan, C. Akiki, E. Pavlick, S. Ilić, D. Hesslow,
+    R. Castagné, A. S. Luccioni, F. Yvon *et al.*, “Bloom: A 176b-parameter open-access
+    multilingual language model,” *arXiv preprint arXiv:2211.05100*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[3] A. S. Luccioni, S. Viguier, and A.-L. Ligozat, “Estimating the carbon footprint
+    of bloom, a 176b parameter language model,” *Journal of Machine Learning Research*,
+    vol. 24, no. 253, pp. 1–15, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[4] J. Hoffmann, S. Borgeaud, A. Mensch, E. Buchatskaya, T. Cai, E. Rutherford,
+    D. d. L. Casas, L. A. Hendricks, J. Welbl, A. Clark *et al.*, “Training compute-optimal
+    large language models,” *arXiv preprint arXiv:2203.15556*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[5] M. Nagel, M. Fournarakis, R. A. Amjad, Y. Bondarenko, M. Van Baalen, and
+    T. Blankevoort, “A white paper on neural network quantization,” *arXiv preprint
+    arXiv:2106.08295*, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[6] X. Wei, Y. Zhang, X. Zhang, R. Gong, S. Zhang, Q. Zhang, F. Yu, and X. Liu,
+    “Outlier suppression: Pushing the limit of low-bit transformer language models,”
+    *Advances in Neural Information Processing Systems*, vol. 35, pp. 17 402–17 414,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[7] Y. Bondarenko, M. Nagel, and T. Blankevoort, “Understanding and overcoming
+    the challenges of efficient transformer quantization,” *arXiv preprint arXiv:2109.12948*,
+    2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[8] H. Tang, Y. Sun, D. Wu, K. Liu, J. Zhu, and Z. Kang, “Easyquant: An efficient
+    data-free quantization algorithm for llms,” in *Proceedings of the 2023 Conference
+    on Empirical Methods in Natural Language Processing*, 2023, pp. 9119–9128.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[9] T. Dettmers, M. Lewis, Y. Belkada, and L. Zettlemoyer, “Llm. int8 (): 8-bit
+    matrix multiplication for transformers at scale,” *arXiv preprint arXiv:2208.07339*,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[10] E. Frantar, S. Ashkboos, T. Hoefler, and D. Alistarh, “Gptq: Accurate
+    post-training quantization for generative pre-trained transformers,” *arXiv preprint
+    arXiv:2210.17323*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[11] G. Xiao, J. Lin, M. Seznec, H. Wu, J. Demouth, and S. Han, “Smoothquant:
+    Accurate and efficient post-training quantization for large language models,”
+    in *International Conference on Machine Learning*.   PMLR, 2023, pp. 38 087–38 099.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[12] J. Lee, M. Kim, S. Baek, S. J. Hwang, W. Sung, and J. Choi, “Enhancing
+    computation efficiency in large language models through weight and activation
+    quantization,” *arXiv preprint arXiv:2311.05161*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[13] X. Wei, Y. Zhang, Y. Li, X. Zhang, R. Gong, J. Guo, and X. Liu, “Outlier
+    suppression+: Accurate quantization of large language models by equivalent and
+    optimal shifting and scaling,” *arXiv preprint arXiv:2304.09145*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[14] Y. Bondarenko, M. Nagel, and T. Blankevoort, “Quantizable transformers:
+    Removing outliers by helping attention heads do nothing,” *arXiv preprint arXiv:2306.12929*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[15] W. Shao, M. Chen, Z. Zhang, P. Xu, L. Zhao, Z. Li, K. Zhang, P. Gao, Y. Qiao,
+    and P. Luo, “Omniquant: Omnidirectionally calibrated quantization for large language
+    models,” *arXiv preprint arXiv:2308.13137*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[16] L. Lin, “LLM-Tracker: OmniQuant,” 2024\. [Online]. Available: [https://llm-tracker.info/howto/OmniQuant](https://llm-tracker.info/howto/OmniQuant)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[17] J. Lin, J. Tang, H. Tang, S. Yang, X. Dang, and S. Han, “Awq: Activation-aware
+    weight quantization for llm compression and acceleration,” *arXiv preprint arXiv:2306.00978*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[18] C. Hansen, “Autoawq,” [https://github.com/casper-hansen/AutoAWQ](https://github.com/casper-hansen/AutoAWQ),
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[19] T. Dettmers, R. Svirschevski, V. Egiazarian, D. Kuznedelev, E. Frantar,
+    S. Ashkboos, A. Borzunov, T. Hoefler, and D. Alistarh, “Spqr: A sparse-quantized
+    representation for near-lossless llm weight compression,” *arXiv preprint arXiv:2306.03078*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[20] J. H. Lee, J. Kim, S. J. Kwon, and D. Lee, “Flexround: Learnable rounding
+    based on element-wise division for post-training quantization,” *arXiv preprint
+    arXiv:2306.00317*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[21] Y. Jeon, C. Lee, K. Park, and H.-y. Kim, “A frustratingly easy post-training
+    quantization scheme for llms,” in *Proceedings of the 2023 Conference on Empirical
+    Methods in Natural Language Processing*, 2023, pp. 14 446–14 461.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[22] J. Chee, Y. Cai, V. Kuleshov, and C. De Sa, “Quip: 2-bit quantization
+    of large language models with guarantees,” *arXiv preprint arXiv:2307.13304*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[23] Y. Luo, Y. Gao, Z. Zhang, J. Fan, H. Zhang, and M. Xu, “Long-range zero-shot
+    generative deep network quantization,” *Neural Networks*, vol. 166, pp. 683–691,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[24] B. D. Rouhani, R. Zhao, A. More, M. Hall, A. Khodamoradi, S. Deng, D. Choudhary,
+    M. Cornea, E. Dellinger, K. Denolf *et al.*, “Microscaling data formats for deep
+    learning,” *arXiv preprint arXiv:2310.10537*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[25] V. Marchenko and L. Pastur, “Distribution of eigenvalues for some sets
+    of random matrices,” *Mat. Sb*, vol. 72, pp. 507–536, 1967.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[26] S. Zhang, S. Roller, N. Goyal, M. Artetxe, M. Chen, S. Chen, C. Dewan,
+    M. Diab, X. Li, X. V. Lin *et al.*, “Opt: Open pre-trained transformer language
+    models,” *arXiv preprint arXiv:2205.01068*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[27] J. Liu, R. Gong, X. Wei, Z. Dong, J. Cai, and B. Zhuang, “Qllm: Accurate
+    and efficient low-bitwidth quantization for large language models,” *arXiv preprint
+    arXiv:2310.08041*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[28] B. Darvish Rouhani, D. Lo, R. Zhao, M. Liu, J. Fowers, K. Ovtcharov, A. Vinogradsky,
+    S. Massengill, L. Yang, R. Bittner *et al.*, “Pushing the limits of narrow precision
+    inferencing at cloud scale with microsoft floating point,” *Advances in neural
+    information processing systems*, vol. 33, pp. 10 271–10 281, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[29] S. Fox, S. Rasoulinezhad, J. Faraone, P. Leong *et al.*, “A block minifloat
+    representation for training deep neural networks,” in *International Conference
+    on Learning Representations*, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[30] S. Q. Zhang, B. McDanel, and H. Kung, “Fast: Dnn training under variable
+    precision block floating point with stochastic rounding,” in *2022 IEEE International
+    Symposium on High-Performance Computer Architecture (HPCA)*.   IEEE, 2022, pp.
+    846–860.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[31] M. Drumond, T. Lin, M. Jaggi, and B. Falsafi, “Training dnns with hybrid
+    block floating point,” *Advances in Neural Information Processing Systems*, vol. 31,
+    2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[32] B. Rouhani, R. Zhao, V. Elango, R. Shafipour, M. Hall, M. Mesmakhosroshahi,
+    A. More, L. Melnick, M. Golub, G. Varatkar *et al.*, “Shared microexponents: A
+    little shifting goes a long way,” *arXiv preprint arXiv:2302.08007*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[33] P. Micikevicius, S. Oberman, P. Dubey, M. Cornea, A. Rodriguez, I. Bratt,
+    R. Grisenthwaite, N. Jouppi, C. Chou, A. Huffman, M. Schulte, R. Wittig, D. Jani,
+    and S. Deng, “Ocp 8-bit floating point specification (ofp8),” 2023\. [Online].
+    Available: [https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[34] C. Zhang, J. Cheng, I. Shumailov, G. Constantinides, and Y. Zhao, “Revisiting
+    block-based quantisation: What is important for sub-8-bit LLM inference?” in *Proceedings
+    of the 2023 Conference on Empirical Methods in Natural Language Processing*, H. Bouamor,
+    J. Pino, and K. Bali, Eds.   Singapore: Association for Computational Linguistics,
+    Dec. 2023, pp. 9988–10 006\. [Online]. Available: [https://aclanthology.org/2023.emnlp-main.617](https://aclanthology.org/2023.emnlp-main.617)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[35] E. J. Hu, Y. Shen, P. Wallis, Z. Allen-Zhu, Y. Li, S. Wang, L. Wang, and
+    W. Chen, “Lora: Low-rank adaptation of large language models,” *arXiv preprint
+    arXiv:2106.09685*, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[36] T. Dettmers, A. Pagnoni, A. Holtzman, and L. Zettlemoyer, “Qlora: Efficient
+    finetuning of quantized llms,” *arXiv preprint arXiv:2305.14314*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[37] Y. Li, Y. Yu, C. Liang, P. He, N. Karampatziakis, W. Chen, and T. Zhao,
+    “Loftq: Lora-fine-tuning-aware quantization for large language models,” *arXiv
+    preprint arXiv:2310.08659*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[38] H. Touvron, T. Lavril, G. Izacard, X. Martinet, M.-A. Lachaux, T. Lacroix,
+    B. Rozière, N. Goyal, E. Hambro, F. Azhar *et al.*, “Llama: Open and efficient
+    foundation language models,” *arXiv preprint arXiv:2302.13971*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[39] H. Touvron, L. Martin, K. Stone, P. Albert, A. Almahairi, Y. Babaei, N. Bashlykov,
+    S. Batra, P. Bhargava, S. Bhosale *et al.*, “Llama 2: Open foundation and fine-tuned
+    chat models,” *arXiv preprint arXiv:2307.09288*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[40] L. Zheng, W.-L. Chiang, Y. Sheng, S. Zhuang, Z. Wu, Y. Zhuang, Z. Lin,
+    Z. Li, D. Li, E. Xing *et al.*, “Judging llm-as-a-judge with mt-bench and chatbot
+    arena,” *arXiv preprint arXiv:2306.05685*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[41] A. Q. Jiang, A. Sablayrolles, A. Mensch, C. Bamford, D. S. Chaplot, D. d. l.
+    Casas, F. Bressand, G. Lengyel, G. Lample, L. Saulnier *et al.*, “Mistral 7b,”
+    *arXiv preprint arXiv:2310.06825*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[42] S. Merity, C. Xiong, J. Bradbury, and R. Socher, “Pointer sentinel mixture
+    models,” 2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[43] P. Clark, I. Cowhey, O. Etzioni, T. Khot, A. Sabharwal, C. Schoenick,
+    and O. Tafjord, “Think you have solved question answering? try arc, the ai2 reasoning
+    challenge,” *arXiv:1803.05457v1*, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[44] D. Paperno, G. Kruszewski, A. Lazaridou, Q. N. Pham, R. Bernardi, S. Pezzelle,
+    M. Baroni, G. Boleda, and R. Fernández, “The lambada dataset: Word prediction
+    requiring a broad discourse context,” *arXiv preprint arXiv:1606.06031*, 2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[45] Y. Bisk, R. Zellers, R. L. Bras, J. Gao, and Y. Choi, “Piqa: Reasoning
+    about physical commonsense in natural language,” in *Thirty-Fourth AAAI Conference
+    on Artificial Intelligence*, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[46] T. Mihaylov, P. Clark, T. Khot, and A. Sabharwal, “Can a suit of armor
+    conduct electricity? a new dataset for open book question answering,” in *EMNLP*,
+    2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[47] C. Clark, K. Lee, M.-W. Chang, T. Kwiatkowski, M. Collins, and K. Toutanova,
+    “Boolq: Exploring the surprising difficulty of natural yes/no questions,” *arXiv
+    preprint arXiv:1905.10044*, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[48] L. Gao, J. Tow, B. Abbasi, S. Biderman, S. Black, A. DiPofi, C. Foster,
+    L. Golding, J. Hsu, A. Le Noac’h, H. Li, K. McDonell, N. Muennighoff, C. Ociepa,
+    J. Phang, L. Reynolds, H. Schoelkopf, A. Skowron, L. Sutawika, E. Tang, A. Thite,
+    B. Wang, K. Wang, and A. Zou, “A framework for few-shot language model evaluation,”
+    12 2023\. [Online]. Available: [https://zenodo.org/records/10256836](https://zenodo.org/records/10256836)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[49] D. Soboleva, F. Al-Khateeb, R. Myers, J. R. Steeves, J. Hestness, and
+    N. Dey, “SlimPajama: A 627B token cleaned and deduplicated version of RedPajama,”
+    [https://www.cerebras.net/blog/slimpajama-a-627b-token-cleaned-and-deduplicated-version-of-redpajama](https://www.cerebras.net/blog/slimpajama-a-627b-token-cleaned-and-deduplicated-version-of-redpajama),
+    2023\. [Online]. Available: [https://huggingface.co/datasets/cerebras/SlimPajama-627B](https://huggingface.co/datasets/cerebras/SlimPajama-627B)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[50] Z. Liu, B. Oguz, C. Zhao, E. Chang, P. Stock, Y. Mehdad, Y. Shi, R. Krishnamoorthi,
+    and V. Chandra, “Llm-qat: Data-free quantization aware training for large language
+    models,” *arXiv preprint arXiv:2305.17888*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Data Calibration
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Given a calibration dataset containing $N$, we first profile the activation
+    magnitude for each channel,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $$\begin{split}\mathbf{a}_{i}&amp;=\text{mean}(&#124;X_{i}&#124;,\text{axis}=0),\\
+    \mathbf{\bar{a}}&amp;=\max(\begin{bmatrix}\mathbf{a}_{1}\\'
+  prefs: []
+  type: TYPE_NORMAL
+- en: \vdots\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: \mathbf{a}_{N}\end{bmatrix},\text{axis}=0),\end{split}$$ |  | (13) |
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'where $|\cdot|$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $s_{i}=\frac{a_{i}}{\sqrt{\min(\mathbf{\bar{a}})\times\max(\mathbf{\bar{a}})}},$
+    |  | (14) |'
+  prefs: []
+  type: TYPE_TB
+- en: '[Equation 13](#A1.E13 "In Appendix A Data Calibration ‣ LQER: Low-Rank Quantization
+    Error Reconstruction for LLMs") and [Equation 14](#A1.E14 "In Appendix A Data
+    Calibration ‣ LQER: Low-Rank Quantization Error Reconstruction for LLMs") are
+    empirical implementation based on [[17](#bib.bib17)]. We leave the exploration
+    of an analytical derivation of $S$ as future work.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B Singular Value Distributions of LQER and L²QER
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Here we present a few representative singular value distributions of quantization
+    errors for LLaMA-7B in [Figure 4](#A2.F4 "In Appendix B Singular Value Distributions
+    of LQER and L2QER ‣ LQER: Low-Rank Quantization Error Reconstruction for LLMs").
+    We observe that the singular values of most layers are driven towards desirable
+    distributions by L²QER. Most O projection layers and a few layers at the beginning
+    or the end of the model tend to have an Eq distribution decaying slowly.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We also visualzie the approximation error of LQER and LQER versus layer index
+    in [Figure 5](#A2.F5 "In Appendix B Singular Value Distributions of LQER and L2QER
+    ‣ LQER: Low-Rank Quantization Error Reconstruction for LLMs"). The approximation
+    error is measured as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $e_{a}=\frac{1}{mn}\sum_{i=1}^{m}\sum_{j=1}^{n}(&#124;E_{q}-\widetilde{E}_{q}&#124;_{i,j})$
+    |  | (15) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $|\cdot|$ calculate the element-wise absolute value. L²QER reconstructs
+    the quantization error more accurate than LQER on most layers, while LQER better
+    reconstruct the K, Q, and V projection layers at the 1st, 3rd, and 4th transformer
+    layers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/ba590d0bbfcc765dcfe9dba2b0577aff.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: ((a)) The 4th K layer
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d35aee0f75a5c9c191548b771129f60f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: ((b)) The 4th Q layer
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/b0f6497cfb310fe7767b3c1dd4bdb4fc.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: ((c)) The 4th V layer
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d5a5dd19010784c952cd06b48810361e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: ((d)) The 4th O layer
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/02d63ee34ccd72048598f79bfde93386.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: ((e)) The 4th Up layer
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/be26e035d11b64ffffa79ef3f179f75d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: ((f)) The 4th Down layer
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7c4cc740e39a6ed1079db1b799e1d1a8.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: ((g)) The 4th Gate layer
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/4b9c2e5c825aa4d7b93b05229cacd7c8.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: ((h)) The 19th Gate layer
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 4: The singular value distributions of LQER and L²QER. We find that
+    the shaping effect of L²QER are obvious on most layers in LLaMA. Most O projection
+    layers and several layers at the beginning or the end of the model tend to have
+    an $E_{q}$ distribution decaying slowly (See [Figure 4(d)](#A2.F4.sf4 "In Figure
+    4 ‣ Appendix B Singular Value Distributions of LQER and L2QER ‣ LQER: Low-Rank
+    Quantization Error Reconstruction for LLMs") and [Figure 4(h)](#A2.F4.sf8 "In
+    Figure 4 ‣ Appendix B Singular Value Distributions of LQER and L2QER ‣ LQER: Low-Rank
+    Quantization Error Reconstruction for LLMs")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d4f8820503d5e6b91a19a04b289a836b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: Approximation error of LQER and L²QER across decoder layers in LLaMA-7B.
+    L²QER produces smaller approximation errors on most of the linear layers in transformer-based
+    LLMs. However, there are a few layers better reconstructed by LQER, such as the
+    key, value, output project layers in 1st, 3rd, and 4th decoder layer. The derivation
+    of $S$ worths further exploration.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix C Inconsistant performance of OmniQuant on WikiText2 and downstream
+    tasks
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: OmniQuant is one of the state-of-the-art LLM post-training-quantization methods
+    we compared in this work. Thanks for the official open-sourced implementation
+    and quantization parameter checkpoints, we performed extensive experiments to
+    compare OmniQuant to LQER. We sucessfully reproduce the perplexity and downstream
+    task accuracy of OPT-family. However, the LLaMA models quantized by OmniQuant
+    have obvious performance degradation on downstream tasks, around 18.9% lower than
+    FP16 baselines on average.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We attribute this performance degradation to the iterative gradient-base training
+    on WikiText2 in OmniQuant. As stated in [[15](#bib.bib15)], OmniQuant optimizes
+    the quantization parameter (shifts and scales) by training on WikiText2 samples
+    for 20 epochs (40 epochs for W2A16). This training requires tuning the hyper-parameters
+    such as number of training samples, learning rates and total number of epochs,
+    which may cause overfitting or underfitting if not tuned properly. Both cases
+    can be the reason for performance degradation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix D Estimate Hardware Cost
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We estimate the memory efficiency with average bitwidth. The average bitwidth
+    of per-channel scaled quantization is considered as the average bits of an FP16
+    scalor and $m$. L²QER outperforms existing nearly lossless methods in terms of
+    circuit area, because it is free from expensive element-wise dequantization (GPTQ
+    and AWQ), or scatter/gather operations (LLM.int4()) at runtime.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We estimate the hardware cost with circuit area. We mapped the algorithms of
+    these approaches onto custom hardware accelerators on FPGAs. To ensure fairness,
+    these hardware accelerators have the same throughput of 16 multiply-accumulate
+    (MAC) operations per clock cycle when computing a linear operation of the same
+    matrix sizes. We then measure the circuit area in terms of LUTs and Digital Signal
+    Processing blocks (DSPs) on the FPGA, where a DSP is treated as 100 LUTs. The
+    area results were measured from the Place & Route report in Xilinx Vivado 2023.1\.
+    The FPGA family that we used for all the experiments is Xilinx Alveo U250.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix E More evaluation results
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We present the complete results of each specific downstream tasks in [Tables VI](#A5.T6
+    "In Appendix E More evaluation results ‣ LQER: Low-Rank Quantization Error Reconstruction
+    for LLMs"), [VII](#A5.T7 "Table VII ‣ Appendix E More evaluation results ‣ LQER:
+    Low-Rank Quantization Error Reconstruction for LLMs"), [VIII](#A5.T8 "Table VIII
+    ‣ Appendix E More evaluation results ‣ LQER: Low-Rank Quantization Error Reconstruction
+    for LLMs"), [IX](#A5.T9 "Table IX ‣ Appendix E More evaluation results ‣ LQER:
+    Low-Rank Quantization Error Reconstruction for LLMs"), [X](#A5.T10 "Table X ‣
+    Appendix E More evaluation results ‣ LQER: Low-Rank Quantization Error Reconstruction
+    for LLMs"), [XI](#A5.T11 "Table XI ‣ Appendix E More evaluation results ‣ LQER:
+    Low-Rank Quantization Error Reconstruction for LLMs"), [XII](#A5.T12 "Table XII
+    ‣ Appendix E More evaluation results ‣ LQER: Low-Rank Quantization Error Reconstruction
+    for LLMs") and [XIII](#A5.T13 "Table XIII ‣ Appendix E More evaluation results
+    ‣ LQER: Low-Rank Quantization Error Reconstruction for LLMs"). We also tested
+    L²QER on Vicuna-7b/13b and Mistral-7b-v0.1 in [Tables XIV](#A5.T14 "In Appendix
+    E More evaluation results ‣ LQER: Low-Rank Quantization Error Reconstruction for
+    LLMs"), [XV](#A5.T15 "Table XV ‣ Appendix E More evaluation results ‣ LQER: Low-Rank
+    Quantization Error Reconstruction for LLMs") and [XVI](#A5.T16 "Table XVI ‣ Appendix
+    E More evaluation results ‣ LQER: Low-Rank Quantization Error Reconstruction for
+    LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'TABLE VI: OPT-6.7B'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | WikiText2 | ARC (easy) | ARC (challenge) | LAMBADA | PIQA | BOOLQ
+    | OpenbookQA | Avg. Accuracy |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 10.86 | 65.6% | 30.5% | 67.7% | 76.3% | 66.1% | 27.6% | 55.6% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 10.95 | 65.6% | 31.1% | 68.5% | 76.2% | 65.2% | 26.2% | 55.4% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 10.93 | 65.3% | 30.5% | 67.4% | 76.6% | 65.2% | 26.6% | 55.3% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM.int4() | 11.23 | 65.3% | 30.5% | 67.4% | 76.6% | 65.2% | 26.6% | 55.3%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant (W6A6) | 10.96 | 65.4% | 30.9% | 66.9% | 76.0% | 66.2% | 26.8%
+    | 55.4% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-INT (W4A8) | 11.10 | 63.8% | 29.6% | 65.7% | 75.6% | 63.1% | 26.8% |
+    54.1% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-MXINT (W4A6) | 11.03 | 65.4% | 30.5% | 65.6% | 75.4% | 64.0% | 27.6%
+    | 54.7% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-MXINT (W4A8) | 11.00 | 65.2% | 30.4% | 66.3% | 75.5% | 65.3% | 27.6%
+    | 55.0% |'
+  prefs: []
+  type: TYPE_TB
+- en: 'TABLE VII: OPT-13B'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | WikiText2 | ARC (easy) | ARC (challenge) | LAMBADA | PIQA | BOOLQ
+    | OpenbookQA | Avg. Accuracy |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 10.13 | 67.1% | 32.9% | 68.6% | 76.0% | 65.8% | 27.0% | 56.2% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 10.31 | 67.5% | 32.8% | 68.8% | 76.1% | 65.9% | 27.2% | 56.4% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 10.21 | 66.8% | 33.3% | 68.2% | 75.6% | 66.5% | 28.0% | 56.4% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM.int4() | 10.39 | 66.2% | 33.6% | 67.8% | 76.2% | 67.3% | 24.2% | 55.9%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant (W6A6) | 10.96 | 67.1% | 33.1% | 68.4% | 76.2% | 65.3% | 26.4%
+    | 56.1% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-INT (W4A8) | 10.38 | 66.5% | 33.2% | 67.5% | 75.5% | 67.9% | 26.4% |
+    56.2% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-MXINT (W4A6) | 10.32 | 67.2% | 32.2% | 67.9% | 75.7% | 68.3% | 25.8%
+    | 56.2% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-MXINT (W4A8) | 10.27 | 67.4% | 32.6% | 68.4% | 76.1% | 68.3% | 26.2%
+    | 56.5% |'
+  prefs: []
+  type: TYPE_TB
+- en: 'TABLE VIII: OPT-6.7B'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | WikiText2 | ARC (easy) | ARC (challenge) | LAMBADA | PIQA | BOOLQ
+    | OpenbookQA | Avg. Accuracy |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 9.56 | 70.0% | 34.6% | 71.5% | 77.6% | 70.5% | 30.2% | 59.1% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 9.63 | 62.2% | 29.4% | 74.9% | 67.6% | 69.1% | 23.8% | 54.5% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 9.59 | 69.7% | 34.6% | 71.6% | 77.3% | 70.4% | 30.0% | 58.9% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM.int4() | 10.01 | 69.0% | 32.8% | 71.3% | 76.9% | 70.2% | 27.8% | 58.0%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant (W6A6) | 9.62 | 70.1% | 34.2% | 70.4% | 77.3% | 70.2% | 29.6% |
+    58.6% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-INT (W4A8) | 9.72 |  |  |  |  |  |  |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-MXINT (W4A6) | 9.72 | 0.6990740741 | 0.3421501706 | 0.7050261983 | 0.7725788901
+    | 0.6923547401 | 0.298 | 58.5% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-MXINT (W4A8) | 9.67 | 69.4% | 34.4% | 70.4% | 77.3% | 69.5% | 29.6%
+    | 58.4% |'
+  prefs: []
+  type: TYPE_TB
+- en: 'TABLE IX: llama-7B'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | WikiText2 | ARC (easy) | ARC (challenge) | LAMBADA | PIQA | BOOLQ
+    | OpenbookQA | Avg. Accuracy |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 5.10 | 77.4% | 46.4% | 76.2% | 79.1% | 78.0% | 33.2% | 65.0% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 5.21 | 76.9% | 46.8% | 75.0% | 79.3% | 76.4% | 34.0% | 64.7% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 5.20 | 77.2% | 46.4% | 75.6% | 79.0% | 77.8% | 32.8% | 64.8% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM.int4() | 5.31 | 77.2% | 46.0% | 75.4% | 78.9% | 77.1% | 32.8% | 64.6%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant (W6A6) | 5.28 | 72.5% | 42.9% | 0.0% | 78.2% | 66.4% | 29.0% |
+    48.2% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-INT (W4A8) | 5.31 | 76.9% | 45.9% | 74.0% | 78.7% | 77.2% | 33.6% |
+    64.4% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-MXINT (W4A6) | 5.24 | 77.1% | 46.2% | 75.6% | 79.2% | 77.6% | 33.6%
+    | 64.9% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-MXINT (W4A8) | 5.21 | 77.0% | 46.3% | 75.6% | 79.6% | 77.3% | 33.2%
+    | 64.8% |'
+  prefs: []
+  type: TYPE_TB
+- en: 'TABLE X: LLaMA-13B'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | WikiText2 | ARC (easy) | ARC (challenge) | LAMBADA | PIQA | BOOLQ
+    | OpenbookQA | Avg. Accuracy |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 5.67 | 75.4% | 41.9% | 73.5% | 78.7% | 75.1% | 34.4% | 63.2% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 9.63 | 73.6% | 40.4% | 70.0% | 77.7% | 73.0% | 30.0% | 60.8% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 9.59 | 75.5% | 41.1% | 72.5% | 78.6% | 74.9% | 32.2% | 62.5% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM.int4() | 10.01 | 74.6% | 42.1% | 70.3% | 78.6% | 74.8% | 32.8% | 62.2%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant (W6A6) | 9.62 | 66.4% | 38.8% | 0.0% | 76.7% | 72.8% | 27.2% |
+    47.0% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-INT (W4A8) | 6.09 | 73.9% | 40.6% | 73.4% | 77.7% | 74.0% | 30.6% |
+    61.7% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-MXINT (W4A6) | 5.92 | 74.8% | 41.5% | 73.4% | 78.2% | 75.2% | 33.0%
+    | 62.7% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-MXINT (W4A8) | 5.89 | 74.9% | 41.6% | 73.3% | 78.6% | 76.1% | 33.6%
+    | 63.0% |'
+  prefs: []
+  type: TYPE_TB
+- en: 'TABLE XI: LLaMA-30B'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | WikiText2 | ARC (easy) | ARC (challenge) | LAMBADA | PIQA | BOOLQ
+    | OpenbookQA | Avg. Accuracy |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 4.10 | 80.4% | 52.8% | 77.6% | 81.1% | 82.7% | 36.0% | 68.4% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 4.24 | 80.7% | 50.2% | 77.6% | 80.5% | 83.1% | 35.8% | 68.0% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 4.22 | 74.1% | 46.0% | 0.0% | 79.5% | 68.3% | 31.4% | 49.9% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM.int4() | 4.33 | 79.0% | 48.9% | 75.8% | 80.2% | 82.4% | 33.6% | 66.7%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant (W6A6) | 4.38 | 74.1% | 46.0% | 0.0% | 79.5% | 68.3% | 31.4% |
+    49.9% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-INT (W4A8) | 4.35 | 80.1% | 49.7% | 77.0% | 80.7% | 81.5% | 35.2% |
+    67.4% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-MXINT (W4A6) | 4.28 | 80.1% | 50.9% | 77.4% | 80.6% | 82.4% | 35.4%
+    | 67.8% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-MXINT (W4A8) | 4.25 | 80.0% | 50.8% | 77.6% | 80.7% | 82.5% | 36.2%
+    | 68.0% |'
+  prefs: []
+  type: TYPE_TB
+- en: 'TABLE XII: LLaMA-2-7B'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | WikiText2 | ARC (easy) | ARC (challenge) | LAMBADA | PIQA | BOOLQ
+    | OpenbookQA | Avg. Accuracy |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 5.48 | 76.3% | 43.6% | 73.9% | 78.1% | 77.7% | 31.4% | 63.5% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 5.69 | 75.0% | 42.2% | 72.3% | 77.4% | 76.4% | 30.0% | 62.2% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 5.61 | 75.2% | 43.3% | 72.7% | 77.6% | 77.3% | 31.4% | 62.9% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM.int4() | 5.77 | 75.1% | 42.7% | 71.9% | 77.6% | 76.2% | 32.2% | 62.6%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant (W6A6) | 5.87 | 67.3% | 39.0% | 0.0% | 77.6% | 69.9% | 29.2% |
+    47.2% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-INT (W4A8) | 5.85 | 74.7% | 42.4% | 71.6% | 76.7% | 76.1% | 32.0% |
+    62.2% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-MXINT (W4A6) | 5.73 | 75.1% | 43.1% | 73.6% | 77.6% | 76.2% | 32.6%
+    | 63.0% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-MXINT (W4A8) | 5.69 | 75.3% | 42.5% | 73.7% | 77.9% | 76.3% | 32.8%
+    | 63.1% |'
+  prefs: []
+  type: TYPE_TB
+- en: 'TABLE XIII: LLaMA-2-13B'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | WikiText2 | ARC (easy) | ARC (challenge) | LAMBADA | PIQA | BOOLQ
+    | OpenbookQA | Avg. Accuracy |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 4.90 | 79.4% | 48.3% | 76.7% | 79.1% | 80.6% | 35.0% | 66.5% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 5.06 | 78.6% | 47.4% | 76.4% | 78.2% | 80.8% | 34.2% | 65.9% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 4.98 | 78.9% | 46.9% | 76.2% | 78.8% | 80.1% | 34.4% | 65.9% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM.int4() | 4.98 | 77.6% | 47.0% | 76.1% | 78.9% | 80.5% | 34.8% | 65.8%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant (W6A6) | 5.14 | 71.3% | 43.8% | 0.0% | 78.6% | 69.8% | 33.0% |
+    49.4% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-INT (W4A8) | 5.10 | 78.5% | 47.1% | 75.8% | 78.6% | 81.0% | 34.4% |
+    65.9% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-MXINT (W4A6) | 5.05 | 78.2% | 46.4% | 76.4% | 78.3% | 80.6% | 34.8%
+    | 65.8% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-MXINT (W4A8) | 5.02 | 78.3% | 47.0% | 76.4% | 78.8% | 81.3% | 34.6%
+    | 66.1% |'
+  prefs: []
+  type: TYPE_TB
+- en: 'TABLE XIV: Vicuna-7B-v1.5'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | WikiText2 | ARC (easy) | ARC (challenge) | LAMBADA | PIQA | BOOLQ
+    | OpenbookQA | Avg. Accuracy |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 6.78 | 75.6% | 43.3% | 71.1% | 77.3% | 80.9% | 33.0% | 63.5% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 7.07 | 75.4% | 41.5% | 69.4% | 76.0% | 81.3% | 33.2% | 62.8% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 7.00 | 75.0% | 41.8% | 70.0% | 77.1% | 81.5% | 32.2% | 62.9% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM.int4() | 7.14 | 75.0% | 42.6% | 69.3% | 76.3% | 81.3% | 34.2% | 63.1%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-MXINT (W4A8) | 7.01 | 75.4% | 42.2% | 68.9% | 77.1% | 81.6% | 33.0%
+    | 63.0% |'
+  prefs: []
+  type: TYPE_TB
+- en: 'TABLE XV: Vicuna-13B-v1.5'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | WikiText2 | ARC (easy) | ARC (challenge) | LAMBADA | PIQA | BOOLQ
+    | OpenbookQA | Avg. Accuracy |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 5.92 | 78.7% | 47.8% | 73.4% | 78.9% | 85.2% | 36.8% | 66.8% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 6.00 | 77.9% | 46.4% | 72.9% | 78.1% | 85.0% | 36.8% | 66.2% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 6.03 | 78.3% | 48.4% | 72.9% | 78.3% | 84.8% | 36.8% | 66.6% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM.int4() | 6.09 | 77.5% | 47.3% | 73.0% | 78.3% | 85.2% | 36.8% | 66.4%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-MXINT (W4A8) | 6.04 | 78.5% | 46.7% | 72.7% | 77.7% | 85.0% | 36.4%
+    | 66.2% |'
+  prefs: []
+  type: TYPE_TB
+- en: 'TABLE XVI: Mistral-7B'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | WikiText2 | ARC (easy) | ARC (challenge) | LAMBADA | PIQA | BOOLQ
+    | OpenbookQA | Avg. Accuracy |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 6.47 | 82.7% | 53.5% | 70.7% | 80.4% | 86.2% | 32.8% | 67.7% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 8.13 | 81.1% | 55.8% | 72.2% | 80.9% | 86.7% | 36.0% | 68.8% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 6.64 | 81.9% | 53.8% | 71.8% | 80.7% | 86.2% | 37.4% | 68.6% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM.int4() | 6.66 | 81.2% | 53.2% | 70.6% | 81.2% | 86.4% | 34.6% | 67.9%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LQER-MXINT (W4A8) | 6.71 | 81.7% | 53.8% | 71.2% | 81.0% | 86.5% | 34.8%
+    | 68.2% |'
+  prefs: []
+  type: TYPE_TB
+- en: 'TABLE XVII: More 2-bit $w$ for 2-bit quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | OPT | LLaMA |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 125M | 1.3B | 2.7B | 7B | 13B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 27.65 | 14.63 | 12.47 | 5.67 | 5.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant | 75.43 | 23.95 | 18.13 | 12.97 | 10.36 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Quip | 347.40 | 41.64 | 2998.00 | 10.97 | 8.43 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| L²QER | 45.29 | 29.82 | 23.76 | 10.30 | 8.42 |'
+  prefs: []
+  type: TYPE_TB

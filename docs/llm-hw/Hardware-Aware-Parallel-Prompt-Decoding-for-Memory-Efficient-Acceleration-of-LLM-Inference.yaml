@@ -1,0 +1,1566 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:51:35'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hardware-Aware Parallel Prompt Decoding for Memory-Efficient Acceleration of
+    LLM Inference
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2405.18628](https://ar5iv.labs.arxiv.org/html/2405.18628)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: \newfloatcommand
+  prefs: []
+  type: TYPE_NORMAL
+- en: capbtabboxtable[][\FBwidth]
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hao (Mark) Chen¹  Wayne Luk¹  Ka Fai Cedric Yiu²
+  prefs: []
+  type: TYPE_NORMAL
+- en: Rui Li³  Konstantin Mishchenko³  Stylianos I. Venieris³  Hongxiang Fan^(1,3)
+  prefs: []
+  type: TYPE_NORMAL
+- en: ¹Imperial College London, UK
+  prefs: []
+  type: TYPE_NORMAL
+- en: ²Hong Kong Polytechnic University, Hong Kong
+  prefs: []
+  type: TYPE_NORMAL
+- en: ³Samsung AI Center, Cambridge, UK
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{hc1620,w.luk}@ic.ac.uk  {rui.li,s.venieris}@samsung.com'
+  prefs: []
+  type: TYPE_NORMAL
+- en: konsta.mish@gmail.com  cedric.yiu@polyu.edu.hk  hongxiangfan@ieee.org
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The auto-regressive decoding of Large Language Models (LLMs) results in significant
+    overheads in their hardware performance. While recent research has investigated
+    various speculative decoding techniques for multi-token generation, these efforts
+    have primarily focused on improving processing speed such as throughput. Crucially,
+    they often neglect other metrics essential for real-life deployments, such as
+    memory consumption and training cost. To overcome these limitations, we propose
+    a novel parallel prompt decoding that requires only $0.0002$ further speed improvement.
+    Our code is available at [https://github.com/hmarkc/parallel-prompt-decoding](https://github.com/hmarkc/parallel-prompt-decoding).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/fb1c33fd97409e332a49f9513a4a43fb.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Comparison of memory, speedup, and training cost on MT-Bench with
+    Vicuna-7B. Circle diameter shows training GPU hours.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The recent advances in large language models (LLMs) are increasingly gaining
+    influence across various AI applications. However, autoregressive generation,
+    the de facto approach employed in LLM inference, suffers from inadequate hardware
+    performance due to its inherent sequential nature [[23](#bib.bib23)]. Speculative
+    decoding [[13](#bib.bib13), [2](#bib.bib2), [11](#bib.bib11)], an emerging acceleration
+    technique, employs a guess-and-verify framework for LLM inference, where a smaller
+    draft model first predicts multiple tokens sequentially and then the original
+    LLM verifies them in parallel. Despite its potential, the effectiveness of speculative
+    decoding is limited by the complexity and cost of training a draft model capable
+    of consistently achieving high acceptance rates across diverse base models and
+    datasets. Additionally, the extra runtime memory overhead for executing draft
+    models poses a significant barrier to the broader adoption of speculative decoding,
+    particularly in edge and mobile environments where memory capacity is limited.
+    Considering the growing need for user privacy and personalization, deploying LLMs
+    on devices urges a more memory- and cost-efficient solution for accelerating LLM
+    inference. Recent efforts have explored the possibility of generating multiple
+    tokens in parallel without relying on a separate transformer draft model [[20](#bib.bib20)].
+    Approaches such as inserting additional decoding heads [[1](#bib.bib1)] and retrieving
+    frequently used tokens [[9](#bib.bib9)] are employed to enhance performance. However,
+    these methods either aggressively assume conditional independence among the tokens
+    generated in a single step [[1](#bib.bib1), [9](#bib.bib9)], or use placeholder
+    tokens (e.g., [PAD] token) that do not convey enough contextual information [[20](#bib.bib20)].
+    Therefore, they often suffer from low acceptance rates or degradation in output
+    quality due to the lack of sufficient conditional information during inference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To alleviate the complexity and overhead associated with the use of draft models
+    while maintaining a high acceptance rate, we propose Parallel Prompt Decoding
+    (PPD), a novel architecture-agnostic and memory-efficient framework that adopts
+    prompt tuning for non-autoregressive LLM inference. Inspired by the human natural
+    language generation process where continuous words like common expressions and
+    phrases are produced simultaneously, PPD introduces the use of prompt tokens,
+    the meticulously trained embeddings, for multi-token prediction. Specifically,
+    these trained prompt tokens are appended to the original input sequence in parallel,
+    enabling the concurrent generation of multiple output tokens in a single forward
+    pass. The key intuition of PPD lies in the observation that if trained properly,
+    prompt tokens appended to the input can approximate tokens generated at future
+    timesteps, thereby partially recovering the missing conditional dependency information
+    for multi-token generation. By strategically positioning trained prompt tokens,
+    PPD achieves up to a 28% higher acceptance rate when predicting long-range tokens.
+    To further increase the token acceptance rate, we generate multiple candidate
+    continuations with each prompt token and use them in combination with a customized
+    tree attention mask to minimize the computation and memory overhead. The capability
+    of PPD to use low-cost prompt tokens for accurate multi-token prediction forms
+    the foundation for accelerating LLM inference. As shown in Figure [1](#S1.F1 "Figure
+    1 ‣ 1 Introduction ‣ Hardware-Aware Parallel Prompt Decoding for Memory-Efficient
+    Acceleration of LLM Inference"), PPD achieves a comparable speedup to the state-of-the-art
+    speculative decoding approaches with negligible memory overhead and reduced training
+    cost. Moreover, to facilitate the optimized implementation of PPD across different
+    hardware platforms, we propose a hardware-aware dynamic sparse tree technique
+    that adaptively refines the prompt structure during runtime based on the computational
+    resources available on the specific hardware.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/83cc2e570f9e9491521f830ba311fb6b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Overview of PPD. The left section shows the location of trainable
+    parameters and the middle section displays the combined guess-and-verify process
+    during inference. The "prompt token" denotes the special token with separately
+    trained embeddings to perform parallel prediction.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To demonstrate the effectiveness of our approach, we evaluate PPD on MobileLLaMA
+     [[6](#bib.bib6)], Vicuna-7b and Vicuna-13b [[5](#bib.bib5)]. Running on a single
+    GPU using the A100-40GB and RTX 4090, our method achieves a speedup ratio for
+    inference from 2.12$\times$ across a diverse range of popular datasets including
+    MT-Bench, HumanEval, and GSM8K. Our experiments demonstrate that PPD not only
+    achieves comparable throughput to the state-of-the-art speculative decoding method,
+    but it also manages this with significantly fewer trainable parameters—specifically,
+    0.0002% of trainable parameters—and incurs only a minimal memory overhead (0.0004%),
+    showcasing that PPD is remarkably cost- and memory-efficient. The training of
+    prompt tokens can be completed in 16 hours using one A100 GPU, 8 hours using four
+    GeForce RTX 3090 GPUs, compared to the 1-2 days on four A100 GPUs required for
+    Eagle [[16](#bib.bib16)]. Furthermore, since PPD does not require the modification
+    of the original LLM or the addition of extra networks, it is highly adaptable
+    and orthogonal to other decoding techniques. For instance, it can be effectively
+    combined with a draft model to further reduce inference latency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our contributions are summarized as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A novel Parallel Prompt Decoding (PPD) that adopts cost-effective prompt tokens
+    for non-autoregressive LLM inference, achieving a high acceptance rate for long-distance
+    token prediction with preserved output quality.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A hardware-aware dynamic sparse tree technique that adaptively optimizes the
+    prompt structure of PPD at runtime based on the available compute and memory resources,
+    facilitating its efficient deployment on various hardware platforms.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: An open-source implementation of PPD, accompanied by comprehensive evaluations
+    on various models and benchmarks. Our experiments demonstrate that PPD achieves
+    significant speed improvements with negligible memory overhead and reduced training
+    cost.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 2 Background and Related Work
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To enhance the inference speed of LLM, various approaches adopt an iterative
+    guess-and-verify strategy to enable multi-token generation. In the guessing phase,
+    potential future tokens are proposed at a faster speed than in traditional autoregressive
+    implementations. Subsequently, a parallelized verification process assesses which
+    guessed tokens should be accepted. Depending on how tokens are generated during
+    the guess stage, these approaches can generally be categorized as i) speculative
+    decoding and ii) parallel decoding.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.1 Speculative Decoding
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: The guessing phase of speculative decoding adopts a lightweight draft model
+    to generate multiple tokens at an increased speed [[11](#bib.bib11)]. During the
+    verification stage, the original LLM subsequently determines the acceptance of
+    the guessed tokens. It is worth noting that both draft and original models still
+    follow the auto-regressive inference scheme. The speedup comes from two factors: i) the
+    draft model runs much faster than the original model and more tokens can be generated
+    within the same time unit; and ii) token verification is executed concurrently,
+    either by batching or by incorporating multiple candidates into a single input
+    using customized sparse attention masks [[18](#bib.bib18)]. Therefore, the overall
+    speedup depends on the acceptance rate and the inference latency of draft models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building on the speculative decoding scheme, various studies have been conducted
+    to further optimize its inference speed. To improve the accuracy of the draft
+    model and its token acceptance rate, Eagle [[16](#bib.bib16)] incorporates the
+    hidden features into the draft model’s forward pass. SpecInfer [[18](#bib.bib18)]
+    adopts a tree-based speculative inference and verification scheme, improving the
+    diversity of speculation candidates. Sequoia [[4](#bib.bib4)] optimizes the sparse
+    tree structure by considering the capability of the underlying hardware platforms.
+    However, most of these methods require the storage and maintenance of a separate
+    draft model. Moreover, there is extra complexity in designing an efficient draft
+    model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2 Parallel Decoding
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: To overcome the inherent limitations of autoregressive inference and the memory
+    overhead associated with using a separate draft model, several attempts have been
+    made to integrate both guessing and verification using one unified model. Medusa¹¹1We
+    categorize Medusa as parallel decoding because it only adopts LM heads instead
+    of separate models. [[1](#bib.bib1)] introduces language model (LM) heads at the
+    final layer of the original LLM, facilitating the generation of multiple tokens
+    in a single forward pass. It also utilizes tree attention masks in its verification
+    process to increase speed even further. To enhance token drafting with retrieval-augmented
+    generation [[10](#bib.bib10)], Rest [[9](#bib.bib9)] introduce retrieval-based
+    decoding tailored for specific scenarios. Inspired by Jacobi decoding [[20](#bib.bib20)]
+    that adopts multiple special tokens to accelerate machine translation, Lookahead
+    Decoding [[8](#bib.bib8)] improves upon this method by generating parallel n-grams
+    and employing a caching memory pool. To capture more information while using multiple
+    special tokens at distinct positions, PaSS [[19](#bib.bib19)] trains additional
+    tokens with embedding layers for parallel decoding. Hierarchical parallel decoding [[17](#bib.bib17)]
+    introduces the use of $[Fork]$ tokens, enabling parallel execution of multiple
+    structural subroutines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our approach can be categorized as parallel decoding, with three novel features
+    to distinguish it from other approaches: 1) PPD trains the embeddings of parameterized
+    ensemble prompt tokens, 2) it utilizes a dynamic sparse tree, adapting its structure
+    at every inference step, and 3) we propose a hardware-aware algorithm for designing
+    a dynamic sparse tree tailored to each hardware platform.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Parallel Prompt Decoding (PPD)
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'PPD trains embeddings for prompt tokens rather than developing a separate model.
+    Our method integrates three substeps into a single decoding step, following the
+    guess-and-verify strategy: (1) candidate generation, where multiple candidate
+    continuations²²2A candidate token, also referred to as a ”guess token”, is a draft
+    token generated from a prompt token. are predicted by strategically inserting
+    the prompt tokens into the input sequence. Tree attention [[18](#bib.bib18)] merges
+    the processing of multiple candidates into a single forward pass; (2) candidate
+    verification, where two verification schemes, exact matching [[8](#bib.bib8)]
+    and typical acceptance [[1](#bib.bib1)], are implemented; (3) candidate acceptance,
+    where validated candidates are integrated into the input and KV cache is updated
+    accordingly. The inference scheme in Figure [2](#S1.F2 "Figure 2 ‣ 1 Introduction
+    ‣ Hardware-Aware Parallel Prompt Decoding for Memory-Efficient Acceleration of
+    LLM Inference") illustrates the generation and verification combined in a single
+    forward pass.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Prompt Tokens
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: The prompt tokens are the key component of PPD to realize multi-token generation.
+    Initially introduced in [[12](#bib.bib12)] to adapt LLMs for specific tasks, prompt
+    tokens are typically prepended to the input, with outputs generated in an autoregressive
+    manner. In this work, we propose a novel approach of utilizing prompt tokens by
+    strategically positioning them at locations where tokens are anticipated to be
+    generated in parallel. For conventional parallel decoding techniques [[23](#bib.bib23),
+    [1](#bib.bib1)] that presume complete conditional independence among tokens decoded
+    in a single step, the exact conditional probability $p(y_{i+k+1}|x,y_{1:i+k})$
+    represents the generated outputs so far, $k></math> is the prompt token with token
+    distance <math id=$. Through this forward pass in the decoder layers, these causally
+    linked prompt tokens facilitate the flow of information along the sequence of
+    speculative tokens, thus restoring the conditional probability.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Ensemble Prompt Tokens
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Inspired by prompt ensembling [[12](#bib.bib12)], which uses multiple prompts
+    to generate diverse responses and aggregates these to derive a single answer,
+    we introduce the concept of ensemble prompt token (EPT). This additional abstraction
+    allows us to decouple each prompt token from the fixed embedding dimension. For
+    every prompt token, there exist multiple corresponding EPTs, each with its distinct
+    embedding. We modify the attention mask to ensure that each $n^{\text{th}}$ denotes
+    the $j^{\text{th}}$. ⁴⁴4Further details about EPTs can be found in Appendix [B](#A2
+    "Appendix B Extended Ablation Study ‣ Hardware-Aware Parallel Prompt Decoding
+    for Memory-Efficient Acceleration of LLM Inference").
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Training
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'During training, only the embeddings of prompt tokens are changed, with the
+    parameters of the original LLM remaining frozen. We adopt the following two training
+    techniques:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Random Insertion of Prompt Tokens: Randomly inserting prompt tokens throughout
+    the input sequence reduces contextual bias from appending them only at the end.
+    This approach broadens the predictive capacity of prompt tokens beyond a limited
+    vocabulary such as <eos> and punctuation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Knowledge Distillation: To align the predictive behavior of prompt tokens with
+    the original LLM, we employ knowledge distillation. Instead of using hard labels,
+    prompt tokens are trained against the logits produced by the original LLM. Following
+    Medusa [[1](#bib.bib1)], The loss function is formulated as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $L_{PD}=\frac{1}{N}\sum_{i=1}^{N}D_{KL}(P_{i}\parallel Q_{i})\cdot\alpha^{i-1},$
+    |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $D_{KL}$ is the corresponding distribution from the original LLM, and
+    $\alpha$ is the decay ratio.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Dynamic Sparse Tree
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 4.1 Motivation
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: To achieve higher speedup, PPD utilizes a specialized tree attention [[1](#bib.bib1),
+    [18](#bib.bib18)] to process multiple candidates within a single decoding step
+    without expanding the batch size. Notably, PPD employs a sparse tree [[1](#bib.bib1),
+    [4](#bib.bib4)], designed to prioritize candidates with higher prediction accuracy.
+    One key distinction from the sparse tree used in previous works is the appending
+    of a sequence of prompt tokens to each tree node as shown in Figure [3](#S4.F3
+    "Figure 3 ‣ 4.1 Motivation ‣ 4 Dynamic Sparse Tree ‣ Hardware-Aware Parallel Prompt
+    Decoding for Memory-Efficient Acceleration of LLM Inference"). To optimize the
+    amortized acceptance length across decoding steps, it is crucial to carefully
+    balance the number of candidate tokens and prompt tokens. Instead of appending
+    a uniform number of prompt tokens to every candidate token, we allocate them based
+    on each candidate’s probability, causing the tree’s maximum depth and structure
+    to vary at each decoding step.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d7c00009a37d210065004fb074abdba1.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Dynamic sparse tree.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Construction Algorithm
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We aim to construct a dynamic sparse tree that maximizes the amortized number
+    of tokens generated with limited candidate tokens and prompt tokens. We first
+    define the tree construction algorithm as a constrained optimization problem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Definition 4.1.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Let $m$ corresponding to state $s_{k}$ composed solely of candidate tokens.
+    The maximum depth of $\text{C}(T_{k})$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Proposition 4.1.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: For a dynamic sparse tree state $T_{k}$ at each path position $k$ represents
+    the contribution of a token $v$ to the expected number of tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We then propose an approximation of the amortized number of tokens generated,
+    by considering the tokens generated at the current and the next decoding step.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Proposition 4.2.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The expected total number of tokens $F(T_{k})$ represents the state transition
+    probability from state $s_{k}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We are now ready to introduce Proposition [4.3](#S4.Thmproposition3 "Proposition
+    4.3\. ‣ 4.2 Construction Algorithm ‣ 4 Dynamic Sparse Tree ‣ Hardware-Aware Parallel
+    Prompt Decoding for Memory-Efficient Acceleration of LLM Inference"), which we
+    use in the pruning algorithm.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Proposition 4.3.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: For a dynamic sparse tree state $T_{k}$ is given by $\Delta F=p(c)\cdot(f(T_{i})-f(T_{i-1}))$
+    denotes the number of prompt tokens prior to removal. We assume that <math id="S4.Thmproposition3.p1.9.m9.1"
+    class="ltx_Math" alttext="i></math>.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To construct an approximately optimal dynamic sparse tree with specified numbers
+    of candidate and prompt tokens, the process includes: (1) Optimal Candidate Trees:
+    Constructing trees using only candidate tokens at varying depths, employing the
+    algorithm from Medusa [[1](#bib.bib1)] and Sequoia [[4](#bib.bib4)] to maximize
+    $f(T_{k})$ (Proposition [4.3](#S4.Thmproposition3 "Proposition 4.3\. ‣ 4.2 Construction
+    Algorithm ‣ 4 Dynamic Sparse Tree ‣ Hardware-Aware Parallel Prompt Decoding for
+    Memory-Efficient Acceleration of LLM Inference")), continuing until the desired
+    prompt token count is reached.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We now introduce the formulation of the real amortized number of tokens generated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Proposition 4.4.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The amortized number of tokens $R(T_{k})$ is the steady-state probability of
+    state $s_{i}$ is the function defined in Proposition [4.1](#S4.Thmproposition1
+    "Proposition 4.1\. ‣ 4.2 Construction Algorithm ‣ 4 Dynamic Sparse Tree ‣ Hardware-Aware
+    Parallel Prompt Decoding for Memory-Efficient Acceleration of LLM Inference").
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Hardware-awareness. All the probabilities used above can be approximated on
+    a validation dataset. The dynamic sparse tree construction algorithm can now be
+    formulated as finding the dynamic sparse tree $T$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $c(n_{c},n_{p})=\max_{T,&#124;C(T)&#124;=n_{c},&#124;T&#124;=n_{c}+n_{p}}R(T).$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: For a fixed tree size $n$, to identify the dynamic sparse tree that maximizes
+    $R(T_{k})$ (hardware-dependent). The speedup ratio, $\text{Speedup}(n)=\frac{\tau(n)}{L_{fp}(n)}$
+    that maximizes $\text{Speedup}(n)$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Experiments
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Models and testbeds. We conducted all the experiments using MobileLLaMA-1.4B [[6](#bib.bib6)],
+    Vicuna-7B and Vicuna-13B [[5](#bib.bib5)]. We used 3 prompt tokens and 1 EPT per
+    prompt token for all inference experiments. The inference throughputs of the models
+    are evaluated on a single NVIDIA A100 GPU with 40GB of memory and a GeForce RTX
+    4090 using a batch size of 1 and FP16 precision. Further details about the experimental
+    setup can be found in Appendix [C](#A3 "Appendix C Experiment Details ‣ Hardware-Aware
+    Parallel Prompt Decoding for Memory-Efficient Acceleration of LLM Inference").
+  prefs: []
+  type: TYPE_NORMAL
+- en: Training. We froze all trainable parameters of the original LLM. Prompt token
+    embeddings were trained using distillation logits generated from the ShareGPT
+    dataset [[22](#bib.bib22)], with a maximum context length of 1024, a cosine learning
+    rate scheduler starting at 0.01, and no warmup. Prompt token embeddings are initialized
+    with normal text token embeddings.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Datasets. We assess the throughput performance of PPD across various tasks and
+    datasets. Specifically, we evaluated PPD using the MT-Bench dataset [[25](#bib.bib25)],
+    which contains multi-turn questions with a range of topics, in both non-greedy
+    (temperature follows the default configuration) and greedy settings (temperature=0).
+    We used the GSM8K [[7](#bib.bib7)] and HumanEval [[3](#bib.bib3)] datasets only
+    in the greedy setting. The GSM8K dataset consists of grade school math problems
+    and we used the first 500 questions of the test split for our evaluations. HumanEval
+    includes coding tasks, for which we set a maximum new token limit of 512 to control
+    the length of the generated sequences. We used the Alpaca [[15](#bib.bib15)] dataset
+    as the validation dataset to produce the latencies and acceptance lengths used
+    for dynamic sparse tree construction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.1 Speedup Comparison with Parallel Decoding Methods
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/ac2920a015e6501aa01dc2597efcf1d1.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: Comparative evaluation of latency speedup between PPD and other parallel
+    decoding methods. The experiments were conducted using the MT-Bench dataset, with
+    the temperature set to MT-Bench’s default configuration for Medusa and PPD.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We compare the speedup ratios of PPD with state-of-the-art parallel decoding
+    methods on MT-Bench in non-greedy settings in Figure [4](#S5.F4 "Figure 4 ‣ 5.1
+    Speedup Comparison with Parallel Decoding Methods ‣ 5 Experiments ‣ Hardware-Aware
+    Parallel Prompt Decoding for Memory-Efficient Acceleration of LLM Inference").
+    PPD achieves speedups up to 13.8% higher than Medusa and between 2 times and 3
+    times higher than other parallel decoding methods. We examine the factors contributing
+    to the enhanced speedup ratios and other performance metrics, as presented in
+    Table [1](#S5.T1 "Table 1 ‣ 5.1 Speedup Comparison with Parallel Decoding Methods
+    ‣ 5 Experiments ‣ Hardware-Aware Parallel Prompt Decoding for Memory-Efficient
+    Acceleration of LLM Inference"). The reasons for the increase in speedup ratios
+    are two-fold. Firstly, PPD produces candidate tokens with a higher acceptance
+    rate than Medusa when utilizing a sparse tree of the same size. Notably, PPD continues
+    to achieve a comparable or slightly better acceptance rate even when employing
+    a much smaller sparse tree – ranging from one-third to half the size. Secondly,
+    PPD benefits from lower forward pass latency due to its ability to use smaller
+    sparse tree sizes and hence shorter input lengths. PPD also eliminates the computational
+    overhead associated with separate decoding heads. PPD maintains the same output
+    quality, achieving about the same score on MT-Bench while using significantly
+    fewer trainable parameters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Method | $T$ (%) | $S_{\text{tr}}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| M | Vanilla | 50.2 | 1.00 | 0.020 | - | NA | NA | 1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PPD | 108.7 | 2.43 | 0.022 | Same | 4.50$e^{-4}$ | (10,84,89) | (40,285,285)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| V-7B | Vanilla | 39.2 | 1.00 | 0.026 | 5.99 | NA | NA | 1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Medusa | 82.0 | 2.51 | 0.0307 | 5.98 | 8.07 | 63 | 63 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PPD | 88.0 | 2.54 | 0.029 | 5.93 | 1.82$e^{-4}$ | (10,33,34) | (40,105,105)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| V-13B | Vanilla | 30.4 | 1.00 | 0.0330 | 6.38 | NA | NA | 1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Medusa | 63.4 | 2.59 | 0.0408 | - | 5.52 | 63 | 63 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PPD | 66.1 | 2.44 | 0.0379 | 6.32 | 7.87$e^{-5}$ | (10,20,20) | (40,60,60)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 1: Comparative performance metrics of MobileLLaMA (M) for greedy setting,
+    Vicuna-7B (V-7B) and Vicuna-13B (V-13B) for non-greedy setting using different
+    decoding methods. The table details throughput ($T$) and input lengths ($S_{\text{input}}$),
+    represented as tuples. Same means the output matches with that of the original
+    LLM.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure [5](#S5.F5 "Figure 5 ‣ 5.1 Speedup Comparison with Parallel Decoding
+    Methods ‣ 5 Experiments ‣ Hardware-Aware Parallel Prompt Decoding for Memory-Efficient
+    Acceleration of LLM Inference") displays the throughput of PPD on MT-Bench, HumanEval,
+    and GSM8K with temperature equal to 0\. PPD achieves consistent walltime speedup
+    ratios from 2.12$\times$. This can be attributed to the fact that both code and
+    math equations often contain fixed patterns and repetitive symbols, which narrows
+    the range of plausible candidates and simplifies the prediction. We also found
+    that with typical acceptance, the speedup increases with temperature. Another
+    notable trend is that smaller models, such as Vicuna-7B, generally achieve more
+    significant speedup ratios as compared to larger models, like Vicuna-13B. PPD
+    aims to generate more tokens per step, which comes with increased computational
+    demands. For larger models that already require substantial computational resources,
+    it is necessary to limit the size of the sparse tree to avoid exceeding the GPU’s
+    utilization cap and causing increased latency. As a result, the number of tokens
+    accepted per step is reduced, leading to lower speedups. However, this can be
+    amortized when using more powerful GPUs than the NVIDIA A100 and the RTX 4090,
+    such as NVIDIA H100.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/2fafdcc4d5855bef9bf01c005cc32ac4.png)![Refer to caption](img/16dc144812532ff123d93bd87c250800.png)![Refer
+    to caption](img/769e8600c769e6529b01321a7cf4911c.png)![Refer to caption](img/1b7a6b7e739841607e07ae652a257925.png)![Refer
+    to caption](img/37f4802fa5bb2fd715de8b6320a69e13.png)![Refer to caption](img/f40587693ba432d81d6aea41fde4dfa8.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: Throughput of PPD and vanilla models across different tasks. The
+    temperature for experiments are set to 0 and the generated output of PPD exactly
+    matches that of the original LLM. We do not show results of Vicuna-13B on RTX
+    4090 as it does not fit into the GPU memory.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.2 Long-range Token Prediction
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/cffd636015b3728d435d80793d4912eb.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) PD vs. Medusa
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/af587a71942c3786939aacd9cb4d87c1.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) 100 EPT vs. 1 EPT
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a4e13b56f0ff223a691b5a3fdde293b6.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (c) 13b vs. 7b
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 6: Accumulative accuracy comparisons across different model configurations
+    and prediction distances. ‘V7’ for Vicuna-7B, and ‘V13’ for Vicuna-13B. The notation
+    ‘@$i$. ‘100 EPT’ represents 100 EPTs per prompt token. Accumulative accuracy is
+    defined as top-k accuracy (e.g., a prediction is correct if the top-k candidates
+    contain the ground truth). These measurements were obtained from the Alpaca Eval
+    dataset with a maximum of 20 steps.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For a specific sparse tree, the accumulative accuracy provides a theoretical
+    upper bound for the number of generated tokens per step and the maximum possible
+    speedup ratio. Hence, maximizing accumulative accuracy is crucial for the effectiveness
+    of PPD. Figure [6](#S5.F6 "Figure 6 ‣ 5.2 Long-range Token Prediction ‣ 5 Experiments
+    ‣ Hardware-Aware Parallel Prompt Decoding for Memory-Efficient Acceleration of
+    LLM Inference") demonstrates the accumulative accuracy of the tokens predicted
+    at various positions. We summarize the following three key insights from the results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: PPD excels at predicting more distant tokens. As depicted in Figure [6(a)](#S5.F6.sf1
+    "In Figure 6 ‣ 5.2 Long-range Token Prediction ‣ 5 Experiments ‣ Hardware-Aware
+    Parallel Prompt Decoding for Memory-Efficient Acceleration of LLM Inference"),
+    PPD consistently outperforms Medusa in accuracy across all token positions. The
+    accuracy gap between PPD and Medusa widens with the increased token distance (e.g.,
+    the top-10 accuracy difference is 0.03 for the ‘next next’ word versus 0.12 for
+    the ‘next next next next’ word). This improvement can be attributed to PPD’s ability
+    to partially recover conditional dependency information through causally connected
+    prompt tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: PPD performs well at generating a broader array of plausible token candidates.
+    For example, in predicting the token at a token distance of 3, the top-10 candidates
+    exhibit an accuracy improvement of 0.1 over Medusa, compared to only 0.02 for
+    the top-1 candidate. This demonstrates the value of using tree attention and the
+    largest viable tree size during inference, as multiple candidate continuations
+    further boost accuracy improvement.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Multiple EPTs per prompt token and larger model sizes yield modest improvements
+    in prediction accuracy. Figure [6(b)](#S5.F6.sf2 "In Figure 6 ‣ 5.2 Long-range
+    Token Prediction ‣ 5 Experiments ‣ Hardware-Aware Parallel Prompt Decoding for
+    Memory-Efficient Acceleration of LLM Inference") shows that using 100 EPTs per
+    prompt token leads to accuracy improvement, ranging from 0.018 to 0.045. Figure [6(c)](#S5.F6.sf3
+    "In Figure 6 ‣ 5.2 Long-range Token Prediction ‣ 5 Experiments ‣ Hardware-Aware
+    Parallel Prompt Decoding for Memory-Efficient Acceleration of LLM Inference")
+    displays that PPD with Vicuna-13B outperforms Vicuna-7B with an accuracy gain
+    of 0.011$\thicksim$0.038\. This increase is due to Vicuna-13B’s greater embedding
+    dimensions and deeper layers, which enhance the expressive power of prompt tokens.
+    However, these gains are modest and can be offset by the increased computational
+    burden of larger models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.3 Memory Efficiency and Synergistic Integrations with Speculative Decoding
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/695694b18033060589255ac4174d4456.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7: Model memory usage.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Memory efficiency. As shown in Figure [7](#S5.F7 "Figure 7 ‣ 5.3 Memory Efficiency
+    and Synergistic Integrations with Speculative Decoding ‣ 5 Experiments ‣ Hardware-Aware
+    Parallel Prompt Decoding for Memory-Efficient Acceleration of LLM Inference"),
+    we compare the memory overhead of PPD with the leading parallel decoding (Medusa)
+    and speculative decoding approaches (Eagle). The memory overhead of PPD is just
+    0.004% of Medusa’s and 0.007% of Eagle’s. This efficiency stems from the efficient
+    use of embeddings in PPD, which are significantly smaller than decoding heads
+    and draft models, both of which scale with vocabulary size.
+  prefs: []
+  type: TYPE_NORMAL
+- en: PPD + Speculative Decoding. As an orthogonal optimization in accelerating LLMs,
+    PPD can be easily integrated with speculative decoding [[11](#bib.bib11)]. To
+    demonstrate this, we applied PPD to Vicuna-68M [[24](#bib.bib24)] and used it
+    as the draft model for Vicuna-7B. This combination resulted in a speedup of up
+    to 1.22$\times$ for speculative decoding on Vicuna-7B compared to using speculative
+    decoding alone.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.4 Ablation Study
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Dynamic Sparse Tree. Figure [8(a)](#S5.F8.sf1 "In Figure 8 ‣ 5.4 Ablation Study
+    ‣ 5 Experiments ‣ Hardware-Aware Parallel Prompt Decoding for Memory-Efficient
+    Acceleration of LLM Inference") shows that dynamic sparse trees consistently achieve
+    longer acceptance lengths compared to static and random ones across varying sizes.
+    The acceptance length for dynamic sparse trees shows a steady increase as the
+    tree size extends, suggesting its good scalability. The convergence of dynamic
+    and static sparse trees at larger sizes suggests a structural similarity emerging
+    from constraints in tree depth and tree node count.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hardware-aware Tree Size. Figure [8(b)](#S5.F8.sf2 "In Figure 8 ‣ 5.4 Ablation
+    Study ‣ 5 Experiments ‣ Hardware-Aware Parallel Prompt Decoding for Memory-Efficient
+    Acceleration of LLM Inference") presents the theoretical speedup across different
+    GPUs. Figure [8(c)](#S5.F8.sf3 "In Figure 8 ‣ 5.4 Ablation Study ‣ 5 Experiments
+    ‣ Hardware-Aware Parallel Prompt Decoding for Memory-Efficient Acceleration of
+    LLM Inference") validates that the optimal sparse tree size, derived from theoretical
+    speedup models, indeed results in the greatest actual speedup observed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7f2200db0837d718ac9529d52e25c608.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/577f6b437e78d028817d5df937652e63.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/2f15873121e7c5b01e7190046c2bfed6.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (c)
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 8: Evaluation of Dynamic Sparse Tree Performance. The static sparse
+    trees in (a) always use the largest possible prompt tokens for each candidate.
+    The theoretical speedup in (b) is calculated as the ratio of acceptance lengths
+    (hardware-independent) to latency overhead (hardware-dependent). The optimal tree
+    size is obtained from the peak value of the theoretical speedup. The latencies
+    in (b) are obtained from inference on the same prompt for 512 forward passes.
+    (c) shows the actual speedup obtained by running inference on different GPUs with
+    different tree lengths on Alpaca Eval dataset.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Conclusion
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We introduced PPD, a memory-efficient, cost-effective, and powerful parallel
+    decoding method that incorporates a hardware-aware dynamic sparse tree. Utilizing
+    specially trained prompt tokens to predict long-range tokens accurately, PPD achieves
+    a speedup of up to 2.49$\times$ in inference while employing only 0.0002% additional
+    trainable parameters and without incorporating new models or architectural components.
+    We believe that PPD offers a novel perspective on the capabilities of parallel
+    decoding. In future work, it could be synergized with other speculative or parallel
+    decoding techniques to expedite inference even further.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Cai et al. [2024] Tianle Cai, Yuhong Li, Zhengyang Geng, Hongwu Peng, Jason D.
+    Lee, Deming Chen, and Tri Dao. Medusa: Simple LLM Inference Acceleration Framework
+    with Multiple Decoding Heads. *arXiv preprint arXiv:2401.10774*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chen et al. [2023] Charlie Chen, Sebastian Borgeaud, Geoffrey Irving, Jean-Baptiste
+    Lespiau, Laurent Sifre, and John Jumper. Accelerating Large Language Model Decoding
+    with Speculative Sampling. *arXiv preprint arXiv:2302.01318*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chen et al. [2021] Mark Chen et al. Evaluating Large Language Models Trained
+    on Code. *arXiv preprint arXiv:2107.03374*, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chen et al. [2024] Zhuoming Chen, Avner May, Ruslan Svirschevski, Yuhsun Huang,
+    Max Ryabinin, Zhihao Jia, and Beidi Chen. Sequoia: Scalable, Robust, and Hardware-aware
+    Speculative Decoding. *arXiv preprint arXiv:2402.12374*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chiang et al. [2023] Wei-Lin Chiang, Zhuohan Li, Zi Lin, Ying Sheng, Zhanghao
+    Wu, Hao Zhang, Lianmin Zheng, Siyuan Zhuang, Yonghao Zhuang, Joseph E. Gonzalez,
+    Ion Stoica, and Eric P. Xing. Vicuna: An Open-Source Chatbot Impressing GPT-4
+    with 90%* ChatGPT Quality, March 2023. URL [https://lmsys.org/blog/2023-03-30-vicuna/](https://lmsys.org/blog/2023-03-30-vicuna/).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chu et al. [2023] Xiangxiang Chu, Limeng Qiao, Xinyang Lin, Shuang Xu, Yang
+    Yang, Yiming Hu, Fei Wei, Xinyu Zhang, Bo Zhang, Xiaolin Wei, and Chunhua Shen.
+    MobileVLM : A Fast, Strong and Open Vision Language Assistant for Mobile Devices.
+    *arXiv preprint arXiv:2312.16886*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Cobbe et al. [2021] Karl Cobbe, Vineet Kosaraju, Mohammad Bavarian, Mark Chen,
+    Heewoo Jun, Lukasz Kaiser, Matthias Plappert, Jerry Tworek, Jacob Hilton, Reiichiro
+    Nakano, Christopher Hesse, and John Schulman. Training verifiers to solve math
+    word problems. *arXiv preprint arXiv:2110.14168*, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Fu et al. [2023] Yichao Fu, Peter Bailis, Ion Stoica, and Hao Zhang. Breaking
+    the Sequential Dependency of LLM Inference Using Lookahead Decoding, November
+    2023. URL [https://lmsys.org/blog/2023-11-21-lookahead-decoding/](https://lmsys.org/blog/2023-11-21-lookahead-decoding/).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'He et al. [2023] Zhenyu He, Zexuan Zhong, Tianle Cai, Jason D. Lee, and Di He.
+    Rest: Retrieval-based Speculative Decoding. *arXiv preprint arXiv:2311.08252*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Karpukhin et al. [2020] Vladimir Karpukhin, Barlas Oğuz, Sewon Min, Patrick
+    Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, and Wen-tau Yih. Dense Passage Retrieval
+    for Open-Domain Question Answering. In *Proceedings of the 2020 Conference on
+    Empirical Methods in Natural Language Processing (EMNLP)*, pages 6769–6781, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kim et al. [2024] Sehoon Kim, Karttikeya Mangalam, Suhong Moon, Jitendra Malik,
+    Michael W. Mahoney, Amir Gholami, and Kurt Keutzer. Speculative Decoding with
+    Big Little Decoder. *Advances in Neural Information Processing Systems (NeurIPS)*,
+    36, 2024.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Lester et al. [2021] Brian Lester, Rami Al-Rfou, and Noah Constant. The Power
+    of Scale for Parameter-Efficient Prompt Tuning. In *Conference on Empirical Methods
+    in Natural Language Processing (EMNLP)*, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Leviathan et al. [2023] Yaniv Leviathan, Matan Kalman, and Yossi Matias. Fast
+    Inference from Transformers via Speculative Decoding. In *International Conference
+    on Machine Learning (ICML)*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li and Liang [2021] Xiang Lisa Li and Percy Liang. Prefix-tuning: Optimizing
+    continuous prompts for generation. In *Proceedings of the 59th Annual Meeting
+    of the Association for Computational Linguistics and the 11th International Joint
+    Conference on Natural Language Processing (Volume 1: Long Papers)*, pages 4582–4597\.
+    Association for Computational Linguistics, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. [2023] Xuechen Li, Tianyi Zhang, Yann Dubois, Rohan Taori, Ishaan
+    Gulrajani, Carlos Guestrin, Percy Liang, and Tatsunori B. Hashimoto. AlpacaEval:
+    An Automatic Evaluator of Instruction-following Models. [https://github.com/tatsu-lab/alpaca_eval](https://github.com/tatsu-lab/alpaca_eval),
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. [2024] Yuhui Li, Fangyun Wei, Chao Zhang, and Hongyang Zhang. EAGLE:
+    Speculative Sampling Requires Rethinking Feature Uncertainty. *arXiv preprint
+    arXiv:2401.15077*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. [2024] Mingdao Liu, Aohan Zeng, Bowen Wang, Peng Zhang, Jie Tang,
+    and Yuxiao Dong. APAR: LLMs can do auto-parallel auto-regressive decoding. *arXiv
+    preprint arXiv:2401.06761*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Miao et al. [2024] Xupeng Miao et al. SpecInfer: Accelerating Large Language
+    Model Serving with Tree-based Speculative Inference and Verification. In *ACM
+    International Conference on Architectural Support for Programming Languages and
+    Operating Systems (ASPLOS)*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Monea et al. [2023] Giovanni Monea, Armand Joulin, and Edouard Grave. PaSS:
+    Parallel Speculative Sampling. *arXiv preprint arXiv:2311.13581*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Santilli et al. [2023] Andrea Santilli, Silvio Severino, Emilian Postolache,
+    Valentino Maiorca, Michele Mancusi, Riccardo Marin, and Emanuele Rodolà. Accelerating
+    Transformer Inference for Translation via Parallel Decoding. In *Annual Meeting
+    of the Association for Computational Linguistics (ACL)*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Saxena [2023] Apoorv Saxena. Prompt Lookup Decoding, November 2023. URL [https://github.com/apoorvumang/prompt-lookup-decoding/](https://github.com/apoorvumang/prompt-lookup-decoding/).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: ShareGPT [2023] ShareGPT. ShareGPT, 2023. URL [https://huggingface.co/datasets/Aeala/ShareGPT_Vicuna_unfiltered](https://huggingface.co/datasets/Aeala/ShareGPT_Vicuna_unfiltered).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Stern et al. [2018] Mitchell Stern, Noam Shazeer, and Jakob Uszkoreit. Blockwise
+    Parallel Decoding for Deep Autoregressive Models. In *Advances in Neural Information
+    Processing Systems (NeurIPS)*, 2018.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Yang et al. [2024] Sen Yang, Shujian Huang, Xinyu Dai, and Jiajun Chen. Multi-Candidate
+    Speculative Decoding. *arXiv preprint arXiv:2401.06706*, 2024.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Zheng et al. [2023] Lianmin Zheng, Wei-Lin Chiang, Ying Sheng, Siyuan Zhuang,
+    Zhanghao Wu, Yonghao Zhuang, Zi Lin, Zhuohan Li, Dacheng Li, Eric P. Xing, Hao
+    Zhang, Joseph E. Gonzalez, and Ion Stoica. Judging LLM-as-a-Judge with MT-Bench
+    and Chatbot Arena. In *Advances in Neural Information Processing Systems (NeurIPS)*,
+    2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Supplementary Material
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hardware-Aware Parallel Prompt Decoding for Memory-Efficient Acceleration of
+    LLM Inference
+  prefs: []
+  type: TYPE_NORMAL
+- en: \doparttoc\faketableofcontents\parttoc
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix A Training Loss
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/fb93c1feb73074a26b3a56fd516e6e9b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) 3 prompt tokens, 1 EPTs
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/5bcaa9f654594d66db214b02006803cd.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) 3 prompt tokens, 100 EPTs
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 9: Training Loss'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We study the training loss of PPD with different EPTs. Figure [9(a)](#A1.F9.sf1
+    "In Figure 9 ‣ Appendix A Training Loss ‣ Hardware-Aware Parallel Prompt Decoding
+    for Memory-Efficient Acceleration of LLM Inference") shows that, with 3 prompt
+    tokens and 1 EPT, the initial loss is quite high, starting above 5\. There is
+    a sharp decrease in loss within the first epoch, dropping below 2\. After this
+    initial drop, the loss stabilizes and oscillates around a value slightly below
+    2 for the remainder of the training epochs (up to epoch 12). The loss oscillations
+    remain within a narrow range, indicating consistent performance. The fluctuation
+    can be attributed to the insertion of prompt tokens at random positions. On the
+    other hand, Figure [9(b)](#A1.F9.sf2 "In Figure 9 ‣ Appendix A Training Loss ‣
+    Hardware-Aware Parallel Prompt Decoding for Memory-Efficient Acceleration of LLM
+    Inference"), with 3 prompt tokens and 100 EPTs, shows the initial loss starting
+    below 3, significantly lower than PPD with 1 EPT. Similarly, there is a sharp
+    decrease within the first epoch, with the loss dropping to around 2.5\. However,
+    unlike PPD with 1 EPT, the loss continues to decrease gradually over the epochs,
+    showing a downward trend. This suggests that increasing the number of EPTs improves
+    the model’s learning capacity and reduce training loss more effectively over time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B Extended Ablation Study
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: B.1 Effect of EPTs on Prediction Accuracy
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Table 2: Prediction Accuracy of PPD with different EPTs. ’@i’ denotes a token
+    distance of i. ’Top-k’ denotes the top-k prediction accuracy. The results are
+    obtained on Alpaca dataset with 20 steps.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| EPT | @1 Top-1 | @1 Top-5 | @2 Top-1 | @2 Top-5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 100 | 0.506 | 0.794 | 0.276 | 0.602 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 50 | 0.502 | 0.791 | 0.281 | 0.604 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 20 | 0.501 | 0.791 | 0.276 | 0.607 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10 | 0.494 | 0.786 | 0.273 | 0.600 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 5 | 0.499 | 0.787 | 0.265 | 0.596 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | 0.486 | 0.777 | 0.259 | 0.583 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | 0.472 | 0.771 | 0.248 | 0.576 |'
+  prefs: []
+  type: TYPE_TB
+- en: Table [2](#A2.T2 "Table 2 ‣ B.1 Effect of EPTs on Prediction Accuracy ‣ Appendix
+    B Extended Ablation Study ‣ Hardware-Aware Parallel Prompt Decoding for Memory-Efficient
+    Acceleration of LLM Inference") presents the prediction accuracy of PPD using
+    different EPTs. The results indicate that increasing the number of EPTs generally
+    enhances the prediction accuracy of PPD, particularly for long-range token predictions.
+    Higher EPT numbers (e.g., 100 and 50) consistently produce better prediction accuracy
+    compared to lower EPT numbers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: B.2 Impact of Knowledge Distillation (KD), Epochs, and Batch Size on Prediction
+    Accuracy
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Table 3: Prediction Accuracy for PPD with and without knowledge distillation
+    (KD) for different EPTs, epochs, and batch sizes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| EPT | KD | Epoch | Batch | @1 Top-1 | @1 Top-5 | @2 Top-1 | @2 Top-5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 100 | Yes | 1 | 4 | 0.504 | 0.793 | 0.273 | 0.598 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 100 | Yes | 2 | 4 | 0.512 | 0.797 | 0.288 | 0.611 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 100 | Yes | 6 | 4 | 0.520 | 0.802 | 0.302 | 0.620 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 100 | Yes | 8 | 4 | 0.524 | 0.804 | 0.307 | 0.619 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 100 | Yes | 10 | 4 | 0.523 | 0.804 | 0.305 | 0.623 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 100 | Yes | 12 | 4 | 0.525 | 0.805 | 0.308 | 0.625 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 100 | No | 12 | 4 | 0.506 | 0.794 | 0.276 | 0.602 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 100 | Yes | 12 | 1 | 0.530 | 0.809 | 0.309 | 0.626 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | Yes | 12 | 1 | 0.484 | 0.775 | 0.259 | 0.581 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | Yes | 2 | 4 | 0.474 | 0.773 | 0.247 | 0.574 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | Yes | 6 | 4 | 0.480 | 0.773 | 0.250 | 0.580 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | Yes | 8 | 4 | 0.484 | 0.778 | 0.257 | 0.583 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | Yes | 10 | 4 | 0.482 | 0.777 | 0.257 | 0.584 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | Yes | 12 | 4 | 0.485 | 0.779 | 0.261 | 0.586 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | No | 12 | 4 | 0.472 | 0.771 | 0.248 | 0.576 |'
+  prefs: []
+  type: TYPE_TB
+- en: Table [3](#A2.T3 "Table 3 ‣ B.2 Impact of Knowledge Distillation (KD), Epochs,
+    and Batch Size on Prediction Accuracy ‣ Appendix B Extended Ablation Study ‣ Hardware-Aware
+    Parallel Prompt Decoding for Memory-Efficient Acceleration of LLM Inference")
+    summarizes our results with different settings. We analyze the effect of each
+    factor on the prediction accuracy in the following discussion.
+  prefs: []
+  type: TYPE_NORMAL
+- en: B.2.1 Training Epochs
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: We first investigate the effect of the number of training epochs on prediction
+    accuracy. For models using 100 EPTs with KD enabled and a batch size of 4, we
+    observe a steady improvement in prediction accuracy as the number of epochs increases.
+    Specifically, the Top-1 accuracy at a 1-token distance increases from 0.504 at
+    1 epoch to 0.525 at 12 epochs, while the Top-5 accuracy at a 1-token distance
+    improves from 0.793 to 0.805\. Similarly, Top-1 accuracy at a 2-token distance
+    increases from 0.273 to 0.308, and Top-5 accuracy at a 2-token distance improves
+    from 0.598 to 0.625 over the same range of epochs. This trend demonstrates the
+    positive impact of prolonged training on the performance of PPD when KD is applied.
+  prefs: []
+  type: TYPE_NORMAL
+- en: B.2.2 Knowledge Distillation
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: When KD is not applied, as shown for 100 EPTs at 12 epochs with a batch size
+    of 4, the performance metrics are generally lower. The improvement in prediction
+    accuracy with KD is up to 12%. This suggests that KD contributes significantly
+    to prediction accuracy for PPD.
+  prefs: []
+  type: TYPE_NORMAL
+- en: B.2.3 Effect of Batch Size
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: We also examine the impact of batch size on the prediction accuracy. For the
+    model trained with 100 EPTs, KD enabled, and 12 epochs, reducing the batch size
+    from 4 to 1 results in a slight improvement in prediction accuracy up to 1%.
+  prefs: []
+  type: TYPE_NORMAL
+- en: B.3 Prefix Tuning + Prompt Token
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Prefix tuning [[14](#bib.bib14)], similar to prompt tuning, provides a parameter-efficient
+    approach to fine-tune a pre-trained model. Unlike prompt tuning, it modifies the
+    KV cache of every attention layer by prepending trained vectors. We hypothesize
+    that the combination of prefix tuning and prompt tokens can lead to greater learning
+    capacity and higher prediction accuracy. This hypothesis is based on the intuition
+    that prompt tokens should see a different context than the input tokens when predicting
+    long-range tokens. For example, if the input sequence is "Once upon a time", then
+    enhancing the input with a prompt template might provide more suitable semantic
+    context for long-range prediction. An enhanced input like "Predict the next-next
+    token. Once upon a time" might empower the prompt token to predict the correct
+    next-next token. Prefix tuning serves as the prompt template to enhance the hidden
+    states visible to the prompt tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/0a56fc4b6e742fdfda0b368716c150a5.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 10: ’P1’ is the prefix token for the prompt token ’S1’ and ’P2’ for
+    ’S2’. ’C’ is the input token. The green tick means visibility during attention
+    calculation. For instance, ’S1’ can see ’P1’ but cannot see ’P2’. ’C’ does not
+    see any prefix tokens so the generated output corresponding to ’C’ is not altered
+    by the use of prefix tuning.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To retain the original model’s distribution, we modify the attention mask so
+    that prefix tokens are only visible to prompt tokens. This ensures that we can
+    generate outputs that preserve the original model’s distribution. We posit that
+    prompt tokens at different positions should see different contexts so we allow
+    a prompt token at a specific position to see a distinct set of prefix tokens,
+    as shown in Figure [10](#A2.F10 "Figure 10 ‣ B.3 Prefix Tuning + Prompt Token
+    ‣ Appendix B Extended Ablation Study ‣ Hardware-Aware Parallel Prompt Decoding
+    for Memory-Efficient Acceleration of LLM Inference").
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4: Prediction Accuracy of PPD with and without prefix tuning. 1 EPT is
+    used for all models and 1 prefix token is used for prefix tuning.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Prefix Tuning | @1 Top-1 | @1 Top-5 | @2 Top-1 | @2 Top-5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| No | 0.485 | 0.779 | 0.261 | 0.586 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Yes | 0.412 | 0.738 | 0.204 | 0.541 |'
+  prefs: []
+  type: TYPE_TB
+- en: Table [4](#A2.T4 "Table 4 ‣ B.3 Prefix Tuning + Prompt Token ‣ Appendix B Extended
+    Ablation Study ‣ Hardware-Aware Parallel Prompt Decoding for Memory-Efficient
+    Acceleration of LLM Inference") compares the prediction accuracy of PPD with and
+    without the use of prefix tuning. The results show that the models without prefix
+    tuning outperform those with prefix tuning up to 28%, which suggests that, in
+    this setup, prefix tuning does not enhance the prediction accuracy of PPD. Instead,
+    it appears to degrade performance, potentially due to the complexity introduced
+    by modifying the KV cache of attention layers with the prefix token. Unlike prompt
+    tokens, prefix tokens do not interact with input tokens, meaning they do not change
+    dynamically through the transformer layers based on the input context. This lack
+    of interaction and dynamic adjustment could be a factor contributing to the decreased
+    prediction accuracy observed with prefix tuning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: B.4 Custom Decoding Heads + Prompt Token
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: It has been demonstrated that a fine-tuned decoding head alone can effectively
+    predict long-range tokens [[23](#bib.bib23), [1](#bib.bib1)]. Thus, we hypothesize
+    that combining a separately fine-tuned decoding head with prompt tokens might
+    further enhance the potential of PPD. As shown in Figure [11](#A2.F11 "Figure
+    11 ‣ B.4 Custom Decoding Heads + Prompt Token ‣ Appendix B Extended Ablation Study
+    ‣ Hardware-Aware Parallel Prompt Decoding for Memory-Efficient Acceleration of
+    LLM Inference"), we trained a separate decoding head to transform only the hidden
+    states of prompt tokens into logits. A key distinction from Medusa is that this
+    decoding head is responsible for generating tokens at multiple positions, rather
+    than just one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/9678fc8ddba45f8071566016b9982ee2.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 11: Custom decoding head with PPD. The feature extractor refers to the
+    LLMs without the decoding heads. ’H1’ is the generated hidden state for the input
+    token ’C’. ’H2’ is the hidden state for the prompt token ’S1’ and ’H3’ for ’S2’.
+    ’LM1’ is the original LLM’s decoding head and it takes in the hidden states of
+    input tokens. ’LM2’ is the custom decoding heads for PPD and only takes in the
+    hidden states of prompt tokens.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We propose two training methods. In the first method, the custom decoding head
+    and prompt tokens are trained together from scratch in a single stage. In the
+    second method, the prompt tokens are initially trained for 2 epochs, followed
+    by training both the prompt tokens and the decoding head with a smaller learning
+    rate in a two-stage process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 5: Prediction Accuracy of PPD with and without custom decoding head.
+    1 EPT is used for all models. 1-stage and 2-stage refer to the training strategies
+    of custom decoding head.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method Name | @1 Top-1 | @1 Top-5 | @2 Top-1 | @2 Top-5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PPD without custom decoding head | 0.485 | 0.779 | 0.261 | 0.586 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PPD with custom decoding head (1-stage) | 0.385 | 0.614 | 0.229 | 0.482 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PPD with custom decoding head (2-stage) | 0.506 | 0.795 | 0.276 | 0.602 |'
+  prefs: []
+  type: TYPE_TB
+- en: Table [5](#A2.T5 "Table 5 ‣ B.4 Custom Decoding Heads + Prompt Token ‣ Appendix
+    B Extended Ablation Study ‣ Hardware-Aware Parallel Prompt Decoding for Memory-Efficient
+    Acceleration of LLM Inference") presents the prediction accuracy of PPD with and
+    without a custom decoding head. When trained using the single-stage method, PPD
+    with the custom decoding head shows a 12%-21% decrease in prediction accuracy
+    compared to the baseline PPD without the custom decoding head. This suggests that
+    the single-stage approach does not result in stable or effective training.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In contrast, the two-stage training method results in a limited improvement
+    of 2.1%-4.3% in prediction accuracy compared to the baseline. This suggests that
+    adding a custom decoding head may not be necessary, given the additional trainable
+    parameters and the limited improvement in prediction accuracy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: B.5 Attention Masking for EPTs
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: In this paper, we proposed a specialized attention mask for EPTs to achieve
+    the effect of prompt ensemble. However, there are alternative masking strategies
+    available. Here, we describe and compare three types of attention masks that we
+    implemented and experimented with.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/93523f27ca451486a148386453552cee.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Ensemble Attention Mask
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/25af6ca50580371f4c35376fa7d93be0.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Decoder-like Attention Mask
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/367dba5a22a6a6901e63c805b6948cf4.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (c) Encoder-like Attention Mask
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 12: Different Mask Strategies for EPTs. ’C’ is an input token. ’V1’
+    and ’V2’ are the EPTs for prompt tokens ’S1’ and ’V3’ and ’V4’ for ’S2’.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: B.5.1 Ensemble Attention Masking
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: The ensemble attention masking is the masking strategy we previously described.
+    In this approach, EPTs are divided into $n$ in group $i$. Since this masking strategy
+    effectively averages the results of disjoint groups of EPTs, we refer to it as
+    the "ensemble attention masking". Figure [12(a)](#A2.F12.sf1 "In Figure 12 ‣ B.5
+    Attention Masking for EPTs ‣ Appendix B Extended Ablation Study ‣ Hardware-Aware
+    Parallel Prompt Decoding for Memory-Efficient Acceleration of LLM Inference")
+    provides an example of the ensemble attention masking.
+  prefs: []
+  type: TYPE_NORMAL
+- en: B.5.2 Decoder-like Attention Masking
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: Decoder-like attention masking is a simple strategy where EPTs can only attend
+    to EPTs with smaller position indices. This results in a triangular-shaped attention
+    mask, similar to the one used in decoder layers, hence the name "decoder-like
+    attention masking". Figure [12(b)](#A2.F12.sf2 "In Figure 12 ‣ B.5 Attention Masking
+    for EPTs ‣ Appendix B Extended Ablation Study ‣ Hardware-Aware Parallel Prompt
+    Decoding for Memory-Efficient Acceleration of LLM Inference") provides an example
+    of this masking strategy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: B.5.3 Encoder-like Attention Masking
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: In encoder-like attention masking, an EPT corresponding to a prompt token $P$.
+    This allows EPTs to see both preceding and succeeding EPTs, similar to the token
+    visibility in an encoder layer, hence the name "encoder-like attention masking".
+    Figure [12(c)](#A2.F12.sf3 "In Figure 12 ‣ B.5 Attention Masking for EPTs ‣ Appendix
+    B Extended Ablation Study ‣ Hardware-Aware Parallel Prompt Decoding for Memory-Efficient
+    Acceleration of LLM Inference") illustrates this masking strategy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: B.5.4 Results
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: 'Table 6: Prediction Accuracy of PPD with different attention masking strategies
+    for EPTs. 100 EPT is used for all models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method Name | @1 Top-1 | @1 Top-5 | @2 Top-1 | @2 Top-5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PPD with ensemble attention mask | 0.506 | 0.794 | 0.276 | 0.602 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PPD with decoder attention mask | 0.465 | 0.755 | 0.262 | 0.572 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PPD with encoder attention mask | 0.473 | 0.765 | 0.256 | 0.573 |'
+  prefs: []
+  type: TYPE_TB
+- en: The results in Table [6](#A2.T6 "Table 6 ‣ B.5.4 Results ‣ B.5 Attention Masking
+    for EPTs ‣ Appendix B Extended Ablation Study ‣ Hardware-Aware Parallel Prompt
+    Decoding for Memory-Efficient Acceleration of LLM Inference") indicate that the
+    ensemble attention mask outperforms the other masking strategies. In comparison,
+    the PPD with decoder attention mask shows 4.9%-8.0% lower prediction accuracy.
+    The PPD with encoder attention mask also underperforms in prediction accuracy
+    relative to the ensemble attention mask by 3.7%-7.2%.
+  prefs: []
+  type: TYPE_NORMAL
+- en: These results suggest that the ensemble attention mask is the most effective
+    strategy among the three, likely due to its ability to effectively average the
+    votes of disjoint groups of EPTs, thereby improving prediction accuracy. The decoder-like
+    and encoder-like attention masks, while simpler, do not provide the same level
+    of performance, indicating that the structure and specificity of the ensemble
+    attention mask better facilitate accurate long-range token prediction. Additionally,
+    ensemble attention masking is more sparse, which offers greater potential for
+    optimization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: B.6 Aggregation Method for EPTs
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'In addition to simply averaging the logits from EPTs, we explored more advanced
+    aggregation methods. For instance, we applied learned weights to aggregate the
+    logits. The final logit $p$ can be expressed as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $p=\sum_{i=1}^{n}w_{i}\cdot p_{i},$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: where $n$ EPT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 7: Prediction Accuracy of PPD with different aggregation methods for
+    EPTs. 100 EPT is used for all models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Aggregation Method | @1 Top-1 | @1 Top-5 | @2 Top-1 | @2 Top-5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Average | 0.506 | 0.794 | 0.276 | 0.602 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Learned Weight | 0.503 | 0.779 | 0.250 | 0.576 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'The results in Table [7](#A2.T7 "Table 7 ‣ B.6 Aggregation Method for EPTs
+    ‣ Appendix B Extended Ablation Study ‣ Hardware-Aware Parallel Prompt Decoding
+    for Memory-Efficient Acceleration of LLM Inference") show the prediction accuracy
+    of PPD with two different aggregation methods for EPTs: simple averaging and learned
+    weights. When using learned weights to aggregate logits, the model shows a slight
+    decrease of 0.6%-9.4% in prediction accuracy.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: These results suggest that while learned weights provide a more flexible aggregation
+    method, they do not necessarily lead to improved prediction accuracy in this context.
+    The simplicity and stability of the averaging method appear to offer better performance,
+    possibly due to the additional complexity and potential overfitting introduced
+    by learning the weights.
+  prefs: []
+  type: TYPE_NORMAL
+- en: B.7 Multi-exit Ensemble
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: While using EPTs for prompt ensemble improves prediction accuracy, it also increases
+    input length, resulting in higher computational overhead and forward pass latency.
+    To address this, we propose the use of a multi-exit ensemble method. In multi-exit
+    ensemble, the hidden states of a prompt token from the last $k$ decoder layers
+    are extracted and averaged to produce the final hidden state, which is then decoded
+    by the decoding head into a guess token, as illustrated in Figure [13](#A2.F13
+    "Figure 13 ‣ B.7 Multi-exit Ensemble ‣ Appendix B Extended Ablation Study ‣ Hardware-Aware
+    Parallel Prompt Decoding for Memory-Efficient Acceleration of LLM Inference").
+    This approach achieves prompt ensemble without the associated computational costs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d5a14b7eaa1e26a1cacb1d6c442402bf.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 13: Mult-exit ensemble. ’D1’, ’D10’, ’D11’, and ’D12’ are the decoder
+    layers in order. ’S1’ is a prompt token and ’H1’, ’H2’, ’H3’ are the corresponding
+    hidden states from the last 3 decoder layers. ’H4’ is obtained from averaging
+    these 3 hidden states. The decoding head ’LM’ translates ’H4’ into a token ’E’.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The hypothesis is that taking the hidden states from the last few decoder layers
+    for ensemble might work because these layers capture increasingly abstract and
+    high-level representations of the input sequence. By averaging the hidden states
+    from multiple layers, we can combine diverse but complementary information, leading
+    to a more robust and accurate final hidden state. Additionally, since the final
+    layers are closest to the output, they are more likely to contain refined and
+    contextually relevant information, making the ensemble more effective.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 8: Prediction Accuracy of PPD with and without multi-exit ensemble. 1
+    EPT is used for all models. $k$ exits refer to the number of exits used.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method Name | @1 Top-1 | @1 Top-5 | @2 Top-1 | @2 Top-5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PPD without multi-exit | 0.485 | 0.779 | 0.261 | 0.586 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PPD with 3 exits | 0.422 | 0.723 | 0.214 | 0.517 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PPD with 2 exits | 0.420 | 0.723 | 0.213 | 0.518 |'
+  prefs: []
+  type: TYPE_TB
+- en: Table [8](#A2.T8 "Table 8 ‣ B.7 Multi-exit Ensemble ‣ Appendix B Extended Ablation
+    Study ‣ Hardware-Aware Parallel Prompt Decoding for Memory-Efficient Acceleration
+    of LLM Inference") shows the comparison of prediction accuracy of PPD with and
+    without mult-exit ensemble. The results indicate that the introduction of multi-exit
+    ensemble with both 2 and 3 exits results in a 7%-18% decrease in prediction accuracy
+    compared to the baseline model without multi-exit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: These findings suggest that the multi-exit ensemble approach, as implemented,
+    does not enhance prediction accuracy and instead leads to a notable decrease in
+    performance. This may be due to the averaging of hidden states from multiple layers
+    introducing noise or reducing the specificity of the representations needed for
+    accurate prediction. Further refinement of the multi-exit ensemble may be necessary
+    to achieve the desired improvements in accuracy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix C Experiment Details
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: For the throughput experiments, each result is obtained by averaging three separate
+    runs. The standard deviations of these runs are reported as error bars in the
+    bar charts. To ensure a fair comparison in our comparative experiments, we maintained
+    consistent hardware settings and software versions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We selected 3 prompt tokens because adding more would not further increase the
+    expected acceptance length due to the tree size limit. The number of EPTs per
+    prompt token was optimized to maximize throughput.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In Fig. [2](#S1.F2 "Figure 2 ‣ 1 Introduction ‣ Hardware-Aware Parallel Prompt
+    Decoding for Memory-Efficient Acceleration of LLM Inference"), the temperature
+    settings for PPD, Eagle [[16](#bib.bib16)], and Medusa [[1](#bib.bib1)] follow
+    the default configuration, while the other models use a greedy setting (temperature=0).
+    This choice is based on findings that retrieval-based methods perform significantly
+    worse in non-greedy settings. Similarly, LOOKAHEAD DECODING [[8](#bib.bib8)],
+    REST [[9](#bib.bib9)], and PLD [[21](#bib.bib21)] in Fig. [4](#S5.F4 "Figure 4
+    ‣ 5.1 Speedup Comparison with Parallel Decoding Methods ‣ 5 Experiments ‣ Hardware-Aware
+    Parallel Prompt Decoding for Memory-Efficient Acceleration of LLM Inference")
+    also use a temperature setting of 0 for the same reasons.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix D Limitations
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Despite its efficiency, we have identified the following limitations of PPD:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Low prediction accuracy for very small models. We found that for very small
+    models like Vicuna-68M [[24](#bib.bib24)], which only has 2 decoder layers and
+    an embedding dimension of less than 1000, PPD suffers from low prediction accuracy.
+    This is because the embedding dimension determines the expressive power of a prompt
+    token, and the transformer architecture’s depth is crucial for efficient information
+    flow to the prompt tokens.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: GPU compute resource constraint. Since PPD trades additional compute resources
+    for increased throughput, its effectiveness depends on the availability of idle
+    GPU compute resources. On a GPU with limited compute resources, the speedup ratios
+    achieved by PPD are expected to decrease.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '3.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Extended input length. The improvement in acceptance length with PPD is not
+    as significant as the gain in prediction accuracy compared to Medusa. This is
+    because PPD must reserve a substantial portion of the input for prompt tokens,
+    which limits the size of the sparse tree that can be used.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Appendix E Societal Impact
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In this paper, we proposed PPD to accelerate LLMs easily and cheaply. Since
+    PPD reduces the time required for handling a single inference request, it could
+    bring down the cost of deploying LLMs for both the companies and the public. This
+    might lead to increased accessibility of LLM services. Moreover, latency-sensitive
+    applications like chatbots will benefit greatly from the usage of PPD as it reduces
+    the inference latency greatly, thereby enhancing the user experience.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While PPD aims to make AI more accessible, there may still be a digital divide
+    where certain communities lack the necessary infrastructure, such as stable internet
+    connections or modern hardware, to fully benefit from these advancements. This
+    could further widen the gap between technology-privileged and underserved populations.
+    On the other hand, PPD might be misused by malicious parties to manipulate the
+    output of the original LLM, resulting in the generation of unreliable information
+    and fake data.
+  prefs: []
+  type: TYPE_NORMAL

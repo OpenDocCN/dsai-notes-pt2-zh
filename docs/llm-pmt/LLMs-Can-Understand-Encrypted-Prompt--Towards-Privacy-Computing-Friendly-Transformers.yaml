@@ -1,0 +1,1307 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:50:49'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'LLMs Can Understand Encrypted Prompt: Towards Privacy-Computing Friendly Transformers'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2305.18396](https://ar5iv.labs.arxiv.org/html/2305.18396)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Xuanqi Liu
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tsinghua University
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sudo Privacy
+  prefs: []
+  type: TYPE_NORMAL
+- en: lxq22@mails.tsinghua.edu.cn
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&Zhuotao Liu'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tsinghua University
+  prefs: []
+  type: TYPE_NORMAL
+- en: zhuotaoliu@tsinghua.edu.cn Work partially supported by an internship program
+    funded by Sudo Privacy.Corresponding author.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The community explored to build private inference frameworks for transformer-based
+    large language models (LLMs) in a server-client setting, where the server holds
+    the model parameters and the client inputs its private data (or prompt) for inference.
+    However, these frameworks impose significant overhead when the private inputs
+    are forward propagated through the original LLMs. In this paper, we show that
+    substituting the computation- and communication-heavy operators in the transformer
+    architecture with privacy-computing friendly approximations can greatly reduce
+    the private inference costs while incurring very minor impact on model performance.
+    Compared to state-of-the-art Iron (NeurIPS 2022), our privacy-computing friendly
+    model inference pipeline achieves a $5\times$ acceleration in computation and
+    an 80% reduction in communication overhead, while retaining nearly identical accuracy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Large language models (LLMs) attracted significant attentions, driven by advances
+    in artificial intelligence and the availability of large amounts of training data [[30](#bib.bib30),
+    [4](#bib.bib4)]. LLMs are trained on massive datasets of text and code, and can
+    be used for a variety of tasks, including generating text, translating languages,
+    writing different kinds of creative content, and answering questions in an informative
+    way.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Nowadays, LLMs are usually provided as online inference services. This, however,
+    raises serious privacy concerns. On the one hand, the client’s input (prompt,
+    such as questions and requirements) must be submitted in plaintext to the service
+    provider. In certain use cases, the prompt could contain sensitive information
+    that the client would like to hide from the service provider. The growing concern
+    for privacy, particularly in the age of Web3.0 [[26](#bib.bib26)], and the enactment
+    of privacy protection laws such as the GDPR, necessitate that privacy be a top
+    priority when offering online LLM services. On the other hand, the LLMs hosted
+    by the service provider are proprietary, so it is critical to ensure that an adversarial
+    client cannot obtain the model parameters during inference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The private inference paradigm of neural networks has recently emerged as a
+    solution to the aforementioned problem [[8](#bib.bib8), [17](#bib.bib17), [24](#bib.bib24),
+    [28](#bib.bib28), [14](#bib.bib14), [11](#bib.bib11), [32](#bib.bib32)]. In this
+    paradigm, the client submits an encrypted version of its input and works collaboratively
+    with the service provider to obtain an encrypted inference result that can only
+    be recovered by the client itself. The service provider cannot obtain any private
+    information about the input. However, the efficiency of the private inference,
+    especially on large neural networks, is extremely limited by the extensive use
+    of Homomorphic Encryption (HE) and Secure Multiparty Computation (MPC) primitives
+    on various expensive neural network operators.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Two recent art [[14](#bib.bib14)] and [[11](#bib.bib11)] demonstrate the possibility
+    of private inference on popular neural networks (*e.g.,* convolutional networks
+    and transformers) in computer vision and natural language processing, respectively.
+    We observe that the time and communication cost of private inference on LLMs consisting
+    of multiple transformer blocks is much higher than that of the traditional convolutional
+    networks For instance, even on a model as small as BERT-Tiny [[3](#bib.bib3)],
+    [[11](#bib.bib11)] takes $\sim$50 seconds and 2GB of communication for a single
+    inference, while Cheetah [[14](#bib.bib14)] can scale to ResNet-32 [[12](#bib.bib12)]
+    with 15 seconds and 0.11 GB communication for one inference. This difference is
+    because transformers use sophisticated nonlinear functions that are *computationally-unfriendly*
+    to the cryptographic primitives. For instance, convolutional networks use ReLU [[10](#bib.bib10)]
+    and batch normalization [[15](#bib.bib15)], while transformers prefer GELU [[13](#bib.bib13)],
+    meanwhile extensively use softmax function and layer normalization techniques [[1](#bib.bib1)]¹¹1During
+    inference, batch normalization does not compute data statistics, but layer normalization
+    does.. Through experiments, we show that these functions take up to more than
+    70% of the total cost for private inference on transformers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This paper explores to improve the efficiency of private inference on transformer-based
+    models. To this end, we first build a private inference system that fully supports
+    the private computations required for transformer-based LLMs. We then conduct
+    extensive experiments to identify the critical performance bottleneck. Based on
+    this, we design various substitutions for these bottlenecked components, and use
+    fine-tuning to retain model performance after replacing these components. Taken
+    together, we build an effective system to provide LLM inference service while
+    fully protecting the privacy of the input data. We perform extensive evaluations
+    and show that applying our privacy-computing friendly operators in LLMs can reduce
+    $\sim 80\%$ of the overall private inference time, while retaining nearly identical
+    model accuracy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1.1 Related Work
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Private inference of neural networks was first proposed by [[8](#bib.bib8)].
+    It demonstrates the feasibility of fully using Homomorphic Encryption (HE) to
+    achieve non-interactive private inference. However, due to the linearity restriction
+    of HE, every nonlinear function such as ReLU and MaxPooling must be replaced by
+    linear or polynomial approximation. Works after [[8](#bib.bib8)] primarily sought
+    to use Secure Multiparty Computation (MPC) to deal with the nonlinear functions,
+    and exploit the single instruction multiple data (SIMD) property of HE to accelerate
+    the inference [[17](#bib.bib17), [28](#bib.bib28), [32](#bib.bib32)]. A recent
+    art Cheetah [[14](#bib.bib14)] proposes a special encoding method to encode vectors
+    and matrices into HE polynomials, which achieves state-of-the-art performance
+    in computing matrix-vector multiplication and convolutions. Iron [[11](#bib.bib11)]
+    realizes that matrix-matrix multiplication (rather than matrix-vector multiplication)
+    dominates in transformer-based inference, and therefore improves the vanilla polynomial
+    encoding by introducing a blocking method that prioritizes the batch dimension.
+    Despite the optimization, some of the non-linear functions (*e.g.,* GELU, softmax
+    and layer normalization layers) are fundamentally expensive in private inference.
+    For instance, Iron [[11](#bib.bib11)] reports that running a single inference
+    on BERT-Tiny [[3](#bib.bib3)] requires 50 seconds time and 2GB transmission. Two
+    recent studies explore replacing these fundamentally expensive non-linear functions
+    with operators that are more friendly in private inference. For instance, Chen
+    et al. [[5](#bib.bib5)] use ReLU to substitute all non-linearities in a transformer,
+    and relying on HE for linear operations. However, their architecture requires
+    the ReLU functions to be executed *in plaintext by the client*, which may reveal
+    the proprietary model owned by the server. Li et al. [[21](#bib.bib21)], on the
+    other hand, use quadratic polynomial approximations for GELU and softmax. Yet,
+    they rely on Trusted Third Party (TTP) to produce correlated randomness for MPC.
+    This is inappropriate in practice because designing and certifying a TTP is an
+    open problem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Preliminaries
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 2.1 Transformer Architecture
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Transformers dominate the model architecture in the area of natural language
+    processing since its birth [[37](#bib.bib37)]. The state-of-the-art large language
+    models (LLMs) typically consist of an embedding layer, a transformer encoder stack
+    with $n$ identical encoder layers, and a downstream task sub-model (a classifier
+    model for predicting labels or a generative model for predicting the next token) [[7](#bib.bib7),
+    [25](#bib.bib25), [4](#bib.bib4), [31](#bib.bib31), [30](#bib.bib30)]. In this
+    paper, for simplicity we ignore the embedding layer (*i.e.,* both the server and
+    the client could produce the embeddings with respect to some input sentence),
+    and focus on private inference on the transformer encoder stack and the downstream
+    sub-model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One transformer encoder layer consists of two main parts: the multihead-attention
+    and the feed-forward layer. A residual structure and layer normalization layer
+    are inserted after both parts. Formally, for the input $x$ to go through one transformer
+    encoder layer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle x_{1}$ |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle y$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: The multihead-attention consists of an input projection (a fully connected layer),
+    a softmax function and an output projection (also an FC), while the feed-forward
+    layer consists of two fully connected layers and an activation function between
+    them (usually GELU).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thus, a private inference system on transformer-based models should support
+    forward propagation of fully connected layers, softmax function, GELU function,
+    and layer normalization with private input.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2 Cryptography Primitives
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To realize a private inference system for LLMs, we mainly use two cryptographic
+    primitives.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Homomorphic Encryption. Homomorphic encryption supports computation (addition
+    and multiplication) over ciphertexts. We use the BFV fully homomorphic encryption
+    cryptosystem based on the RLWE problem with residual number system (RNS) optimization [[9](#bib.bib9),
+    [2](#bib.bib2)]. Specifically, the BFV scheme is constructed with a set of parameters
+    $\{N,t,q\}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Secure Multiparty Computation. We utilize additive secret-sharing scheme upon
+    the field $\mathbb{F}=\mathbb{Z}_{t}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.3 Threat Model
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We consider a semi-honest threat model including two parties: a server holding
+    all the model weights, and a client holding the inference input data. The model
+    architecture is public. The two parties adhere to the protocols but are curious
+    about the private information held by the other party (*i.e.,* the model weights
+    and inference inputs).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Approach
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We first build a fully functional framework for private inference of transformers
+    and LLMs based on transformers, including all building blocks such as FC layers,
+    ReLU, GELU activation functions, etc. We run real-world models within the framework
+    and measure the inference cost of each kind of operation to determine the bottleneck
+    of the end-to-end inference pipeline. Then, we transform these computationally
+    and communication heavy layers or functions into cryptography-friendly ones, and
+    fine-tune the model to retain the model accuracy during substitution. Finally,
+    we test the post-tuned models with our private inference framework to evaluate
+    their inference performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Private Transformer Inference
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We use the secret-sharing form of all intermediate outputs throughout the private
+    inference procedure to protect the privacy of both the inputs and the model weights.
+    Concretely, we treat every neural network operator $y_{i}=f_{i}(x_{i})$ to them.
+    All operators in the transformers could be divided into two categories: (1) linear
+    operators (*e.g.,* fully connected layers); (2) non-linear operators (*e.g.,*
+    GELU, Softmax function). We do not consider the residual structure as a single
+    operator as it is simply an addition of secret shares.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1.1 Linear Operators
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'The core linear protocol for private inference over linear layers is the matrix
+    multiplication protocol. It is realized using homomorphic encryption, with the
+    polynomial encoding primitive first proposed by [[14](#bib.bib14)] and extended
+    by [[11](#bib.bib11)]. We start with a simple situation where one party holds
+    $\mathbf{A}$ in Algorithm [1](#alg1 "In 3.1.1 Linear Operators ‣ 3.1 Private Transformer
+    Inference ‣ 3 Approach ‣ LLMs Can Understand Encrypted Prompt: Towards Privacy-Computing
+    Friendly Transformers").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Input: The server inputs $\mathbf{A}\in\mathbb{R}_{m\times r}$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 2 Client encrypts the polynomial $b$ is used)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathbf{C}=\pi_{C}^{-1}(c)=(c_{kmr+ir+r-1})_{ik}.$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Algorithm 1 Private matrix multiplication protocol $\Pi_{\mathsf{MatMul}}$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Fully connected layer. In fully connected layers ($\mathbf{y}=f(\mathbf{x})=\mathbf{W}\mathbf{x}+\mathbf{b}$
+    in the forward propagation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Suppose the client holds $\langle\mathbf{x}\rangle_{0}$.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The two parties invoke $\Pi_{\mathsf{MatMul}}(\mathbf{W},\langle\mathbf{x}\rangle_{0})$.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The client outputs $\langle\mathbf{y}\rangle_{0}=\langle\mathbf{W}\langle\mathbf{x}\rangle_{0}\rangle_{0}$.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Attention. In multihead attention, however, we need to calculate the multiplication
+    of two secret-shared matrices (*i.e.,* $\mathbf{Q}\mathbf{K}^{T}$, with both the
+    input matrices secret-shared. The two parties perform the following procedure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The two parties invoke $\Pi_{\mathsf{MatMul}}(\langle\mathbf{X}\rangle_{1},\langle\mathbf{Y}\rangle_{0})$,
+    and the two parties transposes the result after the invocation. and add their
+    results, so that they obtain the secret shares of the cross terms:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '|  | $\langle\mathbf{Z}_{\mathsf{cross}}\rangle_{0}+\langle\mathbf{Z}_{\mathsf{cross}}\rangle_{1}=\mathbf{Z}_{\mathsf{cross}}=\langle\mathbf{X}\rangle_{1}\langle\mathbf{Y}\rangle_{0}+\langle\mathbf{X}\rangle_{0}\langle\mathbf{Y}\rangle_{1}$
+    |  | (2) |'
+  prefs:
+  - PREF_IND
+  type: TYPE_TB
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The client outputs $\langle\mathbf{Z}\rangle_{0}=\langle\mathbf{Z}_{\mathsf{cross}}\rangle_{0}+\langle\mathbf{X}\rangle_{0}\langle\mathbf{Y}\rangle_{0}$.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 3.1.2 Non-linear Operators
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'For the non-linear operators, we mainly use several primitives provided by [[14](#bib.bib14),
+    [32](#bib.bib32)] libraries, which rely on the oblivious transfer cryptographic
+    primitive. Recall that each operator takes as input secret-shares, and output
+    secret-shares to the two parties. We use these primitives as black boxes in our
+    system:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: $\Pi_{\mathsf{ReLU}}$.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: $\Pi_{\mathsf{EleMul}}$.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: $\Pi_{\mathsf{max}}$.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: $\Pi_{\mathsf{exp}}$.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: $\Pi_{\mathsf{recip}}$.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: $\Pi_{\mathsf{rSqrt}}$.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: $\Pi_{\mathsf{tanh}}$.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: We now discuss the private inference procedure for each kind of non-linearity
+    in the transformer architecture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'GELU. GELU is an activation function commonly used in transformers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathsf{GELU}(x)=0.5x\cdot\left[1+\tanh\left(\sqrt{2/\pi}(x+0.044715x^{3})\right)\right]$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: To produce $\mathsf{GELU}(x)$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Softmax. Softmax is a key operator in scaled-dot attention construction. It
+    is applied to the attention scores as a non-linearity and normalization to put
+    more verbosity into the model. For a vector $\mathbf{x}=(x_{0},\cdots,x_{n-1})$,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathsf{Softmax}(\mathbf{x})=\left(e^{x_{i}}/\textstyle\sum_{j=0}^{n-1}e^{x_{j}}\right)_{i\in[0,n)}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: To compute the softmax function, the two parties first invoke $\Pi_{\mathsf{max}}(\langle\mathbf{x}\rangle)$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'LayerNorm. Layer normalization is an operator used to limit the bound of the
+    layer outputs of self attention and feed forward sub-networks. It first calculate
+    the mean and variance (standard deviation) along the embedding dimension and normalizes
+    the input with these statistics, and then perform a learnable affine projection
+    (with parameters $\gamma,\beta$ is a small term to prevent division by zero):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathsf{LayerNorm}(\mathbf{x})=\frac{\mathbf{x}-\bar{\mathbf{x}}}{\sqrt{\mathrm{Var}(\mathbf{x})+\epsilon}}\cdot\gamma+\beta$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: For calculating the normalized values, the two parties invoke the $\Pi_{\mathsf{recip}}$
+    to produce the outputs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1.3 Other Optimizations
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Reducing the communication cost of matrix multiplication. We observe that in
+    the BFV homomorphic encryption system, the core of decryption could be rendered
+    as computing $m=s\cdot c_{1}+c_{0}$ part of the ciphertexts. Since the required
+    coefficients are very sparse in matrix multiplication, this roughly reduces half
+    of the server-to-client communication for linear operators.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hardware parallelization of HE operations. In RLWE-based HE cryptosystem, the
+    operations are essentially done on the polynomial ring. We observe that the addition
+    and multiplication of polynomials could be effectively parallelized.³³3Multiplication
+    of polynomials is done by number theory transform (NTT) and elementwise multiplication.
+    Therefore, we implement a GPU-version of the BFV cryptosystem, including homomorphic
+    addition and cipher-plain multiplication, to further accelerate linear evaluations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Identifying Performance Bottleneck
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Given the inference framework, we run private inference on the transformer-based
+    language models to identify the performance bottleneck. As an example, we experiment
+    with the BERT-Tiny [[3](#bib.bib3), [36](#bib.bib36)] model with embedding dimension
+    $E=128$. The time and communication costs are summarized in Table [1](#S3.F1 "Figure
+    1 ‣ 3.2 Identifying Performance Bottleneck ‣ 3 Approach ‣ LLMs Can Understand
+    Encrypted Prompt: Towards Privacy-Computing Friendly Transformers") and Figure [1](#S3.F1
+    "Figure 1 ‣ 3.2 Identifying Performance Bottleneck ‣ 3 Approach ‣ LLMs Can Understand
+    Encrypted Prompt: Towards Privacy-Computing Friendly Transformers").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Operator | Time | Comm. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MatMul | 3.75s | 111MB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Softmax | 5.95s | 518MB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GELU | 3.67s | 1020MB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LayerNorm | 0.62s | 165MB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Total | 13.99s | 1814MB |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 1: Inference cost of various operators used in BERT-Tiny'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f8a7c610f34a55a14db98ba1d6d60f71.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Ratio of various operators’ cost'
+  prefs: []
+  type: TYPE_NORMAL
+- en: These results indicate that the non-linear functions (GeLU, Softmax and LayerNorm)
+    consume a significant portion of time and communication cost in the privacy inference
+    pipeline, indicating that these non-linearities are *not privacy-computing friendly*.
+    For example, compared with ReLU activation function, GELU requires four evaluation
+    of element-wise multiplication, and a computation-heavy $\tanh$ function based
+    on look-up tables. Thus, it is critical to substitute these operators for privacy-computing
+    friendly ones. Yet, retaining the model accuracy after applying alternative operators
+    is non-trivial. In the following subsection, we elaborate on an automatic substitution
+    workflow.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Exploring Privacy-computing Friendly Transformers
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In order to accelerate the private inference of transformers, the server substitutes
+    the operators in its model with privacy-computing friendly alternatives and fine-tune
+    the model to adapt to the replacement. Specifically, it replaces the GELU, Softmax
+    and LayerNorm operators layer by layer, and test the model accuracy of each replacement
+    after fine-tuning. The modification is accepted if the accuracy drop is within
+    a predetermined threshold, or reverted otherwise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3.1 Substitution Workflow
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We introduce a workflow to substitute the privacy-computing unfriendly operators
+    in the transformer architecture. As introduced in preliminaries, the transformer-based
+    language models typically include an encoder stack consisting of $n$ (*i.e.,*
+    testing the model on the validation data set) The workflow is summarized in Algorithm [2](#alg2
+    "In 3.3.1 Substitution Workflow ‣ 3.3 Exploring Privacy-computing Friendly Transformers
+    ‣ 3 Approach ‣ LLMs Can Understand Encrypted Prompt: Towards Privacy-Computing
+    Friendly Transformers").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Input: An original transformer model $\mathcal{M}$ with the parameters of block
+    $0$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 2 Substitution workflow
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bound Controlling. In the private inference framework, we adapt fixed-point
+    decimals, where each real number is encoded into a integer with a scale of $2^{f}$.
+    Our preliminary experiments show that when the encoder stack consists of many
+    transformer encoder blocks, the absolute bound of the intermediate hidden states
+    becomes larger after each block. As a result, the private inference procedure
+    will encounter overflow in the secret-shares, producing meaningless prediction
+    results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To address this issue, rather than directly using division to control the bounds,
+    we modify the fine-tuning process to be aware of bound controlling. Specifically,
+    we set an acceptable bound $B$. We design the loss function with three terms to
+    be minimized during fine-tuning:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathcal{L}=(1-\alpha_{1}-\alpha_{2})\mathcal{L}_{\mathrm{task}}+\alpha_{1}\mathcal{L}_{\mathrm{decay}}+\alpha_{2}\mathcal{L}_{\mathrm{bound}}$
+    |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\mathcal{L}_{\mathrm{task}}$ is the weight decay term against overfitting,
+    and
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathcal{L}_{\mathrm{bound}}=\textstyle\sum_{i=0}^{n-1}&#124;&#124;{\max\{&#124;\mathbf{h}_{i}&#124;-B,0\}}&#124;&#124;_{2}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: is a bounding term that penalizes the values too great. $|\mathbf{h}_{i}|$.
+    If the hidden states’ values were too small, the relative error due to fixed-point
+    approximation would become too large.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3.2 Substitution Strategy
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: As linear projection and ReLU activation function are more friendly to privacy
+    computing, we mainly use these two components and their combination as our substitution
+    candidates.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'LayerNorm. The expensive part of the layer normalization operator is division
+    operation of the standard deviation. Intuitively, the mean value is substracted
+    to keep the intermediate activations centralized, and the deviation division is
+    to keep them bounded. The average value may vary greatly across different samples,
+    but the standard deviation (or the bound) can be captured by the affine transformation
+    $\hat{\mathbf{x}}\cdot\gamma+\beta$. Based on this insight, we remove the standard-deviation
+    calculation part and only keep the centralization and affine transformation to
+    be fine-tuned:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathsf{LayerNorm^{\prime}}(\mathbf{x})=(\mathbf{x}-\bar{\mathbf{x}})\cdot\gamma+\beta$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Softmax. Replacing softmax function is more challenging. As the attention mask
+    is added to the attention scores before the softmax, and the attention mask may
+    contain $-\infty$ is a small constant to prevent division by zero):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathsf{Softmax}^{\prime}(\mathbf{x})=({\mathsf{ReLU}(x_{i})}/{\textstyle\sum_{j=0}^{n-1}\mathsf{ReLU}(x_{j})+\epsilon})_{i\in[0,n)}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Since softmax function itself is not trainable, whenever we substitute softmax
+    function with the simplified version, we treat the input and output projections
+    of the related multi-head attention as the trainable parameters in Algorithm [2](#alg2
+    "In 3.3.1 Substitution Workflow ‣ 3.3 Exploring Privacy-computing Friendly Transformers
+    ‣ 3 Approach ‣ LLMs Can Understand Encrypted Prompt: Towards Privacy-Computing
+    Friendly Transformers"). With this approach, the whole model can adapt to the
+    softmax replacements faster.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: GELU. GELU is the most expensive operator in the private inference pipeline.
+    It is surprising that they could be simply replaced with ReLU, with nearly no
+    accuracy drop in model performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Evaluation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We first evaluate the accuracies of our substituted models. Then we execute
+    the entire private inference pipeline to measure the end-to-end privacy inference
+    performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Experimental Setup
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Models and datasets. We test our substitution strategies and the private inference
+    framework with three models: BERT-Tiny, BERT-Medium [[3](#bib.bib3), [36](#bib.bib36)]
+    and RoBERTa-Base [[25](#bib.bib25)] (referred to as Tiny, Medium and Base hereafter).
+    These three models have similar architectures, only differing in hyperparameters
+    (number of transformer encoder blocks $n=2,8,12$ length for efficiency. We use
+    the MPRC, SST-2 and QNLI subsets of the GLUE benchmark [[38](#bib.bib38)] to evaluate
+    the accuracy performance of fine-tuned models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementation. For plaintext fine-tuning, we implemented the substitution and
+    training procedure with the Huggingface’s transformers and the widely-applied
+    pytorch libraries. For private inference, our 2-party interactive framework is
+    build upon HE and MPC primitives. For the HE part we implement a GPU version of
+    the BFV scheme [[9](#bib.bib9), [2](#bib.bib2)]. We set polynomial degree $N=8192$.
+    We combine the HE and MPC cryptographic primitives using a high-level framework
+    written in python, where we build different types of neural network layers as
+    independent modules and provide end-to-end private inference interfaces. We evaluate
+    our framework on a physical machine with Intel Xeon Gold 6230R CPU and NVIDIA
+    RTX A6000 GPU (CUDA version 11.7).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Operator Substitution
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We suspect that the more layers we substitute, the worse the model accuracy.
+    Therefore, to largely retain the model performance, we substitute the layers starting
+    from the most expensive ones to the least expensive ones. Specifically, denote
+    the two layer normalizations in each block as LN1 and LN2, we first substitute
+    all GELUs, then softmaxs, then LN1s and finally LN2s.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To prevent a too strict bound from impacting the fine-tuning accuracy, we introduce
+    gradually decreasing controlling bound (Section [3.3.1](#S3.SS3.SSS1 "3.3.1 Substitution
+    Workflow ‣ 3.3 Exploring Privacy-computing Friendly Transformers ‣ 3 Approach
+    ‣ LLMs Can Understand Encrypted Prompt: Towards Privacy-Computing Friendly Transformers"))
+    in these four substitutions: we set the acceptable bound $B=+\infty$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After each substitution, we test the accuracy of the model. The results are
+    shown in Figure [2](#S4.F2 "Figure 2 ‣ 4.2 Operator Substitution ‣ 4 Evaluation
+    ‣ LLMs Can Understand Encrypted Prompt: Towards Privacy-Computing Friendly Transformers").
+    Overall, we observe that our substitution strategies can successfully replace
+    all the GELU and softmax functions in every model, with accuracy drop of $\Delta\alpha<2\%$.
+    Yet once the first 2 layers of BERT-Medium is changed, the model cannot converge
+    . Interestingly, we observe that using ReLU instead of GELU sometimes results
+    in better accuracy than the original models. This might be because that GELU is
+    more helpful when training (possibly unsupervised) from scratch due to its non-zero
+    differentials in the negative domain, yet the complexity of GELU may not be necessary
+    when fine-tuning for a downstream task.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/5387705f5f1a59ec204df28df57335d1.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Accuracies of the model before and after each substitution. We use
+    $-$Softmax” means both GELU and Softmax are replaced with privacy-computing friendly
+    alternatives.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 End-to-end Performance
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We measured the runtime and communication cost of the end-to-end private inference
+    on our privacy-computing friendly models. We first report the cost of *one single*
+    encoder layer. The results are shown in Table [3](#S4.F3 "Figure 3 ‣ 4.3 End-to-end
+    Performance ‣ 4 Evaluation ‣ LLMs Can Understand Encrypted Prompt: Towards Privacy-Computing
+    Friendly Transformers"). Since the GELU and softmax are the most expensive operators
+    in the privacy inference, replacing these two operators with alternative operators
+    results in $3\times$ speedup and reduction of 80% communication cost. Furthermore,
+    when the LN layers are replaced with affine transformations, the communication
+    costs are further reduced to 13% of the original model. We also compared the efficiency
+    of our implementation to Iron [[11](#bib.bib11)], where our approach showed state-of-the-art
+    runtime and communication cost in private inference of LLMs, outperforming Iron
+    by five times in runtime and communication efficiency. Note that when using the
+    original model, our communication costs are slightly greater than Iron’s because
+    we use larger parameters in HE and MPC to retain high precision in large models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | Iron | Ours | Impro- vement |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Model | Cost | [[11](#bib.bib11)] | Orig. | $-$LN2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BERT | Time | 26.24 | 13.89 | 8.75 | 3.35 | 3.10 | 2.86 | 9.2$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| -Tiny | Comm. | 1.07 | 1.77 | 0.78 | 0.33 | 0.27 | 0.22 | 4.9$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BERT | Time | 108.53 | 60.99 | 42.16 | 19.84 | 19.35 | 19.08 | 5.7$\times$
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| -Medium | Comm. | 4.23 | 7.03 | 3.06 | 1.25 | 1.05 | 0.85 | 5.0$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RoBERTa | Time | 168.43 | 84.50 | 59.19 | 35.54 | 34.72 | 35.01 | 4.8$\times$
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| -Base | Comm. | 6.38 | 9.51 | 3.55 | 1.74 | 1.44 | 1.14 | 5.6$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: Private inference costs on our privacy-computing friendly models.
+    Time costs are in seconds, and communication costs are in GB. “Orig.”, “GE.” and
+    “Sm.” stands for Original, GELU and Softmax.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/6626853f23efd967d03502522a3bc32a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: End-to-end model accuracy of private inference.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Further, we report the end-to-end accuracy of private inference on BERT-Tiny
+    for the three datasets. As shown in Figure [3](#S4.F3 "Figure 3 ‣ 4.3 End-to-end
+    Performance ‣ 4 Evaluation ‣ LLMs Can Understand Encrypted Prompt: Towards Privacy-Computing
+    Friendly Transformers"), the private inference on our private-computing friendly
+    model achieves slightly better accuracies compared to plaintext inference on the
+    original model. This result is consistent with Figure [2](#S4.F2 "Figure 2 ‣ 4.2
+    Operator Substitution ‣ 4 Evaluation ‣ LLMs Can Understand Encrypted Prompt: Towards
+    Privacy-Computing Friendly Transformers"), where our modified BERT-Tiny performs
+    slightly better than the original model on plaintext inference.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Model Pruning and Knowledge Distillation. The overhead of private inference
+    is still much higher than plaintext inference, and the overhead is proportional
+    to the model size (number of transformer encoder blocks and embedding dimension).
+    Thus, it might be beneficial to consider model pruning and knowledge distillation [[27](#bib.bib27),
+    [20](#bib.bib20), [34](#bib.bib34)] to reduce the scale of the model while retaining
+    comparable model accuracy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hardware Assist in MPC. Hardware acceleration is widely adopted in the field
+    of machine learning. In this work, we have explored the feasibility of using parallel
+    hardware to accelerate HE operations. Prior works proposed to utilize similar
+    parallelization techniques to accelerate MPC primitives  [[19](#bib.bib19), [35](#bib.bib35)].
+    Incorporating these techniques might further reduce the inference costs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Trusted Hardware. To further accelerate cryptography operations, it is possible
+    to rely on trusted hardware. Prior works proposed to generate related randomness
+    (*e.g.,* distributing beaver triples, random oblivious transfers) [[19](#bib.bib19),
+    [21](#bib.bib21)] using application-specific trusted hardware or generic Trusted
+    Execution Environment (*e.g.,* Intel SGX) [[41](#bib.bib41), [40](#bib.bib40)].
+    These trusted hardware essentially serves as a Trusted Third Party (TTP). In future
+    work, we will explore how TTP may further accelerate private inference in the
+    case where the introduction of a TTP is acceptable by all stakeholders.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Malicious Security. We currently build our private inference framework with
+    passively secure protocols that protect privacy only from semi-honest adversaries.
+    To strengthen our framework to malicious security, one could apply extra consistency
+    checking protocols (*e.g.,* [[18](#bib.bib18), [39](#bib.bib39)] uses extra checks
+    to ensure the fundamental oblivious transfers are generated correctly). Additionally,
+    the advances in zero-knowledge proof (ZKP) technology, especially the development
+    of zero-knowledge succinct non-interactive arguments of knowledge (zk-SNARK),
+    sparked significant research on how to force desired participant behavior by requiring
+    the participants to prove their behavior in a zero-knowledge and efficient manner
+    using zero-knowledge proving systems. For instance, [[6](#bib.bib6)] and [[23](#bib.bib23)]
+    apply ZKP over extension fields and large prime fields respectively to guarantee
+    the faithful execution of the multiplication protocol. martFL [[22](#bib.bib22)]
+    ensures that the training process of Federated Learning is fair to data trading.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We propose an efficient framework for private inference on large language models
+    (LLMs). Homomorphic encryption (HE) and secure multi-party computation (MPC) are
+    used respectively for linear and non-linear operators. We observe that the privacy-computing
+    unfriendly operators are the performance bottleneck, and substituting them with
+    privacy-computing friendly alternatives brings 5x acceleration and 80% reduction
+    of communication costs while retaining model accuracies. We hope this work will
+    shed light on a practical way of adapting LLMs to offer privacy-preserving inference
+    service.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[1] Jimmy Lei Ba, Jamie Ryan Kiros, and Geoffrey E Hinton. Layer normalization.
+    arXiv preprint arXiv:1607.06450, 2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[2] Jean Claude Bajard, Julien Eynard, M. Hasan, and Vincent Zucca. A full
+    rns variant of fv like somewhat homomorphic encryption schemes. pages 423–442,
+    10 2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[3] Prajjwal Bhargava, Aleksandr Drozd, and Anna Rogers. Generalization in
+    nli: Ways (not) to go beyond simple heuristics, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[4] Tom B. Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared Kaplan,
+    Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell,
+    Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan, Rewon Child,
+    Aditya Ramesh, Daniel M. Ziegler, Jeffrey Wu, Clemens Winter, Christopher Hesse,
+    Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack Clark,
+    Christopher Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario Amodei.
+    Language models are few-shot learners, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[5] Tianyu Chen, Hangbo Bao, Shaohan Huang, Li Dong, Binxing Jiao, Daxin Jiang,
+    Haoyi Zhou, Jianxin Li, and Furu Wei. THE-X: Privacy-preserving transformer inference
+    with homomorphic encryption. In Findings of the Association for Computational
+    Linguistics: ACL 2022, pages 3510–3520, Dublin, Ireland, May 2022\. Association
+    for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[6] Ronald Cramer, Ivan Damgård, Daniel E. Escudero, Peter Scholl, and Chaoping
+    Xing. Spdz2k: Efficient mpc mod 2 for dishonest majority. 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[7] Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. Bert:
+    Pre-training of deep bidirectional transformers for language understanding. arXiv
+    preprint arXiv:1810.04805, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[8] Nathan Dowlin, Ran Gilad-Bachrach, Kim Laine, Kristin Lauter, Michael Naehrig,
+    and John Wernsing. Cryptonets: Applying neural networks to encrypted data with
+    high throughput and accuracy. In Proceedings of the 33rd International Conference
+    on International Conference on Machine Learning - Volume 48, ICML’16, page 201–210\.
+    JMLR.org, 2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[9] Junfeng Fan and Frederik Vercauteren. Somewhat practical fully homomorphic
+    encryption. IACR Cryptol. ePrint Arch., 2012:144, 2012.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[10] Kunihiko Fukushima. Cognitron: A self-organizing multilayered neural network.
+    Biological cybernetics, 20(3-4):121–136, 1975.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[11] Meng Hao, Hongwei Li, Hanxiao Chen, Pengzhi Xing, Guowen Xu, and Tianwei
+    Zhang. Iron: Private inference on transformers. In S. Koyejo, S. Mohamed, A. Agarwal,
+    D. Belgrave, K. Cho, and A. Oh, editors, Advances in Neural Information Processing
+    Systems, volume 35, pages 15718–15731\. Curran Associates, Inc., 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[12] Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Deep residual learning
+    for image recognition. In Proceedings of the IEEE conference on computer vision
+    and pattern recognition, pages 770–778, 2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[13] Dan Hendrycks and Kevin Gimpel. Gaussian error linear units (gelus). arXiv
+    preprint arXiv:1606.08415, 2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[14] Zhicong Huang, Wen jie Lu, Cheng Hong, and Jiansheng Ding. Cheetah: Lean
+    and fast secure Two-Party deep neural network inference. In 31st USENIX Security
+    Symposium (USENIX Security 22), pages 809–826, Boston, MA, August 2022\. USENIX
+    Association.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[15] Sergey Ioffe and Christian Szegedy. Batch normalization: Accelerating
+    deep network training by reducing internal covariate shift. In International conference
+    on machine learning, pages 448–456\. pmlr, 2015.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[16] Yuval Ishai, Joe Kilian, Kobbi Nissim, and Erez Petrank. Extending oblivious
+    transfers efficiently. In Dan Boneh, editor, Advances in Cryptology - CRYPTO 2003,
+    pages 145–161, Berlin, Heidelberg, 2003\. Springer Berlin Heidelberg.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[17] Chiraag Juvekar, Vinod Vaikuntanathan, and Anantha Chandrakasan. GAZELLE:
+    A low latency framework for secure neural network inference. In 27th USENIX Security
+    Symposium (USENIX Security 18), pages 1651–1669, Baltimore, MD, August 2018\.
+    USENIX Association.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[18] Marcel Keller, Emmanuela Orsini, and Peter Scholl. Actively secure ot
+    extension with optimal overhead. In Rosario Gennaro and Matthew Robshaw, editors,
+    Advances in Cryptology – CRYPTO 2015, pages 724–741, Berlin, Heidelberg, 2015.
+    Springer Berlin Heidelberg.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[19] Brian Knott, Shobha Venkataraman, Awni Hannun, Shubho Sengupta, Mark Ibrahim,
+    and Laurens van der Maaten. Crypten: Secure multi-party computation meets machine
+    learning. In M. Ranzato, A. Beygelzimer, Y. Dauphin, P.S. Liang, and J. Wortman
+    Vaughan, editors, Advances in Neural Information Processing Systems, volume 34,
+    pages 4961–4973\. Curran Associates, Inc., 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[20] François Lagunas, Ella Charlaix, Victor Sanh, and Alexander Rush. Block
+    pruning for faster transformers. In Proceedings of the 2021 Conference on Empirical
+    Methods in Natural Language Processing, pages 10619–10629, Online and Punta Cana,
+    Dominican Republic, November 2021\. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[21] Dacheng Li, Rulin Shao, Hongyi Wang, Han Guo, Eric P Xing, and Hao Zhang.
+    Mpcformer: fast, performant and private transformer inference with mpc. arXiv
+    preprint arXiv:2211.01452, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[22] Qi Li, Zhuotao Liu, Qi Li, and Ke Xu. martFL: Enabling Utility-Driven
+    Data Marketplace with a Robust and Verifiable Federated Learning Architecture.
+    In Proceedings of the 2023 ACM SIGSAC Conference on Computer and Communications
+    Security, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[23] Yun Li, Yufei Duan, Zhicong Huang, Cheng Hong, Chao Zhang, and Yifan Song.
+    Efficient 3PC for binary circuits with application to Maliciously-Secure DNN inference.
+    In 32nd USENIX Security Symposium (USENIX Security 23), pages 5377–5394, Anaheim,
+    CA, August 2023\. USENIX Association.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[24] Jian Liu, Mika Juuti, Yao Lu, and N. Asokan. Oblivious neural network
+    predictions via minionn transformations. In Proceedings of the 2017 ACM SIGSAC
+    Conference on Computer and Communications Security, CCS ’17, page 619–631, New
+    York, NY, USA, 2017. Association for Computing Machinery.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[25] Yinhan Liu, Myle Ott, Naman Goyal, Jingfei Du, Mandar Joshi, Danqi Chen,
+    Omer Levy, Mike Lewis, Luke Zettlemoyer, and Veselin Stoyanov. Roberta: A robustly
+    optimized bert pretraining approach. arXiv preprint arXiv:1907.11692, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[26] Zhuotao Liu, Yangxi Xiang, Jian Shi, Peng Gao, Haoyu Wang, Xusheng Xiao,
+    Bihan Wen, Qi Li, and Yih-Chun Hu. Make Web3\. 0 Connected. IEEE transactions
+    on dependable and secure computing, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[27] Paul Michel, Omer Levy, and Graham Neubig. Are sixteen heads really better
+    than one? In H. Wallach, H. Larochelle, A. Beygelzimer, F. d''Alché-Buc, E. Fox,
+    and R. Garnett, editors, Advances in Neural Information Processing Systems, volume 32\.
+    Curran Associates, Inc., 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[28] Pratyush Mishra, Ryan Lehmkuhl, Akshayaram Srinivasan, Wenting Zheng,
+    and Raluca Ada Popa. Delphi: A cryptographic inference system for neural networks.
+    In Proceedings of the 2020 Workshop on Privacy-Preserving Machine Learning in
+    Practice, PPMLP’20, page 27–30, New York, NY, USA, 2020\. Association for Computing
+    Machinery.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[29] Moni Naor and Benny Pinkas. Efficient oblivious transfer protocols. In
+    ACM-SIAM Symposium on Discrete Algorithms, 2001.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[30] OpenAI. Gpt-4 technical report, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[31] Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, Ilya
+    Sutskever, et al. Language models are unsupervised multitask learners. OpenAI
+    blog, 1(8):9, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[32] Deevashwer Rathee, Mayank Rathee, Nishant Kumar, Nishanth Chandran, Divya
+    Gupta, Aseem Rastogi, and Rahul Sharma. Cryptflow2: Practical 2-party secure inference.
+    In Proceedings of the 2020 ACM SIGSAC Conference on Computer and Communications
+    Security, CCS ’20, page 325–342, New York, NY, USA, 2020. Association for Computing
+    Machinery.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[33] Adi Shamir. How to share a secret. Communications of the ACM, 22(11):612–613,
+    1979.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[34] Siqi Sun, Yu Cheng, Zhe Gan, and Jingjing Liu. Patient knowledge distillation
+    for BERT model compression. In Proceedings of the 2019 Conference on Empirical
+    Methods in Natural Language Processing and the 9th International Joint Conference
+    on Natural Language Processing (EMNLP-IJCNLP), pages 4323–4332, Hong Kong, China,
+    November 2019\. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[35] Sijun Tan, Brian Knott, Yuan Tian, and David J. Wu. Cryptgpu: Fast privacy-preserving
+    machine learning on the gpu. In 2021 IEEE Symposium on Security and Privacy (SP),
+    pages 1021–1038, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[36] Iulia Turc, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. Well-read
+    students learn better: The impact of student initialization on knowledge distillation.
+    CoRR, abs/1908.08962, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[37] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones,
+    Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. Attention is all you need.
+    Advances in neural information processing systems, 30, 2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[38] Alex Wang, Amanpreet Singh, Julian Michael, Felix Hill, Omer Levy, and
+    Samuel Bowman. GLUE: A multi-task benchmark and analysis platform for natural
+    language understanding. In Proceedings of the 2018 EMNLP Workshop BlackboxNLP:
+    Analyzing and Interpreting Neural Networks for NLP, pages 353–355, Brussels, Belgium,
+    November 2018\. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[39] Kang Yang, Chenkai Weng, Xiao Lan, Jiang Zhang, and Xiao Wang. Ferret:
+    Fast extension for correlated ot with small communication. In Proceedings of the
+    2020 ACM SIGSAC Conference on Computer and Communications Security, CCS ’20, page
+    1607–1626, New York, NY, USA, 2020. Association for Computing Machinery.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[40] Wei Zheng, Ying Wu, Xiaoxue Wu, Chen Feng, Yulei Sui, Xiapu Luo, and Yajin
+    Zhou. A survey of intel sgx and its applications. Frontiers of Computer Science,
+    15(3):153808, Dec 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[41] Xing Zhou, Zhilei Xu, Cong Wang, and Mingyu Gao. Ppmlac: High performance
+    chipset architecture for secure multi-party computation. In Proceedings of the
+    49th Annual International Symposium on Computer Architecture, ISCA ’22, page 87–101,
+    New York, NY, USA, 2022. Association for Computing Machinery.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 7 Supplementary Material
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 7.1 Formal Description of Threat Model
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We provide a formal description of the threat model of two semi-honest parties
+    in the private inference framework.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Definition 1.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: A protocol $\Pi$ is a private inference protocol if it satisfies the following
+    guarantees.
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Correctness. On every set of model weights $\mathbf{W}$.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Security.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: –
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: (Data privacy) A corrupted, semi-honest server does not learn anything useful
+    about the client’s inference data $\mathbf{x}$.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: –
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: (Model privacy) A corrupted, semi-honest client does not learn anything useful
+    about the server’s model weights $\mathbf{W}$ to the client.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: The security proof of our private inference framework follows by the combination
+    of each sub-protocol and the sequential composibility of each operators to a full
+    transformer architecture. The security proof of matrix multiplication follows
+    from the security of the RLWE-based BFV HE scheme [[9](#bib.bib9)] and the proofs
+    in [[14](#bib.bib14), [11](#bib.bib11)] for the protocol itself. For the security
+    proof of each non-linearity protocol, we refer the readers to [[32](#bib.bib32)]
+    for $\Pi_{\mathsf{EleMul}},\Pi_{\mathsf{exp}},\Pi_{\mathsf{tanh}}$. These protocols
+    mainly relies on the security of oblivious transfer [[29](#bib.bib29), [16](#bib.bib16)]
+    and subfield vector oblivious evaluation [[39](#bib.bib39)] as basic cryptographic
+    primitives.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7.2 Detail of the Non-linear Protocols
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We provide detailed description of the three main non-linear protocols, GELU
+    (Algorithm [3](#alg3 "In 7.2 Detail of the Non-linear Protocols ‣ 7 Supplementary
+    Material ‣ LLMs Can Understand Encrypted Prompt: Towards Privacy-Computing Friendly
+    Transformers")), Softmax (Algorithm [4](#alg4 "In 7.2 Detail of the Non-linear
+    Protocols ‣ 7 Supplementary Material ‣ LLMs Can Understand Encrypted Prompt: Towards
+    Privacy-Computing Friendly Transformers")) and LayerNorm⁴⁴4For simplicity, we
+    assume the tensor is 2-dimensional. In transformer, usually the input is 3-dimensional
+    with batch size, sequence and embedding dimensions. This could be coerced as 2-dimensional
+    by squeezing all the dimensions except the last. (Algorith [5](#alg5 "In 7.2 Detail
+    of the Non-linear Protocols ‣ 7 Supplementary Material ‣ LLMs Can Understand Encrypted
+    Prompt: Towards Privacy-Computing Friendly Transformers")), in the private inference
+    framework.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Input: The client inputs $\langle x\rangle_{0}$ to obtain $\langle\tanh(x^{\prime})\rangle$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 3 GELU evaluation on secret shares
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Input: The client inputs $\langle\mathbf{x}\rangle_{0}$.The two parties invoke
+    $\Pi_{\mathsf{EleMul}}(\langle x^{\prime}\rangle_{i},\langle 1/s\rangle)$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 4 Softmax evaluation on secret shares
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Input: The client inputs 2d-tensor share $\langle\mathbf{x}\rangle_{0}$ and
+    a truncation, where $\langle\mathbf{v}\rangle$ shares, where'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\tilde{\mathbf{x}}=\frac{\mathbf{x}-\bar{\mathbf{x}}}{\sqrt{\mathrm{Var}(\mathbf{x})+\epsilon}}.$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: For the affine transform, the two parties invoke $\Pi_{\mathsf{EleMul}}(\langle\tilde{\mathbf{x}}\rangle,\langle\gamma\rangle)$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 5 Layer normalization evaluation on secret shares
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7.3 Additional Evaluation Details
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Codes. We make our codes publicly available at [https://github.com/privateLLM001/Private-LLM-Inference](https://github.com/privateLLM001/Private-LLM-Inference).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Dataset details. We list details of the datasets used in our evaluation in
+    Table [3](#S7.T3 "Table 3 ‣ 7.3 Additional Evaluation Details ‣ 7 Supplementary
+    Material ‣ LLMs Can Understand Encrypted Prompt: Towards Privacy-Computing Friendly
+    Transformers").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Name | Task | Domain | #Train | #Test |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MRPC | 2-class paraphrase | News | 3.7k | 408 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SST-2 | 2-class sentiment | Movie reviews | 67k | 872 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| QNLI | 2-class question answering | Wikipedia | 105k | 2k |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 3: Dataset details'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Accepted replacements. We list in Table [4](#S7.T4 "Table 4 ‣ 7.3 Additional
+    Evaluation Details ‣ 7 Supplementary Material ‣ LLMs Can Understand Encrypted
+    Prompt: Towards Privacy-Computing Friendly Transformers") the how many operators
+    are successfully replaced in the evaluation for the three models and three datasets
+    with our substution strategy, with the allowed accuracy drop set to $\Delta\alpha=2\%$.
+    We observe that the replacement for all GELUs and Softmaxes are successful, while
+    in large models, a very small portion of the LN2s of the first few blocks could
+    not be replaced. We conjecture that the first few layers are essential to capture
+    the overall features of the input sentences, and thus play a vital role for high
+    accuracies. We leave the exploration further into this phenomenon as a future
+    work.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | #Blocks | Task | GELU | Softmax | LN1 | LN2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BERT-Tiny | 2 | MRPC | 2 | 2 | 2 | 2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SST2 | 2 | 2 | 2 | 2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| QNLI | 2 | 2 | 2 | 2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BERT-Medium | 8 | MRPC | 8 | 8 | 8 | 8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SST2 | 8 | 8 | 8 | 8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| QNLI | 8 | 8 | 8 | 8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RoBERTa-Base | 12 | MRPC | 12 | 12 | 12 | 10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SST2 | 12 | 12 | 12 | 12 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| QNLI | 12 | 12 | 12 | 11 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 4: Successful model operator replacements for the three models and three
+    datasets'
+  prefs: []
+  type: TYPE_NORMAL

@@ -1,0 +1,2317 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:51:28'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight Compression'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2306.03078](https://ar5iv.labs.arxiv.org/html/2306.03078)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: \newfloatcommand
+  prefs: []
+  type: TYPE_NORMAL
+- en: capbtabboxtable[][\FBwidth]
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tim Dettmers
+  prefs: []
+  type: TYPE_NORMAL
+- en: University of Washington
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&Ruslan Svirschevski¹¹footnotemark: 1'
+  prefs: []
+  type: TYPE_NORMAL
+- en: HSE University & Yandex
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&Vage Egiazarian¹¹footnotemark: 1'
+  prefs: []
+  type: TYPE_NORMAL
+- en: HSE University & Yandex
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&Denis Kuznedelev¹¹footnotemark: 1'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Yandex & Skoltech
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&Elias Frantar'
+  prefs: []
+  type: TYPE_NORMAL
+- en: IST Austria
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&Saleh Ashkboos'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ETH Zurich
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&Alexander Borzunov'
+  prefs: []
+  type: TYPE_NORMAL
+- en: HSE University & Yandex
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&Torsten Hoefler'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ETH Zurich
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&Dan Alistarh'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'IST Austria & NeuralMagic Equal contributionCorresponding author: dettmers@cs.washington.edu'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Recent advances in large language model (LLM) pretraining have led to high-quality
+    LLMs with impressive abilities. By compressing such LLMs via quantization to 3-4
+    bits per parameter, they can fit into memory-limited devices such as laptops and
+    mobile phones, enabling personalized use. However, quantization down to 3-4 bits
+    per parameter usually leads to moderate-to-high accuracy losses, especially for
+    smaller models in the 1-10B parameter range, which are well-suited for edge deployments.
+    To address this accuracy issue, we introduce the Sparse-Quantized Representation
+    (SpQR), a new compressed format and quantization technique which enables for the
+    first time *near-lossless* compression of LLMs across model scales, while reaching
+    similar compression levels to previous methods. SpQR works by identifying and
+    isolating *outlier weights*, which cause particularly-large quantization errors,
+    and storing them in higher precision, while compressing all other weights to 3-4
+    bits, and achieves relative accuracy losses of less than $1\%$ in perplexity for
+    highly-accurate LLaMA and Falcon LLMs. This makes it possible to run 33B parameter
+    LLM on a single 24 GB consumer GPU without any performance degradation at 15%
+    speedup thus making powerful LLMs available to consumer without any downsides.
+    SpQR comes with efficient algorithms for both encoding weights into its format,
+    as well as decoding them efficiently at runtime¹¹1 [github.com/Vahe1994/SpQR](https://github.com/Vahe1994/SpQR);
+    to be integrated into [github.com/TimDettmers/bitsandbytes](https://github.com/TimDettmers/bitsandbytes).
+    Specifically, we provide an efficient GPU inference algorithm for SpQR which yields
+    faster inference than 16-bit baselines at similar accuracy, while enabling memory
+    compression gains of more than 4x.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Pretrained large language models (LLMs) improved rapidly from task-specific
+    performance [[42](#bib.bib42), [5](#bib.bib5), [30](#bib.bib30)], to performing
+    well on general tasks if prompted with instructions [[1](#bib.bib1), [39](#bib.bib39),
+    [25](#bib.bib25)]. While the improved performance can be attributed to scaling
+    in training data and parameters [[18](#bib.bib18), [4](#bib.bib4)] recent trends
+    focused on smaller models trained on more data, that are easier to use at inference
+    time [[15](#bib.bib15), [2](#bib.bib2), [33](#bib.bib33)]. For example, the 7B
+    parameter LLaMA model trained on 1T tokens achieved an average performance only
+    slightly lower than GPT-3 [[1](#bib.bib1)] despite being 25x smaller. Current
+    techniques for LLM compression can shrink these models further by a factor of
+    about 4x, while preserving their performance [[6](#bib.bib6), [43](#bib.bib43),
+    [9](#bib.bib9), [7](#bib.bib7)]. This yields performance levels comparable to
+    the largest GPT-3 model, with major reductions in terms of memory requirements.
+    With such improvements, well-performing models could be efficiently served on
+    end-user devices, such as laptops.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The main challenge is to compress models enough to fit into such devices while
+    also preserving generative quality. Specifically, studies show that, although
+    accurate, existing techniques for 3 to 4-bit quantization still lead to significant
+    accuracy degradation [[7](#bib.bib7), [9](#bib.bib9)]. Since LLM generation is
+    sequential, depending on previously-generated tokens, small relative errors can
+    accumulate and lead to severely corrupted outputs. To ensure reliable quality,
+    it is critical to design low-bitwidth quantization that does not degrade predictive
+    performance compared to the 16-bit model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this work, we introduce Sparse-Quantized Representations (SpQR), a hybrid
+    sparse-quantized format which can compress accurate pretrained LLMs to 3-4 bits
+    per parameter while staying *near-lossless*: specifically, SpQR is the first weight
+    quantization method which is able to reach such compression ratios while inducing
+    end-to-end accuracy error as measured in perplexity of less than 1% relative to
+    the dense baseline. SpQR works by combining two innovations. First, we isolate
+    *outlier weights*, whose quantization we show to induce disproportionately high
+    errors: these weights are kept in high precision, while the other weights are
+    stored in a much lower, e.g. 3-bit, format. Second, we implement a variant of
+    grouped quantization with very small group size, e.g. 16 contiguous elements,
+    but we show that one can quantize the quantization scales themselves to a 3-bit
+    representation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To convert a given pretrained LLM into SpQR format, we adopt an extended version
+    of the post-training quantization (PTQ) approach recently introduced by GPTQ [[9](#bib.bib9)].
+    Specifically, the method passes calibration data through the uncompressed model;
+    to compress each layer, it applies a layer-wise solver with respect to the L2
+    error between the outputs of the uncompressed model, and those of the quantized
+    weights. Our approach splits this process into two steps: an “outlier detection”
+    step, in which we isolate weights whose direct quantization has outsize impact
+    on layer output behavior, and an actual compression step, in which most ($\geq
+    99\%$) of weights are compressed to low-bitwidth, the outliers are extracted,
+    and the whole representation is rendered more efficient by further compressing
+    the quantization metadata.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our method is motivated by a new analysis showing that LLM weight quantization
+    errors exhibit both vertical and horizontal group correlations, corresponding
+    to systematic large errors corresponding to input feature dimensions and output
+    hidden dimensions. While outlier input features have been observed before [[6](#bib.bib6),
+    [43](#bib.bib43)], our work is the first to demonstrate that similar outliers
+    occur *in the weights, for particular output hidden dimensions*. Unlike input
+    feature outliers, the output hidden dimension outliers occur only in small segments
+    for a particular output hidden dimension.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our quantization algorithm isolates such outliers and efficiently encodes a
+    given model in SpQR format. To exploit the resulting structure, we develop a specialized
+    sparse-matrix multiplication algorithm based on the compressed sparse row (CSR)
+    format. To use SpQR for token-by-token generation, we combine this sparse algorithm
+    together with a dense-quantized matrix multiplication for 3-4 bit weights. With
+    this, SpQR reduces the memory footprint of LLMs by a factor of about 3.4x or more
+    without degradation in accuracy, measured as language modeling loss or perplexity,
+    while also being 20-30% faster for LLM generation compared to 16-bit inference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/fc60d9824b6733ff8c4ff91f1735ceef.png)![Refer to caption](img/095cdf7cf75831d6bd9c7a2742d4460c.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Compressed LLM performance for LLaMA models. (left) LM loss on WikiText2
+    vs model size. (right) Average performance on zero-shot tasks vs model size.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We focus our discussion on related *post-training quantization (PTQ) methods* [[22](#bib.bib22)],
+    referring the reader to the recent survey of Gholami et al. [[12](#bib.bib12)]
+    for full background on quantization. PTQ methods are a popular approach for *one-shot
+    compression* of models with various sizes, based on a limited amount of calibration
+    data, using accurate solvers, usually focused on layer- or group-wise compression
+    sub-problems. Most PTQ methods, such as AdaRound [[22](#bib.bib22)], BitSplit [[40](#bib.bib40)],
+    AdaQuant [[16](#bib.bib16)], BRECQ [[19](#bib.bib19)], or OBQ [[10](#bib.bib10)]
+    were designed for vision models or small-scale language models, with less than
+    100M parameters. All these recent approaches tend to use accurate solvers, which
+    would not scale to GPT-scale models in terms of computational or memory cost,
+    as they are 10-1000x larger in size.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Recently, there has been significant interest in obtaining accurate post-training
+    methods that scale to such massive models. Due to computational constraints, early
+    work such as ZeroQuant [[44](#bib.bib44)], LLM.int8() [[6](#bib.bib6)], and nuQmm [[27](#bib.bib27)]
+    used direct rounding of weights to the nearest quantization level, while customizing
+    the quantization granularity (i.e., group size) to trade off space for increased
+    accuracy. LLM.int8() [[6](#bib.bib6)] suggested isolating “outlier features” which
+    would be quantized separately to higher bit-width. These approaches are able to
+    induce relatively low quantization error, e.g. 5.5% relative LM Loss increase
+    for LLaMA-7B at 4-bit weight quantization, provided that the quantization granularity
+    is low enough. GPTQ [[9](#bib.bib9)] proposed a higher-accuracy approach (e.g.,
+    4% LM Loss increase in the above setting), which works via an approximate large-scale
+    solver for the problem of minimizing the layer-wise squared error.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. [[7](#bib.bib7)] provided an in-depth overview of the accuracy-compression
+    trade-offs underlying these methods, establishing that 4-bit quantization is an
+    optimal point for round-to-nearest-based methods, whereas higher compression can
+    be achieved via data-aware methods such as GPTQ. SparseGPT [[8](#bib.bib8)] presented
+    an approach to jointly sparsify LLM weights to medium sparsities, together with
+    quantization of the remaining weights to a fixed given bit-width. One common drawback
+    of existing methods is that the accuracy loss relative to the original model is
+    still significant (see Table [4](#S5.F4 "Figure 4 ‣ Main Results. ‣ 5 Experimental
+    Validation ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight
+    Compression")). This is especially relevant to relatively small but easily deployable
+    models, e.g. in the 7-13B parameter range, where existing methods show drastic
+    accuracy drops. We investigate this question here, and provide a new compression
+    format which can lead to near-lossless 3-4 bits compression in this regime.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A related question is that of performing both activation and weight quantization.
+    There is early work [[6](#bib.bib6), [43](#bib.bib43), [44](#bib.bib44)], showing
+    that both activations and weights could be quantized to 8-bits with relatively
+    low accuracy impact. These complementary investigations yield interesting insights
+    into the causes of compression error in the case of LLMs. Specifically, [[6](#bib.bib6),
+    [43](#bib.bib43)] observe the presence of “outlier features” with significantly
+    higher values in the input/output of large LLMs, which induce higher quantization
+    error, and propose different mitigation strategies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We analyze this phenomenon from the point of view of weight quantization. In
+    particular, we investigate the outlier structure, beyond input feature outliers
+    in the weight matrix. While we find that input feature outliers of the current
+    layer are correlated to hidden unit outliers weight in the previous layer there
+    is not a strict correspondence. Such partially-structured outlier patterns necessitate
+    a fine-grained hybrid compression format that goes beyond algorithms that exploit
+    the column structure of outlier features found in previous work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hybrid sparse-quantized formats have been investigated generally for deep networks.
+    Some efficient CPU inference engines [[23](#bib.bib23), [11](#bib.bib11)] support
+    a different block sparse-and-quantized format, in which each block of $4$ consecutive
+    weights is either completely sparse or quantized to 8-bit format, whereas GPUs
+    support a similar compound format in which every group of 4 weights contains 2
+    zero weights, and the non-zero weights could be quantized. The FBGEMM package [[17](#bib.bib17)]
+    proposed a format in which certain “outlier” weights are quantized separately,
+    to reduce their impact on normalization. However, in this format, “outlier” weights
+    are still quantized to exactly the same bit-width (8-bit) as regular weights;
+    moreover, no procedure is given for converting a model to this format post-training.
+    By contrast, 1) we provide an efficient and accurate post-training compression
+    algorithm which identifies outliers as weights inducing high output error, 2)
+    we propose a format compressing outliers to a higher bit-width relative to regular
+    weights, and 3) our format stores outliers in blocks, allowing for efficient implementation
+    of GPU kernels, which we provide as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Quantization sensitivity of LLM weights
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 3.1 Parameter sensitivity under quantization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Not all parameters in a neural network are equally important. Intuitively,
+    a weight could be seen as sensitive to quantization if its rounding error is large,
+    i.e. it is not close to a quantization point, and/or the inputs it is usually
+    multiplied with a large, amplifying even a small rounding error. These simple
+    notions of sensitivity however disregard the fact that LLMs operate on very large
+    vectors with significant correlations: a weight $w_{a}$. This idea is exploited
+    by modern quantization algorithms [[9](#bib.bib9), [44](#bib.bib44)] and can lead
+    to major improvements over vanilla rounding, especially a low bitwidths. Properly
+    capturing this aspect of sensitivity requires a more robust definition.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For computational tractability, we assess sensitivity on a per-layer level
+    using a small set of *calibration inputs* $X$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Crucially, all weights of $W^{\prime}$ is the inverse Hessian matrix corresponding
+    to the optimization problem:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $s_{ij}=\frac{(w_{ij}-\text{quant}(w_{ij}))^{2}}{2(XX^{\top})^{-1}}.$
+    |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: This saliency measure can be approximated efficiently by quantization solvers,
+    such as GPTQ [[9](#bib.bib9)]. In more detail, GPTQ quantizes weight matrices
+    column-by-column while in each step adjusting the not-yet-quantized part to compensate
+    for the quantization error in a similar sense as defined above. Consequentially,
+    instead of statically deciding all sensitivities in advance, they can be computed
+    dynamically as the algorithm processes each column, by using the inverse of the
+    Hessian subselection corresponding to all not yet quantized weights. This matrix
+    is already efficiently computed by GPTQ and thus does not impose any additional
+    overheads. The main advantage of this approach is that $s_{ij}$ and thus accounts
+    for adjustments due to previously quantized weights as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Exploring parameter sensitivity
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Before we define out main method, SpQR, we provide a motivating analysis of
+    parameter sensitivity which uncovers that the location of sensitive weights in
+    the weight matrix are not random but have particular structures. To highlight
+    these structural elements during the quantization process, we calculate the the
+    per-weight sensitivities and visualize them for the popular and highly-accurate
+    LLaMA-65B model [[33](#bib.bib33)]. As the quantization method, we use GPTQ quantization
+    to 3-bit, without weight grouping, following [[9](#bib.bib9)]. We use C4 [[29](#bib.bib29)]
+    as the calibration dataset, and we estimate the error on 128 sequences of 2048
+    tokens each. Figure [2](#S3.F2 "Figure 2 ‣ 3.2 Exploring parameter sensitivity
+    ‣ 3 Quantization sensitivity of LLM weights ‣ SpQR: A Sparse-Quantized Representation
+    for Near-Lossless LLM Weight Compression") depicts the output projection of the
+    last self-attention layer of LLaMA-65B.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/4ddf9ab1a0fa8707704291fdd89faa03.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Weight log-sensitivities from the last attention layer of LLaMA-65B.
+    Dark-blue shades indicate higher sensitivity. The image on the left is a high-level
+    view, resized to 1:32 scale with max-pooling. The two images in the middle are
+    zoomed in from the main figure. The two images on the right are taken from other
+    weight matrices.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Using the sensitivity analysis, we observe several patterns in the weight matrix,
+    often in a single row or column. Since the large weight matrices in LLaMA-65B
+    have too many rows/columuns to be respresentable in a compact image (default:
+    8k $\times$ rows and columns. This max pooling only affects the leftmost image.
+    Using this visualization, we observe that the quantization error patterns vary
+    both by layer type, for example attention vs multilayer perceptron (MLP), and
+    layer depth. In particular, we find that more sensitive outliers are present for
+    deeper layers. (Please see Appendix [A](#A1 "Appendix A Additional weight sensitivity
+    analysis ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight
+    Compression") for additional results.) We now proceed to categorize outlier structures,
+    taking this attention weight matrix as an exemplar. We make the following observations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Row outliers are shown in Figure [2](#S3.F2 "Figure 2 ‣ 3.2 Exploring parameter
+    sensitivity ‣ 3 Quantization sensitivity of LLM weights ‣ SpQR: A Sparse-Quantized
+    Representation for Near-Lossless LLM Weight Compression") bottom-center as regions
+    of high sensitivity within one output unit. Some of these patterns span the entire
+    row, while others are partial. In attention layers, some of the partial row outliers
+    correspond to some subset of attention heads. Column outliers appear in Figure [2](#S3.F2
+    "Figure 2 ‣ 3.2 Exploring parameter sensitivity ‣ 3 Quantization sensitivity of
+    LLM weights ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight
+    Compression"), bottom-right, showing high sensitivity in select input dimensions
+    (columns) across all rows. The latter are correlated to the “outlier feature”
+    phenomenon reported in Dettmers et al. [[6](#bib.bib6)].'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sensitive attention heads. (Figure [2](#S3.F2 "Figure 2 ‣ 3.2 Exploring parameter
+    sensitivity ‣ 3 Quantization sensitivity of LLM weights ‣ SpQR: A Sparse-Quantized
+    Representation for Near-Lossless LLM Weight Compression"), top-center) – regular
+    stripes of width 128 highlight all weights corresponding to one attention head.
+    This could be related to some attention heads having more important functions [[38](#bib.bib38),
+    [37](#bib.bib37), [24](#bib.bib24)]. The corresponding “stripes” are horizontal
+    for attention Q & K projections, vertical in output projection, and absent from
+    value projections and any MLP weights. Of note, there is significant variation
+    in individual weight sensitivity even within the sensitive heads.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The Rotary embedding pattern, a repeating vertical pattern of sensitivity with
+    a period of 64 units. We attribute this to the use of rotary embeddings [[32](#bib.bib32)]:
+    each attention head (dim = 128) is split into two halves: the first 64 are “rotated”
+    with cosine, and the other 64 use sine. Both sine and cosine rotation use the
+    same set of frequencies. Typically, the weights that correspond to low-frequency
+    sines and cosines are more sensitive than their high-frequency counterparts, as
+    shown in Figure [2](#S3.F2 "Figure 2 ‣ 3.2 Exploring parameter sensitivity ‣ 3
+    Quantization sensitivity of LLM weights ‣ SpQR: A Sparse-Quantized Representation
+    for Near-Lossless LLM Weight Compression") (top-right). As expected, this pattern
+    is absent from any layer not using rotary embeddings.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Unstructured outliers. Besides the above, each layer has a number of individual
+    sensitivity weights that do not fit into any of the above patterns. These unstructured
+    outliers occur more frequently for columns with largest input index (i.e. on the
+    right side of the images). This effect is difficult to see on a heatmap, so we
+    provide additional figures and statistical tests in Appendix [A](#A1 "Appendix
+    A Additional weight sensitivity analysis ‣ SpQR: A Sparse-Quantized Representation
+    for Near-Lossless LLM Weight Compression"). We believe is probably an artefact
+    of the GPTQ algorithm, which compresses one by one, using yet-uncompressed weights
+    to compensate the error. Thus, the rightmost batch of weights accumulates the
+    most error.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Next, we will leverage these findings to propose a compressed representation
+    which can support all these different outlier types.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '4 SpQR: A Sensitivity-aware compressed representation'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 4.1 Overview
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Existing LLM quantization algorithms treat low- and high-sensitivity weights
+    equally; however, our above discussion suggests that this may lead to sub-optimal
+    quantization. Ideally, we would want the representation to assign more of its
+    “size budget” to sensitive weights. However, these weights are scattered in the
+    weight matrix as either individual weights or small groups, for example, partial
+    rows or attention head. To capture this structure, we are introducing two changes
+    to the quantization procedure: one for capturing small sensitive groups, and another
+    for capturing individual outliers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Capturing small groups of weights with bilevel quantization. In the previous
+    section, we observed several cases where weights behave similarly in small consecutive
+    groups, with abrupt changes between groups, for example for some attention head
+    and partial row outliers (see Figure [7](#S5.F7 "Figure 7 ‣ Ablations. ‣ 5 Experimental
+    Validation ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight
+    Compression") left, bottom-center). When applying a standard approach, there will
+    be many cases where these weights will be grouped together, sharing the same quantization
+    statistics. To reduce the number of such cases, we use groupwise quantization
+    with extremely small groups, typically of $\beta_{1}{=}8-32$ consecutive weights,
+    there is a separate quantization scale and zero-point. This choice runs contrary
+    to current intuition: for instance, the recent work of Yao et al. [[45](#bib.bib45)]
+    explicitly recommends against small groups, arguing that the overhead for storing
+    quantization statistics would outweigh the precision advantages.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To circumvent this issue, we quantize the groupwise statistics themselves using
+    the same quantization algorithm as for weights — asymmetric (min-max) quantization.
+    Because of how min-max quantization works, the range of quantized values will
+    fit to the groups with largest (or smallest) quantization scale, quantizing them
+    perfectly. In other words, we group groupwise statistics from $\beta_{2}=16$ consecutive
+    values and quantize them together in the same number of bits, such that groups
+    with atypical quantization parameters end up using more of the “quantization budget”.
+    Finally, both first and second-level quantization is directly within the quantization
+    process, allowing the algorithm to compensate the second-level quantization error
+    where possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: High-sensitivity outliers. Our analysis showed the existence of cases where
+    a small percentage of sensitive weights come in small groups (in the self-attention)
+    or individual “outliers” (in the MLP). In some cases, 1% of the weights account
+    for over 75% of the total quantization error. Since these weights appear to lead
+    to high, irreducible error, we choose to keep these outliers in high precision
+    (16-bit). As these outliers are often unstructured, we encode them individually
+    in a row-wise arrangement similar to a compressed-sparse-row (CSR) representation [[14](#bib.bib14)].
+    This can encode both individual outliers and small structures that do not fit
+    into the above definition of groups.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The procedure for detecting the outliers is described in detail in Alg. [1](#alg1
+    "Algorithm 1 ‣ 4.1 Overview ‣ 4 SpQR: A Sensitivity-aware compressed representation
+    ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight Compression").
+    If follows a rough two-step procedure: (1) find and isolate outliers as 16-bit
+    weights, (2) quantize the non-outlier “base” weights into 3-4 bit and transfer
+    the remaining quantization into the the 16-bit outliers weights. For the outlier
+    isolation step, the algorithm implements a filtering technique based on the sensitivity
+    criterion in Eq. ([2](#S3.E2 "In 3.1 Parameter sensitivity under quantization
+    ‣ 3 Quantization sensitivity of LLM weights ‣ SpQR: A Sparse-Quantized Representation
+    for Near-Lossless LLM Weight Compression")), which is used to isolate and separate
+    outliers from base weights. Globally, for each matrix, the algorithm aims to pick
+    a sensitivity threshold $\tau$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Following this first outlier detection step, we quantize the base weights ignoring
+    all outliers that occur in the same quantization group. As such, the quantization
+    statistics (e.g. scales) are computed by excluding outliers. This results in significant
+    improvements in terms of error, since e.g. the min-max scales will be significantly
+    reduced. The algorithm then proceeds to apply GPTQ to quantize the remaining weights.
+    Interestingly, unlike [[6](#bib.bib6)], a weight can be chosen to be an outlier
+    not only if it causes error by itself, but also if the GPTQ algorithm can employ
+    this weight to compensate errors from many other weights. Thus, the resulting
+    16-bit value will contain not the original weight, but a weight that was adjusted
+    to minimize the output error. As such, SpQR goes beyond mere detection of outliers
+    towards the more general notion of isolating and treating outliers that occur
+    during the quantization process. Finally, the algorithm gathers and compresses
+    sparse outlier matrix as well as the final quantization statistics with bilevel
+    quantization and returns the compressed weights and their metadata.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Algorithm 1 SpQR quantization algorithm: the left snippet describes the full
+    procedure, the right side contains subroutines for bilevel quantization and finding
+    outliers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: func  SpQRQuantize($W,X,b,\beta_{1},\beta_{2},\tau,\lambda$)
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:$W\in\mathcal{R}^{m\times n}$
+  prefs: []
+  type: TYPE_NORMAL
+- en: func  $\textbf{quantize}(M,\vec{s},\vec{z})$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:return  $\lfloor M/\vec{s}+\vec{z}+0.5\rfloor$
+  prefs: []
+  type: TYPE_NORMAL
+- en: func  $\textbf{dequantize}(Q,\vec{s},\vec{z})$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:return  $\vec{s}\cdot(Q-\vec{z})$
+  prefs: []
+  type: TYPE_NORMAL
+- en: func  $\textbf{fit\_quantizer}(M,\beta)$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:$\vec{m}:=\text{flatten}(M)$
+  prefs: []
+  type: TYPE_NORMAL
+- en: func  $\textbf{error}(W,H^{\text{ic}})$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:$\vec{s},\vec{z}:=\text{fit\_quantizer}(W,\beta_{1})$
+  prefs: []
+  type: TYPE_NORMAL
+- en: func  $\textbf{outliers}(W,H^{\text{ic}},\mathcal{O})$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:$E_{\text{base}}=\text{error}(W,H^{\text{ic}})$
+  prefs: []
+  type: TYPE_NORMAL
+- en: func  $\textbf{fit\_statistics}(W,\mathcal{S},\mathcal{O})$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:$W:=W\cdot(1-\text{is\_outlier}(W,O))$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Implementation details. Our algorithm also contains several optimizations.
+    As we are using small group sizes, it is often the case that a group contains
+    all positive (or all negative) values. Standard quantizers [[10](#bib.bib10),
+    [9](#bib.bib9)] require the maximum value to be positive and the minimum value
+    to be negative. For small group sizes, removing this requirement results in slightly
+    better quality. As a by-product of quantizing the quantization statistics, our
+    algorithm allows non-integer zero points. We ablate these and other SpQR components
+    in Section [5](#S5 "5 Experimental Validation ‣ SpQR: A Sparse-Quantized Representation
+    for Near-Lossless LLM Weight Compression").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Implementing and Leveraging the Sparse Quantized Representation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Our algorithm converts homogeneous weights into several data structures of
+    various sizes and precisions. Overall, the representation consists of (1) quantized
+    weights, (2) first level quantized quantization statistics, second level quantization
+    statistics, and (3) the CSR outlier indices and values. We summarize the overall
+    structure of SpQR in Figure [3](#S4.F3 "Figure 3 ‣ 4.2 Implementing and Leveraging
+    the Sparse Quantized Representation ‣ 4 SpQR: A Sensitivity-aware compressed representation
+    ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight Compression")
+    and describe each component below.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7f5a6663d9cbb0d27512ab01e46fd28c.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: A high-level overview of the SpQR representation for a single weight
+    tensor. The right side of the image depicts all stored data types and their dimensions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Storing quantized groups. All non-outlier weights are encoded as a structure
+    that contains:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: a $b_{w}$-bit individual weight;
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: a $b_{q}$;
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: $16$ quantization scales and zero-points.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: As a particular example for a SpQR representation, consider $b_{w}{=}b_{q}{=}3$-bit
+    codes. Every 16 weights use a separate 3-bit scale and zero-point. Finally, there
+    are four 16-bit scalars for the entire group used for second level quantization.
+    To simplify GPU memory access, we keep the quantized values for outlier weights
+    in place and adjust the 16-bit versions to compensate for that. We also store
+    both quantized weights and quantized quantization statistics in a contiguous memory
+    region for each group. When running on a different hardware (e.g. mobile CPUs),
+    it is possible to further reduce the memory footprint by removing the quantized
+    version of outliers. We leave this direction for future work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Storing outliers. Recall that our outliers are unstructured; for storage, we
+    sort them by their row first and column second, so that outliers in the same row
+    are contiguous in memory. For each outlier, we store two scalars: the 16-bit weight
+    value and the 16-bit column index. For each row, we also store a single 32-bit
+    number—the total number of outliers in the rows up to the current one for efficient
+    inference. This results in an average storage cost of 32.03 to 32.1 bits per sensitive
+    weight. This could be reduced significantly by grouping outliers, which we leave
+    as future work.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Inference with SpQR. To illustrate the practicality of our approach, we design
+    an efficient GPU-based decoding implementation for the SpQR format, focused on
+    the popular token-by-token LLM generation as a use-case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We leverage the fact that autoregressive inference on GPUs is memory-bound,
+    so high compression rates can hide decoding overheads, to a significant extent.
+    At a high level, our algorithm loads group statistics and the quantized weights
+    into shared memory (SRAM), dequantizes to 16-bits, and then performs matrix multiplication
+    with 16-bit inputs. For handling outliers, we design a sparse matrix algorithm
+    that takes advantage of outliers that occur in rows. Roughly, the algorithm works
+    as follows
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, (1) we divide the matrix into equally sized blocks. Then, each GPU core
+    (thread block) (2) loads a large slice of outliers into shared memory (SRAM),
+    and each GPU core (3) determines if outliers are part of the segment or not. The
+    corresponding weights are (4) loaded from main memory; finally, the matrix multiplication
+    is performed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This algorithm essentially performs load balancing through steps (1-3), while
+    step (4) tends to have contiguous memory access due to the row-like patterns for
+    the outliers. We will show in Section [5](#S5 "5 Experimental Validation ‣ SpQR:
+    A Sparse-Quantized Representation for Near-Lossless LLM Weight Compression") that
+    this custom approach is faster than the sparse matrix algorithms in PyTorch.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Experimental Validation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Experimental setup.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We focus on three main settings: 1) evaluating what is the most compact representation
+    with which SpQR can replicate the performance of a 16-bit model within 1% perplexity,
+    2) controlling for the average number of bits per parameter across methods and
+    assess the performance of SpQR compared to round-to-nearest and GPTQ baselines,
+    3) what is the best trade-off in terms of model size and performance. For these
+    settings, we evaluate the full SpQR algorithm on publicly-available LLMs. We focus
+    on the LLaMA $\{7,13,30,65\}$B model family [[35](#bib.bib35)]. We quantize LLaMa
+    models using the RedPajama dataset and Falcon models on RefinedWeb dataset [[36](#bib.bib36)],
+    publicly-available replicas of the LLaMA and Falcon training data, respectively.
+    In addition, we provide perplexity results for OPT models in Appendix [F](#A6
+    "Appendix F Additional results for near-lossless compression ‣ SpQR: A Sparse-Quantized
+    Representation for Near-Lossless LLM Weight Compression").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We compare SpQR against two other post-training quantization schemes: GPTQ [[9](#bib.bib9)]
+    and simple rounding-to-nearest (RTN) quantization, which is used by most other
+    LLM compression methods [[6](#bib.bib6), [44](#bib.bib44)]. Both baselines use
+    4-bit quantization since it provides the best quality to size trade-off [[7](#bib.bib7)].
+    For SpQR, we consider both 3-bit and 4-bit base quantization, though the resulting
+    model size can be slightly larger due to the presence of outliers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We evaluate quantized model performance by two metrics. Firstly, we measure
+    *perplexity*, measured on the WikiText2 [[21](#bib.bib21)], Penn Treebank [[20](#bib.bib20)]
+    and C4 [[29](#bib.bib29)] datasets. Secondly, we measure zero-shot accuracy on
+    five tasks: WinoGrande [[31](#bib.bib31)], PiQA [[34](#bib.bib34)], HellaSwag,
+    ARC-easy and ARC-challenge [[3](#bib.bib3)]. We use the LM Evaluation Harness [[13](#bib.bib13)]
+    with recommended parameters. We provide full configurations in Appendix [B](#A2
+    "Appendix B Experimental Configurations ‣ SpQR: A Sparse-Quantized Representation
+    for Near-Lossless LLM Weight Compression"), as well as code which we plan to release
+    publicly. Our implementation takes around 4.5 hours on the largest model size
+    (65B) on an NVIDIA A100 and about 6 on an A6000.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To control for model size, we evaluate RTN and GPTQ with 4-bit base quantization.
+    For SpQR we use 3-bit base quantization, a group size of 8 with 3-bit for the
+    first quantization, a group size of 64 for the second quantization, and as many
+    outliers as possible to still reach less than 4-bits per parameter on average.
+    We aim to achieve *near-lossless* compression, for which we adopt the definition
+    of the MLCommons benchmark [[28](#bib.bib28)]: 1% error relative to the uncompressed
+    baseline. In all SpQR evaluations, we choose $\tau$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Main Results.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Figure [1](#S1.F1 "Figure 1 ‣ 1 Introduction ‣ SpQR: A Sparse-Quantized Representation
+    for Near-Lossless LLM Weight Compression") measures actual model size versus perplexity
+    on LLaMa models on WikiText2, and accuracy on zero-shot tasks. We observe that
+    SpQR outperforms GPTQ (and correspondingly RTN) at similar model size by a significant
+    margin, especially on smaller models. This improvement comes from both SpQR achieving
+    more compression, while also reducing loss degradation. In addition, if we measure
+    the bits per parameter needed to come within 1% of the 16-bit performance in terms
+    of perplexity, Figure [1](#S1.F1 "Figure 1 ‣ 1 Introduction ‣ SpQR: A Sparse-Quantized
+    Representation for Near-Lossless LLM Weight Compression") shows that SpQR with
+    4.6 to 4.71 bits per parameter approaches the non-quantized models with at most
+    1% margin of error for all models (see Table [4](#S5.F4 "Figure 4 ‣ Main Results.
+    ‣ 5 Experimental Validation ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless
+    LLM Weight Compression") and Table [5](#S5.F5 "Figure 5 ‣ Main Results. ‣ 5 Experimental
+    Validation ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight
+    Compression") for exact values).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second set of results, presented in Table [4](#S5.F4 "Figure 4 ‣ Main Results.
+    ‣ 5 Experimental Validation ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless
+    LLM Weight Compression") for LLaMa and Table [5](#S5.F5 "Figure 5 ‣ Main Results.
+    ‣ 5 Experimental Validation ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless
+    LLM Weight Compression") for Falcon family models, controls model size by comparing
+    SpQR and baseline methods with 4 bits per parameter. These results show that SpQR
+    improves over previous methods, with the gap between SpQR and the next best method
+    GPTQ being as large as the improvement of GPTQ over naive RTN. For 4-bit, SpQR
+    halves the error relative to the 16-bit baseline compared to GPTQ.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{floatrow}\capbtabbox'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| LLaMa |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Size | Method | Avg bits | Wiki2 | C4 | PTB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 7B | – | 16.00 | 5.68 | 7.08 | 8.80 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 4.63 | 5.73 | 7.13 | 8.88 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 4 | 6.43 | 7.93 | 10.30 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 4 | 6.13 | 7.43 | 9.27 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 3.94 | 5.87 | 7.28 | 9.07 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 13B | – | 16.00 | 5.09 | 6.61 | 8.07 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 4.63 | 5.13 | 6.64 | 8.13 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 4 | 5.55 | 6.98 | 8.65 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 4 | 5.40 | 6.84 | 8.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 3.96 | 5.22 | 6.72 | 8.22 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Size | Method | Avg bits | Wiki2 | C4 | PTB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 30B | – | 16.00 | 4.10 | 5.98 | 7.30 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 4.69 | 4.14 | 6.01 | 7.33 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 4 | 4.57 | 6.34 | 7.75 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 4 | 4.48 | 6.20 | 7.54 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 3.89 | 4.25 | 6.08 | 7.38 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 65B | – | 16.00 | 3.53 | 5.62 | 6.91 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 4.71 | 3.57 | 5.64 | 6.93 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 4 | 3.87 | 5.85 | 7.17 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 4 | 3.83 | 5.80 | 7.07 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 3.90 | 3.68 | 5.70 | 6.99 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Figure 4: Perplexity on WikiText2 [[21](#bib.bib21)], C4 [[29](#bib.bib29)]
+    and Penn Treebank [[20](#bib.bib20)] for SpQR and round-to-nearest (RTN) and GPTQ
+    baselines with LLaMa. We can see that SpQR reaches performances within 1% of the
+    perplexity with less than 4.71 bits per parameter. We also see that for 4-bits
+    per parameter SpQR significantly improves on GPTQ with an improvement as large
+    as the improvement from RTN to GPTQ.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{floatrow}\capbtabbox'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Falcon |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Size | Method | Avg bits | Wiki2 | C4 | PTB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 7B | – | 16.00 | 6.59 | 9.50 | 9.90 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 4.44 | 6.64 | 9.58 | 9.97 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 4 | 8.73 | 12.56 | 13.76 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 4 | 6.91 | 9.93 | 10.33 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 3.92 | 6.74 | 9.70 | 19.114 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Size | Method | Avg bits | Wiki2 | C4 | PTB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 40B | – | 16.00 | 5.23 | 7.76 | 7.83 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 4.46 | 5.26 | 7.79 | 7.86 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 4 | 6.52 | 9.76 | 10.63 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 4 | 5.36 | 7.95 | 8.01 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 3.90 | 5.29 | 7.85 | 7.91 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Figure 5: Perplexity on WikiText2 [[21](#bib.bib21)], C4 [[29](#bib.bib29)]
+    and Penn Treebank [[20](#bib.bib20)] for SpQR and round-to-nearest (RTN) and GPTQ
+    baselines on Falcon model. We can see that SpQR reaches performances within 1%
+    of the perplexity with less than 4.5 bits per parameter. We also see that for
+    4-bits per parameter SpQR significantly improves on GPTQ with an improvement as
+    large as the improvement from RTN to GPTQ.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Ablations.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'The SpQR representation differs from standard quantization methods in two main
+    ways: bilevel quantization with small quantization group size and unstructured
+    outliers. To understand the effect of small group sizes, we compare 3-bit SpQR
+    with group size 16, compressed using 3-bit bilevel quantization, versus a setup
+    with group size 48, keeping quantization statistics in 16-bit. Both configurations
+    result in approximately 3.6 average bits per parameter. For simplicity, neither
+    uses outliers. We report both in Table [7](#S5.F7 "Figure 7 ‣ Ablations. ‣ 5 Experimental
+    Validation ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight
+    Compression"), the “3-bit statistics“ entry corresponds to group size 16 with
+    3-bit statistics and “16-bit statistics“ stands for group size 16 with 16-bit
+    statistics. Given the same (slightly smaller) memory footprint, using quantized
+    statistics significantly improves language modeling loss.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we ask whether it is necessary to use unstructured outliers, considering
+    two outlier types. First, we use the criterion of Dettmers et al. [[7](#bib.bib7)]
+    to find column outliers and quantize them in higher precision. The alternative
+    is to treat the entire rows (output units / hidden units / neurons) as outliers:
+    we run SpQR without outliers, then select $k$ output units that have the highest
+    quantization error (i.e. MSE between layer predictions) and treat the entire rows
+    as 16-bit outliers. We compare the three outlier types on top of 3-bit SpQR and
+    report the results in Figure [7](#S5.F7 "Figure 7 ‣ Ablations. ‣ 5 Experimental
+    Validation ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight
+    Compression"). Overall, unstructured outliers reduce perplexity significantly
+    faster than their row counterpart and the criterion of [[7](#bib.bib7)], even
+    after accounting for the different memory footprint.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, we analyze the impact of the minor hyperparameter changes that we
+    introduced at the end of Section [4](#S4 "4 SpQR: A Sensitivity-aware compressed
+    representation ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM
+    Weight Compression"). In Table [7](#S5.F7 "Figure 7 ‣ Ablations. ‣ 5 Experimental
+    Validation ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight
+    Compression") (bottom), we evaluate quantization errors without these changes.
+    The “Round zero” entry corresponds to a version of SpQR where the zero-point is
+    a 3-bit integer. This reduces the memory footprint of SpQR, but results in a moderate
+    increase in perplexity. Similarly, we evaluate SpQR without the “act order” flag.
+    This option re-orders the input dimensions by the diagonal of the inverse hessian,
+    which was introduced as a part of the GPTQ algorithm. Using this heuristic slightly
+    improves loss, though not as much as from quantized groups.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{floatrow}\capbtabbox'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 6: Perplexity for LLaMA-65B model.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Name | Wiki2 | C4 | PTB | Avg bits |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Uncompressed | 3.53 | 5.62 | 6.91 | 16 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ (4 bit) | 3.83 | 5.80 | 7.07 | 4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 3-bit statistics | 3.74 | 5.73 | 7.02 | 3.63 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16-bit statistics | 3.84 | 5.83 | 7.12 | 3.67 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Round zero | 3.75 | 5.76 | 7.01 | 3.63 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| w/o act order | 3.74 | 5.76 | 7.05 | 3.63 |'
+  prefs: []
+  type: TYPE_TB
+- en: \ffigbox![Refer to caption](img/34dec1bfe7c59e166e6b4352c07697e0.png)
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 7: Different outlier types, LLaMA-65B.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To summarize, both small quantized groups and unstructured outliers independently
+    improve perplexity and perform better than alternative strategies. SpQR also benefits
+    from using the GPTQ activation order heuristic, though the gain is smaller than
+    from outliers or small groups. Still, we opt to use the same activation order
+    heuristic in the GPTQ baselines to ensure a fair comparison. To further explore
+    the design space of SpQR, we provide an additional hyperparameter study in Appendix [C](#A3
+    "Appendix C Hyperparameter sensitivity ‣ SpQR: A Sparse-Quantized Representation
+    for Near-Lossless LLM Weight Compression").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Inference Time.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Finally, we evaluate the inference speed of SpQR for autoregressive inference
+    with a focus on measuring the token generation latency with batch size 1 on a
+    single A100 GPU. We measure inference speed in two setups: i) generating 100 tokens
+    from scratch and ii) adding 100 tokens on top of a 1024-token prefix (prompt).
+    We compare our specialized sparse matrix multiplication algorithm with the algorithm
+    implemented in PyTorch (cuSPARSE). We also compare against a 16-bit baseline.
+    We measure the end-to-end latency as inference steps per second for the full SpQR
+    algorithm, that is for both the dense and sparse multiplication part together.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | fp16 (baseline) | SpQR (PyTorch) | SpQR (optimized) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA | 7B | 13B | 30B | 65B | 7B | 13B | 30B | 65B | 7B | 13B | 30B | 65B
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| scratch | $47\pm 2.3$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| prefix 1024 | $46\pm 2.4$ |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 1: Inference speed comparison (tokens/s), OOM means the model did not
+    fit in an A100 GPU. We see that our optimized SpQR algorithm is faster than the
+    16-bit baseline and almost 2.0x faster than quantized matrix multiplication +
+    standard PyTorch sparse matrix multiplication baseline.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Results are shown in Table [1](#S5.T1 "Table 1 ‣ Inference Time. ‣ 5 Experimental
+    Validation ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight
+    Compression"). We can see that while standard sparse matrix multiplication in
+    PyTorch is not faster than 16-bit inference, our specialized sparse matrix multiplication
+    algorithm yields speedups of about 20-30%.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Discussion & Limitations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We have presented SpQR, an quantization approach which quantizes sensitive outliers
+    in higher precision, to achieve near-lossless 16-bit accuracy with less than 4.75
+    bits per parameter on average. We achieve even better quality-size-tradeoff when
+    compressing to as little as 3.36 bits which makes SpQR an ideal method for compressing
+    models for memory-limited devices. Despite our promising results, there are several
+    limitations. The main limitation is that we do not evaluate the generative quality
+    of quantized LLMs, but only the predictive performance in terms of zero-shot accuracy
+    and perplexity. While we believe that perplexity measurements and generation quality
+    are strongly related, this is a hypothesis we aim to investigate in future work.
+    While we devise a sparse matrix multiplication algorithm to accelerate the computation
+    with outliers, another limitation is that we do not fuse sparse matrix multiplication
+    with regular quantized matrix multiplication. Such an approach would yield even
+    better inference time performance. However, such an approach is also very difficult
+    to implement. We leave the implementation of such an algorithm to future work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7 Acknowledgements
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: D.K. was supported by Russian Science Foundation, grant 21-11-00373. D.A. and
+    E.F. gratefully acknowledge funding from the European Research Council (ERC) under
+    the European Union’s Horizon 2020 research and innovation programme (grant agreement
+    No 805223 ScaleML). Authors also thank Ivan Komarov for his help in profiling
+    and understanding the performance bottlenecks of SpQR on GPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: BMR^+ [20] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan,
+    Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell,
+    et al. Language models are few-shot learners. In Conference on Neural Information
+    Processing Systems (NeurIPS), 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'BSA^+ [23] Stella Biderman, Hailey Schoelkopf, Quentin Anthony, Herbie Bradley,
+    Kyle O’Brien, Eric Hallahan, Mohammad Aflah Khan, Shivanshu Purohit, USVSN Sai
+    Prashanth, Edward Raff, et al. Pythia: A suite for analyzing large language models
+    across training and scaling. arXiv preprint arXiv:2304.01373, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: CCE^+ [18] Peter Clark, Isaac Cowhey, Oren Etzioni, Tushar Khot, Ashish Sabharwal,
+    Carissa Schoenick, and Oyvind Tafjord. Think you have solved question answering?
+    try arc, the ai2 reasoning challenge. arXiv preprint arXiv:1803.05457, 2018.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'CND^+ [22] Aakanksha Chowdhery, Sharan Narang, Jacob Devlin, Maarten Bosma,
+    Gaurav Mishra, Adam Roberts, Paul Barham, Hyung Won Chung, Charles Sutton, Sebastian
+    Gehrmann, et al. Palm: Scaling language modeling with pathways. arXiv preprint
+    arXiv:2204.02311, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'DCLT [19] Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova.
+    BERT: Pre-training of deep bidirectional transformers for language understanding.
+    In North American Chapter of the Association for Computational Linguistics (NAACL),
+    2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'DLBZ [22] Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer. LLM.int8():
+    8-bit matrix multiplication for transformers at scale. Advances in Neural Information
+    Processing Systems 35: Annual Conference on Neural Information Processing Systems
+    2022, NeurIPS 2022, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'DZ [22] Tim Dettmers and Luke Zettlemoyer. The case for 4-bit precision: k-bit
+    inference scaling laws. arXiv preprint arXiv:2212.09720, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: FA [23] Elias Frantar and Dan Alistarh. Massive language models can be accurately
+    pruned in one-shot. arXiv preprint arXiv:2301.00774, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'FAHA [22] Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan Alistarh.
+    Gptq: Accurate post-training quantization for generative pre-trained transformers.
+    arXiv preprint arXiv:2210.17323, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'FSA [22] Elias Frantar, Sidak Pal Singh, and Dan Alistarh. Optimal Brain Compression:
+    A framework for accurate post-training quantization and pruning. arXiv preprint
+    arXiv:2208.11580, 2022. Accepted to NeurIPS 2022, to appear.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'GFS^+ [19] Yury Gorbachev, Mikhail Fedorov, Iliya Slavutin, Artyom Tugarev,
+    Marat Fatekhov, and Yaroslav Tarkan. Openvino deep learning workbench: Comprehensive
+    analysis and tuning of neural networks inference. In Proceedings of the IEEE/CVF
+    International Conference on Computer Vision Workshops, pages 0–0, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: GKD^+ [21] Amir Gholami, Sehoon Kim, Zhen Dong, Zhewei Yao, Michael W Mahoney,
+    and Kurt Keutzer. A survey of quantization methods for efficient neural network
+    inference. arXiv preprint arXiv:2103.13630, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: GTB^+ [21] Leo Gao, Jonathan Tow, Stella Biderman, Sid Black, Anthony DiPofi,
+    Charles Foster, Laurence Golding, Jeffrey Hsu, Kyle McDonell, Niklas Muennighoff,
+    Jason Phang, Laria Reynolds, Eric Tang, Anish Thite, Ben Wang, Kevin Wang, and
+    Andy Zou. A framework for few-shot language model evaluation, September 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'HABN^+ [21] Torsten Hoefler, Dan Alistarh, Tal Ben-Nun, Nikoli Dryden, and
+    Alexandra Peste. Sparsity in deep learning: Pruning and growth for efficient inference
+    and training in neural networks. arXiv preprint arXiv:2102.00554, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: HBM^+ [22] Jordan Hoffmann, Sebastian Borgeaud, Arthur Mensch, Elena Buchatskaya,
+    Trevor Cai, Eliza Rutherford, Diego de Las Casas, Lisa Anne Hendricks, Johannes
+    Welbl, Aidan Clark, et al. Training compute-optimal large language models. arXiv
+    preprint arXiv:2203.15556, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: HNH^+ [21] Itay Hubara, Yury Nahshan, Yair Hanani, Ron Banner, and Daniel Soudry.
+    Accurate post training quantization with small calibration sets. In International
+    Conference on Machine Learning (ICML), 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'KHB^+ [21] Daya Khudia, Jianyu Huang, Protonu Basu, Summer Deng, Haixin Liu,
+    Jongsoo Park, and Mikhail Smelyanskiy. Fbgemm: Enabling high-performance low-precision
+    deep learning inference. arXiv preprint arXiv:2101.05615, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: KMH^+ [20] Jared Kaplan, Sam McCandlish, Tom Henighan, Tom B Brown, Benjamin
+    Chess, Rewon Child, Scott Gray, Alec Radford, Jeffrey Wu, and Dario Amodei. Scaling
+    laws for neural language models. arXiv preprint arXiv:2001.08361, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'LGT^+ [21] Yuhang Li, Ruihao Gong, Xu Tan, Yang Yang, Peng Hu, Qi Zhang, Fengwei
+    Yu, Wei Wang, and Shi Gu. BRECQ: Pushing the limit of post-training quantization
+    by block reconstruction. In International Conference on Learning Representations
+    (ICLR), 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'MKM^+ [94] Mitch Marcus, Grace Kim, Mary Ann Marcinkiewicz, Robert MacIntyre,
+    Ann Bies, Mark Ferguson, Karen Katz, and Britta Schasberger. The penn treebank:
+    Annotating predicate argument structure. In Human Language Technology: Proceedings
+    of a Workshop held at Plainsboro, New Jersey, March 8-11, 1994, 1994.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: MXBS [16] Stephen Merity, Caiming Xiong, James Bradbury, and Richard Socher.
+    Pointer sentinel mixture models. arXiv preprint arXiv:1609.07843, 2016.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: NAVB^+ [20] Markus Nagel, Rana Ali Amjad, Mart Van Baalen, Christos Louizos,
+    and Tijmen Blankevoort. Up or down? Adaptive rounding for post-training quantization.
+    In International Conference on Machine Learning (ICML), 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Neu [22] NeuralMagic. DeepSparse, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: OEN^+ [22] Catherine Olsson, Nelson Elhage, Neel Nanda, Nicholas Joseph, Nova
+    DasSarma, Tom Henighan, Ben Mann, Amanda Askell, Yuntao Bai, Anna Chen, et al.
+    In-context learning and induction heads. arXiv preprint arXiv:2209.11895, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Ope [23] OpenAI. Gpt-4 technical report. arXiv, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'PGM^+ [19] Adam Paszke, Sam Gross, Francisco Massa, Adam Lerer, James Bradbury,
+    Gregory Chanan, Trevor Killeen, Zeming Lin, Natalia Gimelshein, Luca Antiga, Alban
+    Desmaison, Andreas Kopf, Edward Yang, Zachary DeVito, Martin Raison, Alykhan Tejani,
+    Sasank Chilamkurthy, Benoit Steiner, Lu Fang, Junjie Bai, and Soumith Chintala.
+    PyTorch: An imperative style, high-performance deep learning library. In Conference
+    on Neural Information Processing Systems (NeurIPS). 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'PPK^+ [22] Gunho Park, Baeseong Park, Se Jung Kwon, Byeongwook Kim, Youngjoo
+    Lee, and Dongsoo Lee. nuQmm: Quantized matmul for efficient inference of large-scale
+    generative language models. arXiv preprint arXiv:2206.09557, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: RCK^+ [20] Vijay Janapa Reddi, Christine Cheng, David Kanter, Peter Mattson,
+    Guenther Schmuelling, Carole-Jean Wu, Brian Anderson, Maximilien Breughe, Mark
+    Charlebois, William Chou, et al. Mlperf inference benchmark. In 2020 ACM/IEEE
+    47th Annual International Symposium on Computer Architecture (ISCA), pages 446–459\.
+    IEEE, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: RSR^+ [20] Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang,
+    Michael Matena, Yanqi Zhou, Wei Li, and Peter Liu. Exploring the limits of transfer
+    learning with a unified text-to-text transformer. Journal of Machine Learning
+    Research, 21(140):1–67, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: RWC^+ [19] Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei,
+    and Ilya Sutskever. Language models are unsupervised multitask learners. OpenAI
+    blog, 1(8):9, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'SBBC [21] Keisuke Sakaguchi, Ronan Le Bras, Chandra Bhagavatula, and Yejin
+    Choi. Winogrande: an adversarial winograd schema challenge at scale. Commun. ACM,
+    64(9):99–106, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'SLP^+ [21] Jianlin Su, Yu Lu, Shengfeng Pan, Ahmed Murtadha, Bo Wen, and Yunfeng
+    Liu. Roformer: Enhanced transformer with rotary position embedding. arXiv preprint
+    arXiv:2104.09864, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'TLI^+ [23] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet,
+    Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal, Eric Hambro,
+    Faisal Azhar, et al. Llama: Open and efficient foundation language models. arXiv
+    preprint arXiv:2302.13971, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'TP [03] Sandeep Tata and Jignesh M Patel. PiQA: An algebra for querying protein
+    data sets. In International Conference on Scientific and Statistical Database
+    Management, 2003.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[35] TII UAE. The falcon family of large language models. [https://huggingface.co/tiiuae/falcon-40b](https://huggingface.co/tiiuae/falcon-40b),
+    May 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[36] TII UAE. The refined web dataset. [https://huggingface.co/datasets/tiiuae/falcon-refinedweb](https://huggingface.co/datasets/tiiuae/falcon-refinedweb),
+    May 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Vig [19] Jesse Vig. A multiscale visualization of attention in the transformer
+    model. arXiv preprint arXiv:1906.05714, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'VTM^+ [19] Elena Voita, David Talbot, Fedor Moiseev, Rico Sennrich, and Ivan
+    Titov. Analyzing multi-head self-attention: Specialized heads do the heavy lifting,
+    the rest can be pruned. In Proceedings of the 57th Annual Meeting of the Association
+    for Computational Linguistics, pages 5797–5808, Florence, Italy, July 2019. Association
+    for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: WBZ^+ [21] Jason Wei, Maarten Bosma, Vincent Y Zhao, Kelvin Guu, Adams Wei Yu,
+    Brian Lester, Nan Du, Andrew M Dai, and Quoc V Le. Finetuned language models are
+    zero-shot learners. arXiv preprint arXiv:2109.01652, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: WCHC [20] Peisong Wang, Qiang Chen, Xiangyu He, and Jian Cheng. Towards accurate
+    post-training network quantization via bit-split and stitching. In International
+    Conference on Machine Learning (ICML), 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: WMR^+ [21] Laura Weidinger, John Mellor, Maribeth Rauh, Conor Griffin, Jonathan
+    Uesato, Po-Sen Huang, Myra Cheng, Mia Glaese, Borja Balle, Atoosa Kasirzadeh,
+    Zac Kenton, Sasha Brown, Will Hawkins, Tom Stepleton, Courtney Biles, Abeba Birhane,
+    Julia Haas, Laura Rimell, Lisa Anne Hendricks, William Isaac, Sean Legassick,
+    Geoffrey Irving, and Iason Gabriel. Ethical and social risks of harm from language
+    models, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'WSM^+ [18] Alex Wang, Amanpreet Singh, Julian Michael, Felix Hill, Omer Levy,
+    and Samuel R Bowman. Glue: A multi-task benchmark and analysis platform for natural
+    language understanding. arXiv preprint arXiv:1804.07461, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'XLS^+ [22] Guangxuan Xiao, Ji Lin, Mickael Seznec, Julien Demouth, and Song
+    Han. Smoothquant: Accurate and efficient post-training quantization for large
+    language models. arXiv preprint arXiv:2211.10438, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'YAZ^+ [22] Zhewei Yao, Reza Yazdani Aminabadi, Minjia Zhang, Xiaoxia Wu, Conglong
+    Li, and Yuxiong He. Zeroquant: Efficient and affordable post-training quantization
+    for large-scale transformers. arXiv preprint arXiv:2206.01861, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: YLW^+ [23] Zhewei Yao, Cheng Li, Xiaoxia Wu, Stephen Youn, and Yuxiong He. A
+    comprehensive study on post-training quantization for large language models, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Table of contents
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: '[1 Introduction](#S1 "In SpQR: A Sparse-Quantized Representation for Near-Lossless
+    LLM Weight Compression")'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[2 Related Work](#S2 "In SpQR: A Sparse-Quantized Representation for Near-Lossless
+    LLM Weight Compression")'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[3 Quantization sensitivity of LLM weights](#S3 "In SpQR: A Sparse-Quantized
+    Representation for Near-Lossless LLM Weight Compression")'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[3.1 Parameter sensitivity under quantization](#S3.SS1 "In 3 Quantization sensitivity
+    of LLM weights ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM
+    Weight Compression")'
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[3.2 Exploring parameter sensitivity](#S3.SS2 "In 3 Quantization sensitivity
+    of LLM weights ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM
+    Weight Compression")'
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[4 SpQR: A Sensitivity-aware compressed representation](#S4 "In SpQR: A Sparse-Quantized
+    Representation for Near-Lossless LLM Weight Compression")'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[4.1 Overview](#S4.SS1 "In 4 SpQR: A Sensitivity-aware compressed representation
+    ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight Compression")'
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[4.2 Implementing and Leveraging the Sparse Quantized Representation](#S4.SS2
+    "In 4 SpQR: A Sensitivity-aware compressed representation ‣ SpQR: A Sparse-Quantized
+    Representation for Near-Lossless LLM Weight Compression")'
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[5 Experimental Validation](#S5 "In SpQR: A Sparse-Quantized Representation
+    for Near-Lossless LLM Weight Compression")'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[6 Discussion & Limitations](#S6 "In SpQR: A Sparse-Quantized Representation
+    for Near-Lossless LLM Weight Compression")'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[7 Acknowledgements](#S7 "In SpQR: A Sparse-Quantized Representation for Near-Lossless
+    LLM Weight Compression")'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[A Additional weight sensitivity analysis](#A1 "In SpQR: A Sparse-Quantized
+    Representation for Near-Lossless LLM Weight Compression")'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[B Experimental Configurations](#A2 "In SpQR: A Sparse-Quantized Representation
+    for Near-Lossless LLM Weight Compression")'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[C Hyperparameter sensitivity](#A3 "In SpQR: A Sparse-Quantized Representation
+    for Near-Lossless LLM Weight Compression")'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[D Estimating model size](#A4 "In SpQR: A Sparse-Quantized Representation for
+    Near-Lossless LLM Weight Compression")'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[E Choice of optimal configuration for fixed average number of bits](#A5 "In
+    SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight Compression")'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[F Additional results for near-lossless compression](#A6 "In SpQR: A Sparse-Quantized
+    Representation for Near-Lossless LLM Weight Compression")'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[G Choice of optimal LLM configuration for specific hardware](#A7 "In SpQR:
+    A Sparse-Quantized Representation for Near-Lossless LLM Weight Compression")'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[H Sensitivity to random seed](#A8 "In SpQR: A Sparse-Quantized Representation
+    for Near-Lossless LLM Weight Compression")'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[I Generative examples](#A9 "In SpQR: A Sparse-Quantized Representation for
+    Near-Lossless LLM Weight Compression")'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[J Broader impact](#A10 "In SpQR: A Sparse-Quantized Representation for Near-Lossless
+    LLM Weight Compression")'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[K On the use of LLMs in this work](#A11 "In SpQR: A Sparse-Quantized Representation
+    for Near-Lossless LLM Weight Compression")'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Appendix A Additional weight sensitivity analysis
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section, we provide additional visualizations of LLaMA weight sensitivities,
+    as well as additional plots for different layer roles. As we observed earlier
+    in Section [3.2](#S3.SS2 "3.2 Exploring parameter sensitivity ‣ 3 Quantization
+    sensitivity of LLM weights ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless
+    LLM Weight Compression"), the sensitivity matrices vary based on four main factors:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: the quantization scheme (e.g. row- or group-wise);
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: the layer depth, i.e. the index of the corresponding transformer block;
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: the role of that weight, e.g. self-attn query / key or MLP up / down projection;
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: the location within the chosen weight matrix;
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Here, we report additional observations about these factors and elaborate on
+    some of our claims from Section [3.1](#S3.SS1 "3.1 Parameter sensitivity under
+    quantization ‣ 3 Quantization sensitivity of LLM weights ‣ SpQR: A Sparse-Quantized
+    Representation for Near-Lossless LLM Weight Compression"). We also report raw
+    sensitivity matrices for various weight matrices at the end of the supplementary
+    materials.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Relation between sensitivity and the chosen quantization scheme.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We compare two configurations of GPTQ 3-bit. The first configuration uses one
+    quantization scale & zero for each row. The second one uses blockwise quantization
+    with one set of statistics for each block of 128 weights.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7987c4bb5d258124726a4f6a1500886a.png)![Refer to caption](img/8fe6ad1e1fe690b839a2adf72b65b602.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8: The weight sensitivities for LLaMA-65B 40th layer, attention query
+    projection. The color scale represents sensitivity on a logarithmic scale, with
+    higher sensitivity being darker. (top) 3-bit GPTQ with per-row quantization scales,
+    (bottom) 3-bit GPTQ with block size 128.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure [8](#A1.F8 "Figure 8 ‣ Relation between sensitivity and the chosen quantization
+    scheme. ‣ Appendix A Additional weight sensitivity analysis ‣ SpQR: A Sparse-Quantized
+    Representation for Near-Lossless LLM Weight Compression") demonstrates a typical
+    example of how group size affects sensitivity. In the bottom-right plot, we observe
+    that a subset of weights (width 128) has a significantly higher quantization error
+    than the rest of the layer. Please note that the color scale represents sensitivity
+    on a logarithmic scale, with higher sensitivity being darker.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: On a more detailed examination, we found that this specific group contains a
+    “vertical” outlier, i.e. the corresponding input feature has significantly higher
+    variance, compared to other input dimensions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this example, the main effect of GPTQ block size 128 is that the problematic
+    dimension leads to increased sensitivity in a group of $8192\times 128$ weights.
+    In turn, GPTQ with per-row statistics has high quantization error across the entire
+    row.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The effect of rotary embeddings. Earlier in Figure [2](#S3.F2 "Figure 2 ‣ 3.2
+    Exploring parameter sensitivity ‣ 3 Quantization sensitivity of LLM weights ‣
+    SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight Compression")
+    we note that attention query and key have a regular pattern of sensitivity that
+    repeats every 64 rows. We attribute this to the fact that LLaMA uses rotary position
+    embeddings. More specifically, this pattern is likely a side-effect of how rotary
+    embeddings are implemented for this model.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To recall, rotary position embeddings are a technique that rotates attention
+    head dimensions by an angle that depends on how many tokens are between key and
+    query [[32](#bib.bib32)]. Furthermore, dimensions within each head are rotated
+    with a different frequency. To implement this rotation, LLaMA multiplies each
+    head by a precomputed tensor of sine and cosine functions with a different period.
+    The first half (64 units) of the matrix is multiplied by cosines and the other
+    half (64 units) is multiplied by sines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To recall, sine and cosine components are equivalent up to a phase shift and
+    show similar behavior in our analysis. In general, we observe that weights that
+    correspond to low-frequency heads (bottom of each semi-head) typically have higher
+    sensitivity. One possible explanation is that high-frequency heads can be more
+    dependent on position-specific information, such as attending to the previous
+    token — and less dependent on the weights that represent content information.
+    However, this phenomenon merits further investigation and our current understanding
+    should be treated as an educated guess.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'GPTQ and the effect of quantization order. As we observe earlier in Section [3.2](#S3.SS2
+    "3.2 Exploring parameter sensitivity ‣ 3 Quantization sensitivity of LLM weights
+    ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight Compression"),
+    the rightmost weights in each visualization tend to have higher quantization errors.
+    This is likely a side-effect of the GPTQ algorithm, which compresses weights one
+    input feature at a time, i.e. column by column in a left-to-right direction. Once
+    a column is quantized, the algorithm uses the remaining unquantized weights to
+    compensate for the error. Thus, the rightmost batch of weights accumulates the
+    most error from preceding columns and has the least space to compensate it’s “own”
+    quantization error.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This difference is most pronounced in the earlier layers, where the quantization
+    error is smaller overall (see Figure [9](#A1.F9 "Figure 9 ‣ Relation between sensitivity
+    and the chosen quantization scheme. ‣ Appendix A Additional weight sensitivity
+    analysis ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight
+    Compression")). To further verify this observation, we observe that this effect
+    disappears if we shuffle the weight quantization order in the GPTQ algorithm.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e3e7ace10e4601b3577f8cc2e83c0e27.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 9: The weight log-sensitivities for a deeper upward projection layer
+    (in particular, this is layer #79). The heatmap on the left represents the sensitivities
+    of each weight, with darker being more sensitive; the histogram on the right captures
+    the sensitivities in the first 100 and last 100 columns (sorted across input dimensions).
+    The latter figure clearly shows that later columns are more sensitive on average.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Relation between weight sensitivity and layer depth. In terms of mean squared
+    error, we observe that the first layers of LLaMA tend to have generally lower
+    OBC error (defined as L2 distance between original and quantized layer predictions).
+    To illustrate this, we report the average quantization error of GPTQ-3bit in Figure [10](#A1.F10
+    "Figure 10 ‣ Relation between sensitivity and the chosen quantization scheme.
+    ‣ Appendix A Additional weight sensitivity analysis ‣ SpQR: A Sparse-Quantized
+    Representation for Near-Lossless LLM Weight Compression").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a15dc6662628a5645136664874f63a2c.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 10: Figure: mean quantization error (vertical axis) as a function of
+    layer depth (horizontal axis). Each plot corresponds to a different layer role.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The absolute quantization error means little by itself since each quantized
+    layer has a different input/output variance. However, we also observe that the
+    first and last few layers have qualitative differences in behavior. Figures [16](#A9.F16
+    "Figure 16 ‣ Appendix I Generative examples ‣ SpQR: A Sparse-Quantized Representation
+    for Near-Lossless LLM Weight Compression") and [17](#A9.F17 "Figure 17 ‣ Appendix
+    I Generative examples ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless
+    LLM Weight Compression") report weight sensitivities for the first, middle (40th),
+    and last (79th) layer of LLaMA model separately to better illustrate this difference.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B Experimental Configurations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The SpQR representations proposed in this work have several adjustable hyperparameters
+    that allow for great flexibility in targeting a desired size of the model. We
+    introduce the notation and list the method hyperparameters below:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: $b_{w}$ - number of bits per weight
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: $b_{s}$ - number of bits per scale
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: $b_{z}$ - number of bits per zero
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: $r_{o}$ - outlier rate (fraction of weights that are not quantized)
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: $\beta_{1}$ - block size for weight quantization
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: $\beta_{2}$ - block size for statistic quantization;
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: $\tau$ - outlier threshold
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: The actual number of outliers depends not only on $\tau$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The full configuration we use to compress LLaMA-30B model near-losslessly in
+    Table [4](#S5.F4 "Figure 4 ‣ Main Results. ‣ 5 Experimental Validation ‣ SpQR:
+    A Sparse-Quantized Representation for Near-Lossless LLM Weight Compression") has
+    the following hyperparameters: $b_{w}=4,b_{s}=b_{z}=3,\beta_{1}=\beta_{2}=16,\tau=0.1$
+    This translates to the following command line arguments in our supplementary code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Appendix C Hyperparameter sensitivity
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we analyze how SpQR performance depends on the choice of quantization
+    group sizes. Please recall that the SpQR algorithm uses two types of groups, indexed
+    by parameters $\beta_{1}$ are vertical.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In Table [2](#A3.T2 "Table 2 ‣ Appendix C Hyperparameter sensitivity ‣ SpQR:
+    A Sparse-Quantized Representation for Near-Lossless LLM Weight Compression"),
+    we evaluate SpQR with varying parameters $\beta_{1}$. We quantize LLaMA-65B with
+    3-bit SpQR for weights and statistics and report perplexity on WikiText2, Penn
+    Treebank, and C4 datasets. The upper-left section of the table contains the effective
+    number of bits for each group configuration, and the remaining sections correspond
+    to perplexities on different datasets.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | Average bits | Wikitext2 Perplexity (3.53) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| <svg version="1.1" height="24.6" width="23.4" overflow="visible"><g transform="translate(0,24.6)
+    scale(1,-1)"><g class="ltx_svg_fog" transform="translate(0,0)"><g transform="translate(0,12.3)
+    scale(1, -1)"><foreignobject width="11.7" height="12.3" overflow="visible">$\beta_{1}$</foreignobject></g></g></g></svg>
+    | 4 | 8 | 16 | 32 | 64 | 128 | 4 | 8 | 16 | 32 | 64 | 128 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 8.5 | 6.5 | 5.5 | 5 | 4.75 | 4.625 | 3.581 | 3.628 | 3.715 | 3.822 |
+    4.003 | 4.23 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 5.75 | 4.75 | 4.25 | 4 | 3.875 | 3.813 | 3.625 | 3.64 | 3.649 | 3.666
+    | 3.688 | 3.713 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | 4.375 | 3.875 | 3.625 | 3.5 | 3.438 | 3.406 | 3.701 | 3.71 | 3.728 |
+    3.726 | 3.739 | 3.741 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 32 | 3.688 | 3.438 | 3.313 | 3.25 | 3.219 | 3.203 | 3.803 | 3.797 | 3.812
+    | 3.812 | 3.815 | 3.85 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 64 | 3.344 | 3.219 | 3.156 | 3.125 | 3.109 | 3.102 | 3.884 | 3.901 | 3.907
+    | 3.899 | 3.928 | 3.926 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 128 | 3.172 | 3.109 | 3.078 | 3.063 | 3.055 | 3.051 | 3.982 | 3.994 | 4.005
+    | 3.992 | 4.017 | 4.013 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | C4 Perplexity (5.62) | PTB Perplexity (6.91) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| <svg version="1.1" height="24.6" width="23.4" overflow="visible"><g transform="translate(0,24.6)
+    scale(1,-1)"><g class="ltx_svg_fog" transform="translate(0,0)"><g transform="translate(0,12.3)
+    scale(1, -1)"><foreignobject width="11.7" height="12.3" overflow="visible">$\beta_{1}$</foreignobject></g></g></g></svg>
+    | 4 | 8 | 16 | 32 | 64 | 128 | 4 | 8 | 16 | 32 | 64 | 128 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 5.652 | 5.674 | 5.718 | 5.796 | 5.919 | 6.119 | 6.934 | 6.965 | 7.001
+    | 7.054 | 7.194 | 7.395 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 5.683 | 5.688 | 5.696 | 5.703 | 5.709 | 5.718 | 6.962 | 6.98 | 6.991
+    | 6.99 | 6.979 | 7.029 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | 5.735 | 5.735 | 5.735 | 5.738 | 5.741 | 5.749 | 7.018 | 7.013 | 7.015
+    | 7.016 | 7.012 | 7.03 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 32 | 5.793 | 5.789 | 5.792 | 5.796 | 5.794 | 5.802 | 7.042 | 7.053 | 7.083
+    | 7.043 | 7.069 | 7.083 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 64 | 5.857 | 5.859 | 5.858 | 5.866 | 5.863 | 5.866 | 7.084 | 7.129 | 7.137
+    | 7.118 | 7.137 | 7.12 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 128 | 5.932 | 5.931 | 5.935 | 5.939 | 5.944 | 5.936 | 7.185 | 7.197 | 7.232
+    | 7.234 | 7.217 | 7.199 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: Weight block size $\beta_{1}$ performance on WikiText2, C4, and Penn
+    Treebank (PTB). The uncompressed baseline value is provided in the corresponding
+    heading.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix D Estimating model size
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section, we provide a quick way to estimate the compressed model size
+    before running the quantization. We express this estimate in terms of *average
+    bits per parameter* defined as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\overline{b}=\frac{\mathrm{model\ size\ in\ bits}}{\mathrm{number\ of\
+    parameters}}$ |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: Where $\mathrm{model\ size\ in\ bits}$ bits.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The storage and computational cost in transformer models are dominated by the
+    linear projections in the attention and feedforward blocks. Consider quantization
+    of a weight matrix (any of these) $\mathbb{R}^{d_{\mathrm{out}}\times d_{\mathrm{in}}}$.
+    Then the average number of bits for a given configuration is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: Therefore, to increase (decrease) the size of the model one should either increase
+    (decrease) the precision of model weights and quantization statistics or decrease
+    (increase) the block size.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, for configuration with $b_{w}=3,b_{s}=3,b_{z}=3,\beta_{1}=16,\beta_{2}=32$
+    of outliers, the average number of bits is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $3+\frac{3+3}{16}+\frac{64}{16\cdot 32}+0.004\cdot 32\simeq 3.63$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix E Choice of optimal configuration for fixed average number of bits
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'As discussed above our method has multiple options for improvement of model
+    performance at the cost of the increase of the model size: number of bits per
+    weight $w_{b}$ for 1st and 2nd order quantization and the outlier rate. We evaluated
+    several configurations with various options for the aforementioned parameters
+    on perplexity benchmarks. Results are presented on Figure [11](#A5.F11 "Figure
+    11 ‣ Appendix E Choice of optimal configuration for fixed average number of bits
+    ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight Compression").
+    One can observe that small groups and small fraction of outliers allows to considerably
+    improve model performance, but the gain is diminishing with the number of bits
+    added (when the additional budget from small group is of order 0.1-0.5 of bits
+    per parameter). It is better to store weights in higher precision instead of keeping
+    them in lower precision but with very small groups or keeping large fraction of
+    outliers. In our experiments optimal fraction of outliers is 0.2-0.5% depending
+    on the model and groupsize.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/9ec72bda0c7d814670867325d4b88321.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 11: Perplexity of WikiText2 vs average number of bits. Different markers
+    denote different $b_{w}$. Black colors correspond to quantization configurations
+    without outliers and the brightness of the color is proportional to the outlier
+    rate.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix F Additional results for near-lossless compression
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section we report the list of quantization configurations for OPT in
+    Table [12](#A6.F12 "Figure 12 ‣ Appendix F Additional results for near-lossless
+    compression ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight
+    Compression") on WikiText2, Penn Treebank, and C4 datasets.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In addition we report results for LM eval harness for LLaMa Table [13](#A6.F13
+    "Figure 13 ‣ Appendix F Additional results for near-lossless compression ‣ SpQR:
+    A Sparse-Quantized Representation for Near-Lossless LLM Weight Compression").
+    and recently released [Falcon](https://falconllm.tii.ae) models - Falcon-7B and
+    Falcon-40B Table [14](#A6.F14 "Figure 14 ‣ Appendix F Additional results for near-lossless
+    compression ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight
+    Compression").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{floatrow}\capbtabbox'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| OPT |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Size | Method | Avg bits | Wiki2 | C4 | PTB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 6.7B | – | 16.00 | 10.86 | 11.74 | 13.09 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 4.27 | 10.81 | 11.88 | 13.17 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 4 | 12.10 | 13.38 | 16.09 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 4 | 11.39 | 12.15 | 13.80 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 3.94 | 11.04 | 11.98 | 13.33 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 13B | – | 16.00 | 10.12 | 11.20 | 12.34 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 4.27 | 10.22 | 11.27 | 12.41 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 4 | 11.32 | 12.35 | 15.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 4 | 10.31 | 11.36 | 12.58 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 3.93 | 10.28 | 11.34 | 12.52 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Size | Method | Avg bits | Wiki2 | C4 | PTB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 30B | – | 16.00 | 9.56 | 10.69 | 11.84 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 4.26 | 9.50 | 10.73 | 11.88 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 4 | 10.97 | 11.90 | 14.17 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 4 | 9.63 | 10.80 | 11.98 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 3.94 | 9.54 | 10.78 | 11.93 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 66B | – | 16.00 | 9.33 | 10.28 | 11.36 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 4.23 | 9.37 | 10.32 | 11.40 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 4 | 110 | 249 | 274 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 4 | 9.55 | 10.50 | 11.58 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 3.91 | 9.32 | 10.35 | 11.43 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Figure 12: Perplexity on WikiText2 [[21](#bib.bib21)], C4 [[29](#bib.bib29)]
+    and Penn Treebank [[20](#bib.bib20)] for SpQR and round-to-nearest (RTN) and GPTQ
+    baselines with OPT. We can see that SpQR reaches performances within 1% of the
+    perplexity with less than 4.3 bits per parameter. We also see that for 4-bits
+    per parameter SpQR significantly improves on GPTQ with an improvement as large
+    as the improvement from RTN to GPTQ.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{floatrow}\capbtabbox'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| LLaMA |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Size | Method | Avg bits | Winogrande | Piqa | Hellaswag | Arc easy | Arc
+    challenge | Avg score |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 7B | – | 16.00 | 67.09 | 78.32 | 56.41 | 67.38 | 38.23 | 61.492 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 4.63 | 67.48 | 78.45 | 56.01 | 67.13 | 38.23 | 61.460 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 4 | 64.72 | 76.44 | 53.49 | 63.51 | 36.60 | 58.952 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 4 | 65.35 | 77.58 | 54.99 | 63.55 | 36.35 | 59.564 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 3.45 | 67.48 | 78.13 | 55.27 | 65.87 | 38.05 | 60.960 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 13B | – | 16.00 | 70.09 | 78.89 | 59.11 | 74.54 | 43.94 | 65.314 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 4.63 | 69.77 | 78.94 | 59.02 | 74.37 | 43.17 | 65.054 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 4 | 69.61 | 78.24 | 57.34 | 72.56 | 42.58 | 64.066 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 4 | 69.06 | 78.40 | 58.04 | 73.23 | 43.26 | 64.398 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 3.45 | 68.90 | 78.73 | 58.22 | 73.27 | 42.75 | 64.374 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 30B | – | 16.00 | 72.93 | 80.96 | 62.66 | 75.34 | 46.76 | 67.730 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 4.69 | 72.93 | 81.01 | 62.50 | 76.05 | 47.18 | 67.934 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 4 | 72.06 | 79.05 | 60.61 | 70.66 | 42.24 | 64.924 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 4 | 72.61 | 79.92 | 61.07 | 71.8 | 44.28 | 65.936 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 3.49 | 73.32 | 80.47 | 61.96 | 74.75 | 46.93 | 67.486 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 65B | – | 16.00 | 77.43 | 81.50 | 63.95 | 75.17 | 47.10 | 69.030 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 4.71 | 76.95 | 81.56 | 63.76 | 75.25 | 46.93 | 68.890 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 4 | 75.14 | 81.45 | 62.79 | 72.64 | 44.97 | 67.398 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 4 | 75.85 | 80.79 | 62.91 | 74.20 | 46.59 | 68.068 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 3.52 | 76.09 | 81.18 | 63.54 | 74.37 | 45.05 | 68.046 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Figure 13: LM eval harness results on LLaMA models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{floatrow}\capbtabbox'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Falcon |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Size | Method | Avg bits | Winogrande | Piqa | Hellaswag | Arc easy | Arc
+    challenge | Avg score |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 7B | – | 16.00 | 67.32 | 79.49 | 57.77 | 74.71 | 40.1 0 | 63.878 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 4.44 | 67.09 | 79.16 | 57.21 | 73.86 | 38.99 | 63.262 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 4.00 | 65.51 | 77.37 | 51.86 | 68.69 | 33.7 | 59.426 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 4.00 | 66.38 | 79.11 | 56.68 | 73.15 | 38.48 | 62.760 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 3.49 | 67.88 | 79.54 | 57.08 | 74.03 | 39.08 | 63.522 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 40B | – | 16.00 | 76.62 | 82.32 | 64.06 | 82.03 | 50.26 | 71.058 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 4.46 | 76.48 | 82.1 | 63.8 | 81.78 | 50.77 | 70.986 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 4.00 | 75.69 | 80.30 | 60.52 | 79.92 | 49.83 | 69.252 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 4.00 | 75.93 | 81.23 | 63.05 | 80.85 | 50.00 | 70.212 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR | 3.45 | 76.32 | 81.77 | 63.70 | 81.10 | 49.83 | 70.544 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Figure 14: LM eval harness results on Falcon models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix G Choice of optimal LLM configuration for specific hardware
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In the preceding discussion, we were searching for optimal model configuration
+    given some compression target without targeting any specific hardware or device.
+    However, the question practitioner willing to deploy a model for a specific application
+    would ask is: What is the best model and compression setup for a given memory
+    constraint?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this section, we provide a list of recommendations for the choice of the
+    best LLaMA model and the corresponding compression level that fits into the device
+    memory (RAM or VRAM) without the need of offloading model parameters and activations.
+    We cover a range of available budgets from mobile devices to high-end workstation
+    GPUs. Recommendations are presented in Table [3](#A7.T3 "Table 3 ‣ Appendix G
+    Choice of optimal LLM configuration for specific hardware ‣ SpQR: A Sparse-Quantized
+    Representation for Near-Lossless LLM Weight Compression").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Device | Memory (GiB) | LLaMA | $\overline{b}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| iPhone13 | 4 | 7B | $\leq 3.5$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| iPhone14 | 6 | 7B | $\simeq 4.5$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 13B | $\leq 3.5$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Consumer laptop | 8 | 13B | $\leq 4$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX4070 | 10-12 | 14B | $\simeq 4.5$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX4080 | 16 | 30B | $\leq 4$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX4090 | 24 | 30B | $\simeq 4.5$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| V100 | 32 | 65B | $\leq 3.5$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| A6000 | 48 | 65B | $\simeq 4.5$ |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 3: Choice of the best LLaMA for a given memory constraint.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix H Sensitivity to random seed
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The experiments we report throughout Section [5](#S5 "5 Experimental Validation
+    ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight Compression")
+    use one fixed random seed (the default value from the supplementary code). To
+    verify that our results are robust to randomness, we run SpQR with 5 random seeds
+    (0-5) and measure the adjusted standard deviation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For this evaluation, we compress LLaMA-65B with SpQR using $b_{w}=b_{z}=b_{s}=3$
+    (C4). In addition to the chosen random seed, these standard deviations can be
+    affected by the inherent nondeterminism of GPU computation. Overall, the standard
+    deviations are at least one order of magnitude smaller than the difference between
+    SpQR, GPTQ, and RTN.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix I Generative examples
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Finally, we showcase several examples of how SpQR quantization affects the
+    generated samples. For this evaluation, we take several prompts and use the compressed
+    language model to continue generating text from these prompts. We compare the
+    original LLaMA-65B and two quantized versions: SpQR and RTN-4bit. More specifically,
+    we use the SpQR configuration that corresponds to near-lossless compression from
+    Table [4](#S5.F4 "Figure 4 ‣ Main Results. ‣ 5 Experimental Validation ‣ SpQR:
+    A Sparse-Quantized Representation for Near-Lossless LLM Weight Compression").
+    We use greedy autoregressive inference for all generated samples to ensure reproducibility.
+    The examples in Figure [15](#A9.F15 "Figure 15 ‣ Appendix I Generative examples
+    ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight Compression")
+    show that all models produce a valid text, but SpQR matches the 16-bit model more
+    frequently. The near-lossless algorithm also seems to produce more semantically
+    similar texts.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Prompt: | Every time data scientist Kim ran her new algorithm, it kept outputting
+    the same unexpected result: a recipe for |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16bit: | iced tea. Kim was working on a project to predict the likelihood
+    of a patient being readmitted to the hospital within 30 days of discharge. She
+    was using a machine learning algorithm to analyze the data, and the algorithm
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR: | iced tea. Kim was working on a project to predict the likelihood
+    of a patient being readmitted to the hospital within 30 days of discharge. She
+    had been given a dataset of 100,000 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN 4-bit: | iced tea. “I’m not sure what’s going on,” she said. “I’ve been
+    running it for days, and it keeps giving me the same result.” “I’m not sure what’s
+    going on |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Prompt: | Data scientist Grace was working late one night when she discovered
+    a glitch in the matrix of her data. It spelled out |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16bit: | 100% proof that the world was going to end in 10 days. She tried
+    to tell her boss, but he didn’t believe her. She tried to tell her friends, but
+    they didn’t believe her |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR: | 100% proof that the world was going to end in 10 days. She tried
+    to tell her boss, but he just laughed and said, “I’m not going to believe in some
+    data glitch.” She |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN 4-bit: | 100% in binary code. She was so excited she ran to tell her
+    boss, but he was busy. She ran to tell her colleague, but he was busy. She ran
+    to tell her friend, but she |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Prompt: | Last Tuesday, just as the sun was setting, my neighbor’s dog, Rover,
+    started to speak to me in perfect French. He said |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16bit: | "Je suis un chien." I was shocked. I said, "Moi aussi." I’m not
+    sure what to make of this. I’m not sure what to make of anything. I’m not sure
+    what |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR: | "Je suis un chien." I was shocked. I said, "Rover, you can speak
+    French?" He said, "Oui, je parle francais." I said, "How did you learn to speak
+    French?" |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN 4-bit: | "Bonjour, Monsieur. Je m’appelle Rover. Je suis un chien. Je
+    suis un chien français. Je suis un chien français qui parle français. Je suis
+    un chien français qui parle français |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Prompt: | In a parallel universe where cats are the rulers of Earth, our
+    feline king was pondering his first decree |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16bit: | " to make all dogs illegal. "I"m not sure that"s a good idea," said
+    his chief adviser, a cat named Whiskers. "Why not?" asked the king. "Because,
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SpQR: | " to make all dogs illegal. "I"m not sure that"s a good idea," said
+    his chief adviser, a cat named Whiskers. "Why not?" asked the king. "Because,
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN 4-bit: | " to make the world a better place for cats. He was about to
+    sign the decree when he was interrupted by a knock on the door. "Come in," he
+    said. The door opened and a cat entered. |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Figure 15: Texts generated by different quantized LLaMA-65B models with the
+    same prompt.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/09e9e79022e717d6af025aa5f09d6d3c.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 16: A grid of weight log-sensitivities for LLaMA-65B for 3-bit GPTQ
+    compression with per-row quantization statistics. Each row corresponds to a specific
+    layer type (e.g. attention query, mlp gate), and the columns represent layer depth.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/3bcf59dda451aec6892b15019b1cbeff.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 17: A grid of weight log-sensitivities for LLaMA-65B for 3-bit GPTQ
+    compression with group-wise quantization of block size 128\. Each row corresponds
+    to a specific layer type (e.g. attention query, mlp gate), and the columns represent
+    layer depth.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix J Broader impact
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Our method enables the deployment of high-quality LLMs in the 7-13B parameters
+    range to memory-limited devices such as laptops and phones. With our method, it
+    is possible to develop specialized 7B LLMs in hassle-free 16-bit and then enable
+    the deployment of such LLMs to phones by applying SpQR. Since SpQR is practically
+    lossless, this ensures a reliable performance level for deployed LLMs which is
+    important for consumer applications. Since mobile phones are ubiquitous and LLMs
+    powerful general-purpose tools, SpQR might have a wide-reaching effect on how
+    LLMs are used by the general population to complete useful tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'LLMs are inherently a dual-use technology that can bring both significant benefits
+    and serious harm. The ethical and societal risks of LLMs range from deliberate
+    malicious use (e.g. generating spam) and accidental misuse to adverse economic
+    side-effects [[41](#bib.bib41)]. However, we believe that the marginal impact
+    of SpQR will be positive or neutral since the LLMs we use are already openly available.
+    Better quantization algorithms like SpQR let users with low-end devices run larger
+    and generally more accurate language models. In other words, our algorithm does
+    not create models with new capabilities (and risks): it only makes existing models
+    more accessible.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix K On the use of LLMs in this work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Following the request in this year’s call for papers, we describe the use of
+    large language models in our paper. We used two different chat-based language
+    models: ChatGPT and Claude+. We used these models to accelerate the process of
+    writing LaTeX code in Alg. [1](#alg1 "Algorithm 1 ‣ 4.1 Overview ‣ 4 SpQR: A Sensitivity-aware
+    compressed representation ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless
+    LLM Weight Compression") and Figure [3](#S4.F3 "Figure 3 ‣ 4.2 Implementing and
+    Leveraging the Sparse Quantized Representation ‣ 4 SpQR: A Sensitivity-aware compressed
+    representation ‣ SpQR: A Sparse-Quantized Representation for Near-Lossless LLM
+    Weight Compression") (via Tikz). We also used these LLMs to provide slight improvements
+    to the table design throughout the paper.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In addition to this, we use ChatGPT to generate some prompts for Appendix [I](#A9
+    "Appendix I Generative examples ‣ SpQR: A Sparse-Quantized Representation for
+    Near-Lossless LLM Weight Compression"). Finally, we used Claude+ to produce possible
+    formulations for the outlier criterion in Alg. [1](#alg1 "Algorithm 1 ‣ 4.1 Overview
+    ‣ 4 SpQR: A Sensitivity-aware compressed representation ‣ SpQR: A Sparse-Quantized
+    Representation for Near-Lossless LLM Weight Compression"). In all these cases,
+    we used LLMs through chat-based user interfaces, instructing them to generate
+    code (LaTeX) or suggest improvements. If the suggested changes would not work
+    as expected, we reported them to the model in natural language, using the same
+    chat-based interface.'
+  prefs: []
+  type: TYPE_NORMAL

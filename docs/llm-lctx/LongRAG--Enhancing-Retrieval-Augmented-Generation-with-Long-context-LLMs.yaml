@@ -1,0 +1,1502 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 19:02:28'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'LongRAG: Enhancing Retrieval-Augmented Generation with Long-context LLMs'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2406.15319](https://ar5iv.labs.arxiv.org/html/2406.15319)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Ziyan Jiang
+  prefs: []
+  type: TYPE_NORMAL
+- en: University of Waterloo
+  prefs: []
+  type: TYPE_NORMAL
+- en: ziyanjiang528@gmail.com
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&Xueguang Ma'
+  prefs: []
+  type: TYPE_NORMAL
+- en: University of Waterloo
+  prefs: []
+  type: TYPE_NORMAL
+- en: x93ma@uwaterloo.ca
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&Wenhu Chen'
+  prefs: []
+  type: TYPE_NORMAL
+- en: University of Waterloo
+  prefs: []
+  type: TYPE_NORMAL
+- en: wenhuchen@uwaterloo.ca
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'In traditional RAG framework, the basic retrieval units are normally short.
+    The common retrievers like DPR normally work with 100-word Wikipedia paragraphs.
+    Such a design forces the retriever to search over a large corpus to find the ‘needle’
+    unit. In contrast, the readers only need to extract answers from the short retrieved
+    units. Such an imbalanced ‘heavy’ retriever and ‘light’ reader design can lead
+    to sub-optimal performance. In order to alleviate the imbalance, we propose a
+    new framework LongRAG, consisting of a ‘long retriever’ and a ‘long reader’. LongRAG
+    processes the entire Wikipedia into 4K-token units, which is 30x longer than before.
+    By increasing the unit size, we significantly reduce the total units from 22M
+    to 600K. This significantly lowers the burden of retriever, which leads to a remarkable
+    retrieval score: answer recall@1=71% on NQ (previously 52%) and answer recall@2=72%
+    (previously 47%) on HotpotQA (full-wiki). Then we feed the top-k retrieved units
+    ($\approx$ 30K tokens) to an existing long-context LLM to perform zero-shot answer
+    extraction. Without requiring any training, LongRAG achieves an EM of 62.7% on
+    NQ and 64.3% on HotpotQA (full-wiki), which is on par with the (fully-trained)
+    SoTA model. Our study offers insights into the future roadmap for combining RAG
+    with long-context LLMs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'LongRAG: Enhancing Retrieval-Augmented Generation'
+  prefs: []
+  type: TYPE_NORMAL
+- en: with Long-context LLMs
+  prefs: []
+  type: TYPE_NORMAL
+- en: Ziyan Jiang University of Waterloo ziyanjiang528@gmail.com                       
+    Xueguang Ma University of Waterloo x93ma@uwaterloo.ca                        Wenhu
+    Chen University of Waterloo wenhuchen@uwaterloo.ca
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://tiger-ai-lab.github.io/LongRAG/](https://tiger-ai-lab.github.io/LongRAG/)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/b529e520a039f0aeec3a053a2dc1d346.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Traditional RAG vs. LongRAG. (Up) Traditional RAG operates on short
+    retrieval units, where the retriever needs to scan over a massive amount of units
+    to find the relevant piece. In contrast, LongRAG operates on long retrieval units
+    (30x longer). Retriever has a much less workload, which significantly boosts the
+    recall score. LongRAG fully exploits the ability of long-context language models
+    to achieve strong performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Retrieval-Augmented Generation (RAG) methods have long been employed to enhance
+    large language models (LLMs) Mialon et al. ([2023](#bib.bib35)). Knowledge in
+    the form of natural language can be entirely offloaded from the parametric knowledge
+    of LLMs by leveraging a standalone retrieval component from an external corpus.
+    The existing RAG framework tends to use short retrieval units, such as 100-word
+    passages in popular open-domain question-answering tasks Chen et al. ([2017](#bib.bib6));
+    Lewis et al. ([2020](#bib.bib30)); Karpukhin et al. ([2020](#bib.bib25)). The
+    retriever is tasked with finding the “needle” (i.e. the precise tiny retrieval
+    unit) from the “haystack” (i.e. the massive corpus with tens of millions of information
+    units). Subsequently, the retrieved units are passed to the reader to generate
+    the final response. On the contrary, the reader only needs to extract answers
+    from these retrievals, which is a fairly easy task. This kind of imbalanced design,
+    with a “heavy” retriever and a “light” reader, puts too much pressure on the retriever.
+    Therefore, existing RAG models Izacard and Grave ([2020b](#bib.bib21)) have to
+    recall huge amounts of units, such as the top-100/200, combined with additional
+    re-ranker to achieve the best performance. Moreover, short retrieval units can
+    lead to semantic incompleteness due to document truncation. This can lead to information
+    loss, ultimately hurting the end performance. This design choice was made in an
+    era when NLP models were heavily restricted by their ability to handle long contexts.
+    With the recent advances in long-context language models, the retriever and reader
+    can potentially handle up to 128K or even millions of tokens as input Reid et al.
+    ([2024](#bib.bib43)); Achiam et al. ([2023](#bib.bib1)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this paper, we propose to revisit this design choice for open-domain question
+    answering and propose the LongRAG framework as a solution to balance the workload
+    between the retriever and the reader, as illustrated in Figure [1](#S1.F1 "Figure
+    1 ‣ 1 Introduction ‣ LongRAG: Enhancing Retrieval-Augmented Generation with Long-context
+    LLMs"). There are three important designs in our novel framework:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Long Retrieval Unit: By using entire Wikipedia documents or grouping multiple
+    related documents, we can construct long retrieval units with more than 4K tokens.
+    This design could also significantly reduce the corpus size (number of retrieval
+    units in the corpus). Then, the retriever’s task becomes much easier with more
+    complete information.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Long Retriever: The long retriever will identify coarse relevant information
+    for the given query by searching through all the long retrieval units in the corpus.
+    Only the top 4 to 8 retrieval units (without re-ranking) are used for the next
+    step.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '3.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Long Reader: The long reader will further extract answers from the concatenation
+    of retrievals, which is normally around 30K tokens. We simply prompt an existing
+    long-context LM (like Gemini or GPT4) with the question to produce the answers
+    in a zero-shot fashion.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'These three novel designs significantly boost the overall performance of RAG
+    on open-domain question-answering tasks like NQ Kwiatkowski et al. ([2019](#bib.bib29))
+    and HotpotQA Yang et al. ([2018](#bib.bib53)). LongRAG has several advantages:
+    1) It does not require additional re-rankers and the best results can be attained
+    by only considering the top 4-8 retrieved units. 2) The long retrieval unit amalgamates
+    comprehensive information from related documents, which can be used directly to
+    answer multi-hop questions without iterative retrieval.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In our experiments, we adopt off-the-shelf retrievers like BGE Xiao et al. ([2023](#bib.bib50))
+    and readers like Gemini-1.5-Pro (Reid et al., [2024](#bib.bib43)) or GPT-4o OpenAI
+    ([2024](#bib.bib37)) without any tuning on NQ or HotpotQA. In our experiments,
+    we reduce the NQ corpus size from 22M to 600K document units, which improves the
+    answer recall@1 from 52% (DPR) to 71%. Similarly, we reduce the HotpotQA corpus
+    size from 5M to 500K, which improves the recall@2 from 47% (DPR) to 72%. The improvement
+    in retriever can significantly benefit the reader model. By exploiting the long-context
+    understanding ability of GPT-4o, LongRAG can achieve an EM of 62% on NQ and 64%
+    on HotpotQA. These results could be comparable to the strongest fully trained
+    RAG models like Atlas Izacard et al. ([2022](#bib.bib22)) and MDR Xiong et al.
+    ([2020b](#bib.bib52)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We perform ablation studies in [subsection 4.4](#S4.SS4 "4.4 Ablation Studies
+    ‣ 4 Experiments ‣ LongRAG: Enhancing Retrieval-Augmented Generation with Long-context
+    LLMs") to prove why longer retrieval units are necessary. Given a budget of 40K
+    recall tokens, with ‘short retriever units’, we can increase the number of recalled
+    units to reach a marvelously high recall score (91% for recall@200). However,
+    the end performance dips significantly due to the huge amount of ‘hard negatives’,
+    which confuses the reader. With ‘long retriever units’, we observe an entirely
+    different trend. As we recall more units (from 1 to 8 units), both the recall
+    and end performance will increase or plateau. The impact of ‘hard negative’ is
+    much less severe in LongRAG. It shows that LongRAG can better exploit the advances
+    in the long-context LLMs (reader). As the long-context methods evolve, the performance
+    of LongRAG will continue to improve. Therefore, we believe the modern RAG systems
+    should re-consider the granularity of their retrieval units to exploit the advantages
+    of the current long-context LLMs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Meanwhile, there is still room for improvement in our framework, particularly
+    the need for stronger long embedding models, as shown in Table [3](#S4.T3 "Table
+    3 ‣ Experiment Setup ‣ 4.2 Retrieval Performance ‣ 4 Experiments ‣ LongRAG: Enhancing
+    Retrieval-Augmented Generation with Long-context LLMs"). Additionally, more general
+    methods to formulate long retrieval units beyond hyperlinks will be helpful.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 2.1 Retrieval-Augmented Generation.
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Augmenting language models with information retrieved from large corpora has
+    become a popular and effective approach for knowledge-intensive tasks, particularly
+    open-domain question answering. The predominant architecture follows a retriever-reader
+    style Chen et al. ([2017](#bib.bib6)); Guu et al. ([2020](#bib.bib18)), where
+    the input query retrieves information from a corpus, and a language model uses
+    this information as additional context to make a final prediction. Recent work
+    has focused on improving the retriever (Karpukhin et al., [2020](#bib.bib25);
+    Xiong et al., [2020a](#bib.bib51); Qu et al., [2020](#bib.bib41); Xiong et al.,
+    [2020b](#bib.bib52); Khalifa et al., [2023](#bib.bib27)), enhancing the reader
+    (Izacard and Grave, [2020b](#bib.bib21); Cheng et al., [2021](#bib.bib10); Yu
+    et al., [2021](#bib.bib54); Borgeaud et al., [2022](#bib.bib5)), fine-tuning the
+    retriever and reader jointly (Yu, [2022](#bib.bib55); Izacard et al., [2022](#bib.bib22);
+    Singh et al., [2021](#bib.bib46); Izacard and Grave, [2020a](#bib.bib20)), and
+    integrating the retriever with the black-box language model (Yu et al., [2023](#bib.bib56);
+    Shi et al., [2023](#bib.bib45); Trivedi et al., [2022](#bib.bib48)). However,
+    the impact of document granularity on the effectiveness and efficiency of the
+    retrieval-augmented generation pipeline remains underexplored.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2 Long Context Large Language Models.
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The effectiveness of Transformer-based models is hindered by the quadratic increase
+    in computational cost relative to sequence length, especially when dealing with
+    long context inputs. In order to solve this issue, different approaches have been
+    proposed to mitigate computational issues, including sliding memory window and
+    chunk segmentation (Hao et al., [2022](#bib.bib19); Ratner et al., [2023](#bib.bib42);
+    Zhu et al., [2024b](#bib.bib59)). FlashAttention Dao et al. ([2022](#bib.bib12))
+    has also been a pivotal strategy to significantly reduce the memory footprint
+    to almost linear w.r.t sequence length.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To enable length extrapolation, RoPE Su et al. ([2021](#bib.bib47)) and AliBI Press
+    et al. ([2021](#bib.bib40)) position encodings have shown potential to enable
+    length extrapolation, which have been widely used in the literature. Recent endeavors
+    have explored diverse strategies to tackle this challenge, which is mainly Position
+    reorganization (Jin et al., [2024](#bib.bib23); An et al., [2024](#bib.bib2)),
+    Position interpolation (Chen et al., [2023a](#bib.bib8); Peng et al., [2023](#bib.bib39);
+    Liu et al., [2024](#bib.bib33)). Furthermore, alternative architectures beyond
+    the Transformer have been explored to handle long inputs more naturally. These
+    diverse approaches claim that they can enhance the capabilities of LLMs in processing
+    long context inputs more efficiently.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.3 Long Context Embedding
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Recent efforts also increased the context length for embedding models, extending
+    the supported text snippet length from a limit of 512 tokens to 32k tokens. Typically,
+    the development of long-context embedding models involves first obtaining a long-context
+    backbone model. This can be achieved either by pre-training with long inputs from
+    scratch Günther et al. ([2023](#bib.bib17)); Nussbaum et al. ([2024](#bib.bib36));
+    Chen et al. ([2024](#bib.bib7)) or by utilizing existing large language models
+    that support longer context Wang et al. ([2023](#bib.bib49)). Additionally, some
+    works extend the capabilities of existing embedding models to handle long contexts
+    by applying LLM content window extension methods on embedding models Zhu et al.
+    ([2024a](#bib.bib58)); Peng and Quesnelle ([2023](#bib.bib38)), or by employing
+    state-space encoder models Saad-Falcon et al. ([2024](#bib.bib44)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 LongRAG
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Our proposed LongRAG framework is comprised of two components: the Long Retriever
+    and the Long Reader. An illustrative example of these two components are depicted
+    in Figure [2](#S3.F2 "Figure 2 ‣ 3 LongRAG ‣ LongRAG: Enhancing Retrieval-Augmented
+    Generation with Long-context LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e248b3b0e37dbbcd29302827ee92bf74.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: LongRAG example. On the left side, it shows that the long retrieval
+    unit is grouped by Wikipedia documents through hyperlinks. Each retrieval unit
+    contains an average of 4K tokens, corresponding to multiple related documents.
+    On the right side, it shows a multi-hop question answer test case from HotpotQA.
+    The final result can be achieved by using only a few retrieval units, which is
+    then fed into a long reader.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Long Retriever
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The traditional RAG framework employs smaller retrieval units and prioritizes
+    retrieving the exact fine-grained short context containing the answer. In contrast,
+    our proposed LongRAG framework places greater emphasis on recall, aiming to retrieve
+    relevant context with much coarse granularity. This design choice shifts more
+    burden from the retriever to the reader to extract the exact answers from the
+    relevant context.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We denote our corpus for retrieval as $\mathcal{C}=\{d_{1},d_{2},\ldots,d_{D}\}$.
+    In our framework, $\mathcal{C}_{\mathcal{F}}$ is then divided into three steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Formulate long retrieval units
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'A function is applied to the corpus to form $M$ could be as long as the whole
+    document or even a group of documents, resulting in much longer retrieval units.
+    We group the documents based on their relationships, using hyperlinks embedded
+    within each document. The grouping algorithm is shown in Algorithm [1](#alg1 "Algorithm
+    1 ‣ Formulate long retrieval units ‣ 3.1 Long Retriever ‣ 3 LongRAG ‣ LongRAG:
+    Enhancing Retrieval-Augmented Generation with Long-context LLMs"). The output
+    group is a list of documents that are related to each other. By having a longer
+    retrieval unit, there are two advantages: First, it ensures the semantic integrity
+    of each retrieval unit; Second, it provides much richer context for tasks that
+    require information from multiple documents.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 1 Group Documents Algorithm
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Input: $S$ from low degree ($\deg(d)$ in $\mathcal{G}$              Remove
+    $g$'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Similarity search
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We utilize an encoder, denoted as $E_{Q}(\cdot)$-dimensional vector. We define
+    the similarity between the question and the retrieval unit using the dot product
+    of their vectors:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle sim(q,g)=E_{Q}(q)^{T}E_{C}(g)$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: In LongRAG settings, $E_{C}(g)$, so we resort to an approximation as below.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle sim(q,g)$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle\approx\max_{g^{\prime}\subseteq g}(E_{Q}(q)^{T}E_{C}(g^{\prime}))$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: We approximate it by maximizing the scores of all chunks $g^{\prime}$ and predict
+    the exact inner product search index in FAISS (Johnson et al., [2019](#bib.bib24)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Aggregate retrieval result
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We will concatenate the top $k$ to 4 to 8.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Long Reader
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The long reader operates straightforwardly. We feed the related instruction
+    $i$ into an LLM, enabling it to reason over the long context and generate the
+    final output. It’s important that the LLM used in the long reader can handle long
+    contexts and does not exhibit excessive position bias. We select Gemini-1.5-Pro
+    Reid et al. ([2024](#bib.bib43)) and GPT-4o OpenAI ([2024](#bib.bib37)) as our
+    long reader given their strong ability to handle long context input.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We utilize different approaches for short and long contexts. For short contexts,
+    typically containing fewer than 1K tokens, we instruct the reader to directly
+    extract the answer from the provided context retrieved from the corpus. For long
+    contexts, typically longer than 4K tokens, we empirically find that using a similar
+    prompt as for short contexts, where the model extracts the final answer directly
+    from the long context, often leads to decreased performance. Instead, the most
+    effective approach is to utilize the LLM as a chat model. Initially, it outputs
+    a long answer, typically spanning a few words to a few sentences. Subsequently,
+    we prompt it to generate a short answer by further extracting it from the long
+    answer. The prompt is provided in the Appendix [6.1](#S6.SS1 "6.1 Prompts Template
+    for Long Context Reader ‣ 6 Appendix ‣ LongRAG: Enhancing Retrieval-Augmented
+    Generation with Long-context LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we will first detail the dataset we adopt, and then demonstrate
+    the retriever performance. Finally, we will show the end question-answering performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Retrieval Unit | Corpus Size | Num of Retrieval Units | Average Num of Tokens
+    | Answer Recall (AR) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Corpus | Test Set |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Passage | 22M | 1 | 120 | 130 | 52.24 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 100 | 12K | 14K | 89.92 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 200 | 24K | 28K | 91.30 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Document | 3M | 1 | 820 | 4K | 69.45 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 5 | 4K | 18K | 85.37 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10 | 8K | 34K | 88.12 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Grouped Documents | 600K | 1 | 4K | 6K | 71.69 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 16K | 25K | 86.30 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 32K | 50K | 88.53 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 1: The table illustrates the retrieval performance on NQ. Employing a
+    long-context retriever (with an average number of tokens for each retrieval unit
+    up to 6K) compresses the corpus size by up to 30 times (from 22M to 600K), enhancing
+    top-1 answer recall by approximately 20 points (from 52.24 to 71.69). Furthermore,
+    long-context retrieval requires significantly fewer retrieval units (10 times
+    fewer) to achieve comparable results. Therefore, integrating long-context retrieval
+    significantly alleviates the burden on the retriever model.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Data
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Our proposed methods are tested on two Wikipedia-related question answering
+    datasets: Natural Questions and HotpotQA.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Natural Question
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: (Kwiatkowski et al., [2019](#bib.bib29)) was designed for end-to-end question
+    answering. The questions were mined from real Google search queries and the answers
+    were spans in Wikipedia articles identified by annotators. This dataset contains
+    3,610 questions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: HotpotQA
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: '(Yang et al., [2018](#bib.bib53)) consists of two-hop questions over diverse
+    topics. We focus on the fullwiki setting in which two Wikipedia passages are required
+    to answer the questions. Since the gold passages for the test set are not available,
+    we follow prior work (Xiong et al., [2020b](#bib.bib52)) and evaluate on the development
+    set, which has 7,405 questions. There are two main question types in HotpotQA:
+    (1) comparison questions usually require contrasting two entities and (2) bridge
+    questions can be answered by following a connecting entity that links one document
+    to another.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Wikipedia (Knowledge Source)
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We use different versions of English Wikipedia for different datasets following
+    previous works Lewis et al. ([2020](#bib.bib30)); Yang et al. ([2018](#bib.bib53)).
+    For NQ, we use the Wikipedia dumps from December 20, 2018, which contain approximately
+    3 million documents and 22 million passages. For HotpotQA, we use the abstract
+    paragraphs from the October 1, 2017 dump, which contain around 5 million documents.
+    For each page, only the plain text is extracted and all structured data sections
+    such as lists, tables and figures are stripped from the document.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Retrieval Performance
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Metrics
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Retrieval performance is measured using Answer Recall (AR) and Recall (R). For
+    NQ, we use only answer recall, while for HotpotQA, we use both metrics. Answer
+    Recall is the recall of the answer string in all the retrieved documents that
+    we plan to use in the reader. For example, if the retrieval unit is at the “passage”
+    level and the number of retrieval units is 100, answer recall measures whether
+    the answer string is present in these 100 passages. For HotpotQA, we compute AR
+    only for questions with span answers, specifically the “bridge” type questions,
+    while ignoring yes/no and comparison questions, following previous work (Khalifa
+    et al., [2022](#bib.bib26)). Recall used for HotpotQA measures whether the two
+    gold documents are present in all the retrieved results. For example, if the retrieval
+    unit is at the “document” level and the number of retrieval units is 10, recall
+    measures whether both gold documents are present among the 10 retrieved documents.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Experiment Setup
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We leverage open-sourced dense retrieval toolkit, Tevatron Gao et al. ([2022](#bib.bib16)),
+    for all our retrieval experiments. The base embedding model we used is bge-large-en-v1.5,
+    a general-purpose embeddings model that isn’t specifically trained on our test
+    data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Retrieval Unit | Corpus Size | Num of Retrieval Units | Average Num of Tokens
+    | Recall (R) | Answer Recall (AR) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Corpus | Test Set |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Document | 5.2M | 2 | 130 | 200 | 30.01 | 47.75 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 100 | 6.5K | 10K | 74.84 | 84.67 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 200 | 13K | 20K | 79.68 | 88.34 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Grouped Documents | 500K | 2 | 1K | 8K | 56.30 | 72.49 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 4K | 29K | 74.71 | 84.40 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: The table illustrates the retrieval performance on HotpotQA. Similar
+    to the findings on NQ, a long-context retrieval could significantly alleviate
+    the burden on the retriever component within the entire RAG framework.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table [1](#S4.T1 "Table 1 ‣ 4 Experiments ‣ LongRAG: Enhancing Retrieval-Augmented
+    Generation with Long-context LLMs") and Table [2](#S4.T2 "Table 2 ‣ Experiment
+    Setup ‣ 4.2 Retrieval Performance ‣ 4 Experiments ‣ LongRAG: Enhancing Retrieval-Augmented
+    Generation with Long-context LLMs") have shown the retrieval results on NQ and
+    HotpotQA. In the NQ dataset, we utilize three different retrieval units, ranging
+    from shorter to longer: passage, document, and grouped documents. In the table,
+    we have mentioned two kinds of average number of tokens in each retrieval unit:
+    one for the entire corpus and one for each test set. The retrieval units for each
+    test case can sometimes be much longer than the average size across the whole
+    corpus, as the corpus might include some Wikipedia pages with very few words,
+    while the test cases may focus more on longer documents. Generally, our long-context
+    retriever (at the document level and grouped document level) uses retrieval units
+    containing an average of 6K tokens. By using longer retrieval units, there are
+    several advantages: 1) It will significantly alleviate the burden on the retriever
+    by compressing the corpus size by approximately 30 times, from 22M to 600K. The
+    top-1 answer recall improves by about 20 points, from 52.24 to 71.69\. We could
+    use significantly fewer retrieval units to achieve comparable retrieval performance.
+    For instance, 8 retrieval units at the grouped document level can achieve similar
+    recall as 100 retrieval units at the passage level. 2) It could provide more comprehensive
+    information to the reader. In the original passage-level RAG setup, information
+    might be incomplete due to the chunking operation. In the HotpotQA dataset, we
+    observe similar results. One notable difference is that in HotpotQA, the retrieval
+    units are only at the document level and grouped document level, as HotpotQA uses
+    only abstract paragraphs from each Wikipedia page.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Granularity | AR@1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BGE-Large | 512-tokens chunk | 71.7% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| E5-Mistral-7B | 4000-tokens chunk | 54.2% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| E5-Mistral-7B | entire grouped retrieval unit | 23.4% |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 3: Different methods to encode the long retrieval unit in the long retriever.
+    Using a general embedding model and approximating by maximizing the similarity
+    scores between the query and all chunks within the retrieval unit is better than
+    using the long embedding model to encode the entire context.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Encode the long retrieval unit
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'As discussed in Section [3.2](#S3.SS2 "3.2 Long Reader ‣ 3 LongRAG ‣ LongRAG:
+    Enhancing Retrieval-Augmented Generation with Long-context LLMs"), it’s very challenging
+    to employ an encoder, $E_{C}(\cdot)$ directly, where $g$ has an average size of
+    6K tokens. We can notice from the table that our approximation by taking the maximum
+    score between the query and each text piece from the long context produces much
+    better results than encoding them directly using the long embedding model. We
+    believe future improvements in the research direction of long embedding models
+    will further enhance our framework to reduce memory consumption.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | EM |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Closed-Book |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPT-4-Turbo Achiam et al. ([2023](#bib.bib1)) | 41.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Gemini-1.5-Pro Reid et al. ([2024](#bib.bib43)) | 47.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Claude-3-Opus Anthropic ([2024](#bib.bib3)) | 49.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fully-supervised RAG |'
+  prefs: []
+  type: TYPE_TB
+- en: '| REALM Guu et al. ([2020](#bib.bib18)) | 40.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DPR Karpukhin et al. ([2020](#bib.bib25)) | 41.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RAG Lewis et al. ([2020](#bib.bib30)) | 44.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RETRO Borgeaud et al. ([2022](#bib.bib5)) | 45.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RePAQ Lewis et al. ([2021](#bib.bib31)) | 47.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fusion-in-Decoder (Izacard and Grave, [2020b](#bib.bib21)) | 51.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EMDR² Singh et al. ([2021](#bib.bib46)) | 52.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Atlas (Izacard et al., [2022](#bib.bib22)) | 64.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| No Fine-tuning RAG |'
+  prefs: []
+  type: TYPE_TB
+- en: '| REPLUG (Shi et al., [2023](#bib.bib45)) | 45.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LongRAG (Gemini-1.5-Pro; Recall 4 units) | 58.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LongRAG (GPT-4o; Recall 4 units) | 62.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 4: The table shows the QA results on the NQ dataset. We compare the results
+    with three groups of baselines: closed-book, which involves directly prompting
+    state-of-the-art LLMs with 16-shot in-context examples; fully-supervised RAG,
+    where the RAG framework is used and the model is fully supervised and trained
+    on the training data; and No Fine-tuning RAG, which employs the RAG framework
+    without any tuning.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | EM |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Closed-Book |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Claude-3-Opus Anthropic ([2024](#bib.bib3)) | 32.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Gemini-1.5-Pro Reid et al. ([2024](#bib.bib43)) | 33.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPT-4-Turbo Achiam et al. ([2023](#bib.bib1)) | 42.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fully-supervised RAG |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CogQA Ding et al. ([2019](#bib.bib14)) | 37.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DrKIT Dhingra et al. ([2020](#bib.bib13)) | 42.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Transformer-XH Zhao et al. ([2019](#bib.bib57)) | 51.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| QAMAT+ Chen et al. ([2023b](#bib.bib9)) | 57.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| HGN Fang et al. ([2019](#bib.bib15)) | 59.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PathRetriever Asai et al. ([2019](#bib.bib4)) | 60.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| HopRetrieve Li et al. ([2021](#bib.bib32)) | 62.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MDR Xiong et al. ([2020b](#bib.bib52)) | 62.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| HopRetrieve-plus Li et al. ([2021](#bib.bib32)) | 66.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AISO Zhu et al. ([2021](#bib.bib60)) | 68.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| COS Ma et al. ([2023](#bib.bib34)) | 68.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| No Fine-tuning RAG |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DSP Khattab et al. ([2022](#bib.bib28)) | 51.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PromptRank Khalifa et al. ([2023](#bib.bib27)) | 55.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LongRAG (Gemini-1.5-Pro; Recall 8 units) | 57.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LongRAG (GPT-4o; Recall 8 units) | 64.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 5: The table shows the QA results on the Hotpot-QA dev set. We compare
+    the results with three groups of baselines: closed-book, which involves directly
+    prompting state-of-the-art LLMs with 16-shot in-context examples; fully-supervised
+    RAG, where the RAG framework is used and the model is fully supervised and trained
+    on the training data; and No Fine-tuning RAG, which employs the RAG framework
+    without any tuning.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 Full QA Performance
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We leverage Gemini-1.5-Pro and GPT-4o as the reader in our LongRAG framework.
+    The prompt we use for our experiments are in Table [6](#Sx1.T6 "Table 6 ‣ LongRAG:
+    Enhancing Retrieval-Augmented Generation with Long-context LLMs"). We also refine
+    the standard exact match rate definition to more fairly evaluate LongRAG’s performance.
+    More details can be found in Section [6.2](#S6.SS2 "6.2 Refined Metric ‣ 6 Appendix
+    ‣ LongRAG: Enhancing Retrieval-Augmented Generation with Long-context LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We compare our model with several groups of strong previous models as baselines.
+    The first group is “Closed-Book”: These baselines mean that no retrieval component
+    is used; instead, state-of-the-art LLMs are employed to directly obtain the final
+    result. We evaluate our results on Gemini-1.5-pro Reid et al. ([2024](#bib.bib43)),
+    Claude-3-Opus Anthropic ([2024](#bib.bib3)) and GPT-4-Turbo Achiam et al. ([2023](#bib.bib1)).
+    All models are evaluated on 16-shot in-context learning with direct prompting;
+    The second group is “Fully-supervised RAG”, and these baselines involve full-supervised
+    fine-tuning on the training dataset. The third group is “No Fine-tuning RAG”,
+    and these baselines doesn’t involve any supervised fine-tuning on the training
+    dataset.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The QA results on NQ are presented in Table [4](#S4.T4 "Table 4 ‣ Encode the
+    long retrieval unit ‣ 4.2 Retrieval Performance ‣ 4 Experiments ‣ LongRAG: Enhancing
+    Retrieval-Augmented Generation with Long-context LLMs"), and the QA results on
+    HotpotQA are presented in Table [5](#S4.T5 "Table 5 ‣ Encode the long retrieval
+    unit ‣ 4.2 Retrieval Performance ‣ 4 Experiments ‣ LongRAG: Enhancing Retrieval-Augmented
+    Generation with Long-context LLMs"). On the NQ dataset, LongRAG achieves a 62.7
+    exact match rate, which is on par of the strongest fine-tuned RAG model like Atlas.
+    On the HotpotQA dataset, LongRAG achieves a 64.3 exact match rate, which is also
+    close to the SoTA fully-supervised RAG frameworks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/5ad7f77f8b95d1448fe45a87de44d935.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: This figure compares different settings of LongRAG on the NQ dataset.
+    This table leverages 200 test cases from the test set to help compare different
+    retrieval unit selections and optimal number of retrieval units fed into the reader
+    (Gemini-based).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f6300b91df5fcf19c650bc0c421a4309.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: This table compares different settings of LongRAG on the HotpotQA
+    dataset. This table leverages 200 test cases from the test set to help compare
+    different retrieval unit selections and the optimal number of retrieval units
+    fed into the reader (Gemini-based).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/3085c0167a6f382b1bb1c14a22558efa.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: This table shows the end performance of different granularity of
+    retrieval units. The green curve indicates the ‘large unit’ adopted in LongRAG.
+    The number above the curve indicates the recall. It can be seen that end-performance
+    does not increase monotonically with recall score.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4 Ablation Studies
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We perform several in-depth ablation to understand what are the important factors
+    in our LongRAG system including "unit size" and "reader variant".
+  prefs: []
+  type: TYPE_NORMAL
+- en: Retrieval Unit Selection
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Figure [3](#S4.F3 "Figure 3 ‣ 4.3 Full QA Performance ‣ 4 Experiments ‣ LongRAG:
+    Enhancing Retrieval-Augmented Generation with Long-context LLMs") and Figure [4](#S4.F4
+    "Figure 4 ‣ 4.3 Full QA Performance ‣ 4 Experiments ‣ LongRAG: Enhancing Retrieval-Augmented
+    Generation with Long-context LLMs") compare different settings of LongRAG. This
+    table leverages 200 random test cases from the test set to help compare different
+    retrieval unit granularity selection and the optimal number of retrieval units
+    used in the reader. On the NQ dataset, we have two observations: First, regardless
+    of which retrieval unit is selected, there will be a turning point where feeding
+    more retrieval units into the reader becomes detrimental. This is due to the excessive
+    burden placed on the reader, preventing it from effectively understanding and
+    extracting relevant information from the long context. For passage-level retrieval
+    units, the turning point is between 100 and 200; for document-level retrieval
+    units, the turning point is between 5 and 10; and for grouped documents level,
+    the turning point is between 4 and 8\. In general, the most suitable context length
+    fed into the reader is around 30K tokens. Second, the semantic integrity is important
+    when comparing the performance of passage-level retrieval units with document
+    or grouped documents level retrieval units, highlighting the advantage of using
+    longer and more complete retrieval units.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Recall vs. EM
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'In Figure [5](#S4.F5 "Figure 5 ‣ 4.3 Full QA Performance ‣ 4 Experiments ‣
+    LongRAG: Enhancing Retrieval-Augmented Generation with Long-context LLMs"), we
+    compare the relationship between retrieval recall and end performance across varying
+    context lengths for different retrieval unit selections. We observe that using
+    fewer retrieval units in the reader with longer retrieval units design reduces
+    the introduction of distractors or hard negatives under a given length budget.
+    Consequently, the end performance does not increase monotonically with the recall
+    score. In the future, with advancements in long embedding models and improved
+    retrieval recall for long retrieval units, we can expect better end performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/784c6af23c6e6df2ad56b88a227973c8.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: This figure compares different readers of LongRAG on the NQ dataset.
+    This table leverages 200 test cases from the test set to help compare performance
+    using different readers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reader Model
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'In Figure [6](#S4.F6 "Figure 6 ‣ Recall vs. EM ‣ 4.4 Ablation Studies ‣ 4 Experiments
+    ‣ LongRAG: Enhancing Retrieval-Augmented Generation with Long-context LLMs"),
+    we compare the performance of six different readers: Gemini-1.5-pro, GPT-4-Turbo,
+    GPT-4o, Claude-3-Opus, Claude-3.5-Sonnet and DeepSeek-V2-Chat. The results indicate
+    that GPT-4o achieves the highest exact match score on the 200 test questions of
+    the NQ dataset among the three models. This suggests that GPT-4o is the most effective
+    in the role of a long reader in the LongRAG framework. The enhanced performance
+    of GPT-4o can be attributed to its superior ability to process and comprehend
+    lengthy contexts, ensuring that crucial information is accurately extracted. Therefore,
+    we mainly report the GPT-4o results in our main table. Besides, Gemini-1.5-pro,
+    GPT-4-Turbo, Claude-3-Opus, and Claude-3.5-Sonnet could achieve very similar results.
+    These state-of-the-art black box LLMs are also effective readers within the LongRAG
+    framework. Deepseek-V2-Chat is one of the best open-source LLMs, but its performance
+    degrades significantly compared to the previous five black-box LLMs. The above
+    experiments demonstrate that our current framework depends on the long-context
+    understanding ability of LLMs, and we still have a long way to go in harnessing
+    open-source LLMs within our framework.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this paper, we propose a new framework, LongRAG, to alleviate the imbalance
+    between the burden of the retriever. The LongRAG framework consists of a “long
+    retriever” and a “long reader” component on top of the 4K-token retrieval units.
+    Our proposed framework can significantly reduce the corpus size by 10 to 30 times,
+    which greatly improves the recall of the retriever. On the other hand, the long
+    retrieval unit preserves the semantic integrity of each document. We test our
+    framework on end-to-end question answering tasks and demonstrate its superior
+    performance without any training. We believe LongRAG can pave the road for the
+    modern RAG system design.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Limitation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: There are three major limitations of our proposed framework. First, it relies
+    on the long embedding model. Although recent studies have made progress in this
+    direction, there is still a need for stronger long embedding models. In our work,
+    we use an approximation to calculate the semantic score with a regular embedding
+    model, which proves more effective than using a long embedding model. Future improvements
+    in long embedding models could help us further enhance the performance of our
+    system and reduce the storage size of corpus embeddings if the entire long context
+    could be encoded directly. The second limitation is that we only use a black-box
+    LLM as the reader. A reader that supports long input and is less affected by position
+    bias is necessary. Currently, most open-source LLMs do not meet these requirements.
+    The third limitation is that our grouping methods are based on hyperlinks, which
+    are specific to the Wikipedia corpus. A more general grouping method should be
+    considered.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Achiam et al. (2023) Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ahmad,
+    Ilge Akkaya, Florencia Leoni Aleman, Diogo Almeida, Janko Altenschmidt, Sam Altman,
+    Shyamal Anadkat, et al. 2023. Gpt-4 technical report. *arXiv preprint arXiv:2303.08774*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: An et al. (2024) Chenxin An, Fei Huang, Jun Zhang, Shansan Gong, Xipeng Qiu,
+    Chang Zhou, and Lingpeng Kong. 2024. Training-free long-context scaling of large
+    language models. *arXiv preprint arXiv:2402.17463*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Anthropic (2024) Anthropic. 2024. Introducing the next generation of claude.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Asai et al. (2019) Akari Asai, Kazuma Hashimoto, Hannaneh Hajishirzi, Richard
+    Socher, and Caiming Xiong. 2019. Learning to retrieve reasoning paths over wikipedia
+    graph for question answering. *arXiv preprint arXiv:1911.10470*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Borgeaud et al. (2022) Sebastian Borgeaud, Arthur Mensch, Jordan Hoffmann, Trevor
+    Cai, Eliza Rutherford, Katie Millican, George Bm Van Den Driessche, Jean-Baptiste
+    Lespiau, Bogdan Damoc, Aidan Clark, et al. 2022. Improving language models by
+    retrieving from trillions of tokens. In *International conference on machine learning*,
+    pages 2206–2240\. PMLR.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chen et al. (2017) Danqi Chen, Adam Fisch, Jason Weston, and Antoine Bordes.
+    2017. Reading wikipedia to answer open-domain questions. In *Proceedings of the
+    55th Annual Meeting of the Association for Computational Linguistics (Volume 1:
+    Long Papers)*, pages 1870–1879.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chen et al. (2024) Jianlv Chen, Shitao Xiao, Peitian Zhang, Kun Luo, Defu Lian,
+    and Zheng Liu. 2024. Bge m3-embedding: Multi-lingual, multi-functionality, multi-granularity
+    text embeddings through self-knowledge distillation. *arXiv preprint arXiv:2402.03216*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chen et al. (2023a) Shouyuan Chen, Sherman Wong, Liangjian Chen, and Yuandong
+    Tian. 2023a. Extending context window of large language models via positional
+    interpolation. *arXiv preprint arXiv:2306.15595*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chen et al. (2023b) Wenhu Chen, Pat Verga, Michiel de Jong, John Wieting, and
+    William Cohen. 2023b. Augmenting pre-trained language models with qa-memory for
+    open-domain question answering. In *Proceedings of the 17th Conference of the
+    European Chapter of the Association for Computational Linguistics*, pages 1597–1610.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Cheng et al. (2021) Hao Cheng, Yelong Shen, Xiaodong Liu, Pengcheng He, Weizhu
+    Chen, and Jianfeng Gao. 2021. Unitedqa: A hybrid approach for open domain question
+    answering. *arXiv preprint arXiv:2101.00178*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Dai and Callan (2019) Zhuyun Dai and Jamie Callan. 2019. Deeper text understanding
+    for ir with contextual neural language modeling. In *Proceedings of the 42nd international
+    ACM SIGIR conference on research and development in information retrieval*, pages
+    985–988.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dao et al. (2022) Tri Dao, Dan Fu, Stefano Ermon, Atri Rudra, and Christopher
+    Ré. 2022. Flashattention: Fast and memory-efficient exact attention with io-awareness.
+    *Advances in Neural Information Processing Systems*, 35:16344–16359.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Dhingra et al. (2020) Bhuwan Dhingra, Manzil Zaheer, Vidhisha Balachandran,
+    Graham Neubig, Ruslan Salakhutdinov, and William W Cohen. 2020. Differentiable
+    reasoning over a virtual knowledge base. *arXiv preprint arXiv:2002.10640*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Ding et al. (2019) Ming Ding, Chang Zhou, Qibin Chen, Hongxia Yang, and Jie
+    Tang. 2019. Cognitive graph for multi-hop reading comprehension at scale. In *Proceedings
+    of the 57th Annual Meeting of the Association for Computational Linguistics*,
+    pages 2694–2703.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Fang et al. (2019) Yuwei Fang, Siqi Sun, Zhe Gan, Rohit Pillai, Shuohang Wang,
+    and Jingjing Liu. 2019. Hierarchical graph network for multi-hop question answering.
+    *arXiv preprint arXiv:1911.03631*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Gao et al. (2022) Luyu Gao, Xueguang Ma, Jimmy J. Lin, and Jamie Callan. 2022.
+    Tevatron: An efficient and flexible toolkit for dense retrieval. *ArXiv*, abs/2203.05765.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Günther et al. (2023) Michael Günther, Jackmin Ong, Isabelle Mohr, Alaeddine
+    Abdessalem, Tanguy Abel, Mohammad Kalim Akram, Susana Guzman, Georgios Mastrapas,
+    Saba Sturua, Bo Wang, et al. 2023. Jina embeddings 2: 8192-token general-purpose
+    text embeddings for long documents. *arXiv preprint arXiv:2310.19923*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Guu et al. (2020) Kelvin Guu, Kenton Lee, Zora Tung, Panupong Pasupat, and Mingwei
+    Chang. 2020. Retrieval augmented language model pre-training. In *International
+    conference on machine learning*, pages 3929–3938\. PMLR.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hao et al. (2022) Yaru Hao, Yutao Sun, Li Dong, Zhixiong Han, Yuxian Gu, and
+    Furu Wei. 2022. Structured prompting: Scaling in-context learning to 1, 000 examples.
+    *ArXiv*, abs/2212.06713.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Izacard and Grave (2020a) Gautier Izacard and Edouard Grave. 2020a. Distilling
+    knowledge from reader to retriever for question answering. *arXiv preprint arXiv:2012.04584*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Izacard and Grave (2020b) Gautier Izacard and Edouard Grave. 2020b. Leveraging
+    passage retrieval with generative models for open domain question answering. *arXiv
+    preprint arXiv:2007.01282*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Izacard et al. (2022) Gautier Izacard, Patrick Lewis, Maria Lomeli, Lucas Hosseini,
+    Fabio Petroni, Timo Schick, Jane A. Yu, Armand Joulin, Sebastian Riedel, and Edouard
+    Grave. 2022. Few-shot learning with retrieval augmented language models. *ArXiv*,
+    abs/2208.03299.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Jin et al. (2024) Hongye Jin, Xiaotian Han, Jingfeng Yang, Zhimeng Jiang, Zirui
+    Liu, Chia-Yuan Chang, Huiyuan Chen, and Xia Hu. 2024. Llm maybe longlm: Self-extend
+    llm context window without tuning. *arXiv preprint arXiv:2401.01325*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Johnson et al. (2019) Jeff Johnson, Matthijs Douze, and Hervé Jégou. 2019. Billion-scale
+    similarity search with gpus. *IEEE Transactions on Big Data*, 7(3):535–547.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Karpukhin et al. (2020) Vladimir Karpukhin, Barlas Oğuz, Sewon Min, Patrick
+    Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, and Wen-tau Yih. 2020. Dense passage
+    retrieval for open-domain question answering. *arXiv preprint arXiv:2004.04906*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Khalifa et al. (2022) Muhammad Khalifa, Lajanugen Logeswaran, Moontae Lee, Honglak
+    Lee, and Lu Wang. 2022. Few-shot reranking for multi-hop qa via language model
+    prompting. *arXiv preprint arXiv:2205.12650*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Khalifa et al. (2023) Muhammad Khalifa, Lajanugen Logeswaran, Moontae Lee, Honglak
+    Lee, and Lu Wang. 2023. Few-shot reranking for multi-hop qa via language model
+    prompting. *arXiv preprint arXiv:2205.12650*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Khattab et al. (2022) Omar Khattab, Keshav Santhanam, Xiang Lisa Li, David
+    Hall, Percy Liang, Christopher Potts, and Matei Zaharia. 2022. Demonstrate-search-predict:
+    Composing retrieval and language models for knowledge-intensive nlp. *arXiv preprint
+    arXiv:2212.14024*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kwiatkowski et al. (2019) Tom Kwiatkowski, Jennimaria Palomaki, Olivia Redfield,
+    Michael Collins, Ankur Parikh, Chris Alberti, Danielle Epstein, Illia Polosukhin,
+    Jacob Devlin, Kenton Lee, et al. 2019. Natural questions: a benchmark for question
+    answering research. *Transactions of the Association for Computational Linguistics*,
+    7:453–466.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Lewis et al. (2020) Patrick Lewis, Ethan Perez, Aleksandara Piktus, Fabio Petroni,
+    Vladimir Karpukhin, Naman Goyal, Heinrich Kuttler, Mike Lewis, Wen tau Yih, Tim
+    Rocktäschel, Sebastian Riedel, and Douwe Kiela. 2020. Retrieval-augmented generation
+    for knowledge-intensive nlp tasks. *ArXiv*, abs/2005.11401.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lewis et al. (2021) Patrick Lewis, Yuxiang Wu, Linqing Liu, Pasquale Minervini,
+    Heinrich Küttler, Aleksandra Piktus, Pontus Stenetorp, and Sebastian Riedel. 2021.
+    Paq: 65 million probably-asked questions and what you can do with them. *Transactions
+    of the Association for Computational Linguistics*, 9:1098–1115.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. (2021) Shaobo Li, Xiaoguang Li, Lifeng Shang, Xin Jiang, Qun Liu,
+    Chengjie Sun, Zhenzhou Ji, and Bingquan Liu. 2021. Hopretriever: Retrieve hops
+    over wikipedia to answer complex questions. In *Proceedings of the AAAI conference
+    on artificial intelligence*, volume 35, pages 13279–13287.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. (2024) Jiaheng Liu, Zhiqi Bai, Yuanxing Zhang, Chenchen Zhang, Yu Zhang,
+    Ge Zhang, Jiakai Wang, Haoran Que, Yukang Chen, Wenbo Su, et al. 2024. E^ 2-llm:
+    Efficient and extreme length extension of large language models. *Findings of
+    ACL 2024*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ma et al. (2023) Kaixin Ma, Hao Cheng, Yu Zhang, Xiaodong Liu, Eric Nyberg,
+    and Jianfeng Gao. 2023. Chain-of-skills: A configurable model for open-domain
+    question answering. In *The 61st Annual Meeting Of The Association For Computational
+    Linguistics*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Mialon et al. (2023) Grégoire Mialon, Roberto Dessì, Maria Lomeli, Christoforos
+    Nalmpantis, Ram Pasunuru, Roberta Raileanu, Baptiste Rozière, Timo Schick, Jane
+    Dwivedi-Yu, Asli Celikyilmaz, et al. 2023. Augmented language models: a survey.
+    *arXiv preprint arXiv:2302.07842*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Nussbaum et al. (2024) Zach Nussbaum, John X Morris, Brandon Duderstadt, and
+    Andriy Mulyar. 2024. Nomic embed: Training a reproducible long context text embedder.
+    *arXiv preprint arXiv:2402.01613*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: OpenAI (2024) OpenAI. 2024. Hello gpt4-o.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Peng and Quesnelle (2023) Bowen Peng and Jeffrey Quesnelle. 2023. Ntk-aware
+    scaled rope allows llama models to have extended (8k+) context size without any
+    fine-tuning and minimal perplexity degradation. [https://www.reddit.com/r/LocalLLaMA/comments/14lz7j5/ntkaware_scaled_rope_allows_llama_models_to_have](https://www.reddit.com/r/LocalLLaMA/comments/14lz7j5/ntkaware_scaled_rope_allows_llama_models_to_have).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Peng et al. (2023) Bowen Peng, Jeffrey Quesnelle, Honglu Fan, and Enrico Shippole.
+    2023. Yarn: Efficient context window extension of large language models. *arXiv
+    preprint arXiv:2309.00071*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Press et al. (2021) Ofir Press, Noah Smith, and Mike Lewis. 2021. Train short,
+    test long: Attention with linear biases enables input length extrapolation. In
+    *International Conference on Learning Representations*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Qu et al. (2020) Yingqi Qu, Yuchen Ding, Jing Liu, Kai Liu, Ruiyang Ren, Wayne Xin
+    Zhao, Daxiang Dong, Hua Wu, and Haifeng Wang. 2020. Rocketqa: An optimized training
+    approach to dense passage retrieval for open-domain question answering. *arXiv
+    preprint arXiv:2010.08191*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ratner et al. (2023) Nir Ratner, Yoav Levine, Yonatan Belinkov, Ori Ram, Inbal
+    Magar, Omri Abend, Ehud Karpas, Amnon Shashua, Kevin Leyton-Brown, and Yoav Shoham.
+    2023. [Parallel context windows for large language models](https://doi.org/10.18653/v1/2023.acl-long.352).
+    In *Proceedings of the 61st Annual Meeting of the Association for Computational
+    Linguistics (Volume 1: Long Papers)*, pages 6383–6402, Toronto, Canada. Association
+    for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Reid et al. (2024) Machel Reid, Nikolay Savinov, Denis Teplyashin, Dmitry Lepikhin,
+    Timothy Lillicrap, Jean-baptiste Alayrac, Radu Soricut, Angeliki Lazaridou, Orhan
+    Firat, Julian Schrittwieser, et al. 2024. Gemini 1.5: Unlocking multimodal understanding
+    across millions of tokens of context. *arXiv preprint arXiv:2403.05530*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Saad-Falcon et al. (2024) Jon Saad-Falcon, Daniel Y Fu, Simran Arora, Neel Guha,
+    and Christopher Ré. 2024. Benchmarking and building long-context retrieval models
+    with loco and m2-bert. *arXiv preprint arXiv:2402.07440*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Shi et al. (2023) Weijia Shi, Sewon Min, Michihiro Yasunaga, Minjoon Seo, Rich
+    James, Mike Lewis, Luke Zettlemoyer, and Wen-tau Yih. 2023. Replug: Retrieval-augmented
+    black-box language models. *arXiv preprint arXiv:2301.12652*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Singh et al. (2021) Devendra Singh, Siva Reddy, Will Hamilton, Chris Dyer, and
+    Dani Yogatama. 2021. End-to-end training of multi-document reader and retriever
+    for open-domain question answering. *Advances in Neural Information Processing
+    Systems*, 34:25968–25981.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Su et al. (2021) Jianlin Su, Yu Lu, Shengfeng Pan, Ahmed Murtadha, Bo Wen,
+    and Yunfeng Liu. 2021. Roformer: Enhanced transformer with rotary position embedding.
+    *arXiv preprint arXiv:2104.09864*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Trivedi et al. (2022) Harsh Trivedi, Niranjan Balasubramanian, Tushar Khot,
+    and Ashish Sabharwal. 2022. Interleaving retrieval with chain-of-thought reasoning
+    for knowledge-intensive multi-step questions. *arXiv preprint arXiv:2212.10509*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wang et al. (2023) Liang Wang, Nan Yang, Xiaolong Huang, Linjun Yang, Rangan
+    Majumder, and Furu Wei. 2023. Improving text embeddings with large language models.
+    *arXiv preprint arXiv:2401.00368*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xiao et al. (2023) Shitao Xiao, Zheng Liu, Peitian Zhang, and Niklas Muennighoff.
+    2023. C-pack: Packaged resources to advance general chinese embedding. *arXiv:2309.07597*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Xiong et al. (2020a) Lee Xiong, Chenyan Xiong, Ye Li, Kwok-Fung Tang, Jialin
+    Liu, Paul Bennett, Junaid Ahmed, and Arnold Overwijk. 2020a. Approximate nearest
+    neighbor negative contrastive learning for dense text retrieval. *arXiv preprint
+    arXiv:2007.00808*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Xiong et al. (2020b) Wenhan Xiong, Xiang Lorraine Li, Srini Iyer, Jingfei Du,
+    Patrick Lewis, William Yang Wang, Yashar Mehdad, Wen-tau Yih, Sebastian Riedel,
+    Douwe Kiela, et al. 2020b. Answering complex open-domain questions with multi-hop
+    dense retrieval. *arXiv preprint arXiv:2009.12756*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yang et al. (2018) Zhilin Yang, Peng Qi, Saizheng Zhang, Yoshua Bengio, William W
+    Cohen, Ruslan Salakhutdinov, and Christopher D Manning. 2018. Hotpotqa: A dataset
+    for diverse, explainable multi-hop question answering. *arXiv preprint arXiv:1809.09600*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yu et al. (2021) Donghan Yu, Chenguang Zhu, Yuwei Fang, Wenhao Yu, Shuohang
+    Wang, Yichong Xu, Xiang Ren, Yiming Yang, and Michael Zeng. 2021. Kg-fid: Infusing
+    knowledge graph in fusion-in-decoder for open-domain question answering. *arXiv
+    preprint arXiv:2110.04330*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yu (2022) Wenhao Yu. 2022. Retrieval-augmented generation across heterogeneous
+    knowledge. In *Proceedings of the 2022 Conference of the North American Chapter
+    of the Association for Computational Linguistics: Human Language Technologies:
+    Student Research Workshop*, pages 52–58.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Yu et al. (2023) Wenhao Yu, Zhihan Zhang, Zhenwen Liang, Meng Jiang, and Ashish
+    Sabharwal. 2023. Improving language models via plug-and-play retrieval feedback.
+    *arXiv preprint arXiv:2305.14002*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhao et al. (2019) Chen Zhao, Chenyan Xiong, Corby Rosset, Xia Song, Paul Bennett,
+    and Saurabh Tiwary. 2019. Transformer-xh: Multi-evidence reasoning with extra
+    hop attention. In *International Conference on Learning Representations*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhu et al. (2024a) Dawei Zhu, Liang Wang, Nan Yang, Yifan Song, Wenhao Wu,
+    Furu Wei, and Sujian Li. 2024a. Longembed: Extending embedding models for long
+    context retrieval. *arXiv preprint arXiv:2404.12096*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhu et al. (2024b) Dawei Zhu, Nan Yang, Liang Wang, Yifan Song, Wenhao Wu,
+    Furu Wei, and Sujian Li. 2024b. PoSE: Efficient context window extension of LLMs
+    via positional skip-wise training. In *The Twelfth International Conference on
+    Learning Representations*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Zhu et al. (2021) Yunchang Zhu, Liang Pang, Yanyan Lan, Huawei Shen, and Xueqi
+    Cheng. 2021. Adaptive information seeking for open-domain question answering.
+    In *Proceedings of the 2021 Conference on Empirical Methods in Natural Language
+    Processing*, pages 3615–3626.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '| Method | Prompt |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Closed-Book | Here are some examples of questions and their corresponding
+    answer, each with a “Question” field and an “Answer” field. Answer the question
+    directly and don’t output other thing. “Question”: …“Answer”: …'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '“Question”: …“Answer”: …'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '“Question”: …“Answer”: …'
+  prefs: []
+  type: TYPE_NORMAL
+- en: …
+  prefs: []
+  type: TYPE_NORMAL
+- en: '“Question”: …“Answer”: …'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Answer the following question.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '“Question”: who is the owner of reading football club “Answer”: |'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| LongRAG | Turn 1: Go through the following context and then answer the question.
+    The context is a list of Wikipedia documents, ordered by title: …. Each Wikipedia
+    document contains a title field and a text field. The context is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '“Title”: …“Text”: …'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '“Title”: …“Text”: ……'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '“Title”: …“Text”: …'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Find the useful documents from the context, then answer the question: …. Answer
+    the question directly. Your response should be very concise.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Turn 2: You have been provided with a question and its long answer. Your task
+    is to derive a very concise short answer, extracting a substring from the given
+    long answer. Short answer is typically an entity without any other redundant words.
+    It’s important to ensure that the output short answer remains as simple as possible.
+    Here a few examples:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '“Question”: …“Long Answer”: …“Short Answer”: …'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '“Question”: …“Long Answer”: …“Short Answer”: …'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '“Question”: …“Long Answer”: …“Short Answer”: …'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Extract the short answer of the following question and long answer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '“Question”: when did the philadelphia eagles play in the super bowl last “Long
+    Answer”: The Philadelphia Eagles last played in the Super Bowl on February 4,
+    2018, in Super Bowl LII. “Short Answer”: |'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 6: Here are the prompts we used for all the experiments. For the closed-book
+    method, we use 16-shot in-context examples. For LongRAG, we use a two-turn approach
+    to extract the final answer. The first turn doesn’t require any in-context examples
+    and generate a longer answer, typically ranging from a few words to a few sentences.
+    In the second turn, we use 8-shot in-context examples to calibrate and extract
+    the exact short answer, which is typically just a few words.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Question | Ground truth | LongRAG prediction |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| where does the bob and tom show broadcast from | Indianapolis , Indiana |
+    Indianapolis |'
+  prefs: []
+  type: TYPE_TB
+- en: '| who has given the theory of unbalanced economic growth | Hirschman | Albert
+    O. Hirschman |'
+  prefs: []
+  type: TYPE_TB
+- en: '| when does season 6 of the next step start | 2018 | September 29, 2018 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| what was the precursor to the present day internet | the ARPANET project
+    | ARPANET |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 7: Some examples demonstrate that LongRAG has extracted aliases or different
+    forms of the ground truth.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Appendix
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 6.1 Prompts Template for Long Context Reader
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We have put out prompts used for the experiments in Table [6](#Sx1.T6 "Table
+    6 ‣ LongRAG: Enhancing Retrieval-Augmented Generation with Long-context LLMs").
+    For the closed-book method, we use 16-shot in-context examples. For LongRAG, we
+    use a two-turn approach to extract the final answer. In the first turn, the long
+    retrieved context and the question are concatenated as input, and we do not use
+    any in-context examples here due to the context being around 30K tokens. Empirically,
+    we found it beneficial to let the reader generate a longer answer initially, typically
+    ranging from a few words to a few sentences. In the second turn, we use 8-shot
+    in-context examples to guide the reader in further extracting the most important
+    part of the long answer as the short answer, which is typically just a few words.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.2 Refined Metric
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The most standard metric used in open-domain question answering tasks is EM
+    (Exact Match), since the correct answer must be a substring within the corpus.
+    In our framework, since the long retrieved context, which contains multiple highly-related
+    documents to the given query, is fed into the reader, there is a much higher possibility
+    that an alias of the ground truth exists in the context and can be extracted by
+    the reader. As shown in Table [7](#Sx1.T7 "Table 7 ‣ LongRAG: Enhancing Retrieval-Augmented
+    Generation with Long-context LLMs"), although LongRAG’s prediction doesn’t exactly
+    match the ground truth, it’s obvious that LongRAG’s prediction is correct. To
+    better and more fairly evaluate LongRAG’s performance, we have refined the EM
+    metric slightly. We recognize it as an exact match if the prediction is less than
+    five tokens (indicating that the short answer is successfully extracted as described
+    in Section [6.1](#S6.SS1 "6.1 Prompts Template for Long Context Reader ‣ 6 Appendix
+    ‣ LongRAG: Enhancing Retrieval-Augmented Generation with Long-context LLMs"))
+    and the ground truth is a substring of the prediction or vice versa. We have also
+    manually verified that this refined metric indeed captures aliases or other forms
+    of the ground truth. For the fully-supervised RAG baselines used in our paper,
+    given that they are fine-tuned on the training data and the retrieval unit is
+    a small snippet, we believe that the difference won’t be significant when using
+    the refined EM.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.3 Dataset Licenses
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'NQ: Apache License 2.0'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'HotpotQA: CC BY-SA 4.0 License'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL

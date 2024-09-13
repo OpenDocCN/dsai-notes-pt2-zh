@@ -1,0 +1,2790 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:37:15'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'LoRA Land: 310 Fine-tuned LLMs that Rival GPT-4, A Technical Report'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2405.00732](https://ar5iv.labs.arxiv.org/html/2405.00732)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Justin Zhao, Timothy Wang
+  prefs: []
+  type: TYPE_NORMAL
+- en: Wael Abid, Geoffrey Angus, Arnav Garg, Jeffery Kinnison, Alex Sherstinsky,
+  prefs: []
+  type: TYPE_NORMAL
+- en: Piero Molino, Travis Addair, Devvret Rishi
+  prefs: []
+  type: TYPE_NORMAL
+- en: Predibase
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Low Rank Adaptation (LoRA) has emerged as one of the most widely adopted methods
+    for Parameter Efficient Fine-Tuning (PEFT) of Large Language Models (LLMs). LoRA
+    reduces the number of trainable parameters and memory usage while achieving comparable
+    performance to full fine-tuning. We aim to assess the viability of training and
+    serving LLMs fine-tuned with LoRA in real-world applications. First, we measure
+    the quality of LLMs fine-tuned with quantized low rank adapters across 10 base
+    models and 31 tasks for a total of 310 models. We find that 4-bit LoRA fine-tuned
+    models outperform base models by 34 points and GPT-4 by 10 points on average.
+    Second, we investigate the most effective base models for fine-tuning and assess
+    the correlative and predictive capacities of task complexity heuristics in forecasting
+    the outcomes of fine-tuning. Finally, we evaluate the latency and concurrency
+    capabilities of LoRAX, an open-source Multi-LoRA inference server that facilitates
+    the deployment of multiple LoRA fine-tuned models on a single GPU using shared
+    base model weights and dynamic adapter loading. LoRAX powers [LoRA Land](https://predibase.com/lora-land),
+    a web application that hosts 25 LoRA fine-tuned Mistral-7B LLMs on a single NVIDIA
+    A$100$GB memory. LoRA Land highlights the quality and cost-effectiveness of employing
+    multiple specialized LLMs over a single, general-purpose LLM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e4891fdc95cb3d988a86b588051aff1b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Average model performance for GPT-3.5, GPT-4, and 310 LLMs, before
+    and after fine-tuning with LoRA, across 31 different tasks and 10 different base
+    models. Zephyr-7b and Mistral-7b models exhibit the best performance after LoRA-based
+    fine-tuning.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Fine-tuning Large Language Models (LLMs) [[23](#bib.bib23), [3](#bib.bib3)]
+    is a highly effective way to improve their performance, and add desirable or remove
+    undesirable behaviors [[28](#bib.bib28), [12](#bib.bib12), [13](#bib.bib13), [29](#bib.bib29)].
+    Low Rank Adaptation (LoRA) [[14](#bib.bib14)] is one of the most widely adopted
+    methods for fine-tuning LLMs, showing significant promise for enabling smaller,
+    specialized models to outperform larger, more general models on specific tasks,
+    with a fraction of trainable parameters, challenging the notion that bigger general
+    models always outperform smaller ones.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Despite the rapid advancement and release of new base models, such as Gemma [[36](#bib.bib36)],
+    Llama [[37](#bib.bib37)], and Mistral [[15](#bib.bib15)], which claim ease of
+    fine-tuning across various tasks, comprehensive evaluations of these models remain
+    scarce. Broad knowledge and reasoning-based benchmarks like MMLU [[11](#bib.bib11)]
+    and HellaSwag [[44](#bib.bib44)] are commonly used in leaderboards like the Open
+    LLM Leaderboard [[2](#bib.bib2)], however, this is not necessarily representative
+    of task-specific performance, before or after fine-tuning. Technical reports [[36](#bib.bib36),
+    [37](#bib.bib37), [15](#bib.bib15), [26](#bib.bib26), [35](#bib.bib35)] often
+    leave training configurations unspecified, with claims of ease of fine-tuning
+    left unmeasured. While the effectiveness of fine-tuning has been broadly demonstrated [[17](#bib.bib17),
+    [45](#bib.bib45)], the lack of large-scale experimentation leaves several pivotal
+    questions unanswered, particularly regarding the consistency and predictability
+    of performance improvements through fine-tuning, and the impact of model size,
+    base model, and task complexity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Evaluations are sensitive to prompting, and there are significant variation
+    in the formulations used in publications and libraries¹¹1https://github.com/openai/simple-evals.
+    Technical reports often showcase model performance using specialized, dataset-specific
+    prompting strategies such as role-playing prompts (e.g. "Assume you are an expert"),
+    maj@k voting [[40](#bib.bib40)], varied n-shot [[34](#bib.bib34)], MedPrompt [[25](#bib.bib25)],
+    and chain-of-thought [[43](#bib.bib43)] prompting. While these methods are intended
+    to highlight the optimal capabilities of models, the use of such diverse prompting
+    techniques can make direct comparisons across models and tasks challenging.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this work, we seek to bridge these gaps by conducting an extensive analysis
+    of LoRA-based fine-tuning across 10 base models and 31 tasks, totaling 310 LLMs
+    fine-tuned with LoRA. We deliberately maintain that all LLMs are fine-tuned with
+    the same training parameters and emphasize querying with zero or single-shot,
+    completion-style prompts, with simple instructions like "Solve the following multiple
+    choice problem". Altogether, this provides a standardized framework to compare
+    and assess the intrinsic capabilities of different base models when fine-tuned
+    with LoRA under consistent conditions, across specific tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We also aim to explore the viability of serving multiple LoRA models in a real-world
+    production application. LoRAX  [[1](#bib.bib1)] enables serving multiple LoRA
+    models simultaneously on a single GPU by leveraging shared base model weights
+    and dynamic adapter loading [12]. We measure latency and concurrency metrics of
+    this library. We use LoRAX to deploy 25 fine-tuned LLM served on a single A100²²2https://www.nvidia.com/en-us/data-center/a100/
+    in the LoRA Land web application. Our successful implementation showcases the
+    economic efficiency of serving multiple LoRA-adapted LLMs for specialized tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we release all 25 of the fine-tuned models on the LoRA Land web application
+    and their training recipes on ([Hugging Face](https://huggingface.co/predibase))
+    to allow further analysis and replication by the community.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Related work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Parameter-Efficient Fine-Tuning (PEFT) methods are designed to reduce the high
+    expense of fine-tuning large-scale models. They achieve this by training a relatively
+    small subset of parameters, compared to the total number of parameters, for adapting
+    to downstream tasks. Existing PEFT strategies can be divided into two categories:
+    Prompt-based methods add extra soft tokens (prompts) to the initial input and
+    focus solely on fine-tuning these trainable vectors [[19](#bib.bib19), [31](#bib.bib31),
+    [42](#bib.bib42)]. Adapter-based methods introduce additional trainable modules
+    into the original frozen backbone [[12](#bib.bib12), [32](#bib.bib32), [30](#bib.bib30),
+    [33](#bib.bib33)]. LoRA [[14](#bib.bib14)] expands upon adapter-based fine-tuning
+    by adding a small number of trainable low-rank matrices alongside layers of frozen
+    weights, which introduces a negligible inference overhead. Variants of LoRA include
+    works like [[22](#bib.bib22)], which employs SVD decomposition to prune less significant
+    singular values for more efficient updates. Another variation, DoRA  [[21](#bib.bib21)],
+    decomposes pre-trained weights into magnitude and direction components while applying
+    LoRA the latter. QLoRA [[8](#bib.bib8)] optimizes LoRA’s design one step further,
+    using 4-bit NF4 weights, double quantization to reduce the memory footprint, and
+    paged optimizers to alleviate memory spikes. In our experiments, we focus on the
+    original implementation of LoRA with 4-bit quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Efficient serving of LoRA models. The main challenges for serving multiple
+    fine-tuned models efficiently are:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Scalability: As the demand for model inference grows, the system must scale
+    efficiently to handle the increased load. This involves not just scaling up the
+    computational resources but also managing the load distribution among models to
+    maintain performance.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Cost: The computational resources required to serve multiple fine-tuned models
+    can lead to significant costs. Efficiently managing these costs while maintaining
+    high performance and availability is a major challenge.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Techniques like Segmented Gather Matrix-Vector Multiplication (SGMV) [[4](#bib.bib4)]
+    aim to address these challenges by optimizing the way computations are performed
+    and resources are used. Open source tools like DeepSpeed³³3https://github.com/microsoft/DeepSpeed,
+    FasterTransformer⁴⁴4https://github.com/NVIDIA/FasterTransformer, and vLLM [[18](#bib.bib18)]
+    also aim to enable cost-effective and scalable serving of fine-tuned models. In
+    this paper, we use LoRAX⁵⁵5https://github.com/predibase/lorax, which is specifically
+    designed for the efficient serving of LLMs fine-tuned with LoRA. LoRAX supports
+    dynamic adapter loading so adapters can be downloaded asynchronously during inference,
+    multiple model families like Llama [[37](#bib.bib37)] and Mistral [[15](#bib.bib15)],
+    and bitsandbytes⁶⁶6https://github.com/TimDettmers/bitsandbytes-quantized models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Methodology
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 3.1 Task selection
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In selecting datasets and tasks for our study, we prioritize those that are
+    widely accessible via Kaggle⁷⁷7https://www.kaggle.com and HuggingFace⁸⁸8https://huggingface.co
+    and those that are commonly used for benchmarking such as those on the Open LLM
+    Leaderboard [[2](#bib.bib2)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our selection includes datasets like MMLU [[11](#bib.bib11)] for broad domain
+    knowledge, Jigsaw [[6](#bib.bib6)] for content moderation, WikiSQL [[46](#bib.bib46)]
+    for SQL generation, and GLUE benchmarks [[39](#bib.bib39)]. We categorize the
+    tasks encompassed by these datasets into 5 types:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Classic NLP: Tasks derived from common NLP datasets published between 2018
+    and 2022 covering tasks like named entity recognition, data-to-text, and headline
+    generation.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Coding: SQL query generation, and Python programming questions, which are mostly
+    centered on algorithms and object-oriented design.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Knowledge: Knowledge-based multiple choice questions.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Reasoning: Reasoning-based multiple choice questions.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Math: Numerical, math-based word problems.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '| Category | Task Name | Task Description | Dataset Link | Metric | Range #
+    Tokens | P95 # Tokens | # examples | Split Used for Evaluation |'
+  prefs: []
+  type: TYPE_TB
+- en: '| train | validation | test |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Classic NLP | bc5cdr | Chemical and disease recognition | hf://tner/bc5cdr
+    | rouge | 143 - 570 | 226 | 5228 | 5330 | 5865 | validation |'
+  prefs: []
+  type: TYPE_TB
+- en: '| conllpp | Named entity recognition | hf://conllpp | rouge | 110 - 401 | 170
+    | 14041 | 3250 | 3453 | test |'
+  prefs: []
+  type: TYPE_TB
+- en: '| e2e_nlg | Translation from meaning representation to natural language | hf://e2e_nlg
+    | rouge | 92 - 213 | 153 | 42061 | 4672 | 4693 | test |'
+  prefs: []
+  type: TYPE_TB
+- en: '| tldr_content_gen | Content generation given a headline | hf://JulesBelveze/tldr_news
+    | rouge | 46 - 425 | 204 | 7138 | – | 794 | test |'
+  prefs: []
+  type: TYPE_TB
+- en: '| tldr_headline_gen | Headline generation given news content | hf://JulesBelveze/tldr_news
+    | rouge | 41 - 420 | 199 | 7138 | – | 794 | test |'
+  prefs: []
+  type: TYPE_TB
+- en: '| viggo | Translation of video game meaning representations to natural language
+    | hf://GEM/viggo | rouge | 151 - 304 | 240 | 5103 | 714 | 1083 | test |'
+  prefs: []
+  type: TYPE_TB
+- en: '| webnlg | Translation of triples to natural language | hf://web_nlg (release_v3.0_en)
+    | rouge | 88 - 345 | 215 | 13211 | 1667 | 5713 | test |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Coding | magicoder | Coding tasks in multiple languages | hf://ise-uiuc/Magicoder-OSS-Instruct-75K
+    | humaneval | 141 - 1661 | 805 | 75197 | – | – | (human_eval) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| wikisql | SQL generation given a table and question | hf://wikisql | rouge
+    | 198 - 72472 | 1941 | 56355 | 8421 | 15878 | test |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Knowledge | boolq | Knowledge-based yes/no questions. | hf://google/boolq
+    | accuracy | 30 - 898 | 271 | 9427 | 3270 | – | validation |'
+  prefs: []
+  type: TYPE_TB
+- en: '| dbpedia | Topic extraction from a news article and title | hf://fancyzhx/dbpedia_14
+    | accuracy | 102 - 387 | 211 | 560000 | – | 70000 | test |'
+  prefs: []
+  type: TYPE_TB
+- en: '| customer_support | Customer support call classification given call transcript
+    | github://cricketclub/gridspace-stanford-harper-valley | accuracy | 151 - 679
+    | 377 | 1245 | 245 | 391 | test |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_qnli | Does the response answer the question? | hf://glue/viewer/qnli
+    | accuracy | 52 - 350 | 123 | 104743 | 5463 | 5463 | validation |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_stsb | How similar are the sentences? | hf://glue/viewer/stsb | mae
+    | 74 - 187 | 124 | 5749 | 1500 | 1379 | validation |'
+  prefs: []
+  type: TYPE_TB
+- en: '| legal | Legal document classification | kaggle://bahushruth/legalclausedataset
+    | rouge | 143 - 885 | 489 | 17000 | 2000 | 1000 | test |'
+  prefs: []
+  type: TYPE_TB
+- en: '| reuters | Topic extraction from Reuters news articles | hf://reuters21578/viewer/ModLewis
+    (modlewis) | rouge | 51 - 2056 | 637 | 13625 | – | 6188 | test |'
+  prefs: []
+  type: TYPE_TB
+- en: '| mmlu | General domain multiple-choice questions | hf://cais/mmlu/viewer/all
+    | accuracy | 47 - 1491 | 578 | 99842 | 1531 | 14042 | validation |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Reasoning | winogrande | Common sense 2-option task | hf://winogrande | accuracy
+    | 48 - 75 | 63 | 9248 | 1767 | 1267 | test |'
+  prefs: []
+  type: TYPE_TB
+- en: '| arc_combined | Multiple-choice science questions | hf://allenai/ai2_arc |
+    accuracy | 68 - 232 | 143 | 3370 | 869 | 3548 | test |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_cola | Grammar and syntax acceptability | hf://glue/viewer/cola | accuracy
+    | 45 - 87 | 59 | 8551 | 1043 | 1063 | validation |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_mnli | Does the hypothesis entail the premise? | hf://nyu-mll/glue/viewer/mnli
+    | accuracy | 64 - 339 | 128 | 392702 | 19647 | 19643 | validation |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_mrpc | Do the sentences have the same meaning? | hf://glue/viewer/mrpc
+    | accuracy | 67 - 157 | 123 | 3668 | 408 | 1725 | validation |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_qqp | Do the questions have the same meaning? | hf://glue/viewer/qqp
+    | accuracy | 60 - 351 | 102 | 363846 | 40430 | 390965 | validation |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_sst2 | Binary sentiment detection | hf://glue/viewer/sst2 | accuracy
+    | 33 - 91 | 63 | 67349 | 872 | 1821 | validation |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_wnli | Pronoun resolution | hf://glue/viewer/wnli | accuracy | 73 -
+    160 | 134 | 635 | 71 | 146 | validation |'
+  prefs: []
+  type: TYPE_TB
+- en: '| covid | Sentiment detection of COVID-19 tweets | kaggle://datatattle/covid-19-nlp-text-classification
+    | accuracy | 131 - 292 | 223 | 37361 | – | 3798 | test |'
+  prefs: []
+  type: TYPE_TB
+- en: '| hellaswag | Multiple-choice sentence completion | hf://Rowan/hellaswag |
+    accuracy | 120 - 407 | 341 | 39905 | 10003 | 10042 | validation |'
+  prefs: []
+  type: TYPE_TB
+- en: '| hellaswag_processed | Sentence completion | hf://Rowan/hellaswag | rouge
+    | 75 - 205 | 185 | 39905 | 10003 | 10042 | validation |'
+  prefs: []
+  type: TYPE_TB
+- en: '| jigsaw | Toxic comment classification | kaggle://c/jigsaw-unintended-bias-in-toxicity-classification
+    | accuracy | 409 - 715 | 601 | 159571 | – | 153164 | test |'
+  prefs: []
+  type: TYPE_TB
+- en: '| drop | Question answering given a passage | hf://drop | rouge | 87 - 2275
+    | 571 | 77400 | 9535 | – | validation |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Math | gsm8k | Grade school math problems | hf://gsm8k (main) | accuracy
+    | 58 - 465 | 276 | 7473 | – | 1319 | test |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 1: Tasks and datasets used. tldr_news and hellaswag datasets are used
+    for multiple tasks. The length of the texts vary substantially across tasks. Many
+    tasks and datasets exhibit a long-tail distribution, where a small number of examples
+    have significantly longer sequences than the average. Token counts are based on
+    the tiktoken package [[27](#bib.bib27)].'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Prompt selection
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/4c737acea748addd9ee3d209d6131672.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Examples of different styles of prompting. To maintain using the
+    same prompts when comparing models and to ensure the highest likelihood of success
+    amongst all types of models (fine-tuned, auto-complete, or instruction-tuned),
+    all of our prompts adhere to completion style.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Previous studies have demonstrated the potential of leveraging prompt engineering
+    techniques, such as the use of majority voting [48], the inclusion of multiple
+    in-context examples (n-shot) [[34](#bib.bib34)], MedPrompt [[25](#bib.bib25)],
+    chain-of-thought prompting [[43](#bib.bib43)], etc., to enhance model performance
+    on specific tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In our evaluations, we consciously choose not to employ additional prompt engineering
+    or tuning strategies for any specific dataset, task, or model. Although using
+    more in-context examples or a more selective approach in n-shot prompting might
+    yield better results, we prioritize reproducibility and the minimization of biases
+    that could arise from customized in-context learning. Instead, we opt to use simple
+    zero or single-shot completion-style prompts for all tasks. Our prompts are written
+    in the completion style, described in Figure [2](#S3.F2 "Figure 2 ‣ 3.2 Prompt
+    selection ‣ 3 Methodology ‣ LoRA Land: 310 Fine-tuned LLMs that Rival GPT-4, A
+    Technical Report"), to provide a fair comparison across fine-tuned, instruction-tuned,
+    and auto-complete models. For classification tasks, the prompt includes all possible
+    classes to inform the model’s responses. For more specialized tasks, where describing
+    the expected output format is challenging, we use a single in-context example
+    – the first example from the published training split – to guide the model.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![[Uncaptioned image]](img/e32d81d18506e166b50991c3a3928f7a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Table 2: Examples of prompts that are used in this study, all written in completion
+    style. For more specialized tasks, where describing the expected output format
+    is challenging (e.g. bc5cdr), we use a single in-context example — the first example
+    from the published training split — to guide the model.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, we follow prescribed prompt tagging conventions for each model, as
+    outlined in the respective model’s documentation on HuggingFace, to ensure proper
+    querying of pre-trained and instruction-tuned base models. This includes using
+    "<s>[INST] … [/INST]" for prompts intended for Mistral Instruct, and "<bos><start_of_turn>user
+    … <end_of_turn><start_of_turn><model>" for Gemma’s instruction-tuned models. For
+    detailed information on the exact prompt templates applied to each task and model,
+    please see Appendix [A](#A1 "Appendix A Prompts for all tasks ‣ LoRA Land: 310
+    Fine-tuned LLMs that Rival GPT-4, A Technical Report").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Base models
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'All base models are listed in Table [3](#S3.T3 "Table 3 ‣ 3.3 Base models ‣
+    3 Methodology ‣ LoRA Land: 310 Fine-tuned LLMs that Rival GPT-4, A Technical Report").
+    We use GPT-4 (gpt-4-0613) and GPT-3.5-Turbo (gpt-3.5-turbo-0125) as two strong
+    LLM baselines. Our selection of these ten base models was guided by several key
+    considerations, including their widespread adoption within the AI community, availability
+    with permissive licenses, and availability of technical reports. We specifically
+    choose base models with $\leq 8$ billion parameters to ensure that each model
+    can be efficiently trained within the resource limits of a single A10G GPU.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model Name | Creator | # of Parameters | Date Released |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Llama-2-7b | Meta | 7B | July 18, 2023 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Llama-2-7b-chat | Meta | 7B | July 18, 2023 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Mistral-7b-v0.1 | Mistral AI | 7.24B | September 20, 2023 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Mistral-7b-Instruct-v0.1 | Mistral AI | 7.24B | September 27, 2023 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Zephyr-7b | Hugging Face | 7.24B | October 26, 2023 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Phi-2b | Microsoft | 2.78B | December 13, 2023 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Gemma-2b | Google | 2.51B | February 21, 2024 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Gemma-2b-it | Google | 2.51B | February 21, 2024 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Gemma-7b | Google | 8.54B | February 21, 2024 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Gemma-7b-it | Google | 8.54B | February 21, 2024 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 3: Base models used in LoRA-based fine-tuning experiments. To train all
+    models on A10G hardware, all chosen base models are  7B parameters or smaller.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.4 Training parameters
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Each model is trained with published train splits⁹⁹9customer_support and legal
+    are the only two tasks in our list without official splits. The exact splits for
+    these datasets are published on ¡[github.com/predibase/lora-bakeoff](github.com/predibase/lora-bakeoff)¿..
+    Each model is trained for $40000$ warm-up fraction ($1200$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: These training parameters, combined with gradient checkpointing, allow each
+    LLM to be fine-tuned on a single A10 GPU with 24 GB of memory. For tasks where
+    training on the full sequence lengths would still produce a GPU Out-Of-Memory
+    (OOM) error, we first truncate example inputs to a maximum sequence length set
+    as the 95th percentile of all task inputs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To guarantee a consistent and straightforward basis of comparison across models,
+    no additional hyperparameter tuning is applied to any specific dataset, task,
+    or base model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Training recipes for each model are provided as Ludwig [[24](#bib.bib24)] configurations
+    for each of the fine-tuned LLMs and can be found at [https://huggingface.co/predibase](https://huggingface.co/predibase).
+    Figure [3](#S3.F3 "Figure 3 ‣ 3.4 Training parameters ‣ 3 Methodology ‣ LoRA Land:
+    310 Fine-tuned LLMs that Rival GPT-4, A Technical Report") shows an example of
+    a config.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/1e144c6847c6cec5e262a803208f1d23.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Example LLM model training configuration for LoRA-based fine-tuning.
+    Based on Ludwig [[24](#bib.bib24)].'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.5 Evaluation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'As specified in Table [1](#S3.T1 "Table 1 ‣ 3.1 Task selection ‣ 3 Methodology
+    ‣ LoRA Land: 310 Fine-tuned LLMs that Rival GPT-4, A Technical Report"), models
+    are evaluated on the test split if it exists and is labeled, or the validation
+    set otherwise^(10)^(10)10MMLU has a published test set with labels, however, we
+    use validation split to be consistent with the HELM benchmark [[20](#bib.bib20)].
+    We employ a tailored set of evaluation metrics to accurately assess the performance
+    across all of the tasks. We use accuracy for classification tasks, (1 - mean absolute
+    error) for regression tasks^(11)^(11)11Mean absolute error (MAE) is used because
+    the range of target values are integer-like and small., and rouge-L^(12)^(12)12Text
+    generation tasks are complicated to evaluate automatically [[16](#bib.bib16)].
+    ROUGE-L is a widely adopted proxy metric that focuses on the longest common subsequence
+    between the generated text and the reference text, which captures the semantic
+    similarity between the generated and reference texts rather than relying solely
+    on exact word matches. ROUGE-L may not fully capture aspects like fluency, coherence
+    and should be used in conjunction with other metrics and human evaluations to
+    provide a fuller assessment of text generation quality. for generation tasks.
+    The WikiSQL dataset has its own [evaluation suite](https://github.com/salesforce/WikiSQL/tree/master),
+    however due to challenges integrating the WikiSQL evaluation suite, we have adopted
+    the ROUGE metric as a proxy for assessing query quality^(13)^(13)13Although ROUGE
+    is not tailored for SQL queries, it offers a viable alternative for gauging the
+    alignment between generated and target queries.. For coding, we use HumanEval [[5](#bib.bib5)].
+    For GSM8K [[7](#bib.bib7)], a regex-based heuristic [[9](#bib.bib9)] is used to
+    extract the mathematical answer to be consistent with the Open LLM Leaderboard [[2](#bib.bib2)].
+    All metrics are on a 0 to 1 scale, where 0 is the worst possible score, and 1
+    the best possible score.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Non-fine-tuned models often generate more varied outputs, including unintended
+    artifacts such as additional words or explanations not specified in the prompt.
+    For classification tasks, sometimes these models will generate the actual class
+    string like "Yes/No", "positive/negative" or "True/False" spelled out, instead
+    of the true "1/0" label in the dataset even when instructed. To minimize metric
+    deductions due to response parsing strictness, we first use a regex-based extraction
+    step to map the model’s response to the ground truth vocabulary. If there are
+    multiple matches in the generated text, the first valid match is used. The code
+    for regex-based pre-metric response extractions are available at [github.com/predibase/lora-bakeoff](https://www.github.com/predibase/lora-bakeoff).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Financial constraints associated with LLM APIs are not trivial. For example,
+    using GPT-4 to assess the complete WikiSQL test set of 15,878 examples would cost
+    approximately $400, considering the average input (805) and output (16) token
+    counts per example. Such costs can be prohibitive, especially for organizations
+    or researchers operating on limited budgets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To manage costs while maintaining rigor, we restrict evaluations to the first
+    1000 examples for datasets with evaluation splits larger than 1000 examples. We
+    acknowledge that this method may introduce selection bias and affect the generalizability
+    of our findings. We recommend that future research considers more expansive evaluations
+    as resources permit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Results
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f79042e35a49942dcf38ab3faafe3bad.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: Performance lift from the best fine-tuned LLM over 1) the best base
+    model (<= 7B) (in blue) and GPT-4 (in red) across 31 tasks, in absolute points.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'LoRA fine-tuning provides a consistent and significant boost from fine-tuning
+    across base models and tasks, as seen in Figure [4](#S4.F4 "Figure 4 ‣ 4 Results
+    ‣ LoRA Land: 310 Fine-tuned LLMs that Rival GPT-4, A Technical Report"). Before
+    fine-tuning, GPT-4 and GPT-3.5 have the strongest performance out of the box compared
+    to all other base models, with 0.599 and 0.661 overall scores, respectively. Performance
+    boosts from fine-tuning range from +26.3 to +51.2 points of improvement depending
+    on the base model, and +38.7 on average (Table [4](#S4.T4 "Table 4 ‣ 4 Results
+    ‣ LoRA Land: 310 Fine-tuned LLMs that Rival GPT-4, A Technical Report")). Depending
+    on the task, the best fine-tuned LLM outperforms the best base model from +8.3
+    to +67.5 points, +25.0 points on average (Table [5](#S4.T5 "Table 5 ‣ 4 Results
+    ‣ LoRA Land: 310 Fine-tuned LLMs that Rival GPT-4, A Technical Report")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Task | Metric | Best BM | Best FT | GPT-4 | Lift over BM | Lift over GPT-4
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| magicoder | humaneval | 0.201 | 0.433 | 0.829 | 0.232 | -0.396 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| mmlu | accuracy | 0.506 | 0.589 | 0.774 | 0.083 | -0.185 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_wnli | accuracy | 0.437 | 0.873 | 0.93 | 0.436 | -0.057 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| arc_combined | accuracy | 0.673 | 0.915 | 0.947 | 0.242 | -0.032 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| wikisql | rouge | 0.301 | 0.898 | 0.909 | 0.597 | -0.011 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| boolq | accuracy | 0.764 | 0.909 | 0.911 | 0.145 | -0.002 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| customer_support | accuracy | 0.850 | 1.000 | 1.000 | 0.150 | 0.000 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_cola | accuracy | 0.797 | 0.872 | 0.864 | 0.075 | 0.008 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| winogrande | accuracy | 0.576 | 0.84 | 0.832 | 0.264 | 0.008 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_sst2 | accuracy | 0.933 | 0.961 | 0.942 | 0.028 | 0.019 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| dbpedia | accuracy | 0.868 | 0.988 | 0.965 | 0.120 | 0.023 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| hellaswag | accuracy | 0.393 | 0.834 | 0.805 | 0.441 | 0.029 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_qnli | accuracy | 0.743 | 0.931 | 0.902 | 0.188 | 0.029 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| e2e_nlg | rouge | 0.482 | 0.552 | 0.513 | 0.070 | 0.039 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_qqp | accuracy | 0.708 | 0.883 | 0.841 | 0.175 | 0.042 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| bc5cdr | rouge | 0.703 | 0.972 | 0.89 | 0.269 | 0.082 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_mnli | accuracy | 0.455 | 0.899 | 0.803 | 0.444 | 0.096 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| webnlg | rouge | 0.563 | 0.681 | 0.583 | 0.118 | 0.098 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| tldr_content_gen | rouge | 0.183 | 0.23 | 0.125 | 0.047 | 0.105 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_mrpc | accuracy | 0.694 | 0.887 | 0.777 | 0.193 | 0.11 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| jigsaw | accuracy | 0.704 | 0.867 | 0.754 | 0.163 | 0.113 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| hellaswag_processed | rouge | 0.146 | 0.261 | 0.134 | 0.115 | 0.127 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| viggo | rouge | 0.374 | 0.505 | 0.374 | 0.131 | 0.131 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_stsb | mae | 0.814 | 0.913 | 0.773 | 0.099 | 0.14 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| gsm8k | accuracy | 0.364 | 0.569 | 0.373 | 0.205 | 0.196 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| conllpp | rouge | 0.733 | 0.989 | 0.742 | 0.256 | 0.247 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| tldr_headline_gen | rouge | 0.174 | 0.441 | 0.175 | 0.267 | 0.266 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| drop | rouge | 0.066 | 0.741 | 0.393 | 0.675 | 0.348 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| legal | rouge | 0.158 | 0.683 | 0.305 | 0.525 | 0.378 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| reuters | rouge | 0.010 | 0.479 | 0.014 | 0.469 | 0.465 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| covid | accuracy | 0.322 | 0.843 | 0.309 | 0.521 | 0.534 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Average |  | 0.506 | 0.756 | 0.661 | 0.250 | 0.095 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 4: Best model performance for each task, before and after fine-tuning,
+    compared to GPT-4.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After fine-tuning, 301/310 models surpass their base model counterpart^(14)^(14)14Most
+    instances where fine-tuning was worse than the base model were in the family of
+    Gemma models. This is possibly due to the bugs with the Gemma family of models
+    as identified by Unsloth[[10](#bib.bib10)], which were not accounted for when
+    benchmarks were collected., while 224/310 fine-tuned LLMs surpass the benchmark
+    set by GPT-4 (Table [5](#S4.T5 "Table 5 ‣ 4 Results ‣ LoRA Land: 310 Fine-tuned
+    LLMs that Rival GPT-4, A Technical Report")). Gemma-2b is the worst performing
+    base model after fine-tuning, but also experiences the largest lift from fine-tuning
+    overall, which suggests that models with lower initial scores stand to benefit
+    the most from fine-tuning (Figure 1).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: By overall average across all tasks, all fine-tuned models perform better than
+    GPT-3.5, and all 7B fine-tuned models perform better than GPT-4, except for gemma-7b
+    and gemma-7b-it. Phi-2, with as few as 2 billion parameters, exhibits performance
+    competitive with GPT-4 after fine-tuning, consistent with the findings of the
+    Phi-2 technical report [46].
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Averaged over 31 tasks, the overall performance of the best fine-tuned LLMs
+    (0.756) are significantly higher than GPT-4 (0.661) (Table [5](#S4.T5 "Table 5
+    ‣ 4 Results ‣ LoRA Land: 310 Fine-tuned LLMs that Rival GPT-4, A Technical Report")).
+    A detailed breakdown of performance per model, per task, can be found in Appendix
+    [C](#A3 "Appendix C Full Results Tables ‣ LoRA Land: 310 Fine-tuned LLMs that
+    Rival GPT-4, A Technical Report").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Base Model | No FT | With FT |'
+  prefs: []
+  type: TYPE_TB
+- en: '&#124; Average lift &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; from FT &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Average lift &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; from FT &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; vs. GPT-4 &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Frequency &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; FT >No FT &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Frequency &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; FT >GPT-4 &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Frequency &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; FT = max(task) &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| gpt-3.5-turbo | 0.599 | — | — | — | — | — | 0/31 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| gemma-2b-instruct | 0.326 | 0.645 | 0.319 | -0.016 | 96.7% (30/31) | 64.5%
+    (20/31) | 0/31 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| gemma-7b | 0.187 | 0.645 | 0.458 | -0.016 | 93.5% (29/31) | 64.5% (20/31)
+    | 1/31 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| gemma-7b-instruct | 0.377 | 0.656 | 0.279 | -0.005 | 83.8% (26/31) | 64.5%
+    (20/31) | 0/31 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| gemma-2b | 0.145 | 0.657 | 0.512 | -0.004 | 100.0% (31/31) | 67.7% (21/31)
+    | 0/31 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| gpt-4 | 0.661 | — | — | — | — | — | 6/31 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| phi-2 | 0.274 | 0.677 | 0.403 | 0.016 | 100.0% (31/31) | 71.0% (22/31) |
+    1/31 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| llama-2-7b | 0.252 | 0.696 | 0.444 | 0.035 | 96.7% (30/31) | 67.7% (21/31)
+    | 0/31 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| llama-2-7b-chat | 0.370 | 0.708 | 0.337 | 0.047 | 100.0% (31/31) | 74.2%
+    (23/31) | 0/31 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| mistral-7b-instruct | 0.462 | 0.724 | 0.263 | 0.063 | 100.0% (31/31) | 77.4%
+    (24/31) | 3/31 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| mistral-7b | 0.271 | 0.732 | 0.461 | 0.071 | 100.0% (31/31) | 83.8% (26/31)
+    | 10/31 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| zephyr-7b-beta | 0.350 | 0.742 | 0.392 | 0.081 | 100.0% (31/31) | 87.1% (27/31)
+    | 8/31 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Average | 0.301 | 0.688 | 0.387 | 0.027 | 97.1% (301/310) | 72.3% (224/310)
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 5: Model performance by base model averaged over 31 tasks, before and
+    after fine-tuning.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Discussion and Analysis
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 5.1 Which Base Model is the best for LoRA Fine-tuning?
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Mistral-7B and Zephyr-7b-beta emerge as leaders, albeit in different categories.
+    Mistral-7B frequently achieves top performance across the most number of tasks
+    (10/31), suggesting a high adaptability (Figure [5](#S5.F5 "Figure 5 ‣ 5.1 Which
+    Base Model is the best for LoRA Fine-tuning? ‣ 5 Discussion and Analysis ‣ LoRA
+    Land: 310 Fine-tuned LLMs that Rival GPT-4, A Technical Report")). Conversely,
+    Zephyr boasts the highest overall average performance (0.731). Mistral-7b, Mistral-7b-instruct,
+    and Zephyr-7b-beta (which is itself based on Mistral-7b-instruct [[38](#bib.bib38)])
+    lead the pack for LoRA fine-tuning performance, ahead of Llama, Phi, and Gemma
+    families.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/aa21750c0a8662bcdf93b1ff42a29d3b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: Frequency of base models (with fine-tuning) as the top performer
+    for a task. Ties, namely for the customer_support task where most models attain
+    100% perfect scores, are excluded.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.2 Does size matter for LoRA fine-tuning? 2B vs. 7B
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The 2B parameter Phi-2 model, after fine-tuning, outperforms all of the 2B and
+    7B Gemma models by overall overage, and is only 1.9 points behind the next highest
+    performing 7B model, Llama-2-7b (0.677 vs. 0.696). Despite this, we find that
+    fine-tuned 7B models are almost always better than fine-tuned 2B models (29/31
+    tasks). Among 2B parameter models in particular (Phi and Gemma), we see that all
+    Gemma instruct models were better than Phi out of the box, however, Phi-2 performs
+    better than all other Gemma models after fine-tuning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.3 Is fine-tuning better with Instruction-tuned or Auto-complete models?
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In Figure [6](#S5.F6 "Figure 6 ‣ 5.3 Is fine-tuning better with Instruction-tuned
+    or Auto-complete models? ‣ 5 Discussion and Analysis ‣ LoRA Land: 310 Fine-tuned
+    LLMs that Rival GPT-4, A Technical Report"), we observe that before fine-tuning,
+    instruction-tuned models outperform auto-complete models, despite using completion
+    style prompts. A qualitative analysis shows that auto-complete models were much
+    more likely to "go off the rails", and generate long irrelevant text sequences,
+    and instruction-tuned models demonstrate a higher consistency in correctly attempting
+    the imminent task.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: After fine-tuning, the performance disparities between the models narrow. The
+    average instruction-tuned model slightly outperforms the average auto-complete
+    model by a margin of +0.009, however the reverse is true when comparing the best
+    fine-tuned instruction-tuned model and the best fine-tuned auto-complete model
+    (-0.002). Auto-complete models, possibly due to their broader and less specialized
+    knowledge base, may be inherently more adaptable to a variety of tasks. However,
+    with adequate fine-tuning, both types of models achieve comparable performance
+    levels. We encourage further research to explore how the foundational design of
+    instruction-tuned models influences their adaptability and effectiveness in task-specific
+    fine-tuning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/cbbd30f2bb36fecf05450b7f643dc7ec.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: Comparison of auto-complete vs. instruction-tuned base models, before
+    and after fine-tuning.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.4 When does GPT-4 consistently outperform fine-tuned models?
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We observe a distinct advantage for fine-tuned LLMs on narrowly-scoped tasks,
+    such as those within the GLUE benchmarks. These tasks, primarily classification-oriented,
+    saw fine-tuned LLMs achieve near 90% accuracy, outperforming GPT-4\. GPT-4 continues
+    to outperform fine-tuned models in 6 out of 31 tasks, particularly in broader,
+    more complex domains such as Python coding and MMLU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.5 Quantifying the relationship between fine-tuning quality lift and task complexity
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If fine-tuned models perform better on specialized "narrow" tasks and worse
+    on "broader" tasks, can we establish a predictive relationship between the complexity
+    of a task and the efficacy of LoRA fine-tuning? Identifying such a relationship
+    could provide a valuable predictive tool for assessing the potential benefits
+    of fine-tuning enhancements on new tasks before the fine-tuning process begins.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.5.1 Heuristics for fine-tuning quality, quality lift, and task complexity
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'To quantify task complexity, we use several heuristics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Number of training examples
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Lengths of inputs and outputs ($\mu$, and 95th percentile).
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Compressibility^(15)^(15)15https://docs.python.org/3/library/gzip.html ($\mu$)
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Diversity of content, which we approximate by measuring the rouge-L similarity
+    between inputs and outputs) [[41](#bib.bib41)] ($\mu$).
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: For task complexity heuristic,
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For model quality measurements, we track:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Baseline GPT-4 score
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Lift from the best fine-tuned model vs. GPT-4 ("Max GPT-4 Lift")
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Average fine-tuning lift over the base model
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Best base model score without fine-tuning
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Average base model score without fine-tuning
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Best fine-tuned model score
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Average fine-tuned model score
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Refer to Table [6](#S5.T6 "Table 6 ‣ 5.5.1 Heuristics for fine-tuning quality,
+    quality lift, and task complexity ‣ 5.5 Quantifying the relationship between fine-tuning
+    quality lift and task complexity ‣ 5 Discussion and Analysis ‣ LoRA Land: 310
+    Fine-tuned LLMs that Rival GPT-4, A Technical Report") for a complete example.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | Metric | arc_combined | bc5cdr | boolq |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Model quality measurements | Max GPT-4 Lift | -0.03 | 0.08 | 0.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Average Base Model Lift | 0.32 | 0.75 | 0.19 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Best Base Model Score | 0.67 | 0.70 | 0.76 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Average Base Model Score | 0.41 | 0.22 | 0.64 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Best Fine-tuned Score | 0.92 | 0.97 | 0.91 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Average Fine-Tuned Score | 0.73 | 0.97 | 0.82 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Task complexity heuristics | Input length p95 | 143.00 | 175.00 | 270.70
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Input length $\mu$ | 102.89 | 142.15 | 145.23 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Input length $\sigma$ | 21.68 | 19.17 | 69.03 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Output length p95 | 1.00 | 58.00 | 1.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Output length $\mu$ | 1.00 | 37.11 | 1.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Output length $\sigma$ | 0.00 | 11.27 | 0.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Example length $\mu$ | 102.92 | 178.26 | 146.23 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Example length p95 | 143.00 | 226.05 | 271.70 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Example length $\sigma$ | 21.66 | 27.84 | 69.03 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| I/O rougeL similarity $\mu$ | 0.03 | 0.19 | 0.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| I/O rougeL similarity $\sigma$ | 0.01 | 0.03 | 0.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Compressibility $\mu$ | 0.64 | 0.55 | 0.60 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Compressibility $\sigma$ | 0.06 | 0.01 | 0.07 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| # training examples | 3370 | 5228 | 9427 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 6: Model quality measurements and task complexity heuristics for 3 different
+    tasks (example). Refer to the Appendix [C](#A3 "Appendix C Full Results Tables
+    ‣ LoRA Land: 310 Fine-tuned LLMs that Rival GPT-4, A Technical Report"). for all
+    measurements and heuristics for all 31 tasks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.5.2 Correlating fine-tuning quality and quality lift with task complexity
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We find several intriguing correlations suggesting significant interactions
+    between our task complexity heuristics and measurements of model performance.
+    Key observations include:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Compressibility exhibited a dual influence, correlating positively with both
+    best and average base model scores (0.36), while correlating negatively with these
+    scores when the variance in compressibility increased (-0.37). This indicates
+    that while uniform compressibility supports model performance, higher variability
+    in compressibility tends to degrade it.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Input and Output Lengths: Longer and more varied output lengths correlated
+    positively with the maximum lift from GPT-4 fine-tuning, suggesting that tasks
+    with extended and more varied outputs are not detrimental for fine-tuning. Conversely,
+    longer and more varied input and output lengths negatively correlate with absolute
+    base and fine-tuned model scores.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Input and Output Rouge-L Similarity: A higher standard deviation in input/output
+    Rouge-L similarity correlates negatively with both base and fine-tuned model scores.
+    This suggests that greater variability in content similarity within a dataset
+    may pose difficulties for model learning.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Number of training examples: No significant correlation was found with the
+    number of training examples, pointing to the possibility that once a sufficient
+    sample size is achieved, additional examples do not necessarily contribute to
+    improved fine-tuning efficacy.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Model quality inter-correlations reveal that better average scores (both base
+    and fine-tuned) strongly predict the best scores obtained, suggesting a general
+    consistency in model performance across different training instances.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Overall, these observations are consistent with our hypothesis that narrower
+    easier tasks are more likely to see success with fine-tuned adapters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/3a6b629cdafbfcdf435df0696bd46add.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7: Correlations between dataset complexity and model quality correlations
+    for 310 LLMs across 31 tasks, before and after LoRA-based fine-tuning.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.5.3 Predicting fine-tuning quality and quality lift given task complexity
+    heuristics
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We train linear regression models to predict the quality lift achievable through
+    adapter-based fine-tuning, using z-score normalized dataset complexity heuristics
+    (described in Table [6](#S5.T6 "Table 6 ‣ 5.5.1 Heuristics for fine-tuning quality,
+    quality lift, and task complexity ‣ 5.5 Quantifying the relationship between fine-tuning
+    quality lift and task complexity ‣ 5 Discussion and Analysis ‣ LoRA Land: 310
+    Fine-tuned LLMs that Rival GPT-4, A Technical Report")) as predictors. Results
+    are summarized in Table [7](#S5.T7 "Table 7 ‣ 5.5.3 Predicting fine-tuning quality
+    and quality lift given task complexity heuristics ‣ 5.5 Quantifying the relationship
+    between fine-tuning quality lift and task complexity ‣ 5 Discussion and Analysis
+    ‣ LoRA Land: 310 Fine-tuned LLMs that Rival GPT-4, A Technical Report"), where
+    we find that linear models yield root mean squared errors (RMSE) of 0.166 to 0.092,
+    depending on the model quality metric in question.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Incorporating the score of the average base model without fine tuning as an
+    additional feature improves prediction accuracy for all model quality metrics
+    (+0.004 to +0.069). This demonstrates some predictive power in knowing base model
+    performance for anticipating potential gains from fine-tuning. RMSE errors are
+    rather low, suggesting that upfront heuristics-based measurements of dataset complexity
+    can be reasonable indicators of positive fine-tuning impact.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model Quality Metric |'
+  prefs: []
+  type: TYPE_TB
+- en: '&#124; With average base model score &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; as a feature &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; (RMSE) &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; With average base model score &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; as a feature &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; (RMSE) &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| GPT-4 Score | 0.140 | 0.121 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Max GPT-4 Lift | 0.092 | 0.085 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Average Base Model Score | 0.099 | N/A (0.000) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Best Base Model Score | 0.166 | 0.097 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Average Base Model Lift | 0.099 | 0.095 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Average Fine-Tuned Score | 0.119 | 0.095 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Best Fine-tuned Score | 0.097 | 0.091 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 7: The performance of linear regression models predicting model quality
+    heuristics before and after fine-tuning, given z-score normalized dataset complexity
+    heuristics, with and without a representative base model score.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Performance Benchmarks of LoRAX Deployments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To assess the viability of serving many LoRA fine-tuned LLMs simultaneously
+    in a real-world application, we launch LoRA Land. LoRA Land is a web application
+    that serves 25 fine-tuned Mistral-7b LLMs served to thousands of users from a
+    single A100 GPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/1d93b1c5d6a4640af3f7eb9cdb13997b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8: The LoRA Land web application that serves 25 fine-tuned LLMs on a
+    single A100\. The application is available at [https://predibase.com/lora-land](https://predibase.com/lora-land).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.1 LoRAX in a Nutshell
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'LoRA Exchange (LoRAX) [[1](#bib.bib1)] is an open source Multi-LoRA inference
+    server specifically designed for serving many fine-tuned models at once using
+    a shared set of GPU resources. Compared with conventional dedicated LLM deployments,
+    LoRAX consists of three novel components:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Dynamic Adapter Loading, allowing each set of fine-tuned LoRA weights to be
+    loaded from storage just-in-time as requests come in at runtime, without blocking
+    concurrent requests.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Continuous Multi-Adapter Batching, a fair scheduling policy for optimizing aggregate
+    throughput of the system that extends the popular continuous batching strategy
+    to work across multiple sets of LoRA adapters in parallel.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Tiered Weight Caching, to support fast exchanging of LoRA adapters between requests,
+    and offloading of adapter weights to CPU and disk to avoid out-of-memory errors.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/0482b267a9641e429dae10b28c0628d4.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 9: Dynamic adapter loading (left) enables multiple concurrent fine-tuned
+    models to process requests. User 3’s model (green) is loaded in the background
+    while the other requests proceed as usual. Continuous Multi-Adapter Batching (right):
+    Multiple adapters are decoded in a single batch. Masks ensure that only the right
+    adapter is used for processing each element of the batch.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.2 Benchmarking Results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We run benchmarks in order to understand the impact of serving multiple adapters
+    on the relevant metrics, described below. We also test the scalability of the
+    system with respect to the following factors:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Number of concurrent users submitting LLM prompts
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Number of adapters concurrently being queried
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Number of input tokens
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Number of output tokens
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'LLM serving performance metrics include: time to first token (TFTT), total
+    request time, token streaming time, and throughput (tokens per second). We run
+    our benchmarks from a t3.2xlarge EC2 instance in the AWS zone us-west-2\. All
+    benchmarks are based on the Mistral-7b-instruct LLM, deployed on an A100 GPU with
+    80GB of RAM. The script used to benchmark LLM serving performance can be found
+    in Appendix [B](#A2 "Appendix B LoRAX benchmarking scripts ‣ LoRA Land: 310 Fine-tuned
+    LLMs that Rival GPT-4, A Technical Report").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following is a summary of relevant terminology:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Total request time (ms): total time from when the request is sent to when the
+    last token is streamed back to the client.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Time to first token, TTFT (ms): time from when the request is sent to the first
+    token is received by the client'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Token streaming time (ms): time from when the first token is received by the
+    client to when the last token is received by the client.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Throughput (token/s): number of tokens generated per seconds, computed by (Token
+    streaming time (ms) / number of output tokens)'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Concurrent users: number of users that make requests to the LLM, wait until
+    they receive a full response, then make another request until the end of testing
+    time.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 6.3 Latency from adapter switching and concurrent users
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The following reported benchmarks come from 2-minute runs that continuously
+    stream requests to the LLM deployment. Our experiments indicate that a duration
+    of two minutes provides an adequate volume of data to obtain stable and reliable
+    metrics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table [8](#S6.T8 "Table 8 ‣ 6.3 Latency from adapter switching and concurrent
+    users ‣ 6 Performance Benchmarks of LoRAX Deployments ‣ LoRA Land: 310 Fine-tuned
+    LLMs that Rival GPT-4, A Technical Report") shows the impact LLM query performance
+    isolated to adapter switching mechanics. In the multi-adapter, multi-user case,
+    we see that the token streaming time is the same, but the total request time differs
+    by 7.21ms which illustrates the cost of handling requests from 100 concurrent
+    users that lead to switching between 25 adapters.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | 0 adapters (base model), 1 concurrent user | 25 adapters (base model),
+    100 concurrent user |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Average | p90 | Average | p90 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Total request time (ms) | 191.81 | 192.3 | 199.02 | 201.82 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Time to first token, TTFT (ms) | 122.19 | 191.16 | 128.79 | 199.11 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Token streaming time (ms) | 70 | 92.38 | 70.14 | 96.62 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 8: Measuring LLM querying metrics from adapter switching mechanics only.
+    To eliminate extra, non-adapter-switching factors related to input and generation,
+    simulated requests contain 1 input token and max_new_tokens is capped at 1\. Throughput
+    metrics are excluded since only 1 output token is generated.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| # concurrent users |  | 1 | 5 | 10 | 20 | 50 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Total request time (ms) | average | 943.03 | 1165.71 | 1359.39 | 2004.9 |
+    2981.66 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| p90 | 1567.66 | 1925.96 | 2147.84 | 3287.21 | 4673.52 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Time to first token, TTFT (ms) | average | 121.84 | 121.80 | 143.68 | 135.43
+    | 136.17 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| p90 | 191.08 | 195.85 | 199.98 | 199.76 | 199.54 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Token streaming time (ms) | average | 821.09 | 1043.79 | 1215.6 | 1869.36
+    | 2845.38 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| p90 | 1468.76 | 1804.16 | 2007.89 | 3130.72 | 4544.64 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 9: Benchmarking base LLM deployments on 1xA100 with queries that simulate
+    real load.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To simulate realistic traffic payloads, we generate random payloads with 30-500
+    input tokens and 1-120 output tokens, modeled off of the tasks defined in Table
+    [1](#S3.T1 "Table 1 ‣ 3.1 Task selection ‣ 3 Methodology ‣ LoRA Land: 310 Fine-tuned
+    LLMs that Rival GPT-4, A Technical Report"). We vary the number of concurrent
+    users from 1 to 50, and payloads are issued randomly between 25 different adapter
+    endpoints.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When scaling from 1 to 50 concurrent users, which also increases load by 50X,
+    the average time to first token (TTFT) is slightly affected (+21.84ms or 17.9%
+    increase). We see a 3.46X decrease in throughput for the same 50X increase in
+    load.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| # concurrent users |  | 1 | 5 | 10 | 20 | 50 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Total request time (ms) | average | 956.56 | 1272.16 | 1528.99 | 1896.1 |
+    3336.27 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| p90 | 1758.53 | 2164.08 | 2612.05 | 3222.73 | 5330.84 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Time to first token, TTFT (ms) | average | 170.62 | 148.14 | 157.49 | 167.28
+    | 153.89 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| p90 | 199.36 | 198.98 | 199.41 | 200.99 | 200.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Token streaming time (ms) | average | 785.82 | 1123.91 | 1371.39 | 1728.71
+    | 3182.27 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| p90 | 1594.65 | 2023.33 | 2468.87 | 3047.92 | 5169.05 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 10: Benchmarking 25 adapters on 1xA100 with queries that simulate real
+    load.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table [10](#S6.T10 "Table 10 ‣ 6.3 Latency from adapter switching and concurrent
+    users ‣ 6 Performance Benchmarks of LoRAX Deployments ‣ LoRA Land: 310 Fine-tuned
+    LLMs that Rival GPT-4, A Technical Report") shows that there’s no significant
+    difference between querying the base LLM vs. the 25 adapters when it comes to
+    TTFT or throughput. The cost of adapter switching is overshadowed by the time
+    it takes to generate tokens once requests come in. Comparing average case numbers
+    vs. p90 numbers for TTFT, the largest disparity is between 121.8ms (average) and
+    195.95ms (p90) for a 60.87% increase. Additionally, we consistently see that TTFT
+    is at or under the 200ms mark.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: On throughput, we observe that it takes between 12 and 13.5ms to generate a
+    single token on an A100 GPU both for base deployments and deployments where adapter
+    weights have been added. This means that the aggregate throughput for the LLM
+    deployment on that GPU is between 74 tokens/s and 83 tokens/s.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.4 Analyzing the performance impact of additional deployment replicas
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In Table [11](#S6.T11 "Table 11 ‣ 6.4 Analyzing the performance impact of additional
+    deployment replicas ‣ 6 Performance Benchmarks of LoRAX Deployments ‣ LoRA Land:
+    310 Fine-tuned LLMs that Rival GPT-4, A Technical Report"), we run benchmarks
+    for 25 adapters queried concurrently by 50 users, with a LoRAX deployment on 1
+    replica. We then run benchmarks where we scale the LoRAX deployment to 2 replicas
+    placed behind a round robin load balancer to route equal amounts of traffic to
+    each replica, while also scaling the load to 100 concurrent users. We see that
+    the numbers are stable across the board, signifying that replicas can be scaled
+    linearly with load to achieve comparable metrics.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | 50 Concurrent users, 1 replica | 100 Concurrent users, 2 replicas |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Total request time (ms) | average | 3336.27 | 3368.53 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| p90 | 5330.84 | 5382.61 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Time to first token, TTFT (ms) | average | 153.89 | 161.97 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| p90 | 200.2 | 199.83 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Token streaming time (ms) | average | 3182.27 | 3206.46 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| p90 | 5169.05 | 5248.97 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 11: Benchmarking 25 adapters on 1 LoRAX replica vs. 2 replicas with queries
+    that simulate real load.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7 Limitations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Our experimental design has many limitations, including:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Restricted Evaluation Scope: Our evaluations are limited to the first 1000
+    examples of datasets with larger evaluation splits to manage costs while maintaining
+    rigor. This may introduce selection bias and limit the generalizability of our
+    findings. Future research should consider more comprehensive evaluations as resources
+    allow.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Prompt Engineering Constraints: Our study does not employ advanced prompt engineering
+    techniques such as majority voting, n-shot prompting, or specialized tuning methods
+    like MedPrompt or chain-of-thought prompting. In this study, we prioritize reproducibility
+    and minimize biases from selective example choice by using simple zero or single-shot
+    prompts across all tasks, however these techniques have shown potential in enhancing
+    task-specific performance.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Training Constraints: All LLMs are fine-tuned with the same Models are trained
+    with consistent parameters: 40K examples, batch size of 1, 4-bit quantization,
+    and a LoRA rank of 8, using an adam optimizer and a cosine learning rate scheduler
+    with specific settings. Training is conducted on a single A10 GPU, using gradient
+    checkpointing to manage memory limitations. For datasets where full sequence lengths
+    induce memory overflow, we truncate sequences to the 95th percentile length. This
+    approach may impact the thoroughness of model training, particularly on datasets
+    where 40K steps do not complete even one full epoch. Expanding hardware capabilities,
+    increasing batch sizes, or adjusting hyperparameters like the learning rate or
+    scheduler could potentially enhance outcomes.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Limited Model Variety: Our experiments are limited to LoRA fine-tuning on two
+    model sizes, 2B and 7B. Exploring a broader range of model sizes, including larger
+    models such as 13B or 70B, could provide insights into the scalability and effectiveness
+    of fine-tuning across different computational capacities.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: We maintain that LoRA Land successfully demonstrates the practical efficiency
+    of training and serving several task-specialized LLMs that rival GPT-4 in a production
+    application powered by LoRAX, despite these limitations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 8 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this study, we assess the efficacy of Low Rank Adaptation (LoRA) for fine-tuning
+    Large Language Models (LLMs) across a broad range of tasks and models and the
+    viability of serving multiple fine-tuned LoRA LLMs in production.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On model quality, our results confirm that LoRA fine-tuning significantly enhances
+    LLM performance, surpassing non-fine-tuned bases and GPT-4\. The standout performance
+    of models like Mistral-7B across multiple tasks highlights the importance of base
+    model selection in fine-tuning success. We find that dataset complexity heuristics
+    can be reasonably leveraged as potential predictors of fine-tuning success, suggesting
+    that the nature of the task plays an important role in the effectiveness of fine-tuning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Despite these outcomes, limitations such as the scale of evaluations, training
+    constraints, and the simplicity of our prompt engineering approaches suggest areas
+    for future improvement. We release all of our models and training setups for further
+    community validation and experimentation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On serving, we demonstrate the practical deployment of these models using the
+    LoRAX framework through the LoRA Land web application. We provide benchmarks for
+    time to first token (TFTT), total request time, and token streaming time, and
+    measure LoRAX’s latency robustness to up to 100 concurrent users.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Altogether, LoRA Land emphasizes the quality and cost-effectiveness of employing
+    multiple specialized LLMs over a single, general-purpose LLM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 9 Acknowledgements
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Justin Zhao led the research and wrote the paper. Justin Zhao and Timothy Wang
+    designed the experiments, created the evaluation harness, ran experiments, and
+    analyzed the data. Wael Abid led LoRAX performance benchmarks and wrote section
+    6 of the paper. Piero Molino was an early advocate for the idea and provided feedback
+    on the writing, experiments, and data analysis. We thank Martin Davis, Kabir Brar,
+    and Jackie Ho for designing and developing the LoRA Land web application. We thank
+    Travis Addair, Geoffrey Angus, Magdy Saleh, Noah Yoshida, Jeffrey Tang, and open
+    source contributors for developing LoRAX. We thank Noah Yoshida and Gyanesh Mishra
+    for supporting deployments. We thank Arnav Garg, Geoffrey Angus, Arnav Garg, Jeff
+    Kinnison, Alex Shertinsky, Travis Addair, Piero Molino, and open source contributors
+    for Ludwig. We thank Will Gorman, Michael Gonzales, and Devvret Rishi for support,
+    discussion, and feedback.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Addair and Angus [2023] Travis Addair and Geoffrey Angus. LoRA Exchange (LoRAX):
+    Serve 100s of Fine-Tuned LLMs for the Cost of 1 - Predibase — predibase.com. [https://predibase.com/blog/lora-exchange-lorax-serve-100s-of-fine-tuned-llms-for-the-cost-of-one](https://predibase.com/blog/lora-exchange-lorax-serve-100s-of-fine-tuned-llms-for-the-cost-of-one),
+    2023. [Accessed 15-04-2024].'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Beeching et al. [2023] Edward Beeching, Clémentine Fourrier, Nathan Habib, Sheon
+    Han, Nathan Lambert, Nazneen Rajani, Omar Sanseviero, Lewis Tunstall, and Thomas
+    Wolf. Open llm leaderboard. [https://huggingface.co/spaces/HuggingFaceH4/open_llm_leaderboard](https://huggingface.co/spaces/HuggingFaceH4/open_llm_leaderboard),
+    2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Bommasani et al. [2021] Rishi Bommasani, Drew A. Hudson, Ehsan Adeli, Russ Altman,
+    Simran Arora, Sydney von Arx, Michael S. Bernstein, Jeannette Bohg, Antoine Bosselut,
+    Emma Brunskill, Erik Brynjolfsson, S. Buch, Dallas Card, Rodrigo Castellon, Niladri S.
+    Chatterji, Annie S. Chen, Kathleen A. Creel, Jared Davis, Dora Demszky, Chris
+    Donahue, Moussa Doumbouya, Esin Durmus, Stefano Ermon, John Etchemendy, Kawin
+    Ethayarajh, Li Fei-Fei, Chelsea Finn, Trevor Gale, Lauren E. Gillespie, Karan
+    Goel, Noah D. Goodman, Shelby Grossman, Neel Guha, Tatsunori Hashimoto, Peter
+    Henderson, John Hewitt, Daniel E. Ho, Jenny Hong, Kyle Hsu, Jing Huang, Thomas F.
+    Icard, Saahil Jain, Dan Jurafsky, Pratyusha Kalluri, Siddharth Karamcheti, Geoff
+    Keeling, Fereshte Khani, O. Khattab, Pang Wei Koh, Mark S. Krass, Ranjay Krishna,
+    Rohith Kuditipudi, Ananya Kumar, Faisal Ladhak, Mina Lee, Tony Lee, Jure Leskovec,
+    Isabelle Levent, Xiang Lisa Li, Xuechen Li, Tengyu Ma, Ali Malik, Christopher D.
+    Manning, Suvir P. Mirchandani, Eric Mitchell, Zanele Munyikwa, Suraj Nair, Avanika
+    Narayan, Deepak Narayanan, Benjamin Newman, Allen Nie, Juan Carlos Niebles, Hamed
+    Nilforoshan, J. F. Nyarko, Giray Ogut, Laurel Orr, Isabel Papadimitriou, Joon Sung
+    Park, Chris Piech, Eva Portelance, Christopher Potts, Aditi Raghunathan, Robert
+    Reich, Hongyu Ren, Frieda Rong, Yusuf H. Roohani, Camilo Ruiz, Jack Ryan, Christopher
+    R’e, Dorsa Sadigh, Shiori Sagawa, Keshav Santhanam, Andy Shih, Krishna Parasuram
+    Srinivasan, Alex Tamkin, Rohan Taori, Armin W. Thomas, Florian Tramèr, Rose E.
+    Wang, William Wang, Bohan Wu, Jiajun Wu, Yuhuai Wu, Sang Michael Xie, Michihiro
+    Yasunaga, Jiaxuan You, Matei A. Zaharia, Michael Zhang, Tianyi Zhang, Xikun Zhang,
+    Yuhui Zhang, Lucia Zheng, Kaitlyn Zhou, and Percy Liang. On the opportunities
+    and risks of foundation models. *ArXiv*, 2021. URL [https://crfm.stanford.edu/assets/report.pdf](https://crfm.stanford.edu/assets/report.pdf).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chen et al. [2023] Lequn Chen, Zihao Ye, Yongji Wu, Danyang Zhuo, Luis Ceze,
+    and Arvind Krishnamurthy. Punica: Multi-tenant lora serving, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chen et al. [2021] Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde
+    de Oliveira Pinto, Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, Greg
+    Brockman, Alex Ray, Raul Puri, Gretchen Krueger, Michael Petrov, Heidy Khlaaf,
+    Girish Sastry, Pamela Mishkin, Brooke Chan, Scott Gray, Nick Ryder, Mikhail Pavlov,
+    Alethea Power, Lukasz Kaiser, Mohammad Bavarian, Clemens Winter, Philippe Tillet,
+    Felipe Petroski Such, Dave Cummings, Matthias Plappert, Fotios Chantzis, Elizabeth
+    Barnes, Ariel Herbert-Voss, William Hebgen Guss, Alex Nichol, Alex Paino, Nikolas
+    Tezak, Jie Tang, Igor Babuschkin, Suchir Balaji, Shantanu Jain, William Saunders,
+    Christopher Hesse, Andrew N. Carr, Jan Leike, Josh Achiam, Vedant Misra, Evan
+    Morikawa, Alec Radford, Matthew Knight, Miles Brundage, Mira Murati, Katie Mayer,
+    Peter Welinder, Bob McGrew, Dario Amodei, Sam McCandlish, Ilya Sutskever, and
+    Wojciech Zaremba. Evaluating large language models trained on code, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: cjadams et al. [2019] cjadams, Daniel Borkan, inversion, Jeffrey Sorensen, Lucas
+    Dixon, Lucy Vasserman, and nithum. Jigsaw unintended bias in toxicity classification,
+    2019. URL [https://kaggle.com/competitions/jigsaw-unintended-bias-in-toxicity-classification](https://kaggle.com/competitions/jigsaw-unintended-bias-in-toxicity-classification).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Cobbe et al. [2021] Karl Cobbe, Vineet Kosaraju, Mohammad Bavarian, Mark Chen,
+    Heewoo Jun, Lukasz Kaiser, Matthias Plappert, Jerry Tworek, Jacob Hilton, Reiichiro
+    Nakano, Christopher Hesse, and John Schulman. Training verifiers to solve math
+    word problems, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. [2023] Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, and Luke
+    Zettlemoyer. Qlora: Efficient finetuning of quantized llms, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Gao et al. [2023] Leo Gao, Jonathan Tow, Baber Abbasi, Stella Biderman, Sid
+    Black, Anthony DiPofi, Charles Foster, Laurence Golding, Jeffrey Hsu, Alain Le Noac’h,
+    Haonan Li, Kyle McDonell, Niklas Muennighoff, Chris Ociepa, Jason Phang, Laria
+    Reynolds, Hailey Schoelkopf, Aviya Skowron, Lintang Sutawika, Eric Tang, Anish
+    Thite, Ben Wang, Kevin Wang, and Andy Zou. A framework for few-shot language model
+    evaluation, 12 2023. URL [https://zenodo.org/records/10256836](https://zenodo.org/records/10256836).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Han and Han [2024] Daniel Han and Michael Han. Unsloth Fixing Gemma bugs — unsloth.ai.
+    [https://unsloth.ai/blog/gemma-bugs](https://unsloth.ai/blog/gemma-bugs), 2024.
+    [Accessed 15-04-2024].
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hendrycks et al. [2020] Dan Hendrycks, Collin Burns, Steven Basart, Andy Zou,
+    Mantas Mazeika, Dawn Song, and Jacob Steinhardt. Measuring massive multitask language
+    understanding, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Houlsby et al. [2019] Neil Houlsby, Andrei Giurgiu, Stanislaw Jastrzebski, Bruna
+    Morrone, Quentin de Laroussilhe, Andrea Gesmundo, Mona Attariyan, and Sylvain
+    Gelly. Parameter-efficient transfer learning for nlp, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Howard and Ruder [2018] Jeremy Howard and Sebastian Ruder. Universal language
+    model fine-tuning for text classification, 2018.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hu et al. [2021] Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu,
+    Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. Lora: Low-rank adaptation of
+    large language models, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Jiang et al. [2023] Albert Q. Jiang, Alexandre Sablayrolles, Arthur Mensch,
+    Chris Bamford, Devendra Singh Chaplot, Diego de las Casas, Florian Bressand, Gianna
+    Lengyel, Guillaume Lample, Lucile Saulnier, Lélio Renard Lavaud, Marie-Anne Lachaux,
+    Pierre Stock, Teven Le Scao, Thibaut Lavril, Thomas Wang, Timothée Lacroix, and
+    William El Sayed. Mistral 7b, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kocmi et al. [2021] Tom Kocmi, Christian Federmann, Roman Grundkiewicz, Marcin
+    Junczys-Dowmunt, Hitokazu Matsushita, and Arul Menezes. To ship or not to ship:
+    An extensive evaluation of automatic metrics for machine translation, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kohút and Hradiš [2023] Jan Kohút and Michal Hradiš. Finetuning is a surprisingly
+    effective domain adaptation baseline in handwriting recognition, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kwon et al. [2023] Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin
+    Zheng, Cody Hao Yu, Joseph E. Gonzalez, Hao Zhang, and Ion Stoica. Efficient memory
+    management for large language model serving with pagedattention. In *Proceedings
+    of the ACM SIGOPS 29th Symposium on Operating Systems Principles*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Lester et al. [2021] Brian Lester, Rami Al-Rfou, and Noah Constant. The power
+    of scale for parameter-efficient prompt tuning, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Liang et al. [2022] Percy Liang, Rishi Bommasani, Tony Lee, Dimitris Tsipras,
+    Dilara Soylu, Michihiro Yasunaga, Yian Zhang, Deepak Narayanan, Yuhuai Wu, Ananya
+    Kumar, Benjamin Newman, Binhang Yuan, Bobby Yan, Ce Zhang, Christian Cosgrove,
+    Christopher D. Manning, Christopher Ré, Diana Acosta-Navas, Drew A. Hudson, Eric
+    Zelikman, Esin Durmus, Faisal Ladhak, Frieda Rong, Hongyu Ren, Huaxiu Yao, Jue
+    Wang, Keshav Santhanam, Laurel Orr, Lucia Zheng, Mert Yuksekgonul, Mirac Suzgun,
+    Nathan Kim, Neel Guha, Niladri Chatterji, Omar Khattab, Peter Henderson, Qian
+    Huang, Ryan Chi, Sang Michael Xie, Shibani Santurkar, Surya Ganguli, Tatsunori
+    Hashimoto, Thomas Icard, Tianyi Zhang, Vishrav Chaudhary, William Wang, Xuechen
+    Li, Yifan Mai, Yuhui Zhang, and Yuta Koreeda. Holistic evaluation of language
+    models. Published in Transactions on Machine Learning Research (TMLR), 2023, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. [2024] Shih-Yang Liu, Chien-Yi Wang, Hongxu Yin, Pavlo Molchanov,
+    Yu-Chiang Frank Wang, Kwang-Ting Cheng, and Min-Hung Chen. Dora: Weight-decomposed
+    low-rank adaptation, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Meng et al. [2024] Xiangdi Meng, Damai Dai, Weiyao Luo, Zhe Yang, Shaoxiang
+    Wu, Xiaochen Wang, Peiyi Wang, Qingxiu Dong, Liang Chen, and Zhifang Sui. Periodiclora:
+    Breaking the low-rank bottleneck in lora optimization, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Minaee et al. [2024] Shervin Minaee, Tomas Mikolov, Narjes Nikzad, Meysam Chenaghlu,
+    Richard Socher, Xavier Amatriain, and Jianfeng Gao. Large language models: A survey,
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Molino et al. [2019] Piero Molino, Yaroslav Dudin, and Sai Sumanth Miryala.
+    Ludwig: a type-based declarative deep learning toolbox, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Nori et al. [2023] Harsha Nori, Yin Tat Lee, Sheng Zhang, Dean Carignan, Richard
+    Edgar, Nicolo Fusi, Nicholas King, Jonathan Larson, Yuanzhi Li, Weishung Liu,
+    Renqian Luo, Scott Mayer McKinney, Robert Osazuwa Ness, Hoifung Poon, Tao Qin,
+    Naoto Usuyama, Chris White, and Eric Horvitz. Can generalist foundation models
+    outcompete special-purpose tuning? case study in medicine, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: OpenAI [2023] OpenAI. Gpt-4 technical report, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'OpenAI [2024] OpenAI. GitHub - openai/tiktoken: tiktoken is a fast BPE tokeniser
+    for use with OpenAI’s models. — github.com. [https://github.com/openai/tiktoken](https://github.com/openai/tiktoken),
+    2024. [Accessed 15-04-2024].'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Ouyang et al. [2022] Long Ouyang, Jeff Wu, Xu Jiang, Diogo Almeida, Carroll L.
+    Wainwright, Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex
+    Ray, John Schulman, Jacob Hilton, Fraser Kelton, Luke Miller, Maddie Simens, Amanda
+    Askell, Peter Welinder, Paul Christiano, Jan Leike, and Ryan Lowe. Training language
+    models to follow instructions with human feedback, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Peters et al. [2019] Matthew E. Peters, Sebastian Ruder, and Noah A. Smith.
+    To tune or not to tune? adapting pretrained representations to diverse tasks,
+    2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Pfeiffer et al. [2020] Jonas Pfeiffer, Aishwarya Kamath, Andreas Rücklé, Kyunghyun
+    Cho, and Iryna Gurevych. Adapterfusion: Non-destructive task composition for transfer
+    learning. Proceedings of EACL 2021, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Razdaibiedina et al. [2023] Anastasia Razdaibiedina, Yuning Mao, Rui Hou, Madian
+    Khabsa, Mike Lewis, and Amjad Almahairi. Progressive prompts: Continual learning
+    for language models, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Rebuffi et al. [2017] Sylvestre-Alvise Rebuffi, Hakan Bilen, and Andrea Vedaldi.
+    Learning multiple visual domains with residual adapters, 2017.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Rücklé et al. [2020] Andreas Rücklé, Gregor Geigle, Max Glockner, Tilman Beck,
+    Jonas Pfeiffer, Nils Reimers, and Iryna Gurevych. Adapterdrop: On the efficiency
+    of adapters in transformers, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Song et al. [2022] Yisheng Song, Ting Wang, Subrota K Mondal, and Jyoti Prakash
+    Sahoo. A comprehensive survey of few-shot learning: Evolution, applications, challenges,
+    and opportunities, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Team [2023] Gemini Team. Gemini: A family of highly capable multimodal models,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Team [2024] Gemma Team. Gemma: Open models based on gemini research and technology,
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. [2023] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier
+    Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal,
+    Eric Hambro, Faisal Azhar, Aurelien Rodriguez, Armand Joulin, Edouard Grave, and
+    Guillaume Lample. Llama: Open and efficient foundation language models, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Tunstall et al. [2023] Lewis Tunstall, Edward Beeching, Nathan Lambert, Nazneen
+    Rajani, Kashif Rasul, Younes Belkada, Shengyi Huang, Leandro von Werra, Clémentine
+    Fourrier, Nathan Habib, Nathan Sarrazin, Omar Sanseviero, Alexander M. Rush, and
+    Thomas Wolf. Zephyr: Direct distillation of lm alignment, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wang et al. [2018] Alex Wang, Amanpreet Singh, Julian Michael, Felix Hill,
+    Omer Levy, and Samuel R. Bowman. Glue: A multi-task benchmark and analysis platform
+    for natural language understanding, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wang et al. [2022a] Xuezhi Wang, Jason Wei, Dale Schuurmans, Quoc Le, Ed Chi,
+    Sharan Narang, Aakanksha Chowdhery, and Denny Zhou. Self-consistency improves
+    chain of thought reasoning in language models, 2022a.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wang et al. [2022b] Yizhong Wang, Yeganeh Kordi, Swaroop Mishra, Alisa Liu,
+    Noah A. Smith, Daniel Khashabi, and Hannaneh Hajishirzi. Self-instruct: Aligning
+    language models with self-generated instructions, 2022b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wang et al. [2021] Zifeng Wang, Zizhao Zhang, Chen-Yu Lee, Han Zhang, Ruoxi
+    Sun, Xiaoqi Ren, Guolong Su, Vincent Perot, Jennifer Dy, and Tomas Pfister. Learning
+    to prompt for continual learning, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wei et al. [2022] Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Brian
+    Ichter, Fei Xia, Ed Chi, Quoc Le, and Denny Zhou. Chain-of-thought prompting elicits
+    reasoning in large language models, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zellers et al. [2019] Rowan Zellers, Ari Holtzman, Yonatan Bisk, Ali Farhadi,
+    and Yejin Choi. Hellaswag: Can a machine really finish your sentence?, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Zheng et al. [2024] Jiawei Zheng, Hanghai Hong, Xiaoli Wang, Jingsong Su, Yonggui
+    Liang, and Shikai Wu. Fine-tuning large language models for domain-specific machine
+    translation, 2024.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhong et al. [2017] Victor Zhong, Caiming Xiong, and Richard Socher. Seq2sql:
+    Generating structured queries from natural language using reinforcement learning.
+    *CoRR*, abs/1709.00103, 2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Prompts for all tasks
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The preprocessing code, prompts, configuration, and splits used for all experiments
+    can be found at [https://github.com/predibase/lora_bakeoff](https://github.com/predibase/lora_bakeoff).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B LoRAX benchmarking scripts
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The load testing script and instructions can be found at [https://github.com/predibase/lora_bakeoff](https://github.com/predibase/lora_bakeoff).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix C Full Results Tables
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '| Category | Task | Metric | Microsoft | Google | Meta | Mistral | Hugging
+    Face | OpenAI |'
+  prefs: []
+  type: TYPE_TB
+- en: '| phi-2 | gemma-2b | gemma-2b-instruct | gemma-7b | gemma-7b-instruct | llama-2-7b
+    | llama-2-7b-chat | mistral-7b | mistral-7b-instruct | zephyr-7b-beta | gpt-3.5-turbo
+    | gpt-4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Classic NLP | bc5cdr | rouge | 0.172 | 0.013 | 0.494 | 0.075 | 0.198 | 0.185
+    | 0.024 | 0.177 | 0.703 | 0.146 | 0.732 | 0.890 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| conllpp | rouge | 0.101 | 0.011 | 0.647 | 0.085 | 0.120 | 0.108 | 0.115 |
+    0.148 | 0.733 | 0.088 | 0.810 | 0.742 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| e2e_nlg | rouge | 0.132 | 0.174 | 0.281 | 0.152 | 0.434 | 0.087 | 0.442 |
+    0.167 | 0.482 | 0.122 | 0.467 | 0.513 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| tldr_content_gen | rouge | 0.158 | 0.117 | 0.160 | 0.089 | 0.141 | 0.148
+    | 0.183 | 0.153 | 0.163 | 0.164 | 0.173 | 0.125 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| tldr_headline_gen | rouge | 0.169 | 0.034 | 0.155 | 0.063 | 0.152 | 0.078
+    | 0.174 | 0.071 | 0.171 | 0.120 | 0.195 | 0.175 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| viggo | rouge | 0.133 | 0.093 | 0.237 | 0.123 | 0.313 | 0.141 | 0.356 | 0.044
+    | 0.374 | 0.193 | 0.372 | 0.374 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| webnlg | rouge | 0.120 | 0.055 | 0.312 | 0.257 | 0.453 | 0.148 | 0.563 |
+    0.091 | 0.541 | 0.512 | 0.581 | 0.583 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Coding | magicoder | humaneval | 0.012 | 0.037 | 0.024 | 0.030 | 0.018 |
+    0.012 | 0.134 | 0.201 | 0.152 | 0.049 | 0.683 | 0.829 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| wikisql | rouge | 0.143 | 0.030 | 0.301 | 0.036 | 0.244 | 0.043 | 0.093 |
+    0.265 | 0.134 | 0.080 | 0.887 | 0.909 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Knowledge | boolq | accuracy | 0.691 | 0.447 | 0.661 | 0.300 | 0.735 | 0.645
+    | 0.759 | 0.669 | 0.764 | 0.683 | 0.870 | 0.911 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| dbpedia | dbpedia | 0.268 | 0.018 | 0.086 | 0.021 | 0.089 | 0.043 | 0.868
+    | 0.036 | 0.313 | 0.578 | 0.853 | 0.965 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| customer_support | accuracy | 0.250 | 0.120 | 0.380 | 0.100 | 0.850 | 0.110
+    | 0.630 | 0.030 | 0.730 | 0.540 | 1.000 | 1.000 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_qnli | accuracy | 0.496 | 0.439 | 0.444 | 0.463 | 0.685 | 0.510 | 0.736
+    | 0.533 | 0.743 | 0.569 | 0.829 | 0.902 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_stsb | mae | 0.682 | 0.197 | 0.590 | 0.537 | 0.729 | 0.651 | 0.680 |
+    0.672 | 0.723 | 0.814 | 0.857 | 0.773 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| legal | rouge | 0.008 | 0.010 | 0.037 | 0.019 | 0.053 | 0.009 | 0.026 | 0.001
+    | 0.158 | 0.039 | 0.266 | 0.305 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| reuters | rouge | 0.003 | 0.001 | 0.010 | 0.001 | 0.009 | 0.003 | 0.010 |
+    0.004 | 0.010 | 0.005 | 0.026 | 0.014 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| mmlu | accuracy | 0.339 | 0.160 | 0.279 | 0.302 | 0.460 | 0.189 | 0.349 |
+    0.402 | 0.446 | 0.506 | 0.504 | 0.774 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Reasoning | winogrande | accuracy | 0.380 | 0.309 | 0.515 | 0.390 | 0.576
+    | 0.503 | 0.515 | 0.498 | 0.546 | 0.532 | 0.569 | 0.832 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| arc_combined | accuracy | 0.323 | 0.180 | 0.254 | 0.272 | 0.657 | 0.304 |
+    0.379 | 0.573 | 0.673 | 0.497 | 0.926 | 0.947 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_cola | accuracy | 0.463 | 0.152 | 0.642 | 0.062 | 0.749 | 0.691 | 0.691
+    | 0.691 | 0.797 | 0.788 | 0.843 | 0.864 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_mnli | accuracy | 0.328 | 0.053 | 0.347 | 0.213 | 0.272 | 0.315 | 0.293
+    | 0.327 | 0.455 | 0.348 | 0.588 | 0.803 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_mrpc | accuracy | 0.652 | 0.265 | 0.664 | 0.654 | 0.652 | 0.679 | 0.674
+    | 0.684 | 0.694 | 0.676 | 0.689 | 0.777 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_qqp | accuracy | 0.327 | 0.138 | 0.337 | 0.316 | 0.396 | 0.345 | 0.340
+    | 0.327 | 0.708 | 0.340 | 0.830 | 0.841 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_sst2 | accuracy | 0.487 | 0.407 | 0.719 | 0.187 | 0.682 | 0.306 | 0.695
+    | 0.115 | 0.933 | 0.706 | 0.933 | 0.942 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_wnli | accuracy | 0.437 | 0.183 | 0.437 | 0.366 | 0.437 | 0.423 | 0.437
+    | 0.437 | 0.437 | 0.437 | 0.521 | 0.930 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| covid | accuracy | 0.207 | 0.154 | 0.317 | 0.169 | 0.322 | 0.162 | 0.212
+    | 0.191 | 0.297 | 0.243 | 0.334 | 0.309 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| hellaswag | accuracy | 0.371 | 0.117 | 0.023 | 0.112 | 0.201 | 0.381 | 0.264
+    | 0.246 | 0.249 | 0.393 | 0.622 | 0.805 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| hellaswag_processed | rouge | 0.037 | 0.056 | 0.146 | 0.109 | 0.143 | 0.044
+    | 0.089 | 0.038 | 0.134 | 0.040 | 0.140 | 0.134 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| jigsaw | accuracy | 0.491 | 0.490 | 0.482 | 0.233 | 0.520 | 0.486 | 0.545
+    | 0.475 | 0.704 | 0.472 | 0.735 | 0.754 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| drop | rouge | 0.018 | 0.013 | 0.034 | 0.024 | 0.042 | 0.010 | 0.047 | 0.011
+    | 0.066 | 0.023 | 0.119 | 0.393 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Math | gsm8k | accuracy | 0.083 | 0.026 | 0.082 | 0.039 | 0.364 | 0.051 |
+    0.160 | 0.114 | 0.275 | 0.133 | 0.622 | 0.373 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 12: Base model performance for every task and base model, before fine-tuning.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Category | Task | Metric | Microsoft | Google | Meta | Mistral | Hugging
+    Face | OpenAI |'
+  prefs: []
+  type: TYPE_TB
+- en: '| phi-2 | gemma-2b | gemma-2b-instruct | gemma-7b | gemma-7b-instruct | llama-2-7b
+    | llama-2-7b-chat | mistral-7b | mistral-7b-instruct | zephyr-7b-beta | gpt-3.5-turbo
+    | gpt-4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Classic NLP | bc5cdr | rouge | 0.950 (+0.778) | 0.961 (+0.948) | 0.956 (+0.462)
+    | 0.969 (+0.894) | 0.969 (+0.771) | 0.967 (+0.782) | 0.967 (+0.943) | 0.972 (+0.795)
+    | 0.971 (+0.268) | 0.969 (+0.823) | 0.732 | 0.890 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| conllpp | rouge | 0.950 (+0.849) | 0.976 (+0.965) | 0.975 (+0.328) | 0.989
+    (+0.904) | 0.989 (+0.869) | 0.977 (+0.869) | 0.980 (+0.865) | 0.986 (+0.838) |
+    0.987 (+0.254) | 0.984 (+0.896) | 0.810 | 0.742 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| e2e_nlg | rouge | 0.516 (+0.384) | 0.543 (+0.369) | 0.543 (+0.262) | 0.549
+    (+0.397) | 0.550 (+0.116) | 0.541 (+0.454) | 0.538 (+0.096) | 0.552 (+0.385) |
+    0.551 (+0.069) | 0.543 (+0.421) | 0.467 | 0.513 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| tldr_content_gen | rouge | 0.201 (+0.043) | 0.204 (+0.087) | 0.202 (+0.042)
+    | 0.217 (+0.128) | 0.194 (+0.053) | 0.219 (+0.071) | 0.220 (+0.037) | 0.227 (+0.074)
+    | 0.226 (+0.063) | 0.230 (+0.066) | 0.173 | 0.125 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| tldr_headline_gen | rouge | 0.343 (+0.174) | 0.404 (+0.370) | 0.385 (+0.230)
+    | 0.394 (+0.331) | 0.391 (+0.239) | 0.432 (+0.354) | 0.429 (+0.255) | 0.434 (+0.363)
+    | 0.419 (+0.248) | 0.441 (+0.321) | 0.195 | 0.175 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| viggo | rouge | 0.445 (+0.312) | 0.504 (+0.411) | 0.497 (+0.260) | 0.474
+    (+0.351) | 0.441 (+0.128) | 0.469 (+0.328) | 0.463 (+0.107) | 0.483 (+0.439) |
+    0.505 (+0.131) | 0.477 (+0.284) | 0.372 | 0.374 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| webnlg | rouge | 0.634 (+0.514) | 0.652 (+0.597) | 0.649 (+0.337) | 0.673
+    (+0.416) | 0.664 (+0.211) | 0.666 (+0.518) | 0.673 (+0.110) | 0.681 (+0.590) |
+    0.672 (+0.131) | 0.677 (+0.165) | 0.581 | 0.583 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Coding | magicoder | humaneval | 0.384 (+0.372) | 0.079 (+0.042) | 0.152
+    (+0.128) | 0.433 (+0.403) | 0.329 (+0.311) | 0.122 (+0.110) | 0.152 (+0.018) |
+    0.335 (+0.134) | 0.341 (+0.189) | 0.317 (+0.268) | 0.683 | 0.829 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| wikisql | rouge | 0.680 (+0.537) | 0.890 (+0.860) | 0.885 (+0.584) | 0.894
+    (+0.858) | 0.893 (+0.649) | 0.898 (+0.855) | 0.893 (+0.800) | 0.669 (+0.404) |
+    0.651 (+0.517) | 0.896 (+0.816) | 0.887 | 0.909 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Knowledge | boolq | accuracy | 0.863 (+0.172) | 0.811 (+0.364) | 0.776 (+0.115)
+    | 0.664 (+0.364) | 0.665 (-0.070) | 0.884 (+0.239) | 0.872 (+0.113) | 0.909 (+0.240)
+    | 0.891 (+0.127) | 0.897 (+0.214) | 0.870 | 0.911 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| dbpedia | accuracy | 0.988 (+0.720) | 0.960 (+0.942) | 0.961 (+0.875) | 0.964
+    (+0.943) | 0.971 (+0.882) | 0.975 (+0.932) | 0.980 (+0.112) | 0.981 (+0.945) |
+    0.970 (+0.657) | 0.963 (+0.385) | 0.853 | 0.965 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| customer_support | accuracy | 1.000 (+0.750) | 1.000 (+0.880) | 1.000 (+0.620)
+    | 1.000 (+0.900) | 1.000 (+0.150) | 1.000 (+0.890) | 1.000 (+0.370) | 1.000 (+0.970)
+    | 1.000 (+0.270) | 1.000 (+0.460) | 1.000 | 1.000 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_qnli | accuracy | 0.892 (+0.396) | 0.872 (+0.433) | 0.887 (+0.443) |
+    0.897 (+0.434) | 0.876 (+0.191) | 0.860 (+0.350) | 0.925 (+0.189) | 0.931 (+0.398)
+    | 0.906 (+0.163) | 0.928 (+0.359) | 0.829 | 0.902 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_stsb | mae | 0.888 (+0.206) | 0.875 (+0.678) | 0.895 (+0.305) | 0.704
+    (+0.167) | 0.893 (+0.164) | 0.912 (+0.261) | 0.907 (+0.227) | 0.913 (+0.241) |
+    0.911 (+0.188) | 0.911 (+0.097) | 0.857 | 0.773 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| legal | rouge | 0.404 (+0.396) | 0.503 (+0.493) | 0.451 (+0.414) | 0.586
+    (+0.567) | 0.580 (+0.527) | 0.668 (+0.659) | 0.602 (+0.576) | 0.602 (+0.601) |
+    0.666 (+0.508) | 0.683 (+0.644) | 0.266 | 0.305 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| reuters | rouge | 0.149 (+0.146) | 0.458 (+0.457) | 0.465 (+0.455) | 0.475
+    (+0.474) | 0.477 (+0.468) | 0.475 (+0.472) | 0.475 (+0.465) | 0.431 (+0.427) |
+    0.455 (+0.445) | 0.479 (+0.474) | 0.026 | 0.014 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| mmlu | accuracy | 0.530 (+0.191) | 0.446 (+0.286) | 0.432 (+0.153) | 0.248
+    (-0.054) | 0.243 (-0.217) | 0.519 (+0.330) | 0.526 (+0.177) | 0.561 (+0.159) |
+    0.558 (+0.112) | 0.589 (+0.083) | 0.504 | 0.774 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Reasoning | winogrande | accuracy | 0.741 (+0.361) | 0.493 (+0.184) | 0.494
+    (-0.021) | 0.493 (+0.103) | 0.493 (-0.083) | 0.493 (-0.010) | 0.754 (+0.239) |
+    0.840 (+0.342) | 0.818 (+0.272) | 0.825 (+0.293) | 0.569 | 0.832 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| arc_combined | accuracy | 0.915 (+0.592) | 0.768 (+0.588) | 0.745 (+0.491)
+    | 0.269 (-0.003) | 0.258 (-0.399) | 0.832 (+0.528) | 0.843 (+0.464) | 0.915 (+0.342)
+    | 0.857 (+0.184) | 0.909 (+0.412) | 0.926 | 0.947 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_cola | accuracy | 0.843 (+0.380) | 0.828 (+0.676) | 0.777 (+0.135) |
+    0.691 (+0.629) | 0.691 (-0.058) | 0.837 (+0.146) | 0.860 (+0.169) | 0.845 (+0.154)
+    | 0.849 (+0.052) | 0.872 (+0.084) | 0.843 | 0.864 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_mnli | accuracy | 0.871 (+0.543) | 0.833 (+0.780) | 0.837 (+0.490) |
+    0.882 (+0.669) | 0.874 (+0.602) | 0.877 (+0.562) | 0.870 (+0.577) | 0.893 (+0.566)
+    | 0.887 (+0.432) | 0.899 (+0.551) | 0.588 | 0.803 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_mrpc | accuracy | 0.858 (+0.206) | 0.850 (+0.585) | 0.870 (+0.206) |
+    0.740 (+0.086) | 0.684 (+0.032) | 0.797 (+0.118) | 0.870 (+0.196) | 0.887 (+0.203)
+    | 0.885 (+0.191) | 0.870 (+0.194) | 0.689 | 0.777 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_qqp | accuracy | 0.875 (+0.548) | 0.877 (+0.739) | 0.863 (+0.526) |
+    0.872 (+0.556) | 0.673 (+0.277) | 0.868 (+0.523) | 0.874 (+0.534) | 0.870 (+0.543)
+    | 0.883 (+0.175) | 0.867 (+0.527) | 0.830 | 0.841 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_sst2 | accuracy | 0.946 (+0.459) | 0.954 (+0.547) | 0.919 (+0.200) |
+    0.919 (+0.732) | 0.943 (+0.261) | 0.948 (+0.642) | 0.956 (+0.261) | 0.959 (+0.844)
+    | 0.958 (+0.025) | 0.961 (+0.255) | 0.933 | 0.942 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_wnli | accuracy | 0.676 (+0.239) | 0.563 (+0.380) | 0.563 (+0.126) |
+    0.563 (+0.197) | 0.563 (+0.126) | 0.718 (+0.295) | 0.775 (+0.338) | 0.873 (+0.436)
+    | 0.803 (+0.366) | 0.831 (+0.394) | 0.521 | 0.930 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| covid | accuracy | 0.692 (+0.485) | 0.827 (+0.673) | 0.832 (+0.515) | 0.830
+    (+0.661) | 0.843 (+0.521) | 0.751 (+0.589) | 0.727 (+0.515) | 0.770 (+0.579) |
+    0.811 (+0.514) | 0.776 (+0.533) | 0.334 | 0.309 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| hellaswag | accuracy | 0.714 (+0.343) | 0.397 (+0.280) | 0.252 (+0.229) |
+    0.252 (+0.140) | 0.252 (+0.051) | 0.741 (+0.360) | 0.736 (+0.472) | 0.834 (+0.588)
+    | 0.730 (+0.481) | 0.828 (+0.435) | 0.622 | 0.805 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| hellaswag_processed | rouge | 0.223 (+0.186) | 0.235 (+0.179) | 0.214 (+0.068)
+    | 0.222 (+0.113) | 0.208 (+0.065) | 0.253 (+0.209) | 0.249 (+0.160) | 0.261 (+0.223)
+    | 0.254 (+0.120) | 0.260 (+0.220) | 0.140 | 0.134 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| jigsaw | accuracy | 0.824 (+0.333) | 0.852 (+0.362) | 0.845 (+0.363) | 0.824
+    (+0.591) | 0.789 (+0.269) | 0.847 (+0.361) | 0.832 (+0.287) | 0.849 (+0.374) |
+    0.867 (+0.163) | 0.866 (+0.394) | 0.735 | 0.754 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| drop | rouge | 0.549 (+0.531) | 0.506 (+0.493) | 0.410 (+0.376) | 0.693 (+0.669)
+    | 0.602 (+0.560) | 0.670 (+0.660) | 0.667 (+0.620) | 0.705 (+0.694) | 0.677 (+0.611)
+    | 0.741 (+0.718) | 0.119 | 0.393 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Math | gsm8k | accuracy | 0.441 (+0.358) | 0.258 (+0.232) | 0.240 (+0.158)
+    | 0.569 (+0.530) | 0.505 (+0.141) | 0.339 (+0.288) | 0.323 (+0.163) | 0.520 (+0.406)
+    | 0.488 (+0.213) | 0.503 (+0.370) | 0.622 | 0.373 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 13: Performance of 310 fine-tuned models across 10 base models and 31
+    tasks. The value in parentheses is the absolute improvement compared to the base
+    model. Fine-tuning scores were not obtained for GPT-3.5-Turbo or GPT-4.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Task |'
+  prefs: []
+  type: TYPE_TB
+- en: '&#124; Max &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; GPT-4 &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Lift &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Average &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Base &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Model &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Lift &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Best &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Base &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Model &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Score &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Average &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Base &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Model &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Score &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Best &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Fine-tuned &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Score &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Average &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Fine-Tuned &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Score &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Input &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; length &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; p95 &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Input &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; length &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; $\mu$ &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Input &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; length &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; $\sigma$ &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Output &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; length &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; p95 &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Output &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; length &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; $\mu$ &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Output &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; length &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; $\sigma$ &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Example &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; length &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; $\mu$ &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Example &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; length &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; p95 &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Example &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; length &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; $\sigma$ &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; I/O &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; rougeL &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; similarity &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; $\mu$ &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; I/O &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; rougeL &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; similarity &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; $\sigma$ &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Compr. &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; $\mu$ &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Compr. &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; $\sigma$ &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; # &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; training &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; examples &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| arc_combined | -0.032 | 0.320 | 0.673 | 0.411 | 0.915 | 0.731 | 143 | 102.89
+    | 21.68 | 1 | 1.00 | 0.00 | 102.92 | 143.00 | 21.659 | 0.034 | 0.009 | 0.644 |
+    0.064 | 3370 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| bc5cdr | 0.082 | 0.746 | 0.703 | 0.219 | 0.972 | 0.965 | 175 | 142.15 | 19.17
+    | 58 | 37.11 | 11.27 | 178.26 | 226.05 | 27.839 | 0.191 | 0.026 | 0.547 | 0.014
+    | 5228 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| boolq | -0.002 | 0.188 | 0.764 | 0.635 | 0.909 | 0.823 | 270.7 | 145.23 |
+    69.03 | 1 | 1.00 | 0.00 | 146.23 | 271.70 | 69.031 | 0.000 | 0.003 | 0.596 | 0.066
+    | 9427 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| conllpp | 0.247 | 0.764 | 0.733 | 0.216 | 0.989 | 0.979 | 137 | 111.88 |
+    13.17 | 38 | 24.88 | 7.58 | 135.76 | 170.00 | 18.647 | 0.126 | 0.031 | 0.583 |
+    0.013 | 14041 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| covid | 0.534 | 0.559 | 0.322 | 0.227 | 0.843 | 0.786 | 222 | 189.89 | 19.85
+    | 3 | 1.58 | 0.91 | 190.18 | 223.00 | 19.910 | 0.020 | 0.007 | 0.570 | 0.012 |
+    37361 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| customer_support | 0.000 | 0.626 | 0.850 | 0.374 | 1.000 | 1.000 | 376 |
+    274.02 | 57.26 | 3 | 2.13 | 0.34 | 275.15 | 377.00 | 57.160 | 0.023 | 0.007 |
+    0.472 | 0.034 | 1245 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| dbpedia | 0.023 | 0.739 | 0.868 | 0.232 | 0.988 | 0.971 | 210 | 162.20 |
+    30.93 | 4 | 1.77 | 1.00 | 162.83 | 211.00 | 31.021 | 0.023 | 0.006 | 0.617 | 0.030
+    | 560000 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| drop | 0.348 | 0.593 | 0.066 | 0.029 | 0.741 | 0.622 | 570 | 335.17 | 150.52
+    | 5 | 2.05 | 1.58 | 337.16 | 571.00 | 150.431 | 0.009 | 0.012 | 0.518 | 0.039
+    | 77400 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| e2e_nlg | 0.039 | 0.295 | 0.482 | 0.247 | 0.552 | 0.543 | 116 | 104.18 |
+    7.38 | 40 | 25.08 | 8.33 | 128.12 | 153.00 | 14.427 | 0.173 | 0.050 | 0.513 |
+    0.018 | 42061 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_cola | 0.008 | 0.237 | 0.797 | 0.573 | 0.872 | 0.809 | 58 | 50.34 |
+    4.08 | 2 | 1.10 | 0.30 | 51.34 | 59.00 | 4.075 | 0.062 | 0.006 | 0.646 | 0.010
+    | 8551 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_mnli | 0.096 | 0.577 | 0.455 | 0.295 | 0.899 | 0.872 | 127 | 94.73 |
+    18.76 | 1 | 1.00 | 0.00 | 95.73 | 128.00 | 18.763 | 0.031 | 0.007 | 0.558 | 0.023
+    | 392702 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_mrpc | 0.110 | 0.202 | 0.694 | 0.629 | 0.887 | 0.831 | 122 | 100.78
+    | 13.18 | 1 | 1.00 | 0.00 | 101.78 | 123.00 | 13.179 | 0.029 | 0.004 | 0.539 |
+    0.038 | 3668 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_qnli | 0.029 | 0.336 | 0.743 | 0.562 | 0.931 | 0.897 | 122 | 88.49 |
+    18.44 | 1 | 1.04 | 0.20 | 89.49 | 123.00 | 18.444 | 0.032 | 0.006 | 0.621 | 0.030
+    | 104743 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_qqp | 0.042 | 0.495 | 0.708 | 0.357 | 0.883 | 0.852 | 101 | 77.35 |
+    12.61 | 2 | 1.49 | 0.50 | 78.35 | 102.00 | 12.612 | 0.038 | 0.006 | 0.603 | 0.030
+    | 363846 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_sst2 | 0.019 | 0.423 | 0.933 | 0.524 | 0.961 | 0.946 | 62 | 42.33 |
+    9.40 | 1 | 1.03 | 0.16 | 43.33 | 63.00 | 9.403 | 0.059 | 0.011 | 0.652 | 0.019
+    | 67349 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_stsb | 0.140 | 0.253 | 0.814 | 0.628 | 0.913 | 0.881 | 121 | 89.99 |
+    13.95 | 4 | 3.16 | 0.37 | 92.99 | 124.00 | 13.946 | 0.038 | 0.025 | 0.576 | 0.027
+    | 5749 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| glue_wnli | -0.057 | 0.290 | 0.437 | 0.403 | 0.873 | 0.693 | 133 | 96.20
+    | 17.81 | 2 | 1.17 | 0.38 | 97.20 | 134.00 | 17.809 | 0.030 | 0.005 | 0.560 |
+    0.031 | 635 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| gsm8k | 0.196 | 0.286 | 0.364 | 0.133 | 0.569 | 0.419 | 106 | 65.30 | 21.13
+    | 186 | 100.70 | 43.79 | 165.77 | 276.00 | 57.679 | 0.272 | 0.081 | 0.545 | 0.073
+    | 7473 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| hellaswag | 0.029 | 0.338 | 0.393 | 0.236 | 0.834 | 0.574 | 339 | 253.99
+    | 71.38 | 3 | 2.66 | 0.75 | 256.48 | 341.00 | 71.366 | 0.009 | 0.006 | 0.524 |
+    0.027 | 39905 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| hellaswag_processed | 0.127 | 0.154 | 0.146 | 0.084 | 0.261 | 0.238 | 142
+    | 111.15 | 20.86 | 56 | 30.85 | 15.46 | 140.97 | 185.00 | 33.774 | 0.111 | 0.040
+    | 0.564 | 0.023 | 39905 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| jigsaw | 0.113 | 0.350 | 0.704 | 0.490 | 0.867 | 0.839 | 600 | 475.45 | 58.46
+    | 1 | 1.00 | 0.00 | 476.45 | 601.00 | 58.457 | 0.006 | 0.001 | 0.486 | 0.006 |
+    159571 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| legal | 0.378 | 0.539 | 0.158 | 0.036 | 0.683 | 0.575 | 485.05 | 246.96 |
+    107.88 | 6 | 2.92 | 1.73 | 249.88 | 489.00 | 107.919 | 0.012 | 0.013 | 0.499 |
+    0.040 | 17000 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| magicoder | -0.396 | 0.198 | 0.201 | 0.067 | 0.433 | 0.264 | 473 | 305.39
+    | 91.88 | 436 | 231.40 | 110.12 | 535.80 | 805.00 | 151.769 | 0.253 | 0.089 |
+    0.366 | 0.046 | 75197 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| mmlu | -0.185 | 0.122 | 0.506 | 0.343 | 0.589 | 0.465 | 577 | 377.20 | 153.00
+    | 1 | 1.00 | 0.00 | 378.20 | 578.00 | 152.998 | 0.010 | 0.012 | 0.526 | 0.076
+    | 99842 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| reuters | 0.465 | 0.428 | 0.010 | 0.006 | 0.479 | 0.434 | 635 | 239.80 |
+    186.43 | 8 | 2.99 | 3.18 | 242.24 | 637.05 | 187.038 | 0.003 | 0.008 | 0.625 |
+    0.087 | 13625 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| tldr_content_gen | 0.105 | 0.066 | 0.183 | 0.148 | 0.230 | 0.214 | 53 | 44.38
+    | 5.97 | 159 | 95.09 | 36.51 | 138.33 | 204.45 | 38.846 | 0.128 | 0.040 | 0.576
+    | 0.037 | 7138 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| tldr_headline_gen | 0.266 | 0.289 | 0.174 | 0.119 | 0.441 | 0.407 | 184 |
+    120.96 | 36.50 | 22 | 13.53 | 5.98 | 133.34 | 199.45 | 38.845 | 0.086 | 0.050
+    | 0.588 | 0.041 | 7138 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| viggo | 0.131 | 0.275 | 0.374 | 0.201 | 0.505 | 0.476 | 193 | 169.05 | 13.10
+    | 49 | 27.68 | 11.54 | 196.48 | 240.00 | 23.486 | 0.112 | 0.042 | 0.512 | 0.016
+    | 5103 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| webnlg | 0.098 | 0.359 | 0.563 | 0.305 | 0.681 | 0.664 | 176 | 125.11 | 27.61
+    | 51 | 20.85 | 17.15 | 145.67 | 215.05 | 37.522 | 0.129 | 0.092 | 0.530 | 0.033
+    | 13211 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| wikisql | -0.011 | 0.688 | 0.301 | 0.137 | 0.898 | 0.825 | 1921 | 805.07
+    | 1668.51 | 26 | 15.60 | 5.72 | 819.66 | 1941.10 | 1669.119 | 0.050 | 0.030 |
+    0.387 | 0.080 | 56355 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| winogrande | 0.008 | 0.168 | 0.576 | 0.476 | 0.840 | 0.644 | 62 | 54.32 |
+    4.02 | 1 | 1.00 | 0.00 | 55.32 | 63 | 4.017 | 0.052 | 0.004 | 0.748 | 0.024 |
+    9248 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 14: Task and Dataset complexity heuristics and model quality measurements,
+    across all tasks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix D Other
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/377e6bf64290e3dde9500191f965eefc.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 10: An esoteric visual representation of 310 fine-tuned LLMs.'
+  prefs: []
+  type: TYPE_NORMAL

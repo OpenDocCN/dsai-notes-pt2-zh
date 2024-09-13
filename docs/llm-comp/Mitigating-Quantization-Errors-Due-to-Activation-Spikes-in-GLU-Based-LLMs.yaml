@@ -1,0 +1,1685 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:49:29'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mitigating Quantization Errors Due to Activation Spikes in GLU-Based LLMs
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2405.14428](https://ar5iv.labs.arxiv.org/html/2405.14428)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Jaewoo Yang, Hayun Kim, Younghoon Kim
+  prefs: []
+  type: TYPE_NORMAL
+- en: Department of Applied Artificial Intelligence, Hanyang University
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{onnoo, lin5478, nongaussian}@hanyang.ac.kr Corresponding Author.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'Modern large language models (LLMs) have established state-of-the-art performance
+    through architectural improvements, but still require significant computational
+    cost for inference. In an effort to reduce the inference cost, post-training quantization
+    (PTQ) has become a popular approach, quantizing weights and activations to lower
+    precision, such as INT8. In this paper, we reveal the challenges of activation
+    quantization in GLU variants [[40](#bib.bib40)], which are widely used in feed-forward
+    network (FFN) of modern LLMs, such as LLaMA family. The problem is that severe
+    local quantization errors, caused by excessive magnitudes of activation in GLU
+    variants, significantly degrade the performance of the quantized LLM. We denote
+    these activations as activation spikes. Our further observations provide a systematic
+    pattern of activation spikes: 1) The activation spikes occur in the FFN of specific
+    layers, particularly in the early and late layers, 2) The activation spikes are
+    dedicated to a couple of tokens, rather than being shared across a sequence. Based
+    on our observations, we propose two empirical methods, Quantization-free Module
+    (QFeM) and Quantization-free Prefix (QFeP), to isolate the activation spikes during
+    quantization. Our extensive experiments validate the effectiveness of the proposed
+    methods for the activation quantization, especially with coarse-grained scheme,
+    of latest LLMs with GLU variants, including LLaMA-2/3, Mistral, Mixtral, SOLAR,
+    and Gemma. In particular, our methods enhance the current alleviation techniques
+    (e.g., SmoothQuant) that fail to control the activation spikes.¹¹1Code is available
+    at [https://github.com/onnoo/activation-spikes](https://github.com/onnoo/activation-spikes).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Large language models (LLMs) have become a key paradigm in natural language
+    processing, accelerating the release of variations within the community [[58](#bib.bib58),
+    [49](#bib.bib49)]. Furthermore, latest LLMs establish state-of-the-art performance
+    by training with increased scale, as well as by adopting architectural improvements
+    such as GLU [[40](#bib.bib40)], RoPE [[41](#bib.bib41)], GQA [[2](#bib.bib2)],
+    and MoE [[21](#bib.bib21)]. Especially, GLU (Gated Linear Unit) variants (e.g.,
+    SwiGLU, GeGLU) has been adopted in the most of modern LLM architectures (e.g.,
+    LLaMA family [[46](#bib.bib46)]), due to training efficiency [[40](#bib.bib40),
+    [31](#bib.bib31)]. Although LLMs broaden foundational capabilities in natural
+    language tasks and potential for various applications, billions of parameters
+    in the large models impose considerable computational costs on end users in practice.
+    To reduce GPU memory requirements and accelerate inference speed, post-training
+    quantization (PTQ) offers an affordable solution by quantizing weights and activations
+    into a lower precision (e.g., INT8) without a need for expensive retraining steps
+    [[19](#bib.bib19), [17](#bib.bib17), [30](#bib.bib30)]. However, recent studies
+    have revealed that large magnitude values at certain coordinates exist in the
+    activations of LLMs, which are often called outliers, posing a key challenge in
+    activation quantization [[12](#bib.bib12), [51](#bib.bib51), [1](#bib.bib1), [50](#bib.bib50)].
+    Another line of works attempts to explain the role of outlier values in the attention
+    mechanism [[9](#bib.bib9), [42](#bib.bib42)]. Nevertheless, current research on
+    the impact of evolving LLM architectures on the outliers remains insufficient.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this paper, we present our discovery that the GLU architecture in the feed-forward
+    network (FFN) generates excessively large activation values, which are responsible
+    for significant local quantization errors. Specifically, we observe that these
+    problematic activation values occur in specific linear layers and are dedicated
+    to a couple of tokens, which will be discussed in Section [3](#S3 "3 Activation
+    Spikes: Excessive Magnitude of GLU Activations ‣ Mitigating Quantization Errors
+    Due to Activation Spikes in GLU-Based LLMs"). To distinguish the excessive GLU
+    activations from the outliers, we refer to them as activation spikes. In light
+    of our observations, we propose two empirical methods to mitigate the impact of
+    activation spikes on quantization: Quantization-free Module (QFeM) and Quantization-free
+    Prefix (QFeP). QFeM aims to partially exclude quantization for linear layers (or
+    modules) where large quantization errors occur, instead of quantizing the entire
+    linear modules in the LLM. By scoring the extent of scale disparity, QFeM selects
+    linear modules to exclude. On the other hand, QFeP identifies the prefix that
+    triggers activation spikes and preserves its context as a key-value (KV) cache,
+    thereby preventing the recurrence of activation spikes in subsequent tokens. It
+    is noteworthy that both QFeM and QFeP rely on calibration results to capture activation
+    spikes in advance, without any modifications to the target LLM. This indicates
+    that our methods can be integrated into any existing quantization methods.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In our comprehensive experiments, we demonstrate that recently released LLMs
+    incorporating GLU variants struggle with activation spikes when applying activation
+    quantization. Consequently, the proposed methods, QFeM and QFeP, substantially
+    enhance the performance of the primitive quantization method, the round-to-nearest
+    (RTN) method. Furthermore, we observe that current outlier alleviation methods
+    [[51](#bib.bib51), [50](#bib.bib50)] are exposed to the activation spikes and
+    benefit from our proposed methods. Compared to the strong baseline of fine-grained
+    activation quantization [[55](#bib.bib55)], our methods show competitive performance,
+    achieving reduced latency and memory footprint.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In summary, the contributions of our work are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We find that the GLU architecture in modern LLMs systematically generates excessive
+    activation values, which are responsible for significant performance degradation
+    in activation quantization.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Based on our observations, we propose two empirical methods, QFeM and QFeP,
+    which effectively exclude the activation spikes during quantization, with negligible
+    computational overhead and compatibility with any existing quantization techniques.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Our extensive experimental results validate the detrimental impact of the activation
+    spikes on activation quantization, while our proposed methods consistently enhance
+    the quantization performance.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 2 Related Works
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Outlier Values in LLMs.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Previously, outlier values have been observed in the transformer-based language
+    models such as BERT [[14](#bib.bib14)] and early GPT [[36](#bib.bib36)] models
+    through numerous studies [[24](#bib.bib24), [8](#bib.bib8), [27](#bib.bib27),
+    [45](#bib.bib45), [35](#bib.bib35)]. Since the advent of LLMs [[10](#bib.bib10),
+    [57](#bib.bib57)] rooted in the GPT, recent studies by [[12](#bib.bib12), [51](#bib.bib51),
+    [1](#bib.bib1)] have tackled the existence of outlier values in LLMs. According
+    to them, these outliers exhibit a large magnitude of values at the shared dimensions
+    of hidden states across tokens. More recently, [[9](#bib.bib9), [42](#bib.bib42)]
+    explain that the outliers attribute to the vertical pattern in the attention mechanism
+    [[52](#bib.bib52), [25](#bib.bib25)], which influences the performance of LLMs.
+    In particular, [[42](#bib.bib42)] claims a different type of outlier existing
+    in the hidden states of specific tokens. However, prior studies merely focus on
+    the superficial hidden states between the decoder layers. Our work provides a
+    module-level investigation where quantization is applied practically, focusing
+    on different LLM architectures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Post-training Quantization for LLMs.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Post-training quantization (PTQ) refers to the quantization of a neural network
+    model to low precision, such as INT8, without additional parameter updates [[19](#bib.bib19),
+    [17](#bib.bib17)]. Especially for LLMs, this approach cost-effectively achieves
+    inference with low memory usage and faster inference latency by quantizing the
+    weights and activations used in matrix multiplication (e.g., linear layer). However,
+    because of the challenges in activation quantization of LLMs, many recent works
+    are mainly focused on the weight-only quantization [[15](#bib.bib15), [23](#bib.bib23),
+    [26](#bib.bib26), [11](#bib.bib11), [54](#bib.bib54), [13](#bib.bib13), [39](#bib.bib39)].
+    Otherwise, the activation quantization faces inherent outliers, which hinder accurate
+    quantization by reducing representation resolution. To address this challenge,
+    [[12](#bib.bib12)] proposes a mixed-precision quantization method where the outlier
+    dimensions are computed in high precision. [[51](#bib.bib51), [50](#bib.bib50)]
+    approach migration of scale from activation to weights to alleviate the scale
+    of outlier activations. Along this line of research, we propose to enhance the
+    activation quantization based on our observations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '3 Activation Spikes: Excessive Magnitude of GLU Activations'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'For clarity, "hidden states" refer to the output tensor of a transformer layer
+    (or block), while "input activations" or "activations" denote the input tensor
+    of a linear layer (or module) in the remain of this paper. Recent work [[42](#bib.bib42)]
+    has investigated a novel type of outlier existing in the hidden states across
+    modern LLMs. Although these outliers of hidden states play a crucial role in the
+    attention mechanism [[42](#bib.bib42), [9](#bib.bib9), [52](#bib.bib52)], their
+    relationship with input activations for quantization has not been fully explored.
+    Importantly, because recent LLMs adopt Pre-LN [[53](#bib.bib53), [4](#bib.bib4)],
+    which normalizes hidden states before self-attention and feed-forward network
+    (FFN) blocks, the scale of hidden states does not reflect the scale of input activations
+    within the transformer block. Therefore, we focus on the input activations fed
+    into each linear module within the transformer block to connect to activation
+    quantization. Specifically, we examine the four linear (projection) layers: query
+    (parallel to key and value), out, up (parallel to gate), and down modules. For
+    detailed illustration of Pre-LN transformer, please see Appendix [D.1](#A4.SS1
+    "D.1 Transformer Architecture. ‣ Appendix D Miscellaneous ‣ Mitigating Quantization
+    Errors Due to Activation Spikes in GLU-Based LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/5b194f12a0e814a168c7fa3ccfcd2320.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Calibration results on GLU-implemented and non GLU-implemented LLMs.
+    We present the maximum magnitudes of input activations for each linear modules
+    and layer-wise hidden states. For more results on different LLMs, see Appendix [A.2](#A1.SS2
+    "A.2 Other Calibration Results on GLU-implementation ‣ Appendix A Additional Calibration
+    Results ‣ Mitigating Quantization Errors Due to Activation Spikes in GLU-Based
+    LLMs"), [A.3](#A1.SS3 "A.3 Other Calibration Results on Non GLU-implementation
+    ‣ Appendix A Additional Calibration Results ‣ Mitigating Quantization Errors Due
+    to Activation Spikes in GLU-Based LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Existence of Activation Spikes in GLU Variants
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To analyze the input activations, we employ a calibration method, which is used
+    to estimate the quantization factors such as scale and zero-point. For the calibration
+    data, we use 512 samples randomly collected from the C4 [[37](#bib.bib37)] training
+    dataset. Afterwards, we feed each sample into the LLM and monitor each hidden
+    state and input activation through the decoder layers. To estimate the scale factor,
+    we use absolute maximum value. The tested LLMs are listed in Appendix [A.1](#A1.SS1
+    "A.1 Detailed Specification of LLMs ‣ Appendix A Additional Calibration Results
+    ‣ Mitigating Quantization Errors Due to Activation Spikes in GLU-Based LLMs").
+  prefs: []
+  type: TYPE_NORMAL
+- en: GLU-implemented LLMs exhibit activation spikes at specific layers.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'In Figure [1a](#S3.F1 "Figure 1 ‣ 3 Activation Spikes: Excessive Magnitude
+    of GLU Activations ‣ Mitigating Quantization Errors Due to Activation Spikes in
+    GLU-Based LLMs"), we display the calibrated scale factors for the LLMs that implement
+    GLU variants (e.g., SwiGLU, GeGLU). Across models, we observe a shared pattern
+    of scale from the results. Within the early and late layers, the down modules
+    in the FFN show noticeable magnitudes of input activations. Note that these input
+    activations are derived from the Hadamard Product within GLU. Thus, the GLU variants
+    generate activation spikes at the specific layers. Interestingly, we notice a
+    high correlation between the emergence of activation spikes and intermediate hidden
+    states of large scale. This indicates that the FFN contributes to amplifying the
+    hidden states via the addition operation in the residual connection [[18](#bib.bib18)].
+    Once the magnitude of the hidden states is exploded, it persists through layers
+    until encounter the activation spikes at late layers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Non GLU-implemented LLMs show modest scale distribution.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Figure [1b](#S3.F1 "Figure 1 ‣ 3 Activation Spikes: Excessive Magnitude of
+    GLU Activations ‣ Mitigating Quantization Errors Due to Activation Spikes in GLU-Based
+    LLMs") illustrates the calibration results for LLMs with the original feed-forward
+    implementation in Transformer [[48](#bib.bib48)]. We observe that the LLMs continue
+    to generate the large-scale hidden states, regardless of the GLU implementation.
+    This corresponds to the observations in [[42](#bib.bib42)]. More importantly,
+    our module-level results elaborate that the scale of hidden states is not transferable
+    to the input activations of inner linear modules. Instead, we reveal that GLU
+    variants are associated with the hidden states and generate activation spikes.
+    This clarifies the quantization challenge of the GLU-implemented LLMs concentrated
+    in the early and late layers. Because excessive scales of activation spikes have
+    the potential to hinder the accurate quantization, we conduct an in-depth analysis
+    to better understand these activation spikes in the following sections.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Token-level Scale Analysis within Activation Spikes
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In the previous section, we observed the excessive scale of the input activations
+    derived from GLU activation. When quantizing the input activations, the variance
+    of input activation scales for each token affects the quantization performance
+    [[55](#bib.bib55)]. To delve into the disparity between token-wise scales in the
+    activation spikes, we unroll them through the sequence of tokens. Figure [2](#S3.F2
+    "Figure 2 ‣ 3.2 Token-level Scale Analysis within Activation Spikes ‣ 3 Activation
+    Spikes: Excessive Magnitude of GLU Activations ‣ Mitigating Quantization Errors
+    Due to Activation Spikes in GLU-Based LLMs") illustrates the individual input
+    activation scales where the activation spike appears. Given a token sequence,
+    the large magnitudes of input activations are observed in a couple of tokens,
+    such as the BOS token, newline (\n), and apostrophe (''). These specific tokens
+    coincide with the observations of [[42](#bib.bib42)], which suggests that such
+    tokens exhibit massive values in the hidden states. Thus, the activation spike
+    is associated with the process of assigning a special role to these tokens in
+    later transformer layers. However, the excessive scale of specific token hinders
+    the estimation of scale factor for the other tokens, such as in per-tensor quantization.
+    Additionally, the largest scale is dedicated to the first instance of the specified
+    token, while the following usage exhibits a modest scale. This phenomenon makes
+    the quantization more complicated, as the activation spikes dynamically occur
+    depending on the current input sequence.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a814317a5c3e527c90a69e3e916569ac.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Token-wise scales in a specific layer with an activation spike. When
+    quantizing the input activations using a per-tensor scale, the scale of the activation
+    spike dominates the scales of the other tokens. For more examples, see Appendix [D.2](#A4.SS2
+    "D.2 Additional Results for Token-level Scale Analysis ‣ Appendix D Miscellaneous
+    ‣ Mitigating Quantization Errors Due to Activation Spikes in GLU-Based LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: Perplexity and MSE of partial activation quantization of LLMs'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Perplexity($\downarrow$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | Top 4 | Middle 4 | Bottom 4 | Top 4 | Middle 4 | Bottom 4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-7B | 7.37 | 11.77 | 7.38 | 7.40 | 1908.80 | 1.03 | 12.90 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-13B | 6.84 | 15.09 | 6.84 | 6.84 | 4762.11 | 0.91 | 10.38 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Mistral-7B | 8.35 | 69.45 | 8.35 | 8.36 | 218.60 | 0.02 | 0.18 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Gemma-7B | 10.85 | 85.83 | 10.94 | 10.87 | 213.93 | 1.60 | 1.07 |'
+  prefs: []
+  type: TYPE_TB
+- en: 3.3 Effect of Quantization on Activation Spikes
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We explore the impact of local quantization errors caused by activation spikes
+    on LLM outputs. To identify the layers where activation spikes occur, we utilize
+    a ratio between the maximum and median values of the token-wise input activation
+    scales, instead of using the maximum scale value alone. The max-median ratio for
+    linear layer $m$. This max-median ratio captures the extent to which maximum scale
+    dominate the other token scales. For comparison, we choose the activation quantization
+    targets as the top-4, middle-4, and bottom-4 modules, based on the max-median
+    ratio in descending order. Then, we evaluate the perplexity and mean-squared error
+    (MSE) using the calibration dataset. Here, the MSE is calculated for the last
+    hidden states between the original (FP16) and partially quantized LLM. As shown
+    in Table [1](#S3.T1 "Table 1 ‣ 3.2 Token-level Scale Analysis within Activation
+    Spikes ‣ 3 Activation Spikes: Excessive Magnitude of GLU Activations ‣ Mitigating
+    Quantization Errors Due to Activation Spikes in GLU-Based LLMs"), quantization
+    on the top-4 rated modules solely degrades the LLM performance by significant
+    margins, while the other cases exhibit negligible performance changes. We consider
+    these quantization-sensitive input activations (inter alia activation spikes)
+    to be the quantization bottleneck, which, in this paper, refers to the quantization
+    error caused by outliers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Furthermore, the activation spikes are conditioned on the specific context
+    of the input sequence as discussed in Section [3.2](#S3.SS2 "3.2 Token-level Scale
+    Analysis within Activation Spikes ‣ 3 Activation Spikes: Excessive Magnitude of
+    GLU Activations ‣ Mitigating Quantization Errors Due to Activation Spikes in GLU-Based
+    LLMs"). Altogether, such dynamic bottlenecks must be handled with caution to enhance
+    the quantization performance of LLMs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Mitigating Quantization Quality Degradation Based on the Observation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To address the quantization bottleneck, our approach is based on the deterministic
+    occurrence patterns of activation spikes. First, we utilize the observation that
+    bottlenecks occur at a few specific layers. This implies that naive full quantization
+    of LLMs is affected by these bottlenecks. Second, we exploit the phenomenon that
+    the activation spike is derived from the first occurrence of specific tokens.
+    Thus, the planned occurrence prevents recurrence in the subsequent and possibly
+    future tokens. In the following sections, we propose two methods inspired the
+    above insights.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/1e9188ddec89ff6ad8acdba3d6ea5a9a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Overview of QFeM and QFeP. (Left): QFeM excludes the modules whose
+    $r^{(m)}$ from quantization. (Right): QFeP computes in advance the prefix of activation
+    spikes and utilizes solely their KV cache during the quantization phase, effectively
+    preventing further activation spikes in subsequent sequences.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Quantization-free Module (QFeM)
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In the full quantization of LLM, all linear layers within the LLM are quantized.
+    Among these linear layers, we propose omitting the quantization of input activations
+    for linear layers where significant quantization errors are caused by activation
+    spikes. To be noted, increasing the number of unquantized modules exhibits a trade-off
+    between the inference latency and the model performance. Thus, determining which
+    module should be quantized (or left unquantized) is crucial to retain the efficacy
+    of quantization. Here, we use the max-median ratio $r^{(m)}$. For clarity, we
+    treat sibling linear layers, such as query-key-value, as a single linear layer.
+    To control the impact of activation quantization only, we leave the weight parameters
+    in unquantized linear layers as INT8 and dequantize them into FP16 during matrix
+    multiplication with the incoming activations, operating as weight-only quantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Optimizing the threshold $\alpha$.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/40bf1f893d9f6dc532f173d7c8d2582e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: Trade-off between perplexity (stands for performance) and $|M_{unq}|$
+    for LLaMA-2-13B model.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To calculate the activation scale ratio for each linear layer, we first gather
+    token-wise input activation scales from the calibration examples discussed in
+    Section [3.1](#S3.SS1 "3.1 Existence of Activation Spikes in GLU Variants ‣ 3
+    Activation Spikes: Excessive Magnitude of GLU Activations ‣ Mitigating Quantization
+    Errors Due to Activation Spikes in GLU-Based LLMs"). Exceptionally, for FFN experts
+    in the mixture of experts (MoE) architectures like the Mixtral model [[21](#bib.bib21)],
+    calibration is performed separately. After determining these ratios, we use binary
+    search to set the threshold value $\alpha$ and its impact on performance is depicted
+    in Figure [4](#S4.F4 "Figure 4 ‣ Optimizing the threshold 𝛼. ‣ 4.1 Quantization-free
+    Module (QFeM) ‣ 4 Mitigating Quantization Quality Degradation Based on the Observation
+    ‣ Mitigating Quantization Errors Due to Activation Spikes in GLU-Based LLMs"),
+    demonstrating how full quantization can degrade performance. Rather than fully
+    quantizing, we identify an optimal threshold by finding the intersection of two
+    performance curves; in Figure [4](#S4.F4 "Figure 4 ‣ Optimizing the threshold
+    𝛼. ‣ 4.1 Quantization-free Module (QFeM) ‣ 4 Mitigating Quantization Quality Degradation
+    Based on the Observation ‣ Mitigating Quantization Errors Due to Activation Spikes
+    in GLU-Based LLMs"), this threshold is approximately 16\. Details on the QFeM
+    implementation are provided in Table [2](#S4.T2 "Table 2 ‣ Implementation Details.
+    ‣ 4.2 Quantization-free Prefix (QFeP) ‣ 4 Mitigating Quantization Quality Degradation
+    Based on the Observation ‣ Mitigating Quantization Errors Due to Activation Spikes
+    in GLU-Based LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Quantization-free Prefix (QFeP)
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Orthogonal to the QFeM, we propose Quantization-free Prefix (QFeP) that mitigates
+    the quantization errors by precomputing the prefix (or short prompt) corresponding
+    to activation spikes. This method is based on the observations presented in Section [3.2](#S3.SS2
+    "3.2 Token-level Scale Analysis within Activation Spikes ‣ 3 Activation Spikes:
+    Excessive Magnitude of GLU Activations ‣ Mitigating Quantization Errors Due to
+    Activation Spikes in GLU-Based LLMs"), which indicate that significant quantization
+    errors result from the overestimated scale factor of the first instance within
+    the restricted token set. Inspired by this occurrence pattern of activation spikes,
+    we aim to construct a prefix which stabilizes the quantization scale factor of
+    the tokens that come after the prefix. In other words, once the prefix is fixed
+    at the beginning, the activation spikes consistently occur within the prefix.
+    Afterward, we employ key-value (KV) caching mechanism to process the activation
+    spikes in advance. In practice, KV cache is utilized to optimize the decoding
+    speed of causal language models by storing precomputed key and value states of
+    the previous tokens [[34](#bib.bib34), [32](#bib.bib32)]. This approach provides
+    a bypass of the quantization including activation spikes, while preserving the
+    context of prefix through the KV cache. The KV cache for the prefix is precomputed
+    once through the offline inference of LLM without quantization. Then, this KV
+    cache is exploited in the quantization phases, such as calibration or dynamic
+    quantization, even for quantized inference. The process of QFeP is illustrated
+    in Figure [3](#S4.F3 "Figure 3 ‣ 4 Mitigating Quantization Quality Degradation
+    Based on the Observation ‣ Mitigating Quantization Errors Due to Activation Spikes
+    in GLU-Based LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Prefix Search.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: To form a prefix of explicit activation spike, we first identify candidate token
+    that represent the activation spike at the linear layer with the highest max-median
+    ratio $r^{(m)}$. Note that the latter sequence in the template can be replaced
+    with sequences from dataset instead of repetition.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementation Details.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Table 2: Specifications for QFeM and QFeP used in experiments. $|M|$ represents
+    the number of unquantized layers for QFeM.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Prefix | $\boldsymbol{\alpha}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-7B | [BOS] all . | 6.68 | 17 / 128 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-13B | [BOS] then , | 12.91 | 6 / 160 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-70B | [BOS] I ’ | 9.16 | 25 / 320 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Mistral-7B | [BOS] how \n | 49.00 | 3 / 128 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Mixtral-8x7B | [BOS] ). \n | 4.03 | 191 / 608 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SOLAR-10.7B | [BOS] a 1 | 6.48 | 11 / 192 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Gemma-7B | [BOS] . Più | 10.65 | 5 / 112 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-3-8B | [BOS] - nd | 6.64 | 6 / 128 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-3-70B | [BOS] and , | 78.37 | 3 / 320 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'During the prefix search phase, we exploit the calibration dataset used in
+    Section [3.1](#S3.SS1 "3.1 Existence of Activation Spikes in GLU Variants ‣ 3
+    Activation Spikes: Excessive Magnitude of GLU Activations ‣ Mitigating Quantization
+    Errors Due to Activation Spikes in GLU-Based LLMs"). For the candidate tokens,
+    we consider the tokens with the top three largest input activation magnitudes.
+    Then, we search for the middle context token among top 200 most frequent tokens
+    in the calibration dataset, which is the subset of the vocabulary $V$. Finally,
+    with the search result, we prepare the KV cache for the target model in FP16 precision.
+    Exceptionally, for the Mixtral [[21](#bib.bib21)] model, we use the scale of output
+    hidden states instead of input activations, as the tokens are divided sparsely
+    in a mixture of experts architecture. Table [2](#S4.T2 "Table 2 ‣ Implementation
+    Details. ‣ 4.2 Quantization-free Prefix (QFeP) ‣ 4 Mitigating Quantization Quality
+    Degradation Based on the Observation ‣ Mitigating Quantization Errors Due to Activation
+    Spikes in GLU-Based LLMs") presents the searched prefix.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 5.1 Experimental Setup
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Models.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Our proposed methods, QFeM and QFeP, aim to mitigate the quantization bottleneck,
+    which is discussed in Section [3.3](#S3.SS3 "3.3 Effect of Quantization on Activation
+    Spikes ‣ 3 Activation Spikes: Excessive Magnitude of GLU Activations ‣ Mitigating
+    Quantization Errors Due to Activation Spikes in GLU-Based LLMs"), caused by the
+    activation spikes, especially in the GLU variants. To validate the efficiency
+    proposed methods, we tested publicly released LLMs that were implemented with
+    GLU, according to their paper and source code. We recognize recent LLMs, including
+    LLAMA-2-{7B, 13B, 70B} [[47](#bib.bib47)], LLaMA-3-{7B, 70B}, Mistral-7B [[20](#bib.bib20)],
+    Mixtral-8x7B [[21](#bib.bib21)], SOLAR-10.7B [[22](#bib.bib22)], and Gemma-7B
+    [[43](#bib.bib43)], utilize the GLU architecture. The LLMs with original FFN are
+    not covered, as they suffer from the existing outliers rather than activation
+    spikes. All models are sourced from the huggingface-hub²²2https://huggingface.co/models
+    repository.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quantization.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: In the experiments, we quantize both the input activations and the weights of
+    linear layers for INT8 matrix multiplication operations. Note that in Table [2](#S4.T2
+    "Table 2 ‣ Implementation Details. ‣ 4.2 Quantization-free Prefix (QFeP) ‣ 4 Mitigating
+    Quantization Quality Degradation Based on the Observation ‣ Mitigating Quantization
+    Errors Due to Activation Spikes in GLU-Based LLMs"), $|M|$ denotes the total number
+    of linear modules targeted for quantization. In these linear layers, we opt for
+    dynamic per-tensor quantization as the quantization scheme of input activations,
+    and per-channel quantization for weights, respectively. Regarding both input activations
+    and weights, we symmetrically quantize the range using the absolute maximum value
+    as the scale estimation function. For comparison, we use FP16 and per-token activation
+    quantization [[55](#bib.bib55)] as baselines. We refer the reader to Appendix [B](#A2
+    "Appendix B BMM Quantization ‣ Mitigating Quantization Errors Due to Activation
+    Spikes in GLU-Based LLMs") for Batch Matrix-Multiplication (BMM) quantization,
+    which involves quantizing tensors in the self-attention.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Evaluations.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We evaluate the quantized LLMs with two metrics: zero-shot evaluation accuracy
+    and perplexity. For zero-shot evaluation, we use the four datasets: PIQA [[7](#bib.bib7)],
+    LAMBADA [[33](#bib.bib33)], HellaSwag [[56](#bib.bib56)], and WinoGrande [[38](#bib.bib38)].
+    We utilize the lm-evaluation-harness library [[16](#bib.bib16)] to evaluate zero-shot
+    tasks. To measure perplexity, we use the WikiText-2 [[28](#bib.bib28)] dataset.
+    In all cases, we use the [BOS] token as the starting token for each input sequence
+    by default.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.2 Main Results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Table 3: Perplexity and zero-shot evaluation for the quantization on LLaMA-2
+    models. FP16 denotes the original model precision, and W8A8 denotes the model
+    quantized to INT8 for both weights and activations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method |'
+  prefs: []
+  type: TYPE_TB
+- en: '&#124; WikiText-2 &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; (ppl$\downarrow$) &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; PIQA &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; (acc$\uparrow$) &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; LAMBADA &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; (acc$\uparrow$) &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; HellaSwag &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; (acc$\uparrow$) &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; WinoGrande &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; (acc$\uparrow$) &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; Avg &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&#124; (acc$\uparrow$) &#124;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| LLaMA-2-7B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 5.268 | 78.18% | 73.67% | 57.13% | 69.46% | 69.61% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W8A8 | 8.634 | 72.80% | 62.27% | 49.57% | 63.69% | 62.08% |'
+  prefs: []
+  type: TYPE_TB
+- en: '|   +QFeM | 5.758[-2.876] | 78.02% | 73.86% | 56.32% | 68.35% | 69.14%[+7.06]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|   +QFeP | 5.758[-2.876] | 76.44% | 73.57% | 55.55% | 69.22% | 68.69%[+6.61]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|   +QFeM+QFeP | 5.573[-3.061] | 77.86% | 74.58% | 56.05% | 69.38% | 69.47%[+7.39]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-13B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 4.789 | 79.49% | 76.54% | 60.20% | 72.38% | 72.15% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W8A8 | 34.089 | 70.13% | 49.66% | 42.65% | 58.72% | 55.29% |'
+  prefs: []
+  type: TYPE_TB
+- en: '|   +QFeM | 5.241[-28.848] | 77.58% | 75.68% | 59.13% | 72.61% | 71.25%[+15.96]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|   +QFeP | 6.000[-28.089] | 77.53% | 73.94% | 57.23% | 70.96% | 69.91%[+14.62]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|   +QFeM+QFeP | 5.126[-28.963] | 78.51% | 75.86% | 59.44% | 72.61% | 71.61%[+16.32]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 3.218 | 81.45% | 79.45% | 65.29% | 80.43% | 76.65% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W8A8 | 8.055 | 74.05% | 70.27% | 55.21% | 67.96% | 66.87% |'
+  prefs: []
+  type: TYPE_TB
+- en: '|   +QFeM | 3.830[-4.225] | 81.23% | 77.66% | 64.15% | 78.14% | 75.30%[+8.43]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|   +QFeP | 6.007[-2.048] | 77.64% | 73.26% | 63.40% | 76.16% | 72.62%[+5.75]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|   +QFeM+QFeP | 3.708[-4.347] | 81.23% | 77.82% | 64.65% | 77.11% | 75.20%[+8.33]
+    | ![Refer to caption](img/0592725db7336eb0f205080da311fd87.png)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 5: The average accuracy of zero-shot evaluation on other GLU-implemented
+    LLMs. Most models recover significantly compared to W8A8, with performance close
+    to FP16.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: LLaMA-2 Models.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We report the evaluation results of quantization on LLaMA-2 models in Table [3](#S5.T3
+    "Table 3 ‣ 5.2 Main Results ‣ 5 Experiments ‣ Mitigating Quantization Errors Due
+    to Activation Spikes in GLU-Based LLMs"). Compared to FP16 precision, quantizing
+    both weights and activations (W8A8) degrades the overall performance. The results
+    demonstrate that our proposed methods resolve the activation spikes and, surprisingly,
+    restore the performance of the W8A8 close to that of FP16. For example, the LLaMA-2
+    7B model achieves less than a 1% performance drop from FP16. It is worth noting
+    that the proposed QFeM and QFeP improve at comparable levels. This indicates that
+    the activation spikes present a direct cause of the significant decrease in quantization
+    performance. Because the proposed methods are orthogonal, the performance slightly
+    increases when incorporating both QFeM and QFeP compared to applying them individually.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Other GLU-implemented LLMs.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: For other LLMs that incorporate GLU, we investigated the effectiveness of our
+    methods in mitigating the quantization bottleneck. As can be seen in Figure [5](#S5.F5
+    "Figure 5 ‣ 5.2 Main Results ‣ 5 Experiments ‣ Mitigating Quantization Errors
+    Due to Activation Spikes in GLU-Based LLMs"), our methods consistently remedy
+    the performance drop caused by activation spikes. Noticeably, the Mixtral model
+    demonstrates robustness towards the performance degradation. This indicates that
+    the mixture of experts architecture, which divides the MLP experts by tokens,
+    helps to alleviate the impact of the activation spikes. Meanwhile, addressing
+    the activation spikes is not a sufficient complement for the Gemma model compared
+    to other models. We attribute this to the choice of activation function among
+    GLU variants; specifically, Gemma uses GeGLU, while other models employ SwiGLU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.3 Combining Outlier Alleviation Methods
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Table 4: Evaluation of outlier alleviation methods with QFeM and QFeP. We report
+    perplexity on WikiText-2 and averaged accuracy of four zero-shot tasks. The same
+    quantization scheme for used on both SQ and OSP. Per-tensor weight quantization
+    results are provided in Appendix [C.1](#A3.SS1 "C.1 Additional Results for Combining
+    Outlier Alleviation Methods ‣ Appendix C Supplementary Experiment Results ‣ Mitigating
+    Quantization Errors Due to Activation Spikes in GLU-Based LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | LLaMA-2-7B | LLaMA-2-13B | LLaMA-2-70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ppl($\downarrow$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SQ [[51](#bib.bib51)] | 9.907 | 61.08% | 34.869 | 59.45% | 8.800 | 70.25%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| +QFeM | 5.534 | 69.65% | 5.118 | 71.23% | 3.599 | 75.93% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| +QFeP | 5.715 | 68.66% | 6.551 | 69.33% | 5.228 | 74.07% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OSP [[50](#bib.bib50)] | 38.490 | 59.90% | 5.148 | 71.29% | 3.827 | 75.52%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| +QFeM | 5.493 | 69.37% | 5.099 | 71.37% | 3.559 | 75.92% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| +QFeP | 5.642 | 68.95% | 5.144 | 71.05% | 3.752 | 75.36% |'
+  prefs: []
+  type: TYPE_TB
+- en: While our method focuses on the activation spikes, the inherent outlier values
+    in the input activations remain. Here, we combine the prior outlier alleviation
+    methods, such as SmoothQuant (SQ) [[51](#bib.bib51)] and OutlierSuppressionPlus
+    (OSP) [[50](#bib.bib50)], to further improve the quantization error. In practice,
+    our methods are utilized during the scale calibration phase of alleviation methods
+    to mitigate the impact of activation spikes on scale migration between activations
+    and weights. Table [4](#S5.T4 "Table 4 ‣ 5.3 Combining Outlier Alleviation Methods
+    ‣ 5 Experiments ‣ Mitigating Quantization Errors Due to Activation Spikes in GLU-Based
+    LLMs") demonstrates the evaluation results of applying the outlier alleviation
+    methods solely and combining them with our methods. We find that there are cases
+    where the alleviation method fails to recover the performance when quantizing
+    the activations with per-tensor scheme.³³3In their papers, the activations of
+    LLaMA models are quantized using only a per-token scheme. This indicates that
+    alleviating the outlier scales, including the activation spikes, is challenging.
+    With the QFeM, the activation spikes are excluded, and the accurate alleviation
+    is enabled. In addition, the QFeP also benefits from the SQ method, as seen in
+    the case of LLaMA-2 70B. Exceptionally, the OSP successfully addresses the activation
+    spikes in the 13B and 70B cases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.4 Ablation Study
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/fc8930c86e0b47ace7a2ad3b479acfb9.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: Prefix ablation. Y-axis represents averaged accuracy of four zero-shot
+    tasks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the QFeP, we designed a length-three prefix for the KV cache, including
+    the BOS token, context token, and extra token for activation spike. Because the
+    KV cache consumes the capacity of the pretrained sequence position, it raises
+    a question about the length of the prefix. Therefore, we conduct ablation study
+    for different prefixes for the KV cache. For the prefixes, we prepare random,
+    BOS only, and both QFeP without and with the context token. We illustrate the
+    results of ablation study in Figure [6](#S5.F6 "Figure 6 ‣ 5.4 Ablation Study
+    ‣ 5 Experiments ‣ Mitigating Quantization Errors Due to Activation Spikes in GLU-Based
+    LLMs"). In all cases, the random prefix showcases the lowest performance. While
+    the KV cache with the BOS token demonstrates inconsistent performance, our QFeP
+    consistently shows significant improvement. Importantly, the results imply that
+    the sufficient prefix for the models exhibits differences. However, we emphasize
+    that our KV design for QFeP shows improvements by large margins across all models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.5 Computational Cost Analysis
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The proposed methods require additional resources to evict the activation spikes.
+    Therefore, we analyze the computational costs of the methods and compare them
+    in various schemes. For comparison, we evaluate different activation quantization
+    schemes: dynamic per-token, dynamic per-tensor, and static per-tensor, denoted
+    as AQ1, AQ2, and AQ3, respectively. This distinction establishes strong baselines
+    and demonstrates the potential of the methods. To calibrate the static scales,
+    we estimate the absolute maximum value using the calibration dataset, which is
+    used in Section [3.1](#S3.SS1 "3.1 Existence of Activation Spikes in GLU Variants
+    ‣ 3 Activation Spikes: Excessive Magnitude of GLU Activations ‣ Mitigating Quantization
+    Errors Due to Activation Spikes in GLU-Based LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Inference Latency.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: For each setting, we present the accuracy of the zero-shot tasks and inference
+    latency of the fixed token sequence, as shown in Figure [7](#S5.F7 "Figure 7 ‣
+    Table 5 ‣ Inference Latency. ‣ 5.5 Computational Cost Analysis ‣ 5 Experiments
+    ‣ Mitigating Quantization Errors Due to Activation Spikes in GLU-Based LLMs").
+    While the fine-grained scheme (AQ1) shows a negligible accuracy drop, the counterparts
+    (AQ2, AQ3) degrade with the quantization bottleneck. However, by applying our
+    methods, the coarse-grained schemes achieve a competitive performance gain. For
+    example, the combination of AQ2 and QFeM demonstrates the performance close to
+    the AQ1 but with faster latency. The results signify that addressing the quantization
+    bottleneck is important to accelerate the inference latency with coarser granularity.
+    Specifically, the naive static quantization (AQ3), the fastest scheme, exhibits
+    a significant decline. We hope that our work contributes to the future works,
+    which address the remaining challenges in static quantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8f6af0fb421b36a6b972d00ee2945100.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7: Accuracy-latency comparison of different activation quantization
+    schemes: dynamic per-token (AQ1), dynamic per-tensor (AQ2), and static per-tensor
+    (AQ3).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 5: Memory footprint.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | SeqLen |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1K | 2K |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-7B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AQ1 | 8185MiB | 9516MiB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AQ2 | 8148MiB | 9474MiB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| +QFeP | 8149MiB | 9478MiB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| +QFeM | 8148MiB | 9474MiB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AQ1 | 67756MiB | 69037MiB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AQ2 | 67648MiB | 68820MiB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| +QFeP | 67651MiB | 68822MiB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| +QFeM | 67838MiB | 68819MiB |'
+  prefs: []
+  type: TYPE_TB
+- en: Memory Footprint.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: In Table [5](#S5.T5 "Table 5 ‣ Inference Latency. ‣ 5.5 Computational Cost Analysis
+    ‣ 5 Experiments ‣ Mitigating Quantization Errors Due to Activation Spikes in GLU-Based
+    LLMs"), we record the maximum memory footprint of our methods. For QFeP, the additional
+    memory is consistently required for the preserved KV cache. However, this memory
+    overhead is much smaller than that used in the fine-grained quantization (AQ1),
+    as QFeM utilizes only three tokens for the cache. Contrary to QFeP, QFeM shows
+    inconsistent memory utilization. For example, the 7B model with QFeM exhibits
+    memory usage similar to AQ2, while the 70B model with QFeM incur additional consumption
+    for a sequence length of 1K. This is attributed to the use of W8A16 for the unquantization
+    modules in QFeM. To tailor the memory usage or inference speed, an alternative
+    strategy can be utilized for QFeM, such as applying fine-grained activation quantization
+    to the unquantization modules instead of using W8A16.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We explore the quantization challenge of GLU activations for modern LLMs. We
+    find that the GLU variants generates excessive activation scales, which cause
+    significant quantization bottlenecks at the specific layers. Based on the systematic
+    generation pattern of the activation spikes, we propose methods that address the
+    spikes in a layer-wise (QFeM) and token-wise manner (QFeP). In the experiments,
+    we confirm that the proposed methods effectively resolve the quantization bottlenecks
+    and result in a large performance gain. We expect that our work sheds light on
+    the potential challenges in future studies regarding quantization and facilitates
+    the development of efficient LLM systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[1] Arash Ahmadian, Saurabh Dash, Hongyu Chen, Bharat Venkitesh, Zhen Stephen
+    Gou, Phil Blunsom, Ahmet Üstün, and Sara Hooker. Intriguing properties of quantization
+    at scale. Advances in Neural Information Processing Systems, 36:34278–34294, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[2] Joshua Ainslie, James Lee-Thorp, Michiel de Jong, Yury Zemlyanskiy, Federico
+    Lebrón, and Sumit Sanghai. Gqa: Training generalized multi-query transformer models
+    from multi-head checkpoints. arXiv preprint arXiv:2305.13245, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[3] Ebtesam Almazrouei, Hamza Alobeidli, Abdulaziz Alshamsi, Alessandro Cappelli,
+    Ruxandra Cojocaru, Mérouane Debbah, Étienne Goffinet, Daniel Hesslow, Julien Launay,
+    Quentin Malartic, et al. The falcon series of open language models. arXiv preprint
+    arXiv:2311.16867, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[4] Alexei Baevski and Michael Auli. Adaptive input representations for neural
+    language modeling. In International Conference on Learning Representations, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[5] Marco Bellagente, Jonathan Tow, Dakota Mahan, Duy Phung, Maksym Zhuravinskyi,
+    Reshinth Adithyan, James Baicoianu, Ben Brooks, Nathan Cooper, Ashish Datta, et al.
+    Stable lm 2 1.6 b technical report. arXiv preprint arXiv:2402.17834, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[6] Stella Biderman, Hailey Schoelkopf, Quentin Gregory Anthony, Herbie Bradley,
+    Kyle O’Brien, Eric Hallahan, Mohammad Aflah Khan, Shivanshu Purohit, USVSN Sai
+    Prashanth, Edward Raff, et al. Pythia: A suite for analyzing large language models
+    across training and scaling. In International Conference on Machine Learning,
+    pages 2397–2430\. PMLR, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[7] Yonatan Bisk, Rowan Zellers, Jianfeng Gao, Yejin Choi, et al. Piqa: Reasoning
+    about physical commonsense in natural language. In Proceedings of the AAAI conference
+    on artificial intelligence, volume 34, pages 7432–7439, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[8] Yelysei Bondarenko, Markus Nagel, and Tijmen Blankevoort. Understanding
+    and overcoming the challenges of efficient transformer quantization. In Marie-Francine
+    Moens, Xuanjing Huang, Lucia Specia, and Scott Wen-tau Yih, editors, Proceedings
+    of the 2021 Conference on Empirical Methods in Natural Language Processing, pages
+    7947–7969, Online and Punta Cana, Dominican Republic, November 2021\. Association
+    for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[9] Yelysei Bondarenko, Markus Nagel, and Tijmen Blankevoort. Quantizable transformers:
+    Removing outliers by helping attention heads do nothing. Advances in Neural Information
+    Processing Systems, 36, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[10] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan,
+    Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell,
+    et al. Language models are few-shot learners. Advances in neural information processing
+    systems, 33:1877–1901, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[11] Jerry Chee, Yaohui Cai, Volodymyr Kuleshov, and Christopher M De Sa. Quip:
+    2-bit quantization of large language models with guarantees. Advances in Neural
+    Information Processing Systems, 36, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[12] Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer. Gpt3\.
+    int8 (): 8-bit matrix multiplication for transformers at scale. Advances in Neural
+    Information Processing Systems, 35:30318–30332, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[13] Tim Dettmers, Ruslan Svirschevski, Vage Egiazarian, Denis Kuznedelev,
+    Elias Frantar, Saleh Ashkboos, Alexander Borzunov, Torsten Hoefler, and Dan Alistarh.
+    Spqr: A sparse-quantized representation for near-lossless llm weight compression.
+    arXiv preprint arXiv:2306.03078, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[14] Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. Bert:
+    Pre-training of deep bidirectional transformers for language understanding. arXiv
+    preprint arXiv:1810.04805, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[15] Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan Alistarh. Gptq:
+    Accurate post-training quantization for generative pre-trained transformers. arXiv
+    preprint arXiv:2210.17323, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[16] Leo Gao, Jonathan Tow, Baber Abbasi, Stella Biderman, Sid Black, Anthony
+    DiPofi, Charles Foster, Laurence Golding, Jeffrey Hsu, Alain Le Noac’h, Haonan
+    Li, Kyle McDonell, Niklas Muennighoff, Chris Ociepa, Jason Phang, Laria Reynolds,
+    Hailey Schoelkopf, Aviya Skowron, Lintang Sutawika, Eric Tang, Anish Thite, Ben
+    Wang, Kevin Wang, and Andy Zou. A framework for few-shot language model evaluation,
+    12 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[17] Amir Gholami, Sehoon Kim, Zhen Dong, Zhewei Yao, Michael W Mahoney, and
+    Kurt Keutzer. A survey of quantization methods for efficient neural network inference.
+    In Low-Power Computer Vision, pages 291–326\. Chapman and Hall/CRC, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[18] Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Identity mappings
+    in deep residual networks. In Computer Vision–ECCV 2016: 14th European Conference,
+    Amsterdam, The Netherlands, October 11–14, 2016, Proceedings, Part IV 14, pages
+    630–645\. Springer, 2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[19] Benoit Jacob, Skirmantas Kligys, Bo Chen, Menglong Zhu, Matthew Tang,
+    Andrew Howard, Hartwig Adam, and Dmitry Kalenichenko. Quantization and training
+    of neural networks for efficient integer-arithmetic-only inference. In Proceedings
+    of the IEEE conference on computer vision and pattern recognition, pages 2704–2713,
+    2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[20] Albert Q Jiang, Alexandre Sablayrolles, Arthur Mensch, Chris Bamford,
+    Devendra Singh Chaplot, Diego de las Casas, Florian Bressand, Gianna Lengyel,
+    Guillaume Lample, Lucile Saulnier, et al. Mistral 7b. arXiv preprint arXiv:2310.06825,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[21] Albert Q Jiang, Alexandre Sablayrolles, Antoine Roux, Arthur Mensch, Blanche
+    Savary, Chris Bamford, Devendra Singh Chaplot, Diego de las Casas, Emma Bou Hanna,
+    Florian Bressand, et al. Mixtral of experts. arXiv preprint arXiv:2401.04088,
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[22] Dahyun Kim, Chanjun Park, Sanghoon Kim, Wonsung Lee, Wonho Song, Yunsu
+    Kim, Hyeonwoo Kim, Yungi Kim, Hyeonju Lee, Jihoo Kim, et al. Solar 10.7 b: Scaling
+    large language models with simple yet effective depth up-scaling. arXiv preprint
+    arXiv:2312.15166, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[23] Sehoon Kim, Coleman Hooper, Amir Gholami, Zhen Dong, Xiuyu Li, Sheng Shen,
+    Michael W Mahoney, and Kurt Keutzer. Squeezellm: Dense-and-sparse quantization.
+    arXiv preprint arXiv:2306.07629, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[24] Olga Kovaleva, Saurabh Kulshreshtha, Anna Rogers, and Anna Rumshisky.
+    BERT busters: Outlier dimensions that disrupt transformers. In Chengqing Zong,
+    Fei Xia, Wenjie Li, and Roberto Navigli, editors, Findings of the Association
+    for Computational Linguistics: ACL-IJCNLP 2021, pages 3392–3405, Online, August
+    2021\. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[25] Olga Kovaleva, Alexey Romanov, Anna Rogers, and Anna Rumshisky. Revealing
+    the dark secrets of BERT. In Kentaro Inui, Jing Jiang, Vincent Ng, and Xiaojun
+    Wan, editors, Proceedings of the 2019 Conference on Empirical Methods in Natural
+    Language Processing and the 9th International Joint Conference on Natural Language
+    Processing (EMNLP-IJCNLP), pages 4365–4374, Hong Kong, China, November 2019\.
+    Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[26] Ji Lin, Jiaming Tang, Haotian Tang, Shang Yang, Xingyu Dang, and Song
+    Han. Awq: Activation-aware weight quantization for llm compression and acceleration.
+    arXiv preprint arXiv:2306.00978, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[27] Ziyang Luo, Artur Kulmizev, and Xiaoxi Mao. Positional artefacts propagate
+    through masked language model embeddings. In Chengqing Zong, Fei Xia, Wenjie Li,
+    and Roberto Navigli, editors, Proceedings of the 59th Annual Meeting of the Association
+    for Computational Linguistics and the 11th International Joint Conference on Natural
+    Language Processing (Volume 1: Long Papers), pages 5312–5327, Online, August 2021\.
+    Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[28] Stephen Merity, Caiming Xiong, James Bradbury, and Richard Socher. Pointer
+    sentinel mixture models. arXiv preprint arXiv:1609.07843, 2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[29] Javaheripi Mojan and Bubeck Sébastien. Phi-2: The surprising power of
+    small language models, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[30] Markus Nagel, Marios Fournarakis, Rana Ali Amjad, Yelysei Bondarenko,
+    Mart Van Baalen, and Tijmen Blankevoort. A white paper on neural network quantization.
+    arXiv preprint arXiv:2106.08295, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[31] Sharan Narang, Hyung Won Chung, Yi Tay, Liam Fedus, Thibault Fevry, Michael
+    Matena, Karishma Malkan, Noah Fiedel, Noam Shazeer, Zhenzhong Lan, Yanqi Zhou,
+    Wei Li, Nan Ding, Jake Marcus, Adam Roberts, and Colin Raffel. Do transformer
+    modifications transfer across implementations and applications? In Marie-Francine
+    Moens, Xuanjing Huang, Lucia Specia, and Scott Wen-tau Yih, editors, Proceedings
+    of the 2021 Conference on Empirical Methods in Natural Language Processing, pages
+    5758–5773, Online and Punta Cana, Dominican Republic, November 2021\. Association
+    for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[32] Myle Ott, Sergey Edunov, Alexei Baevski, Angela Fan, Sam Gross, Nathan
+    Ng, David Grangier, and Michael Auli. fairseq: A fast, extensible toolkit for
+    sequence modeling. arXiv preprint arXiv:1904.01038, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[33] Denis Paperno, Germán Kruszewski, Angeliki Lazaridou, Ngoc Quan Pham,
+    Raffaella Bernardi, Sandro Pezzelle, Marco Baroni, Gemma Boleda, and Raquel Fernández.
+    The LAMBADA dataset: Word prediction requiring a broad discourse context. In Katrin
+    Erk and Noah A. Smith, editors, Proceedings of the 54th Annual Meeting of the
+    Association for Computational Linguistics (Volume 1: Long Papers), pages 1525–1534,
+    Berlin, Germany, August 2016\. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[34] Reiner Pope, Sholto Douglas, Aakanksha Chowdhery, Jacob Devlin, James
+    Bradbury, Jonathan Heek, Kefan Xiao, Shivani Agrawal, and Jeff Dean. Efficiently
+    scaling transformer inference. Proceedings of Machine Learning and Systems, 5,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[35] Giovanni Puccetti, Anna Rogers, Aleksandr Drozd, and Felice Dell’Orletta.
+    Outlier dimensions that disrupt transformers are driven by frequency. In Yoav
+    Goldberg, Zornitsa Kozareva, and Yue Zhang, editors, Findings of the Association
+    for Computational Linguistics: EMNLP 2022, pages 1286–1304, Abu Dhabi, United
+    Arab Emirates, December 2022\. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[36] Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, Ilya
+    Sutskever, et al. Language models are unsupervised multitask learners. OpenAI
+    blog, 1(8):9, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[37] Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang,
+    Michael Matena, Yanqi Zhou, Wei Li, and Peter J Liu. Exploring the limits of transfer
+    learning with a unified text-to-text transformer. Journal of machine learning
+    research, 21(140):1–67, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[38] Keisuke Sakaguchi, Ronan Le Bras, Chandra Bhagavatula, and Yejin Choi.
+    Winogrande: An adversarial winograd schema challenge at scale. arXiv preprint
+    arXiv:1907.10641, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[39] Wenqi Shao, Mengzhao Chen, Zhaoyang Zhang, Peng Xu, Lirui Zhao, Zhiqian
+    Li, Kaipeng Zhang, Peng Gao, Yu Qiao, and Ping Luo. Omniquant: Omnidirectionally
+    calibrated quantization for large language models. arXiv preprint arXiv:2308.13137,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[40] Noam Shazeer. Glu variants improve transformer. arXiv preprint arXiv:2002.05202,
+    2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[41] Jianlin Su, Murtadha Ahmed, Yu Lu, Shengfeng Pan, Wen Bo, and Yunfeng
+    Liu. Roformer: Enhanced transformer with rotary position embedding. Neurocomputing,
+    568:127063, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[42] Mingjie Sun, Xinlei Chen, J Zico Kolter, and Zhuang Liu. Massive activations
+    in large language models. arXiv preprint arXiv:2402.17762, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[43] Gemma Team, Thomas Mesnard, Cassidy Hardin, Robert Dadashi, Surya Bhupatiraju,
+    Shreya Pathak, Laurent Sifre, Morgane Rivière, Mihir Sanjay Kale, Juliette Love,
+    et al. Gemma: Open models based on gemini research and technology. arXiv preprint
+    arXiv:2403.08295, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[44] MosaicML NLP Team. Introducing mpt-7b: A new standard for open-source,
+    commercially usable llms, 2023. Accessed: 2023-05-05.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[45] William Timkey and Marten van Schijndel. All bark and no bite: Rogue dimensions
+    in transformer language models obscure representational quality. In Marie-Francine
+    Moens, Xuanjing Huang, Lucia Specia, and Scott Wen-tau Yih, editors, Proceedings
+    of the 2021 Conference on Empirical Methods in Natural Language Processing, pages
+    4527–4546, Online and Punta Cana, Dominican Republic, November 2021\. Association
+    for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[46] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne
+    Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal, Eric Hambro, Faisal
+    Azhar, et al. Llama: Open and efficient foundation language models. arXiv preprint
+    arXiv:2302.13971, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[47] Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi,
+    Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale,
+    et al. Llama 2: Open foundation and fine-tuned chat models. arXiv preprint arXiv:2307.09288,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[48] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones,
+    Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. Attention is all you need.
+    Advances in neural information processing systems, 30, 2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[49] Jason Wei, Yi Tay, Rishi Bommasani, Colin Raffel, Barret Zoph, Sebastian
+    Borgeaud, Dani Yogatama, Maarten Bosma, Denny Zhou, Donald Metzler, et al. Emergent
+    abilities of large language models. arXiv preprint arXiv:2206.07682, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[50] Xiuying Wei, Yunchen Zhang, Yuhang Li, Xiangguo Zhang, Ruihao Gong, Jinyang
+    Guo, and Xianglong Liu. Outlier suppression+: Accurate quantization of large language
+    models by equivalent and effective shifting and scaling. In Houda Bouamor, Juan
+    Pino, and Kalika Bali, editors, Proceedings of the 2023 Conference on Empirical
+    Methods in Natural Language Processing, pages 1648–1665, Singapore, December 2023\.
+    Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[51] Guangxuan Xiao, Ji Lin, Mickael Seznec, Hao Wu, Julien Demouth, and Song
+    Han. SmoothQuant: Accurate and efficient post-training quantization for large
+    language models. In Proceedings of the 40th International Conference on Machine
+    Learning, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[52] Guangxuan Xiao, Yuandong Tian, Beidi Chen, Song Han, and Mike Lewis. Efficient
+    streaming language models with attention sinks. arXiv preprint arXiv:2309.17453,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[53] Ruibin Xiong, Yunchang Yang, Di He, Kai Zheng, Shuxin Zheng, Chen Xing,
+    Huishuai Zhang, Yanyan Lan, Liwei Wang, and Tieyan Liu. On layer normalization
+    in the transformer architecture. In International Conference on Machine Learning,
+    pages 10524–10533\. PMLR, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[54] Zhewei Yao, Cheng Li, Xiaoxia Wu, Stephen Youn, and Yuxiong He. A comprehensive
+    study on post-training quantization for large language models. arXiv preprint
+    arXiv:2303.08302, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[55] Zhewei Yao, Reza Yazdani Aminabadi, Minjia Zhang, Xiaoxia Wu, Conglong
+    Li, and Yuxiong He. Zeroquant: Efficient and affordable post-training quantization
+    for large-scale transformers. Advances in Neural Information Processing Systems,
+    35:27168–27183, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[56] Rowan Zellers, Ari Holtzman, Yonatan Bisk, Ali Farhadi, and Yejin Choi.
+    HellaSwag: Can a machine really finish your sentence? In Anna Korhonen, David
+    Traum, and Lluís Màrquez, editors, Proceedings of the 57th Annual Meeting of the
+    Association for Computational Linguistics, pages 4791–4800, Florence, Italy, July
+    2019\. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[57] Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe, Moya Chen, Shuohui
+    Chen, Christopher Dewan, Mona Diab, Xian Li, Xi Victoria Lin, et al. Opt: Open
+    pre-trained transformer language models. arXiv preprint arXiv:2205.01068, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[58] Wayne Xin Zhao, Kun Zhou, Junyi Li, Tianyi Tang, Xiaolei Wang, Yupeng
+    Hou, Yingqian Min, Beichen Zhang, Junjie Zhang, Zican Dong, et al. A survey of
+    large language models. arXiv preprint arXiv:2303.18223, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Additional Calibration Results
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we provide details of LLMs when performing calibration, which
+    is the step during quantization where the FP16 ranges are computed (Appendix [A.1](#A1.SS1
+    "A.1 Detailed Specification of LLMs ‣ Appendix A Additional Calibration Results
+    ‣ Mitigating Quantization Errors Due to Activation Spikes in GLU-Based LLMs")),
+    and additional calibration results (Appendix [A.2](#A1.SS2 "A.2 Other Calibration
+    Results on GLU-implementation ‣ Appendix A Additional Calibration Results ‣ Mitigating
+    Quantization Errors Due to Activation Spikes in GLU-Based LLMs"),  [A.3](#A1.SS3
+    "A.3 Other Calibration Results on Non GLU-implementation ‣ Appendix A Additional
+    Calibration Results ‣ Mitigating Quantization Errors Due to Activation Spikes
+    in GLU-Based LLMs")).
+  prefs: []
+  type: TYPE_NORMAL
+- en: A.1 Detailed Specification of LLMs
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In Section [3.1](#S3.SS1 "3.1 Existence of Activation Spikes in GLU Variants
+    ‣ 3 Activation Spikes: Excessive Magnitude of GLU Activations ‣ Mitigating Quantization
+    Errors Due to Activation Spikes in GLU-Based LLMs"), we have performed the calibration
+    method on various LLMs. We observe the calibration results by categorizing based
+    on the presence of GLU in the LLMs. Table [6](#A1.T6 "Table 6 ‣ A.1 Detailed Specification
+    of LLMs ‣ Appendix A Additional Calibration Results ‣ Mitigating Quantization
+    Errors Due to Activation Spikes in GLU-Based LLMs") shows the detailed structures
+    of the LLMs. We refer notations for feed-forward implementiation from [[40](#bib.bib40)].
+    In the case of GLU-implemented LLMs, which is LLaMA-2, LLaMA-3, Mistral, Mixtral,
+    SOLAR, StableLM-2, and Gemma, most models have SwiGLU for FFN activation, while
+    only Gemma has GeGLU. On the other hand, in non GLU-implemented LLMs, most of
+    them utilize GeLU for FFN activation, with the exception of OPT, which uses ReLU.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 6: Architecture specification of LLMs. We categorize them into two groups
+    depending on whether GLU is implemented in the FFN. All LLMs in the table use
+    Pre-LN for the LayerNorm position.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Size | FFN Activation | Normalization | PE | Vocabulary Size |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GLU-implemented LLMs: |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2 [[47](#bib.bib47)] | 7B, 13B, 70B | SwiGLU | RMSNorm | RoPE | 32000
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-3 | 8B, 70B | SwiGLU | RMSNorm | RoPE | 128256 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Mistral [[20](#bib.bib20)] | 7B | SwiGLU | RMSNorm | RoPE | 32000 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Mixtral [[21](#bib.bib21)] | 8x7B | SwiGLU | RMSNorm | RoPE | 32000 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SOLAR [[22](#bib.bib22)] | 10.7B | SwiGLU | RMSNorm | RoPE | 32000 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| StableLM-2 [[5](#bib.bib5)] | 12B | SwiGLU | LayerNorm | RoPE | 100352 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Gemma [[43](#bib.bib43)] | 7B | GeGLU | RMSNorm | RoPE | 256000 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Non GLU-implemented LLMs: |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT [[57](#bib.bib57)] | 6.7B, 13B, 30B, 66B | ReLU | LayerNorm | Learned
+    | 50272 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MPT [[44](#bib.bib44)] | 7B, 30B | GeLU | LayerNorm | ALiBi | 50432 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Pythia [[6](#bib.bib6)] | 6.9B, 12B | GeLU | LayerNorm | RoPE | 50432, 50688
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Falcon [[3](#bib.bib3)] | 7B, 40B | GeLU | LayerNorm | RoPE | 65024 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Phi-2 [[29](#bib.bib29)] | 2.7B | GeLU | LayerNorm | RoPE | 51200 |'
+  prefs: []
+  type: TYPE_TB
+- en: A.2 Other Calibration Results on GLU-implementation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Figure [8](#A1.F8 "Figure 8 ‣ A.2 Other Calibration Results on GLU-implementation
+    ‣ Appendix A Additional Calibration Results ‣ Mitigating Quantization Errors Due
+    to Activation Spikes in GLU-Based LLMs"), [9](#A1.F9 "Figure 9 ‣ A.2 Other Calibration
+    Results on GLU-implementation ‣ Appendix A Additional Calibration Results ‣ Mitigating
+    Quantization Errors Due to Activation Spikes in GLU-Based LLMs") show the calibration
+    result examples for various GLU-implemented LLMs that are not shown in the models
+    in Figure [1a](#S3.F1 "Figure 1 ‣ 3 Activation Spikes: Excessive Magnitude of
+    GLU Activations ‣ Mitigating Quantization Errors Due to Activation Spikes in GLU-Based
+    LLMs"). In most GLU-implemented LLMs, we observe that the input activations have
+    large values near the first and last layers. Unlike the typical GLU-implemented
+    LLM architecture, Mixtral is composed of 8 feed-forward blocks in the single FFN,
+    containing multiple gate linear units [[21](#bib.bib21)]. According to this structure,
+    we can observe that one of the gates spikes in value in Figure [8](#A1.F8 "Figure
+    8 ‣ A.2 Other Calibration Results on GLU-implementation ‣ Appendix A Additional
+    Calibration Results ‣ Mitigating Quantization Errors Due to Activation Spikes
+    in GLU-Based LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/18e4d4fbd4246b30523f71181f0eaba4.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8: Calibration results on GLU-implemented LLMs (Mixtral-8x7B).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/2c55f586c7e015b0141efb77032245fd.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 9: Calibration results on GLU-implemented LLMs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/63f769b9bc230b00d39022af4e8a43b5.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 10: Calibration results on Non GLU-implemented LLMs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A.3 Other Calibration Results on Non GLU-implementation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Figure [10](#A1.F10 "Figure 10 ‣ A.2 Other Calibration Results on GLU-implementation
+    ‣ Appendix A Additional Calibration Results ‣ Mitigating Quantization Errors Due
+    to Activation Spikes in GLU-Based LLMs") shows the calibration result examples
+    for various non GLU-implemented LLMs that were not shown in the models in Figure [1b](#S3.F1
+    "Figure 1 ‣ 3 Activation Spikes: Excessive Magnitude of GLU Activations ‣ Mitigating
+    Quantization Errors Due to Activation Spikes in GLU-Based LLMs"). There are no
+    activation spikes on non GLU-implemented LLMs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B BMM Quantization
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To achieve faster inference latency, BMM operations in the self-attention also
+    can be computed as INT8 operation [[51](#bib.bib51)]. This requires a quantization
+    on the query, key, and value states including the cached context. Because activation
+    spikes produce a large magnitude of latent values, it is important to confirm
+    the extent of quantization errors from KV quantization. This confirmation is necessary
+    to gain advantages from BMM quantization. In Table [7](#A2.T7 "Table 7 ‣ Appendix
+    B BMM Quantization ‣ Mitigating Quantization Errors Due to Activation Spikes in
+    GLU-Based LLMs"), we examine the impact of BMM quantization on the W8A8 and QFeM.
+    Regardless of the BMM quantization, the QFeM method consistently improves the
+    quantization bottleneck. For example, the 13B and 70B models maintain their performance,
+    while the 7B model shows a slight decrease. However, this decrease appears to
+    be due to inherent quantization errors rather than a quantization bottleneck from
+    activation spikes. As a result, we confirm that our QFeM method effectively improves
+    the overall performance even in the BMM quantization scenario.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 7: BMM quantization results.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Method | BMM Quantization |'
+  prefs: []
+  type: TYPE_TB
+- en: '| No | Yes |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 7B | W8A8 | 62.08% | 61.66% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| +QFeP | 68.69% | 68.30% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 13B | W8A8 | 55.29% | 55.43% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| +QFeP | 69.91% | 69.77% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 70B | W8A8 | 66.87% | 66.75% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| +QFeP | 72.62% | 72.69% |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix C Supplementary Experiment Results
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: C.1 Additional Results for Combining Outlier Alleviation Methods
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In Table [8](#A3.T8 "Table 8 ‣ C.1 Additional Results for Combining Outlier
+    Alleviation Methods ‣ Appendix C Supplementary Experiment Results ‣ Mitigating
+    Quantization Errors Due to Activation Spikes in GLU-Based LLMs"), we provide additional
+    results for Section [5.3](#S5.SS3 "5.3 Combining Outlier Alleviation Methods ‣
+    5 Experiments ‣ Mitigating Quantization Errors Due to Activation Spikes in GLU-Based
+    LLMs") with coarse-grained quantization (i.e., per-tensor quantization) scheme
+    for weight quantization. Compared to the results obtained with per-channel weight
+    quantization in Table [4](#S5.T4 "Table 4 ‣ 5.3 Combining Outlier Alleviation
+    Methods ‣ 5 Experiments ‣ Mitigating Quantization Errors Due to Activation Spikes
+    in GLU-Based LLMs"), these results elucidate the negative impact of activation
+    spikes on the performance of outlier alleviation methods. Furthermore, this suggests
+    that the performance of OSP method resort to the weight quantization scheme. Nevertheless,
+    the proposed methods, QFeM and QFeP, consistently improve the effectiveness of
+    outlier alleviation methods by mitigating the impact of activation spikes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 8: Evaluation of outlier alleviation methods with QFeM and QFeP. We report
+    perplexity on WikiText-2 and averaged accuracy of four zero-shot tasks. Compared
+    to Table [4](#S5.T4 "Table 4 ‣ 5.3 Combining Outlier Alleviation Methods ‣ 5 Experiments
+    ‣ Mitigating Quantization Errors Due to Activation Spikes in GLU-Based LLMs"),
+    per-tensor weight quantization and dynamic per-tensor activation quantization
+    are used.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | LLaMA-2-7B | LLaMA-2-13B | LLaMA-2-70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ppl($\downarrow$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SQ [[51](#bib.bib51)] | 24.661 | 56.87% | 120.966 | 53.06% | 8.435 | 67.08%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| +QFeM | 6.016 | 67.74% | 5.464 | 70.04% | 4.015 | 74.18% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| +QFeP | 6.122 | 67.22% | 10.473 | 68.17% | 5.998 | 72.54% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OSP [[50](#bib.bib50)] | 9.131 | 63.61% | 8.997 | 64.03% | 6.492 | 71.13%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| +QFeM | 5.951 | 68.65% | 5.284 | 70.67% | 4.434 | 73.30% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| +QFeP | 5.821 | 68.25% | 5.868 | 67.96% | 4.976 | 73.57% |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix D Miscellaneous
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: D.1 Transformer Architecture.
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In Figure [11](#A4.F11 "Figure 11 ‣ D.1 Transformer Architecture. ‣ Appendix
+    D Miscellaneous ‣ Mitigating Quantization Errors Due to Activation Spikes in GLU-Based
+    LLMs"), we illustrate the Pre-LN transformer architecture and each sub-modules.
+    We highlight with the same color the linear modules that accept identical input
+    activations. Note that the hidden states are normalized before forwarding into
+    the query and up linear modules.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/1635d20e175e23a7191582e614eb0f5d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 11: An illustration of Pre-LN transformer block and its sub-modules.
+    Two feed-forward implementation, GLU and Non-GLU, are visualized in (c) and (d)
+    respectively. In feed-forward network, $\sigma$ denotes non-linear activation
+    function, such as GeLU. We highlight the linear modules where input activations
+    are quantized.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: D.2 Additional Results for Token-level Scale Analysis
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We provide additional results for token-level scale analysis (Section [3.2](#S3.SS2
+    "3.2 Token-level Scale Analysis within Activation Spikes ‣ 3 Activation Spikes:
+    Excessive Magnitude of GLU Activations ‣ Mitigating Quantization Errors Due to
+    Activation Spikes in GLU-Based LLMs")). In Figure [12](#A4.F12 "Figure 12 ‣ D.2
+    Additional Results for Token-level Scale Analysis ‣ Appendix D Miscellaneous ‣
+    Mitigating Quantization Errors Due to Activation Spikes in GLU-Based LLMs") and
+    Figure [13](#A4.F13 "Figure 13 ‣ D.2 Additional Results for Token-level Scale
+    Analysis ‣ Appendix D Miscellaneous ‣ Mitigating Quantization Errors Due to Activation
+    Spikes in GLU-Based LLMs"), the token for the activation spikes behind the BOS
+    token does not exhibit the excessive activation scale.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/faddb4c3d886a8cca8553da637ea143e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 12: Token-wise scales analysis for LLaMA-2-7B. The newline token behind
+    the BOS token does not exhibit the activation spikes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f44156b26431f483d384b9e6352a6142.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 13: Token-wise scales from the unrolled activation spike of LLaMA-2-70B.
+    The apostrophe token behind the BOS token does not exhibit the activation spikes.'
+  prefs: []
+  type: TYPE_NORMAL

@@ -1,0 +1,1311 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:36:27'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'OwLore: Outlier-weighed Layerwise Sampled Low-Rank Projection for LLM Fine-tuning'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2405.18380](https://ar5iv.labs.arxiv.org/html/2405.18380)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Pengxiang Li¹,    Lu Yin^(2,3∗), Xiaowei Gao⁴, Shiwei Liu^(5†) ${}^{1}\,$Eindhoven
+    University of Technology
+  prefs: []
+  type: TYPE_NORMAL
+- en: ${}^{4}\,$University of Oxford Equal contribution. ^†Corresponding to Shiwei
+    Liu, shiwei.liu@maths.ox.ac.uk.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The rapid advancements in Large Language Models (LLMs) have revolutionized various
+    natural language processing tasks. However, the substantial size of LLMs presents
+    significant challenges in training or fine-tuning. While parameter-efficient approaches
+    such as low-rank adaptation (LoRA) have gained popularity, they often compromise
+    performance compared to full-rank fine-tuning. In this paper, we propose Outlier-weighed
+    Layerwise Sampled Low-Rank Projection (OwLore), a new memory-efficient fine-tuning
+    approach, inspired by the layerwise outlier distribution of LLMs, which dynamically
+    samples pre-trained layers to fine-tune instead of adding additional adaptors.
+    We first interpret the outlier phenomenon through the lens of Heavy-Tailed Self-Regularization
+    theory (HT-SR), discovering that layers with more outliers tend to be more heavy-tailed
+    and consequently better trained. Inspired by this finding, OwLore strategically
+    assigns higher sampling probabilities to layers with more outliers to better leverage
+    the knowledge stored in pre-trained LLMs. To further mitigate the memory demands
+    of fine-tuning, we integrate gradient low-rank projection into our approach, which
+    facilitates each layer to be efficiently trained in a low-rank manner. By incorporating
+    the efficient characteristics of low-rank and optimal layerwise sampling, OwLore
+    significantly improves the memory-performance trade-off in LLM pruning. Our extensive
+    experiments across various architectures, including LLaMa2, LLaMa3, and Mistral,
+    demonstrate that OwLore consistently outperforms baseline approaches, including
+    full fine-tuning. Specifically, it achieves up to a 1.1% average accuracy gain
+    on the Commonsense Reasoning benchmark, a 3.0% improvement on MMLU, and a notable
+    10% boost on MT-Bench, while being more memory efficient. OwLore allows us to
+    fine-tune LLaMa2-7B with only 21GB of memory. Code is available at [https://github.com/pixeli99/OwLore](https://github.com/pixeli99/OwLore).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The rapid advancements in artificial intelligence (AI) driven by Large Language
+    Models (LLMs) have fundamentally transformed how people work and communicate.
+    The impressive language capabilities of LLMs enable a single model to handle various
+    tasks simultaneously, including but not limited to natural language understanding [[5](#bib.bib5),
+    [48](#bib.bib48)], text generation [[21](#bib.bib21), [1](#bib.bib1)], machine
+    translation [[19](#bib.bib19)], and programming [[46](#bib.bib46), [47](#bib.bib47)].
+    However, the massive size of LLMs presents significant challenges for practical
+    applications and deployment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a75547aeb0d0bd3a8eff937c6b8171a7.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: The comparison among Full Fine-tuning, training with LoRA, and Owlore.
+    Blue modules are frozen, while orange modules are activated. OwLore non-uniformly
+    samples layers to fine-tune models with low-rank gradients.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To address these challenges, various parameter-efficient approaches have been
+    proposed, including prompt tuning [[24](#bib.bib24), [30](#bib.bib30)], adaptors [[15](#bib.bib15),
+    [12](#bib.bib12)], and low-rank adaptation (LoRA) [[16](#bib.bib16), [9](#bib.bib9)].
+    These approaches enable the fine-tuning of pre-trained LLMs with substantially
+    fewer trainable parameters, making LLM fine-tuning more feasible in practice.
+    Among these, LoRA [[16](#bib.bib16)] stands out for its re-parameterization technique
+    of the pre-trained weight matrix $W\in\mathbb{R}^{m\times n}$, and $r\ll\min(m,n)$
+    frozen, LoRA significantly reduces the memory usage and computational costs associated
+    with fine-tuning LLMs, rapidly becoming the preferred method for such tasks. Despite
+    its efficiency, recent research has highlighted the inferior performance of low-rank
+    reparameterization compared to full-rank updates in both fine-tuning scenarios [[49](#bib.bib49),
+    [2](#bib.bib2)] and pre-training contexts [[28](#bib.bib28), [56](#bib.bib56)].
+    These findings underscore the need for further exploration into balancing training
+    efficiency with model performance, particularly in the context of large-scale
+    language models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In a parallel vein, layerwise sampled LLM fine-tuning appears to be a promising
+    alternative for more effectively preserving the full fine-tuning trajectory. Pan
+    et al. [[38](#bib.bib38)] introduced LISA, a novel fine-tuning approach for LLMs
+    that integrates the concept of importance sampling [[20](#bib.bib20), [57](#bib.bib57)]
+    into the fine-tuning process. In LISA, layers of LLMs are selectively unfrozen
+    based on a prescribed probability, with the exception of the top and bottom layers,
+    which remain active throughout the training process. However, achieving accurate
+    layerwise sampling probabilities remains a significant challenge. Our investigation
+    reveals a surprising observation: the layerwise importance sampling strategy employed
+    by LISA underperforms when compared to a very straightforward baseline, i.e. monotonic
+    decreasing sampling from top to bottom layers. Additionally, the sampled layers
+    are fine-tuned in a full-rank fashion, meaning that increasing the number of unfrozen
+    layers will significantly increase the memory overhead. This drawback limits the
+    number of sampled layers to be small, constraining the optimal performance of
+    sampling-based LLM fine-tuning. These observations motivate further exploration
+    into more principled methodologies for layerwise sampled LLM fine-tuning, aiming
+    to enhance both performance and memory efficiency.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Overview. In this paper, we introduce Outlier-weighted Layerwise Sampled Low-Rank
+    Projection (OwLore), a novel, memory-efficient approach for fine-tuning large
+    language models (LLMs), inspired by the layerwise outlier distribution characteristic
+    of LLMs [[53](#bib.bib53)]. We analyze the outlier distribution in LLMs through
+    the lens of Heavy-Tailed Self-Regularization (HT-SR) theory [[33](#bib.bib33),
+    [34](#bib.bib34), [35](#bib.bib35)], observing that layers with a higher prevalence
+    of outliers typically exhibit a more heavy-tailed empirical spectral density (ESD)¹¹1The
+    ESD of a weight matrix $W$.. According to existing HT-SR literature [[33](#bib.bib33),
+    [34](#bib.bib34), [35](#bib.bib35), [52](#bib.bib52)], such layers are usually
+    more well-trained. Based on this principle, we assign non-uniform layerwise importance
+    for fine-tuning, giving higher probabilities to layers with a greater number of
+    outliers. This strategy substantially improves the performance of sampling-based
+    LLM fine-tuning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To further mitigate the memory demands of full-rank training, we integrate
+    gradient low-rank projection [[56](#bib.bib56)] into our approach, enabling each
+    layer to be trained efficiently in a low-rank manner. By incorporating the efficient
+    characteristics of low-rank projection and optimal layerwise sampling, OwLore
+    can substantially increase the number of sampled layers and rank levels without
+    compromising memory efficiency, enhancing the memory-performance trade-off in
+    LLM fine-tuning. The effectiveness of OwLore is backed up by extensive experiments
+    across diverse LLMs and benchmarks. Note that different from LoRA which adds additional
+    adaptors, OwLore directly fine-tunes the original pre-trained weights, preserving
+    the original optimization trajectory while being more memory-efficient. Our contributions
+    can be briefly summarized as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Our first contribution is to interpret the behavior of layerwise outlier distribution
+    of LLMs through the lens of Heavy-Tailed Self-Regularization theory (HT-SR). We
+    find that the outlier distribution of LLMs exhibits an extremely non-uniform pattern
+    across layers, which strongly correlates to the heavy-tailed structure presented
+    in the ESD of the weight matrix, i.e., layers with more outliers are more heavy-tailed.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The above observation inspires a principled approach to determine the layerwise
+    sampling probability for sampling-based fine-tuning methods like LISA. According
+    to HT-SR theory, layers with more pronounced heavy-tail properties are typically
+    better trained than others [[33](#bib.bib33), [34](#bib.bib34), [35](#bib.bib35)].
+    Therefore, we assign higher sampling probabilities to layers with more outliers.
+    This essentially forms a rich-get-richer phenomenon, substantially improving fine-tuning
+    performance. To address the memory bottleneck caused by the increased number of
+    sampled layers, we introduce low-rank gradient updates to sampling-based fine-tuning.
+    This enables full-rank weight updates with low-rank gradients, significantly reducing
+    memory costs.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The above innovations bring forth our new fine-tuning approach, i.e., OwLore.
+    By incorporating the efficient characteristics of low-rank and optimal layerwise
+    sampling, OwLore significantly improves the memory-performance trade-off of LLM
+    pruning. Our extensive experiments across various architectures including LLaMa2
+    [[48](#bib.bib48)], LLaMa3 [[36](#bib.bib36)], and Mistral [[18](#bib.bib18)]
+    demonstrate that OwLore consistently outperforms its baseline approaches including
+    full fine-tuning. OwLore achieves up to a 1.1% average accuracy gain on the Commonsense
+    Reasoning benchmark, a 3.0% improvement on MMLU, and a notable 10% boost on MT-Bench,
+    while being more memory efficient. OwLore allows fine-tuning LLaMa2-7B with only
+    21GB of memory.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 2 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Parameter-Effieient Fine-Tuning (PEFT). PEFT is proposed to reduce the prohibitive
+    cost of LLM fine-tuning. Various techniques have been proposed in this dynamic
+    field. For instance, prompt tuning only optimizes input tokens or embeddings while
+    keeping the rest of the model frozen, as demonstrated in studies by [[24](#bib.bib24),
+    [26](#bib.bib26), [11](#bib.bib11), [59](#bib.bib59)]. Layer-freezing techniques
+    [[31](#bib.bib31), [4](#bib.bib4), [25](#bib.bib25)] enhance training and fine-tuning
+    efficiency by freezing parts of the layers. Adapter methods, introduced in [[15](#bib.bib15),
+    [12](#bib.bib12), [32](#bib.bib32), [10](#bib.bib10)], incorporate a small auxiliary
+    module within the model’s architecture, which becomes the exclusive focus of updates
+    during training, thus minimizing the number of trainable parameters and optimizer
+    states. Among these techniques, Low-Rank Adaptation (LoRA) [[16](#bib.bib16)]
+    gains massive attention by applying low-rank matrices to approximate weight changes
+    during fine-tuning, which can be merged into the pre-trained weights, leading
+    to no inference overhead. LoRA has been enhanced through various modifications
+    [[55](#bib.bib55), [41](#bib.bib41), [44](#bib.bib44), [29](#bib.bib29), [22](#bib.bib22),
+    [9](#bib.bib9), [56](#bib.bib56)] aimed at improving performance and efficiency.
+    Recently, low-rank has also been explored to pre-train LLM from scratch [[27](#bib.bib27),
+    [56](#bib.bib56)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Layerwise Importance Sampled AdamW (LISA). Pan et al., [[38](#bib.bib38)] conducted
+    an in-depth analysis of LoRA’s training dynamics across layers and revealed an
+    unusual skew in the distribution of layerwise weight norms, particularly towards
+    the top layer and/or the bottom layer, where the norms are significantly larger
+    compared to other layers. Building upon this insight, the authors proposed LISA,
+    a novel fine-tuning approach for LLMs, which incorporates the concept of importance
+    sampling [[20](#bib.bib20), [57](#bib.bib57)] into the fine-tuning process. In
+    LISA, pre-trained layers of LLMs are sampled to be unfrozen during training based
+    on a prescribed probability, with the exception of the top and bottom layers,
+    which remain activated throughout the process. Given a network with $N_{L}$ is
+    given as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $p_{\ell}=\left\{\begin{array}[]{lcl}1.0,&amp;&amp;{if\;\ell=1\;\text{or}\;\ell=N_{L}},\\
+    \gamma/N_{L}&amp;&amp;else.\end{array}\right.$ |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\gamma$ layers, it notably reduces the memory usage of LLM fine-tuning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Methodology
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we introduce our approach, Outlier-weighed Layerwise Low-Rank
+    Projection OwLore. We will discuss the underlying rationales, present preliminary
+    results, and detail the algorithm design.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Shortcomings of LISA
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'While demonstrating promising results, we observe that the LISA algorithm inherently
+    has two shortcomings that constrain its memory-performance trade-off:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'i. The middle layers of LISA are sampled uniformly, which can result in suboptimal
+    performance. To verify this point, we conduct a small experiment where we replace
+    the uniform sampling with a very simple baseline, i.e. monotonic decreasing sampling,
+    where the sample probability is monotonically decreasing from early layers to
+    late layers (noted as LISA-D). Table [1](#S3.T1 "Table 1 ‣ 3.1 Shortcomings of
+    LISA ‣ 3 Methodology ‣ OwLore: Outlier-weighed Layerwise Sampled Low-Rank Projection
+    for LLM Fine-tuning") shows that this simple sampling method outperforms uniform
+    sampling in most cases, verifying our concern.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: Fine-tuning performance of LLaMA2-7B with various dataset.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Method | BoolQ | PIQA | SIQA | HellaSwag | WinoGrande | OBQA |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Llama2-7B | LISA | 82.0 | 79.9 | 33.5 | 59.7 | 79.6 | 38.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Llama2-7B | LISA-D | 85.1 | 79.9 | 33.8 | 59.8 | 79.7 | 38.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'ii. The sampled layers of LISA are fine-tuned in a full-rank manner, causing
+    a significant memory increase as the number of sampled layers increases. To demonstrate
+    this, we report the memory usage of LISA used to fine-tune Llama2-7B as the number
+    of sampled layers increases in Table [2](#S3.T2 "Table 2 ‣ 3.1 Shortcomings of
+    LISA ‣ 3 Methodology ‣ OwLore: Outlier-weighed Layerwise Sampled Low-Rank Projection
+    for LLM Fine-tuning"). The memory requirement of LISA rapidly increases from 23G
+    to 32G as expected sampled layers $\gamma$ increase from 1 to 8\. Since sampling
+    more layers leads to stronger fine-tuning performance [[38](#bib.bib38)], reducing
+    the memory increase associated with the number of sampled layers is pivotal.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 2: Memory usage to fine-tune LLaMA2-7B with various expected sampled
+    blocks $\gamma$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Method | $\gamma=1$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Llama2-7B | LISA | 23G | 24G | 27G | 32G |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Llama2-7B | OwLore (ours) | 21G | 22G | 23G | 25G |'
+  prefs: []
+  type: TYPE_TB
+- en: 3.2 Outlier Distribution and Heavy-tailed Self-regularizaiton
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Although LISA-D achieves good performance, it is more desirable to seek a more
+    principled approach to determine the layerwise sampling probability. In the context
+    of LLMs, we get inspiration from the unique characteristic of LLMs – layerwise
+    outlier distribution [[53](#bib.bib53)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7ac9a16a767eb7354e71b9468dff5979.png)![Refer to caption](img/0342ce2822b002795ced6bea2ce5909c.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Layerwise outlier distribution and heavy-tail content distribution
+    of LLaMa2\. Layers with more outliers typically are consistently more heavy-tailed
+    in their weight matrices.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Recent studies have unveiled a unique characteristic of LLMs - the presence
+    of outliers, defined as features exhibiting significantly larger magnitudes compared
+    to the majority of others [[23](#bib.bib23), [40](#bib.bib40)]. While constituting
+    only a small fraction of the total feature dimensions, these outliers play a vital
+    role in the model’s predictive performance, leading to promising results in LLM
+    compression [[8](#bib.bib8), [50](#bib.bib50), [45](#bib.bib45), [53](#bib.bib53)].
+    However, its theoretical understanding is somehow missing. In the hope of drawing
+    theory-guided inspirations for more principled designing of layerwise sampling
+    probability, we attempt to interpret the outlier distribution across layers through
+    the lens of Heavy-tailed Self-regularization theory (HT-SR) [[33](#bib.bib33),
+    [34](#bib.bib34), [35](#bib.bib35)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we leverage the Layerwise Outlier Distribution (LOD) proposed in [[53](#bib.bib53)]
+    to quantify the outlier distribution across layers. LOD essentially counts up
+    weights whose outlier score is $\tau$, where $N$. Outlier score of weight $\mathbf{W}_{\texttt{ij}}$
+    norm of input feature connected to the weight. Hence, the layerwise outlier distribution
+    of a $N_{L}$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\mathbf{\bar{A}}^{\ell}$ is larger than $\tau\cdot\mathbf{\bar{A}}^{\ell}$
+    means more outliers are presented in the corresponding layer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'On the other hand, HT-SR [[33](#bib.bib33), [34](#bib.bib34), [35](#bib.bib35)]
+    posits that during the training of deep neural networks, the spectral density
+    of the weight matrices gradually evolves from a normal distribution to a heavy-tailed
+    distribution. Layers that have undergone more extensive training tend to exhibit
+    a more pronounced heavy-tailed structure in their Empirical Spectral Density (ESD),
+    i.e., the distribution of eigenvalues. Following [[60](#bib.bib60)], we utilize
+    the PL_Alpha_Hill metric to characterize the heavy-tail extent of the $\ell^{th}$
+    layer’s ESD based on the Hill estimator [[14](#bib.bib14), [51](#bib.bib51)],
+    given by:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\texttt{PL\_Alpha\_Hill}_{\ell}=1+\frac{k}{(\sum_{i=1}^{k}\ln\frac{\lambda^{\ell}_{n-i+1}}{\lambda^{\ell}_{n-k}})},$
+    |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\{\lambda^{\ell}_{i}\}_{i=1}^{n}$ aligns with the peak of the ESD. Note
+    that, originally, the lower the PL_Alpha_Hill metric is, the more heavy-tailed
+    the layer is. For a more direct comparison to LOD, we reverse PL_Alpha_Hill metric
+    such that a larger metric value indicates a more pronounced heavy-tailed weight
+    metric.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We plot outlier distribution and heavy-tail content distribution in Figure
+    [2](#S3.F2 "Figure 2 ‣ 3.2 Outlier Distribution and Heavy-tailed Self-regularizaiton
+    ‣ 3 Methodology ‣ OwLore: Outlier-weighed Layerwise Sampled Low-Rank Projection
+    for LLM Fine-tuning"), which reveals two noteworthy observations: <svg id="S3.SS2.p5.1.pic1"
+    class="ltx_picture" height="13.38" overflow="visible" version="1.1" width="13.38"><g
+    transform="translate(0,13.38) matrix(1 0 0 -1 0 0) translate(6.69,0) translate(0,6.69)"
+    fill="#000000" stroke="#000000" stroke-width="0.4pt"><g transform="matrix(1.0
+    0.0 0.0 1.0 -3.46 -4.46)" fill="#000000" stroke="#000000"><foreignobject width="6.92"
+    height="8.92" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">1</foreignobject></g></g></svg>
+    Both metrics exhibit extremely non-uniform layerwise distributions, indicating
+    that sampling middle layers non-uniformly is more reasonable; <svg id="S3.SS2.p5.2.pic2"
+    class="ltx_picture" height="13.38" overflow="visible" version="1.1" width="13.38"><g
+    transform="translate(0,13.38) matrix(1 0 0 -1 0 0) translate(6.69,0) translate(0,6.69)"
+    fill="#000000" stroke="#000000" stroke-width="0.4pt"><g transform="matrix(1.0
+    0.0 0.0 1.0 -3.46 -4.46)" fill="#000000" stroke="#000000"><foreignobject width="6.92"
+    height="8.92" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">2</foreignobject></g></g></svg>
+    Layers with higher outlier ratios consistently show a more heavy-tailed ESD, suggesting
+    that they have captured more informative features according to the HT-SR theory
+    [[33](#bib.bib33), [34](#bib.bib34), [35](#bib.bib35), [52](#bib.bib52)]. To verify
+    our conjecture, we measure the Spearman’s rank correlation of these two distributions.
+    Our results demonstrate a significant correlation between them: 0.74 (p < 0.001)
+    for LLaMa2-7B and 0.77 (p < 0.001) for LLaMa2-13B.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Outlier-weighed Layerwise Low-Rank Projection (OwLore)
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The above findings shed light on a principle for designing non-uniform layerwise
+    sampling for LLM fine-tuning: layers with higher outlier ratios should be prioritized
+    during the fine-tuning process. This forms the foundation of our proposed method,
+    Outlier-weighed Layerwise Low-Rank Projection (OwLore), which we will present
+    in detail.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Outlier-weighed sampling. Given a $N_{L}$, where $\gamma$ is the hyperparameter
+    inherited from LISA to control the expected number of unfreeze layers during optimization.
+    At each iteration, only the sampled layers will be fine-tuned, while the remaining
+    layers are kept frozen. This sampling method naturally leads to a rich-get-richer
+    phenomenon, where layers that are better trained during the pre-training process
+    are sampled and fine-tuned more frequently.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Gradient low-rank update. Outlier-weighed sampling addresses our first research
+    question: how to optimally sample layers for sampling-based LLM fine-tuning. To
+    tackle the second issue of the substantial memory cost associated with an increasing
+    number of unfrozen layers, we propose to integrate outlier-weighed sampling with
+    low-rank training. In this approach, the sampled layers are updated in a low-rank
+    manner. Specifically, we adopt GaLore proposed in [[56](#bib.bib56)], wherein
+    for each sampled layer, the gradient matrix is projected into a low-rank subspace
+    using Singular Value Decomposition (SVD). The optimizer states are subsequently
+    updated in the corresponding low-rank subspace with a rank level of $r$, significantly
+    reducing the memory cost of optimization. We update the gradient subspace every
+    200 iterations to better capture the dynamic trajectory of fine-tuning.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The above two innovations significantly boost the memory efficiency of OwLore,
+    unlocking the performance-memory trade-off of sampling-based fine-tuning. At the
+    macro level, we dynamically sample a limited number of layers to fine-tune at
+    each iteration. At the micro level, each sampled layers are updated with low-rank
+    gradients. Since the sampled layers are updated in the low-rank subspace, we can
+    efficiently increase the number of sampled layers $\gamma$ consistently give us
+    robust performance across models and downstream tasks. Therefore, we choose them
+    as our default settings. We present our algorithm in Algorithm [1](#alg1 "In 3.3
+    Outlier-weighed Layerwise Low-Rank Projection (OwLore) ‣ 3 Methodology ‣ OwLore:
+    Outlier-weighed Layerwise Sampled Low-Rank Projection for LLM Fine-tuning").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Require: number of layers $N_{L}$, rank level $r$ to $N_{L}$ Mapping layerwise
+    outlier distribution to sampling probability.            if * $\mathcal{U}(0,1)></math>
+    For Owlore-Full, we use the default AdamW optimizer with full ranks.      if *Owlore* then            
+    Run gradient low-rank update for <math id=$ For OwLore, we use GaLore [[56](#bib.bib56)]
+    with low-rank gradients as shown in Algorithm [2](#alg2 "In Appendix A Pseudocode
+    of GaLore ‣ OwLore: Outlier-weighed Layerwise Sampled Low-Rank Projection for
+    LLM Fine-tuning").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 1 Outlier-weighed Layerwise Low-Rank Projection (OwLore)
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we conduct extensive experiments to evaluate the effectiveness
+    of OwLore on multiple fine-tuning tasks. Details are provided below.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Experimental Setup
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Pre-trained LLMs. We choose multiple open-source LLMs that are widely used in
+    research and practice, such as LLaMa2, including the small-scale LLaMa2-7B and
+    large-scale LLaMa2-70B [[48](#bib.bib48)], Mistral-7B [[18](#bib.bib18)]. In addition,
+    we also adopt the most recent LLaMa3-8B to analyze its fine-tuning performance
+    compared to its previous version.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Fine-tuning Tasks. We choose an extensive range of fine-tuning tasks aiming
+    to provide a thorough evaluation of OwLore . Our fine-tuning tasks cover three
+    categories: (i) Commonsense Reasoning, which includes 8 reasoning tasks including
+    BoolQ [[6](#bib.bib6)], PIQA [[3](#bib.bib3)], SIQA [[43](#bib.bib43)], HellaSWag [[54](#bib.bib54)],
+    WinoGrande [[42](#bib.bib42)], ARC-e [[7](#bib.bib7)], ARC-c [[7](#bib.bib7)],
+    and OBQA [[37](#bib.bib37)]. (ii) MT-Bench [[58](#bib.bib58)], a challenging multi-turn
+    question set to assess the conversational and instruction-following abilities
+    of models, including 8 common categories: writing, roleplay, extraction, reasoning,
+    math, coding, STEM, and humanities. We apply GPT-3.5-turbo as the judge for MT-Bench;
+    (iii) MMLU [[13](#bib.bib13)], a massive multitask test consisting of multiple-choice
+    questions from various branches of knowledge. The test spans 57 tasks including
+    elementary mathematics, US history, computer science, law, and more. We adopt
+    the 5-shot setting for MMLU. For Commonsense Reasoning, all models are first fine-tuned
+    on commonsense170k and then evaluated separately on different tasks, following
+    [[17](#bib.bib17)]; For MT-Bench, we first fine-tune models on the Alpaca GPT-4
+    dataset [[39](#bib.bib39)] and then evaluate on MT-Bench following LISA. The results
+    of MMLU are fine-tuned on the auxiliary training dataset and then evaluated on
+    MMLU with 5 shots.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Baselines. We mainly consider four state-of-the-art baselines that are closely
+    related to our approach: (i) Full fine-tuning (Full FT): all parameters of pre-trained
+    models are fine-tuned. Weights, gradients, and optimization states are maintained
+    with full rank; (ii) LoRA [[16](#bib.bib16)]: LoRA introduces additional low-rank
+    adaptors and only fine-tunes adaptors, while maintaining pre-trained weights frozen
+    during training; (iii) GaLore [[56](#bib.bib56)]: pre-trained LLMs are fine-tuned
+    with low-rank gradient projection. We follow [[56](#bib.bib56)] and set the rank
+    level to 8 for both GaLore and LoRA in all fine-tuning tasks; (iv) LISA [[38](#bib.bib38)]:
+    LISA is a sampling-based LLM fine-tuning method, which by default samples 2 layers
+    to fine-tune with full rank at each iteration. Similar to our approach, both GaLore
+    and LISA directly fine-tune pre-trained weights without adding additional adaptors.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Experimental Results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In this section, we present the empirical results of OwLore in comparison to
+    other baseline methods. To ensure a thorough understanding of our approach, we
+    introduce two variants: OwLore (utilizing layerwise sampling and low rank) and
+    OwLore-Full, where the sampled layers undergo fine-tuning in full rank. For fair
+    comparisons, OwLore-Full strictly follows the settings of LISA, unfreezing $\gamma=2$
+    for OwLore to fully leverage its memory efficiency benefits.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Commonsense Reasoning Benchmark. We first evaluate with 8 commonsense reasoning
+    tasks. The results are reported in Table [3](#S4.T3 "Table 3 ‣ 4.2 Experimental
+    Results ‣ 4 Experiments ‣ OwLore: Outlier-weighed Layerwise Sampled Low-Rank Projection
+    for LLM Fine-tuning"). Overall, OwLore and OwLore-Full consistently outperform
+    Full FT and other PEFT baselines by a large margin across various LLMs, demonstrating
+    the superiority of OwLore in LLM fine-tuning. We summarize our key observations
+    below:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 3: Fine-tuning performance of LLaMa2-7B, Mistral-7B, and LLaMa3-8B with
+    various approaches on commonsense reasoning datasets.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Mem. | BoolQ | PIQA | SIQA | HellaSwag | WinoGrande | ARC-e | ARC-c
+    | OBQA | Avg. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMa2-7B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Full FT | 61G | 87.3 | 79.5 | 32.7 | 56.7 | 80.2 | 78.5 | 49.0 | 40.8 | 63.1
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LoRA | 26G | 79.7 | 79.7 | 34.4 | 59.9 | 79.8 | 79.5 | 49.7 | 36.6 | 62.4
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GaLore | 36G | 81.8 | 79.4 | 32.9 | 60.7 | 79.6 | 79.8 | 49.4 | 37.6 | 62.7
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LISA | 24G | 82.0 | 79.9 | 33.5 | 59.7 | 79.6 | 80.4 | 51.1 | 38.8 | 63.1
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OwLore-Full | 24G | 85.1 | 80.3 | 34.5 | 59.8 | 80.5 | 80.1 | 51.5 | 39.2
+    | 63.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OwLore | 23G | 85.4 | 80.7 | 34.2 | 60.3 | 82.2 | 80.6 | 51.0 | 39.1 | 64.2
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMa3-8B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Full FT | 61G | 86.8 | 82.5 | 33.6 | 63.1 | 83.1 | 83.6 | 53.3 | 37.4 | 65.4
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LoRA | 26G | 87.2 | 81.0 | 33.7 | 62.9 | 83.3 | 82.2 | 54.2 | 37.0 | 65.2
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GaLore | 36G | 85.0 | 81.8 | 33.1 | 61.9 | 83.6 | 83.5 | 52.8 | 38.8 | 65.1
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LISA | 24G | 87.3 | 81.6 | 33.7 | 61.7 | 83.6 | 82.7 | 54.4 | 38.8 | 65.5
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OwLore-Full | 24G | 86.8 | 81.6 | 34.2 | 62.9 | 84.1 | 81.9 | 53.3 | 40.2
+    | 65.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OwLore | 23G | 86.6 | 82.3 | 33.8 | 63.0 | 83.5 | 83.2 | 55.3 | 38.6 | 65.8
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Mistral-7B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Full FT | 61G | 87.5 | 83.2 | 32.8 | 65.4 | 87.3 | 83.4 | 56.6 | 41.2 | 67.2
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LoRA | 26G | 87.2 | 81.0 | 33.7 | 62.9 | 83.3 | 82.2 | 54.2 | 37.0 | 65.2
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GaLore | 36G | 75.9 | 82.9 | 34.0 | 65.0 | 86.4 | 83.1 | 55.1 | 39.6 | 65.3
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LISA | 24G | 82.2 | 82.9 | 34.0 | 65.0 | 81.8 | 83.1 | 55.1 | 39.2 | 65.4
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OwLore-Full | 24G | 86.0 | 83.2 | 33.5 | 64.9 | 84.7 | 82.7 | 53.0 | 38.0
+    | 65.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OwLore | 23G | 88.0 | 81.8 | 34.0 | 62.9 | 85.7 | 81.4 | 54.4 | 39.4 | 65.9
+    | <svg id="S4.SS2.p3.pic1" class="ltx_picture" height="13.38" overflow="visible"
+    version="1.1" width="13.38"><g transform="translate(0,13.38) matrix(1 0 0 -1 0
+    0) translate(6.69,0) translate(0,6.69)" fill="#000000" stroke="#000000" stroke-width="0.4pt"><g
+    transform="matrix(1.0 0.0 0.0 1.0 -3.46 -4.46)" fill="#000000" stroke="#000000"><foreignobject
+    width="6.92" height="8.92" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">1</foreignobject></g></g></svg>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: OwLore approaches significantly outperform other efficient fine-tuning approaches
+    by a large margin. Applying our outlier-weighed sampling approach to LISA (i.e.,
+    OwLore-Full) achieves a notable average accuracy boost over LISA on LLaMA2-7B,
+    i.e., 0.8%. Moreover, the low-rank operation further improves the performance-memory
+    trade-off of OwLore, achieving a 0.3% average accuracy gain, a notable 1.7% gain
+    on WinoGrande, while lowering memory usage by 1G.
+  prefs: []
+  type: TYPE_NORMAL
+- en: <svg id="S4.SS2.p4.pic1" class="ltx_picture" height="13.38" overflow="visible"
+    version="1.1" width="13.38"><g transform="translate(0,13.38) matrix(1 0 0 -1 0
+    0) translate(6.69,0) translate(0,6.69)" fill="#000000" stroke="#000000" stroke-width="0.4pt"><g
+    transform="matrix(1.0 0.0 0.0 1.0 -3.46 -4.46)" fill="#000000" stroke="#000000"><foreignobject
+    width="6.92" height="8.92" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">2</foreignobject></g></g></svg>
+  prefs: []
+  type: TYPE_NORMAL
+- en: OwLore approaches consistently outperform full fine-tuning across tasks on LLaMa.
+    We can observe that both OwLore and OwLore-Full can outperform the performance
+    of full fine-tuning with LLaMa2-7B and LLaMa3-8B. LISA can match the performance
+    of full fine-tuning, whereas GaLore and LoRA perform no better than full fine-tuning.
+    However, full fine-tuning performs much better with Mistral-7B, and all fine-tuning
+    approaches fail to match. Still, OWLore is the best approach.
+  prefs: []
+  type: TYPE_NORMAL
+- en: <svg id="S4.SS2.p5.pic1" class="ltx_picture" height="13.38" overflow="visible"
+    version="1.1" width="13.38"><g transform="translate(0,13.38) matrix(1 0 0 -1 0
+    0) translate(6.69,0) translate(0,6.69)" fill="#000000" stroke="#000000" stroke-width="0.4pt"><g
+    transform="matrix(1.0 0.0 0.0 1.0 -3.46 -4.46)" fill="#000000" stroke="#000000"><foreignobject
+    width="6.92" height="8.92" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">3</foreignobject></g></g></svg>
+  prefs: []
+  type: TYPE_NORMAL
+- en: LLaMa3-8B consistently outperforms LLaMa2-7B on Commonsense Reasoning. As the
+    most advanced variant of LLaMa, LLaMa3-8B consistently outperforms its previous
+    version. Interestingly, performance variance between different fine-tuning approaches
+    of LLaMa3 is smaller than LLaMa2.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4: Fine-tuning performance of LLaMa2-7B with various approaches on MT-Bench.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Writing | Roleplay | Reasoning | Math | Coding | Extraction | STEM
+    | Humanities | Avg. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Full-FT | 7.11 | 8.11 | 4.90 | 2.85 | 3.75 | 6.50 | 7.80 | 8.10 | 6.14 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LoRA | 7.21 | 7.05 | 4.95 | 3.25 | 3.90 | 5.70 | 7.90 | 7.65 | 5.95 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GaLore | 7.05 | 7.79 | 3.55 | 2.89 | 3.15 | 6.25 | 8.30 | 7.63 | 5.83 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LISA | 6.75 | 7.35 | 4.35 | 3.00 | 3.85 | 6.85 | 7.74 | 7.47 | 5.92 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OwLore-Full | 7.53 | 8.00 | 4.93 | 3.25 | 4.53 | 6.33 | 8.50 | 8.57 | 6.46
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OwLore | 8.00 | 7.65 | 4.95 | 3.25 | 4.15 | 7.45 | 8.25 | 8.45 | 6.52 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'MT-Bench. We next evaluate OwLore on a more comprehensive benchmark, MT-Bench,
+    featuring 80 high-quality, multi-turn questions designed to assess LLMs on 8 common
+    categories. Results are presented in Table [4](#S4.T4 "Table 4 ‣ 4.2 Experimental
+    Results ‣ 4 Experiments ‣ OwLore: Outlier-weighed Layerwise Sampled Low-Rank Projection
+    for LLM Fine-tuning"). We can observe that the benefits of OWLore over other PEFT
+    approaches are more pronounced. All other baselines fail to match the performance
+    of full fine-tuning on MT-Bench with scores below 6.0, whereas OwLore-Full and
+    OwLore both outperform the full fine-tuning by a large margin. OwLore-Full significantly
+    boosts the average score of LISA from 5.92 to 6.46 by solely applying outlier-weighed
+    sampling, highlighting the effectiveness of our outlier-inspired sampling.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 5: Fine-tuning performance of LLaMa2-7B with various approaches on MMLU
+    benchmark.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Humanities | STEM | Social Sciences | Other | Avg. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Full-FT | 49.9 | 41.7 | 57.5 | 57.0 | 51.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LoRA | 46.1 | 40.8 | 56.6 | 56.2 | 49.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GaLore | 45.4 | 41.7 | 55.8 | 56.0 | 49.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LISA | 44.9 | 41.2 | 54.7 | 57.6 | 49.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OwLore-Full | 49.1 | 41.3 | 58.8 | 59.1 | 52.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OwLore | 49.8 | 42.1 | 58.6 | 59.7 | 52.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'MMLU Benchmark. To draw a more solid conclusion, we also test another widely
+    used benchmark, i.e., MMLU. The results are shown in Table [5](#S4.T5 "Table 5
+    ‣ 4.2 Experimental Results ‣ 4 Experiments ‣ OwLore: Outlier-weighed Layerwise
+    Sampled Low-Rank Projection for LLM Fine-tuning"). Our findings highlight that
+    OwLore consistently outperforms Full FT, while other PEFT methods fall short of
+    dense fine-tuning. Specifically, OwLore achieves an average score of 52.6, demonstrating
+    significant improvements across various domains such as Humanities, STEM, Social
+    Sciences, and Others. These results underscore OwLore’s efficacy beyond full fine-tuning
+    while maintaining superior memory efficiency.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 Fine-tuning Memory Usage
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/cbfd2848e0b161d5aed7a82537c06f1b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Fine-tuning memory usage of using various with LLaMa2-7B. Left: varying
+    sampled layers. In this scenario, we also vary the rank of LoRA and OwLore from
+    4 to 128 to provide a comprehensive analysis. OwLore consistently demonstrates
+    superior memory efficiency across all configurations. Notably, LISA’s memory advantage
+    over LoRA diminishes as the number of sampled layers increases. Right: varying
+    ranks. The sampled layer of LISA and OwLore is set as $\gamma=2$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Thanks to its layerwise sampling and low-rank characteristics, OwLore significantly
+    improves the memory efficiency of LLM fine-tuning. To verify this, we report the
+    memory cost of various approaches when used to fine-tune LLaMa2-7B, with a token
+    batch size of 1, as shown in Figure [3](#S4.F3 "Figure 3 ‣ 4.3 Fine-tuning Memory
+    Usage ‣ 4 Experiments ‣ OwLore: Outlier-weighed Layerwise Sampled Low-Rank Projection
+    for LLM Fine-tuning").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'On the one hand, the low-rank nature of OwLore allows us to unfreeze more layers
+    without a substantial increase in memory cost compared to LISA. As illustrated
+    in Figure [3](#S4.F3 "Figure 3 ‣ 4.3 Fine-tuning Memory Usage ‣ 4 Experiments
+    ‣ OwLore: Outlier-weighed Layerwise Sampled Low-Rank Projection for LLM Fine-tuning")-Left,
+    when increasing $\gamma$) while still maintaining a lower memory cost. On the
+    other hand, Figure [3](#S4.F3 "Figure 3 ‣ 4.3 Fine-tuning Memory Usage ‣ 4 Experiments
+    ‣ OwLore: Outlier-weighed Layerwise Sampled Low-Rank Projection for LLM Fine-tuning")-Right
+    demonstrates that layerwise sampling enables high-rank training without significantly
+    compromising memory efficiency, in stark contrast to LoRA. It is important to
+    note that we do not utilize the layer-wise weight update technique used in GaLore
+    for the memory measurement, hence the memory cost of GaLore is higher than reported
+    in [[56](#bib.bib56)].'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We further break down the memory usage during LLM fine-tuning, presenting the
+    results in Figure [4](#S4.F4 "Figure 4 ‣ 4.4 Training Loss Curve ‣ 4 Experiments
+    ‣ OwLore: Outlier-weighed Layerwise Sampled Low-Rank Projection for LLM Fine-tuning")-Left.
+    For this analysis, $\gamma$ is set to 8 for both LoRA and OwLore. LoRA incurs
+    a substantial activation memory cost, although its optimizer and gradient memory
+    requirements are relatively small. In contrast, LISA’s optimizer memory cost is
+    large because each layer is trained in full rank, yet it benefits from a small
+    activation memory cost. OwLore effectively combines the advantages of both methods,
+    inheriting the small activation memory of LISA while significantly reducing the
+    optimizer memory requirement. Notably, this benefit allows OwLore to fine-tune
+    LLaMa2-7B with only 22GB of memory, demonstrating its superior memory efficiency.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4 Training Loss Curve
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/92ba8a7e8b4cf8e2a86ca2f05281fd30.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: Left: Mmeory breakdown of various methods using LLaMa2-7B. Right:
+    Fine-tuning loss of LLaMA2-7B on Alpaca GPT-4 dataset using various methods.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The training loss curve is an effective way to understand the training dynamics
+    of various methods. Following LISA, we present fine-tuning loss curves of LLaMa2-7B
+    on the Alpaca-GPT4 dataset using Full FT, LoRA, LISA, and OwLore in Figure [4](#S4.F4
+    "Figure 4 ‣ 4.4 Training Loss Curve ‣ 4 Experiments ‣ OwLore: Outlier-weighed
+    Layerwise Sampled Low-Rank Projection for LLM Fine-tuning")-Right. At first glance,
+    methods that directly fine-tune pre-trained weights (i.e., LISA and OwLore) can
+    better mimic the training landscape of full fine-tuning, compared to LoRA.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is worth noting that while OwLore initially falls short of LISA in the early
+    phase of training, it gradually catches up after 60 iterations and eventually
+    outperforms LISA with a lower loss. We conjecture that the underlying reason here
+    is that the low-rank update of OwLore is less accurate than the full-rank update
+    of LISA at the beginning. However, as training progresses, OwLore keeps updating
+    the subspace, leading to an optimal one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this paper, we first establish the bridge between outliers and heavy-tailed
+    properties in neural network layers. We discovered that layers containing more
+    outliers typically exhibit heavy-tailed properties and are generally better trained
+    according to the Heavy-Tailed Self-Regularization theory. Based on this insight,
+    we introduce OwLore, a novel fine-tuning method that assigns higher sampling probabilities
+    to these outlier-rich layers, employing a “rich-get-richer” approach. This innovative
+    technique enhances fine-tuning performance while maintaining higher memory efficiency
+    compared to traditional full-rank fine-tuning. The memory efficiency of OwLore
+    could be further improved by incorporating Low-Rank gradient updating. Our experiments
+    across various architectures, including LLaMa2, LLaMa3, and Mistral, demonstrate
+    that OwLore achieves significant performance improvements while maintaining higher
+    memory efficiency compared to traditional full-rank fine-tuning. These results
+    highlight OwLore’s potential to make the deployment of sophisticated language
+    models more practical and accessible, particularly in resource-limited settings.
+    The primary limitation of our work remains the limited exploration of very large-scale
+    LLMs such as those with 70 billion parameters, suggesting an avenue for future
+    research.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[1] R. Anil, A. M. Dai, O. Firat, M. Johnson, D. Lepikhin, A. Passos, S. Shakeri,
+    E. Taropa, P. Bailey, Z. Chen, et al. Palm 2 technical report. arXiv preprint
+    arXiv:2305.10403, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[2] D. Biderman, J. G. Ortiz, J. Portes, M. Paul, P. Greengard, C. Jennings,
+    D. King, S. Havens, V. Chiley, J. Frankle, et al. Lora learns less and forgets
+    less. arXiv preprint arXiv:2405.09673, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[3] Y. Bisk, R. Zellers, J. Gao, Y. Choi, et al. Piqa: Reasoning about physical
+    commonsense in natural language. In Proceedings of the AAAI conference on artificial
+    intelligence, volume 34, pages 7432–7439, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[4] A. Brock, T. Lim, J. M. Ritchie, and N. Weston. Freezeout: Accelerate training
+    by progressively freezing layers. arXiv preprint arXiv:1706.04983, 2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[5] T. Brown, B. Mann, N. Ryder, M. Subbiah, J. D. Kaplan, P. Dhariwal, A. Neelakantan,
+    P. Shyam, G. Sastry, A. Askell, et al. Language models are few-shot learners.
+    Advances in neural information processing systems, 33:1877–1901, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[6] C. Clark, K. Lee, M.-W. Chang, T. Kwiatkowski, M. Collins, and K. Toutanova.
+    Boolq: Exploring the surprising difficulty of natural yes/no questions. arXiv
+    preprint arXiv:1905.10044, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[7] P. Clark, I. Cowhey, O. Etzioni, T. Khot, A. Sabharwal, C. Schoenick, and
+    O. Tafjord. Think you have solved question answering? try arc, the ai2 reasoning
+    challenge. arXiv preprint arXiv:1803.05457, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[8] T. Dettmers, M. Lewis, Y. Belkada, and L. Zettlemoyer. Llm. int8 (): 8-bit
+    matrix multiplication for transformers at scale. Advances in Neural Information
+    Processing Systems (NeurIPs), 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[9] T. Dettmers, A. Pagnoni, A. Holtzman, and L. Zettlemoyer. Qlora: Efficient
+    finetuning of quantized llms. Advances in Neural Information Processing Systems,
+    36, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[10] S. Diao, Z. Huang, R. Xu, X. Li, Y. Lin, X. Zhou, and T. Zhang. Black-box
+    prompt learning for pre-trained language models. arXiv preprint arXiv:2201.08531,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[11] K. Hambardzumyan, H. Khachatrian, and J. May. Warp: Word-level adversarial
+    reprogramming. arXiv preprint arXiv:2101.00121, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[12] J. He, C. Zhou, X. Ma, T. Berg-Kirkpatrick, and G. Neubig. Towards a unified
+    view of parameter-efficient transfer learning. arXiv preprint arXiv:2110.04366,
+    2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[13] D. Hendrycks, C. Burns, S. Basart, A. Zou, M. Mazeika, D. Song, and J. Steinhardt.
+    Measuring massive multitask language understanding. arXiv preprint arXiv:2009.03300,
+    2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[14] B. M. Hill. A simple general approach to inference about the tail of a
+    distribution. The annals of statistics, pages 1163–1174, 1975.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[15] N. Houlsby, A. Giurgiu, S. Jastrzebski, B. Morrone, Q. De Laroussilhe,
+    A. Gesmundo, M. Attariyan, and S. Gelly. Parameter-efficient transfer learning
+    for nlp. In International conference on machine learning, pages 2790–2799\. PMLR,
+    2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[16] E. J. Hu, Y. Shen, P. Wallis, Z. Allen-Zhu, Y. Li, S. Wang, L. Wang, and
+    W. Chen. Lora: Low-rank adaptation of large language models. arXiv preprint arXiv:2106.09685,
+    2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[17] Z. Hu, L. Wang, Y. Lan, W. Xu, E.-P. Lim, L. Bing, X. Xu, S. Poria, and
+    R. K.-W. Lee. Llm-adapters: An adapter family for parameter-efficient fine-tuning
+    of large language models. arXiv preprint arXiv:2304.01933, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[18] A. Q. Jiang, A. Sablayrolles, A. Mensch, C. Bamford, D. S. Chaplot, D. d. l.
+    Casas, F. Bressand, G. Lengyel, G. Lample, L. Saulnier, et al. Mistral 7b. arXiv
+    preprint arXiv:2310.06825, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[19] W. Jiao, W. Wang, J.-t. Huang, X. Wang, S. Shi, and Z. Tu. Is chatgpt
+    a good translator? yes with gpt-4 as the engine. arXiv preprint arXiv:2301.08745,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[20] T. Kloek and H. K. Van Dijk. Bayesian estimates of equation system parameters:
+    an application of integration by monte carlo. Econometrica: Journal of the Econometric
+    Society, pages 1–19, 1978.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[21] J. Kocoń, I. Cichecki, O. Kaszyca, M. Kochanek, D. Szydło, J. Baran, J. Bielaniewicz,
+    M. Gruza, A. Janz, K. Kanclerz, et al. Chatgpt: Jack of all trades, master of
+    none. Information Fusion, 99:101861, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[22] D. J. Kopiczko, T. Blankevoort, and Y. M. Asano. Vera: Vector-based random
+    matrix adaptation. arXiv preprint arXiv:2310.11454, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[23] O. Kovaleva, S. Kulshreshtha, A. Rogers, and A. Rumshisky. Bert busters:
+    Outlier dimensions that disrupt transformers. arXiv preprint arXiv:2105.06990,
+    2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[24] B. Lester, R. Al-Rfou, and N. Constant. The power of scale for parameter-efficient
+    prompt tuning. arXiv preprint arXiv:2104.08691, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[25] S. Li, G. Yuan, Y. Dai, Y. Zhang, Y. Wang, and X. Tang. Smartfrz: An efficient
+    training framework using attention-based layer freezing. arXiv preprint arXiv:2401.16720,
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[26] X. L. Li and P. Liang. Prefix-tuning: Optimizing continuous prompts for
+    generation. arXiv preprint arXiv:2101.00190, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[27] V. Lialin, S. Muckatira, N. Shivagunde, and A. Rumshisky. Relora: High-rank
+    training through low-rank updates. In Workshop on Advancing Neural Network Training:
+    Computational Efficiency, Scalability, and Resource Optimization (WANT@ NeurIPS
+    2023), 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[28] V. Lialin, N. Shivagunde, S. Muckatira, and A. Rumshisky. Stack more layers
+    differently: High-rank training through low-rank updates. arXiv preprint arXiv:2307.05695,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[29] S.-Y. Liu, C.-Y. Wang, H. Yin, P. Molchanov, Y.-C. F. Wang, K.-T. Cheng,
+    and M.-H. Chen. Dora: Weight-decomposed low-rank adaptation. arXiv preprint arXiv:2402.09353,
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[30] X. Liu, Y. Zheng, Z. Du, M. Ding, Y. Qian, Z. Yang, and J. Tang. Gpt understands,
+    too. arxiv. arXiv preprint arXiv:2103.10385, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[31] Y. Liu, S. Agarwal, and S. Venkataraman. Autofreeze: Automatically freezing
+    model blocks to accelerate fine-tuning. arXiv preprint arXiv:2102.01386, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[32] R. K. Mahabadi, S. Ruder, M. Dehghani, and J. Henderson. Parameter-efficient
+    multi-task fine-tuning for transformers via shared hypernetworks. arXiv preprint
+    arXiv:2106.04489, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[33] C. H. Martin and M. W. Mahoney. Traditional and heavy-tailed self regularization
+    in neural network models. arXiv preprint arXiv:1901.08276, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[34] C. H. Martin and M. W. Mahoney. Heavy-tailed universality predicts trends
+    in test accuracies for very large pre-trained deep neural networks. In Proceedings
+    of the 2020 SIAM International Conference on Data Mining, pages 505–513\. SIAM,
+    2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[35] C. H. Martin and M. W. Mahoney. Implicit self-regularization in deep neural
+    networks: Evidence from random matrix theory and implications for learning. Journal
+    of Machine Learning Research, 22(165):1–73, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[36] Meta. Llama3. [https://github.com/meta-llama/llama3](https://github.com/meta-llama/llama3),
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[37] T. Mihaylov, P. Clark, T. Khot, and A. Sabharwal. Can a suit of armor
+    conduct electricity? a new dataset for open book question answering. arXiv preprint
+    arXiv:1809.02789, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[38] R. Pan, X. Liu, S. Diao, R. Pi, J. Zhang, C. Han, and T. Zhang. Lisa:
+    Layerwise importance sampling for memory-efficient large language model fine-tuning.
+    arXiv preprint arXiv:2403.17919, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[39] B. Peng, C. Li, P. He, M. Galley, and J. Gao. Instruction tuning with
+    gpt-4. arXiv preprint arXiv:2304.03277, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[40] G. Puccetti, A. Rogers, A. Drozd, and F. Dell’Orletta. Outliers dimensions
+    that disrupt transformers are driven by frequency. arXiv preprint arXiv:2205.11380,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[41] A. Renduchintala, T. Konuk, and O. Kuchaiev. Tied-lora: Enhacing parameter
+    efficiency of lora with weight tying. arXiv preprint arXiv:2311.09578, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[42] K. Sakaguchi, R. L. Bras, C. Bhagavatula, and Y. Choi. Winogrande: An
+    adversarial winograd schema challenge at scale. Communications of the ACM, 64(9):99–106,
+    2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[43] M. Sap, H. Rashkin, D. Chen, R. LeBras, and Y. Choi. Socialiqa: Commonsense
+    reasoning about social interactions. arXiv preprint arXiv:1904.09728, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[44] Y. Sheng, S. Cao, D. Li, C. Hooper, N. Lee, S. Yang, C. Chou, B. Zhu,
+    L. Zheng, K. Keutzer, et al. S-lora: Serving thousands of concurrent lora adapters.
+    arXiv preprint arXiv:2311.03285, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[45] M. Sun, Z. Liu, A. Bair, and J. Z. Kolter. A simple and effective pruning
+    approach for large language models. arXiv preprint arXiv:2306.11695, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[46] N. M. S. Surameery and M. Y. Shakor. Use chat gpt to solve programming
+    bugs. International Journal of Information technology and Computer Engineering,
+    (31):17–22, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[47] H. Tian, W. Lu, T. O. Li, X. Tang, S.-C. Cheung, J. Klein, and T. F. Bissyandé.
+    Is chatgpt the ultimate programming assistant–how far is it? arXiv preprint arXiv:2304.11938,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[48] H. Touvron, L. Martin, K. Stone, P. Albert, A. Almahairi, Y. Babaei, N. Bashlykov,
+    S. Batra, P. Bhargava, S. Bhosale, et al. Llama 2: Open foundation and fine-tuned
+    chat models. arXiv preprint arXiv:2307.09288, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[49] W. Xia, C. Qin, and E. Hazan. Chain of lora: Efficient fine-tuning of
+    language models via residual learning. arXiv preprint arXiv:2401.04151, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[50] G. Xiao, J. Lin, M. Seznec, H. Wu, J. Demouth, and S. Han. Smoothquant:
+    Accurate and efficient post-training quantization for large language models. In
+    International Conference on Machine Learning, pages 38087–38099\. PMLR, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[51] X. Xiao, Z. Li, C. Xie, and F. Zhou. Heavy-tailed regularization of weight
+    matrices in deep neural networks. In International Conference on Artificial Neural
+    Networks, pages 236–247\. Springer, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[52] Y. Yang, R. Theisen, L. Hodgkinson, J. E. Gonzalez, K. Ramchandran, C. H.
+    Martin, and M. W. Mahoney. Test accuracy vs. generalization gap: Model selection
+    in nlp without accessing training or testing data. In Proceedings of the 29th
+    ACM SIGKDD Conference on Knowledge Discovery and Data Mining, pages 3011–3021,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[53] L. Yin, Y. Wu, Z. Zhang, C.-Y. Hsieh, Y. Wang, Y. Jia, M. Pechenizkiy,
+    Y. Liang, Z. Wang, and S. Liu. Outlier weighed layerwise sparsity (owl): A missing
+    secret sauce for pruning llms to high sparsity. In International Conference on
+    Machine Learning. PMLR., 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[54] R. Zellers, A. Holtzman, Y. Bisk, A. Farhadi, and Y. Choi. Hellaswag:
+    Can a machine really finish your sentence? arXiv preprint arXiv:1905.07830, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[55] Q. Zhang, M. Chen, A. Bukharin, P. He, Y. Cheng, W. Chen, and T. Zhao.
+    Adaptive budget allocation for parameter-efficient fine-tuning. In The Eleventh
+    International Conference on Learning Representations, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[56] J. Zhao, Z. Zhang, B. Chen, Z. Wang, A. Anandkumar, and Y. Tian. Galore:
+    Memory-efficient llm training by gradient low-rank projection. arXiv preprint
+    arXiv:2403.03507, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[57] P. Zhao and T. Zhang. Stochastic optimization with importance sampling
+    for regularized loss minimization. In international conference on machine learning,
+    pages 1–9\. PMLR, 2015.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[58] L. Zheng, W.-L. Chiang, Y. Sheng, S. Zhuang, Z. Wu, Y. Zhuang, Z. Lin,
+    Z. Li, D. Li, E. Xing, et al. Judging llm-as-a-judge with mt-bench and chatbot
+    arena. Advances in Neural Information Processing Systems, 36, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[59] Z. Zhong, D. Friedman, and D. Chen. Factual probing is [mask]: Learning
+    vs. learning to recall. arXiv preprint arXiv:2104.05240, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[60] Y. Zhou, T. Pang, K. Liu, M. W. Mahoney, Y. Yang, et al. Temperature balancing,
+    layer-wise weight analysis, and neural network training. Advances in Neural Information
+    Processing Systems, 36, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Pseudocode of GaLore
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Following we present the pseudocode for Galore [[56](#bib.bib56)]. As part of
+    the Owlore algorithm, the low-rank updating nature of Galore could help to further
+    improve the memory efficiency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Input: A layer weight matrix $W\in\mathbb{R}^{m\times n}$, decay rates $\beta_{1},\beta_{2}$.Initialize
+    first-order moment $M_{0}\in\mathbb{R}^{n\times r}\leftarrow 0$        if *$t\bmod
+    T=0$ Initialize left projector as $m\leq n$  $\triangleright$        $M_{t}\leftarrow
+    M_{t}/(1-\beta_{1}^{t})$  $\triangleright$*'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 2 GaLore
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B Hyperparameter Analysis
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: $\tau$ is also crucial to OwLore To obtain intuitive and empirical guidance
+    on these hyperparameter choices, we conduct ablation studies using LLaMA2-7B models
+    with the GSM-8K dataset and report the results below.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 6: GSM scores for different $\tau$ values'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Setting | $\tau=3$ | $\tau=11$ | $\tau=19$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GSM Scores | 19.18 | 19.41 | 20.04 | 20.62 | 21.15 | 20.24 | 20.17 | 20.47
+    | 19.79 |'
+  prefs: []
+  type: TYPE_TB
+- en: We found that mid-range values of $\tau$ for all experiments of OwLore.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 7: GSM scores/memory usage for different $\gamma$ values'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Setting | $\gamma=1$ | $\gamma=12$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OwLore | 20.0/21G | 21.9/22G | 23.5/23G | 25.7/25G | 27.8/27G |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LISA | 16.8/23G | 18.8/25G | 19.8/27G | 19.9/32G | 21.7/36G |'
+  prefs: []
+  type: TYPE_TB
+- en: As for the sampling layer $\gamma$, it is not surprising that performance improves
+    consistently with the sampling of more layers. OwLore outperforms LISA with less
+    memory usage across all sampling layer counts. This is attributed to OwLore’s
+    allocation of higher sampling probabilities to layers abundant in outliers, combined
+    with its efficient low-rank gradient updating technique.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/bf4bab4e82318e0cf604ec0afa5f205f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: Fine-tuning loss of LLaMA2-7B using method OwLore on the GSM-8K dataset
+    with various sampled layers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The training curve across different values of $\gamma$ leads to faster convergence
+    and lower loss.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix C Hyperparameters Used of OwLore
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Table 8: Hyperparameters used of OwLore for fine-tuning LLaMa2 7B on various
+    benchmarks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Hyperparameter | Training Samples | Test Samples | Batch Size | Max Length
+    | Training Epochs | Learning Rate |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Commonsense Reasoning | 170K | 22.4K | 16 | 512 | 1 | 3e-4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MT-Bench | 52K | Alpaca-GPT4 (3.3K) | 16 | 512 | 1 | 3e-4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MMLU | 99.8K | 14K | 16 | 512 | 1 | 3e-4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GSM8K | 7.4K | 1.3K | 16 | 512 | 1 | 3e-4 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 9: Hyperparameters used for fine-tuning LLaMa2 7B & LLaMa3 8B on Commonsense
+    Reasoning Benchmark.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Hyperparameter | Batch Size | Max. Sequence Length | Learning Rate | Scheduler
+    | Training Epoch | Warmup Steps | dtype |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMa2 7B | 16 | 512 | 3e-4 | linear | 1 | 100 | bfloat16 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMa3 8B | 16 | 512 | 7e-5 | linear | 1 | 100 | bfloat16 |'
+  prefs: []
+  type: TYPE_TB

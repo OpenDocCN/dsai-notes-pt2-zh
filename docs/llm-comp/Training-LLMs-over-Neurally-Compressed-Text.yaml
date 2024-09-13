@@ -1,0 +1,3040 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:53:06'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: Training LLMs over Neurally Compressed Text
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2404.03626](https://ar5iv.labs.arxiv.org/html/2404.03626)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Brian Lester^a  Jaehoon Lee^a  Alex Alemi^a  Jeffrey Pennington^a
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adam Roberts^a  Jascha Sohl-Dickstein^b  Noah Constant^a
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^aGoogle DeepMind  ^bAnthropic
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{brianlester, nconstant}@google.com Work done while at Google DeepMind.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In this paper, we explore the idea of training large language models (LLMs)
+    over highly compressed text. While standard subword tokenizers compress text by
+    a small factor, neural text compressors can achieve much higher rates of compression.
+    If it were possible to train LLMs directly over neurally compressed text, this
+    would confer advantages in training and serving efficiency, as well as easier
+    handling of long text spans. The main obstacle to this goal is that strong compression
+    tends to produce opaque outputs that are not well-suited for learning. In particular,
+    we find that text naïvely compressed via Arithmetic Coding is not readily learnable
+    by LLMs. To overcome this, we propose Equal-Info Windows, a novel compression
+    technique whereby text is segmented into blocks that each compress to the same
+    bit length. Using this method, we demonstrate effective learning over neurally
+    compressed text that improves with scale, and outperforms byte-level baselines
+    by a wide margin on perplexity and inference speed benchmarks. While our method
+    delivers worse perplexity than subword tokenizers for models trained with the
+    same parameter count, it has the benefit of shorter sequence lengths. Shorter
+    sequence lengths require fewer autoregressive generation steps, and reduce latency.
+    Finally, we provide extensive analysis of the properties that contribute to learnability,
+    and offer concrete suggestions for how to further improve the performance of high-compression
+    tokenizers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Today’s large language models (LLMs) are almost exclusively trained over subword
+    tokens. The tokenizers used to produce these tokens—often BPE [[23](#bib.bib23),
+    [56](#bib.bib56)] or Unigram [[37](#bib.bib37)], as implemented by the SentencePiece
+    library [[38](#bib.bib38)]—are compressors that typically achieve ~4$\times$ more
+    text per token, allowing it to model longer-distance dependencies, ingest more
+    pretraining data, and predict more text at inference time, all without increasing
+    compute.²²2The increased cost of the input embedding and final softmax layers
+    due to increased vocabulary size is negligible for all but the smallest models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Given these advantages, it raises the question, could we compress text further
+    to achieve even greater gains? It is well known that autoregressive language models
+    can be turned into lossless text compressors, and recent work has shown that LLMs
+    can easily achieve 12$\times$ bit-level compression rate. Can we simply train
+    an LLM over this neurally compressed text?
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d4508e8e58791c3ff7e25e430b693ce2.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: An overview of our approach for training an LLM (M2) over neurally
+    compressed text. First, M1 is trained as a standard byte-level language model—given
+    a leftward context, M1 assigns a probability to each possible following byte.
+    Next, corpus text is compressed into a bitstream using M1 as a compressor. Specifically,
+    the probabilities that M1 assigns at each text position are fed into a compression
+    algorithm like Arithmetic Coding that supports using dynamic symbol probabilities.
+    Finally, this bitstream is chunked into tokens (e.g., 8-bit chunks), and M2 is
+    trained as a language model over compressed text.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this paper we explore various options for doing so, focusing primarily on
+    the idea of using Arithmetic Coding (AC) [[73](#bib.bib73)], which is known to
+    reach the near-optimal compression rate for a particular model that assigns probabilities
+    to text continuations. Figure [1](#S1.F1 "Figure 1 ‣ 1 Introduction ‣ Training
+    LLMs over Neurally Compressed Text") presents our high-level approach. First,
+    a small language model “M1” is trained over raw byte sequences. Next, this frozen
+    model is used to compress pretraining corpus text by applying a standard compression
+    algorithm like AC. The resulting compressed bitstream is then chunked into tokens,
+    which are used to train “M2”, a language model that directly reads and writes
+    neural-compressed text.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Given a perfect probabilistic model of the raw byte sequence, the compression
+    step would output a fully-compressed bitstream that would be indistinguishable
+    from random noise, and hence unlearnable by M2. In reality, M1 can never be perfect [[78](#bib.bib78)],
+    so the M1-compressed output will still contain learnable patterns. We explore
+    whether using compression powered by a relatively small M1 is able to “remove”
+    the simple structure that M1 understands from the input—e.g., patterns of spelling,
+    word frequency, and basic grammar—while retaining any higher-level structure that
+    M1 fails to model—e.g., patterns requiring “deeper” reasoning and long range coherence.
+    A larger M2 would then learn to model this higher-level structure, without needing
+    to relearn the low-level structure removed by M1.⁴⁴4Intuitively, training M2 could
+    be seen as analogous to fitting the residuals of M1 [[21](#bib.bib21)]. In theory,
+    this process could be repeated by training an even-larger M3 model on text compressed
+    by M2, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In practice, we find that text compressed via Arithmetic Coding is not readily
+    learnable by a standard transformer-based LLM, with resulting models predicting
+    tokens at chance. Interestingly, this result holds even when M1 is reduced to
+    a context-free unigram model, suggesting that the challenge of modeling AC-compressed
+    text stems from the difficulty of learning the AC compression and decompression
+    process itself. We verify this hypothesis by showing that even the sub-tasks of
+    AC-compressing and AC-decompressing text are not learned well beyond a few initial
+    tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To aid learnability, we propose compression via Equal-Info Windows, a simple
+    technique that breaks text into contiguous windows and compresses them via Arithmetic
+    Coding independently. Rather than splitting text into windows of equal text length,
+    we track the number of bits output by the compressor, and close each window just
+    before it exceeds a set information threshold (e.g., 32 bits of information).
+    This has the advantage that when chunking the subsequent bitstream into M2 tokens,
+    there is a stable mapping from N tokens to one window (e.g., four 8-bit tokens $\Rightarrow$ one
+    32-bit window). At each window boundary, we reset both AC algorithm and the M1
+    model context. This ensures that each window may be mapped back onto raw text
+    without any additional information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Through ablations on window size and M2 vocabulary size, we find that Equal-Info
+    Windows make learning of AC-compressed text possible across a range of settings.
+    However, we also observe that learning progresses gradually, starting with tokens
+    at the left edge of each window, and for longer windows, the model learns little
+    about the tokens near the right edge. Our best-performing setting uses short 16-bit
+    windows that each correspond to a single 16-bit M2 token. Despite resetting the
+    compression algorithm every 16 bits, we still achieve ~5.3$\times$ token-level
+    compression overall, which exceeds standard subword tokenizers. Remarkably, our
+    best M2 models outperform byte-level baselines on perplexity benchmarks (bits/byte)
+    for fixed computation budget (FLOPs/byte). This shows that learning over neural-compressed
+    text can be effective.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At the same time, our best M2 models underperform subword baselines. We suspect
+    this is due at least in part to the relatively unstable mappings our neural tokenizers
+    induce between words and tokens. By contrast, standard subword tokenizers induce
+    essentially stable word-to-token mappings, which likely makes the token sequences
+    they output well-suited for LLM training.⁵⁵5See [Appendix L](#A12 "Appendix L
+    Corner Cases of Tokenization lead to Unstable Mappings ‣ Training LLMs over Neurally
+    Compressed Text") for some counterexamples to subword tokenizers producing stable
+    word-to-token mappings. We illustrate this contrast through qualitative examples.
+    Whether a neural tokenizer can reach a high level of compression while maintaining
+    high learnability for LLM training is an interesting question for future research.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our main contributions are as follows: (1) Outline advantages and challenges
+    of training over neural compressed text. (2) Compare LLMs trained over different
+    tokenizers along two axes: bits/byte and FLOPs/byte. (3) Show that standard LLMs
+    can’t learn to model vanilla AC-compressed text. (4) Show that GZip-compressed
+    text is learnable by standard LLMs, but not competitive. (5) Propose compression
+    via Equal-Info Windows, and show that it enables learning over neural compressed
+    text.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Motivation and Background
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 2.1 Advantages of Training over Neural-Compressed Text
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Training LLMs over compressed text is appealing for many reasons. We discuss
+    three advantages in detail below.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Efficiency
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: The most straightforward advantage is efficiency. By compressing the same text
+    into a shorter token sequence, the model can process more text for the same computational
+    cost. In particular, a model trained over $C{\mkern-1.0mu\times\mkern-1.0mu}{}$
+    more text during training compared to a model trained over raw text, given an
+    equal compute budget. Increasing the amount of data seen in pretraining is often
+    an effective means of improving performance [[35](#bib.bib35), [30](#bib.bib30)].
+    Processing text more efficiently also confers benefits at inference time, reducing
+    the serving cost for handling a request of a given prompt and continuation length.
+    In addition to reducing the raw compute needed for inference, compression can
+    also improve inference latency, since generating better-compressed output requires
+    fewer sequential autoregressive steps.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Longer Context
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: A second advantage is that working with compressed text allows modeling longer
+    contextual dependencies. In vanilla transformer-based models, computation for
+    the self-attention layer scales quadratically with the sequence length, $O(n^{2}d)$
+    bytes) are modest when viewed merely as perplexity gains [[51](#bib.bib51)], the
+    ability to condition on long context is critical for many applications, such as
+    retrieving content from a document, or answering a coding question provided documentation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Distribution of Compute
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: A third potential advantage of training over compressed text is that information
+    will be spread more uniformly across the sequence. By the nature of compression,
+    a text span that is relatively predictable (e.g., a boilerplate notice) will be
+    more compressible than a span with high perplexity (e.g., a unique product serial
+    number). When an LLM is trained over well-compressed text, each token will represent
+    roughly an equal amount of information. Since the LLM allocates equal compute
+    to each token, this amounts to allocating *more* compute for “harder” text spans.
+    This adaptivity is similar in spirit to “Adaptive Computation Time” (ACT) [[27](#bib.bib27)],
+    which learns to allocate additional compute at some sequence positions in an end-to-end
+    manner, but with the advantage that in our case the computation remains “dense”—identical
+    operations are applied at each position.⁷⁷7It should be noted that ACT learns
+    to allocate more compute where it is *useful*, as opposed to merely where the
+    predictions are hard. For example, ACT learns to not waste compute on inherently
+    unpredictable text spans. We expect that as a heuristic, allocating more compute
+    to higher-perplexity text spans is valuable, but leave this to future work to
+    verify.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2 Challenges of Training over Compressed Text
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Learnability
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: It is not at all obvious what types of compression are “transparent” enough
+    to be learnable through a standard LLM training process. Strong compression can
+    be seen as removing as much redundant or predictable information from a sequence
+    as possible. Consequently, the bitstream output by a good compressor is inherently
+    hard to distinguish from random noise. In this work, we explore the setting where
+    M2—the model trained over compressed text—has a larger capacity than M1, the model
+    used for compression. In principle, this setup should allow M2 to extract additional
+    information from the signal even after M1 has compressed it. However, for strong
+    enough M1 compression, the resulting bitstream may be too noisy to detect any
+    signal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As a prerequisite for M2 to effectively predict continuations of compressed
+    text, we anticipate that it is necessary for M2 to have the ability to decompress
+    bits $\rightarrow$ bits. These sub-tasks are challenging in their own right. First,
+    M2 needs to accurately “simulate” M1 in order to know the probabilities it assigns
+    to the text, which determine the output of compression.⁸⁸8For Arithmetic Coding,
+    not only would M2 need to know the probabilities M1 assigns to the observed text,
+    but it would also need to know the probabilities assigned to many *unobserved*
+    symbols. This is because Arithmetic Coding operates over *cumulative* probabilities,
+    i.e., the probability that the next symbol is e or any alphabetically preceding
+    symbol. Training models to mimic other models can be difficult [[41](#bib.bib41)],
+    and even in settings where models do learn to copy the behavior of another network
+    [[29](#bib.bib29)], this is often only when looking at which symbol was assigned
+    the highest probability—the actual probabilities assigned often differ [[60](#bib.bib60)].
+    Second, M2 needs to learn the compression procedure itself. In our case, this
+    means tracking the Arithmetic Coding algorithm, which requires maintaining high-precision
+    numerical state across long contexts. We investigate these sub-tasks in detail
+    in [Section 5.2](#S5.SS2 "5.2 Transformers struggle to learn Arithmetic Coding
+    ‣ 5 Additional Experiments ‣ Training LLMs over Neurally Compressed Text").
+  prefs: []
+  type: TYPE_NORMAL
+- en: A further learnability challenge is the high level of context sensitivity needed
+    to interpret a bitstream of compressed text. When chunked into tokens, a particular
+    bit subsequence (e.g., 10111001) can map onto the same token despite having no
+    stable “meaning” across occurrences. We show examples in [Section 6.1](#S6.SS1
+    "6.1 EqualInfoAC is less stable and less semantic than SentencePiece ‣ 6 Analysis
+    ‣ Training LLMs over Neurally Compressed Text"), where a token maps to many different
+    underlying text forms, necessitating strong contextual understanding. While LLMs
+    are robust to some level of polysemy, as highlighted by the success of Hash Embeddings
+    [[62](#bib.bib62)] where multiple unrelated words share a single token representation,
+    we suspect this has its limits.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Numerical Stability
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: An additional technical challenge is that compression methods can be sensitive
+    to the precise model probabilities used. To achieve lossless compression in our
+    setup, it is critical that the M1 probabilities match during compression and decompression.
+    This can be hard to guarantee in practice, as there are many sources of numerical
+    noise in LLM inference, especially when running on parallel hardware. An expanded
+    discussion of numerical stability issues can be found in [Section 3.7](#S3.SS7
+    "3.7 Numerical Stability ‣ 3 Methods ‣ Training LLMs over Neurally Compressed
+    Text").
+  prefs: []
+  type: TYPE_NORMAL
+- en: Multi-Model Inference
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Finally, a specific challenge of training over neural compressed text is that
+    multiple models need to be stored and run side-by-side in order to perform inference.
+    We assume that if M1 is relatively small, this additional overhead is not a significant
+    drawback compared to a standard tokenizer, which is also a separate model that
+    is needed to tokenize text input and detokenize LLM outputs. In evaluating our
+    approach, we include M1 compute in our calculations of total inference cost (FLOPs/byte).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.3 Compression
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In this work, we focus on lossless compression, which aims to encode a sequence
+    of input symbols, $x_{0:N}=\{x_{0},x_{1},\dots,x_{N}\}\in X^{|V|}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The “coding” component of a compression algorithm converts the input sequence
+    to a bitstream of length $\ell(x_{0:N})$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.4 Arithmetic Coding
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Arithmetic Coding [[53](#bib.bib53), [49](#bib.bib49)] uses a model $\hat{p}$.
+    Thus:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: where $w\in X$ is used as the compressed representation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Equivalently, the binary expansion can be seen as maintaining a bitstream prefix
+    $b$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle B_{j}(b,0)$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle B_{j}(b,1)$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Once the final interval $I_{N}$ is the final compressed representation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The coding component of Arithmetic Coding is nearly optimal: the output bitstream
+    will have a length of $-\lceil\log\hat{p}(x_{0:N})\rceil+1$ being assigned to
+    all tokens.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.5 Related Work
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Recent work has looked at using large language models for compression, but has
+    not to our knowledge attempted to train subsequent models over the resulting compressed
+    output. Works like [[16](#bib.bib16)] use a transformer language model as the
+    modeling component of Arithmetic Coding, but they do not train over compressed
+    output nor do they make modifications to the compression algorithm to facilitate
+    learnability by downstream models. Additionally, they focus on the setting of
+    compressing fixed-size sequences of bytes. By contrast, our models operate over
+    input sequences of fixed *token* length. This allows for models with higher compression
+    rates to leverage longer contexts, as more bytes are included in the input.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[[63](#bib.bib63)] proposes changes to Arithmetic Coding to make it more amenable
+    to use with LLMs—namely, they rank sort the logits from the model before creating
+    text intervals, $I_{i}(x_{0:N})$. This could help alleviate issues stemming from
+    errors in M2’s simulation of M1\. However, they do not train models on top of
+    their compressed output.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some approaches to “token-free” (i.e., purely character- or byte-level) language
+    modeling down-sample the input sequence via convolutions [[13](#bib.bib13), [61](#bib.bib61)],
+    which could be seen as a form of end-to-end neural tokenization. However one important
+    distinction is that the resulting tokenization is “soft”—outputting high-dimensional
+    vectors and not implying a discrete segmentation—in contrast to our tokenization
+    that outputs discrete tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Methods for learning *discrete* tokenization end-to-end have also been proposed
+    [[11](#bib.bib11), [25](#bib.bib25)]. In the case of MANTa [[25](#bib.bib25)],
+    the learned segmentation appears to be fairly semantic (i.e., respecting word
+    and morpheme boundaries), which could be an advantage over our approach. However,
+    they lack our bias towards encoding an equal amount of information per token.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In modeling audio, it is common practice to use learned tokenizers that compress
+    the raw input signal to discrete tokens from a fixed-size codebook [[64](#bib.bib64),
+    [3](#bib.bib3), [12](#bib.bib12), [6](#bib.bib6)]. However, this compression is
+    lossy, whereas we focus on lossless compression.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Other recent work focuses on using the “modeling” component from well-known
+    compressors to do other tasks. [[34](#bib.bib34)] uses the model from GZip to
+    perform text classification. [[68](#bib.bib68)] uses the Arithmetic Decoding algorithm
+    with an LLM as the model to do diverse parallel sampling from that LLM. One could
+    imagine that the “model” of our compressors (M1) is a teacher for M2, but unlike
+    these other applications, the M1 values are not used outside of compression.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[[40](#bib.bib40)] also explores learning over compressed text, but with several
+    key differences. First, they use n-gram language models [[57](#bib.bib57)] while
+    we use LLMs. Second, their model is conditioned on compressed bitstreams but produces
+    a distribution over the raw, uncompressed, bytes while our M2 models predict directly
+    in the compressed space. Additionally, they only consider static Huffman coding
+    [[32](#bib.bib32)] as the algorithm to compress model inputs. While this avoids
+    the context sensitivity issues we outline in [Section 2.2](#S2.SS2 "2.2 Challenges
+    of Training over Compressed Text ‣ 2 Motivation and Background ‣ Training LLMs
+    over Neurally Compressed Text"), it results in a far worse compression rate compared
+    to the adaptive compression methods we use. One important distinction is that
+    their equal-information windows are overlapping, and used as a sliding window
+    to provide context to their n-gram language model. By contrast our equal-information
+    windows are non-overlapping, and used to segment text into a series of equal-length
+    bitstrings that can be interpreted independently by M2, and whose boundaries are
+    easily identifiable, as they map to a fixed number of M2 tokens.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Concurrently, [[26](#bib.bib26)] explores how the compression performance of
+    a tokenizer correlates with downstream model performance. They find that tokenizers
+    that compress better perform better, which generally aligns with our findings,
+    particularly in the large vocabulary setting, see [Fig. 6](#S4.F6 "In Short windows
+    are the best ‣ 4 Results ‣ Training LLMs over Neurally Compressed Text"). However,
+    we find that using the strongest compressors is detrimental to learnability, as
+    seen in the AC line in [Fig. 3](#S4.F3 "In 4 Results ‣ Training LLMs over Neurally
+    Compressed Text"). These conflicting results likely stem from differences in tokenization
+    strategy. Their work is restricted to BPE-based compressors while we explore stronger
+    compressors built on LLMs and Arithmetic Coding. The qualitative differences between
+    these classes of tokenizers are explored more in [Section 6.1](#S6.SS1 "6.1 EqualInfoAC
+    is less stable and less semantic than SentencePiece ‣ 6 Analysis ‣ Training LLMs
+    over Neurally Compressed Text").
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Methods
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: For each experiment, we compress long contiguous sequences of training data
+    using different methods. For several, we use M1—a byte-level language model—as
+    $\hat{p}$ in the compression algorithm. We then chunk the compressed output into
+    tokens and train M2 models over those tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Training Data
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: All training data used is English web text from C4 (en 3.1.0) [[52](#bib.bib52)].
+    After tokenization, each document in C4 has an <EOS> token appended to it. We
+    concatenate $128$ bytes. Despite the document breaks, we consider these long sequences
+    “continguous” for the training of language models. These sequences are then split
+    into individual examples, which are shuffled using the deterministic dataset functionality
+    from SeqIO [[54](#bib.bib54)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Training M1
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The model used for compression is a decoder-only Transformer model [[67](#bib.bib67)].
+    It uses the $3$ bits/byte, a standard measure of perplexity, see [Section 3.8](#S3.SS8
+    "3.8 Evaluation ‣ 3 Methods ‣ Training LLMs over Neurally Compressed Text"). M1
+    and M2 are both trained on the C4 training data, but the final validation data
+    used to evaluate M2 is unseen during M1 training, therefore there is no information
+    leakage. This is similar to how LLM tokenizers are often trained on same dataset
+    that the LLM is subsequently trained on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Compression Methods
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: When compressing C4 training data, we use an example length of $10{,}240$ steps
+    without repeating data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Arithmetic Coding: In this setting, we use a decoder-only transformer language
+    model to model $\hat{p}$, are calculated using the probabilities for the next
+    token output by the transformer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The compressor model is run over contiguous text sequences of $10{,}240$. This
+    suggests the performance drop from long sequences has minimal effect on compression,
+    or that the increased contextual information makes up this difference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will see that text compressed in this straightforward manner is not readily
+    learnable by M2\. Thus, we explore alternative compression methods that modify
+    the “modeling” and “coding” components for better learnability. [Table 2](#S3.T2
+    "In 3.4 Tokenization of Compressed Text ‣ 3 Methods ‣ Training LLMs over Neurally
+    Compressed Text") shows how our different approaches affect the compression ratio.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Static Logits Arithmetic Coding: One potential difficulty of learning over
+    compressed text is that the “modeling” component of the compression algorithm
+    is hard to learn—that is, the second language model (M2) has trouble learning
+    to simulate the probabilities the compressor model (M1) assigns to bytes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To weaken the compressor model, we replace the context-sensitive LM model with
+    a static byte unigram model—that is, the model’s distribution is the same for
+    all byte tokens in the input, i.e., $\hat{p}(x_{i}|x_{0},\dots,x_{i-1})=\hat{p}(x_{i})$.
+    This distribution is estimated using the byte unigram statistics from the C4 training
+    data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Equal Information Windows: The difficulty in modeling compressed text could
+    also be because the “coding” component of the compression algorithm is hard to
+    learn. That is, the language model is not able to track the state variables used
+    in Arithmetic Coding.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8fe25c45191027ed56647cde49433169.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Under “Equal-Info Windows”, text is encoded into a series of N-bit
+    windows. To determine each successive window, the remaining text is encoded byte-by-byte
+    via Arithmetic Coding until no more bytes can be added without exceeding the target
+    bit threshold, here $16$ bits. Both M1 and the AC algorithm are reset at each
+    step, so no information persists across windows.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our proposed method of weakening the coding component of Arithmetic Coding compression
+    is to reset the AC encoder once it has output a set number of bits, creating windows
+    of fixed size where each window is an independently AC-compressed sequence. This
+    process is illustrated in [Fig. 2](#S3.F2 "In 3.3 Compression Methods ‣ 3 Methods
+    ‣ Training LLMs over Neurally Compressed Text"). Windows will represent a variable
+    amount of text, but as each window is created via compression, we expect roughly
+    the same amount of information per window.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In addition to resetting the AC encoder, we also reset the M1 model’s context.
+    This means that each $W$ bits of output can be decoded independently, at the cost
+    of a weaker M1 model due to the lack of context. As each window is fully self-contained,
+    the model no longer has to learn to track Arithmetic Coding state variables over
+    long distances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In cases where “spare bits” are available at the end of a window (but not enough
+    to add an additional symbol of text), we pad with zeros. This complicates the
+    decoding algorithm, but the compression scheme remains lossless. See [Appendix I](#A9
+    "Appendix I M2 Can Handle Padding Zeros at the End of a Window ‣ Training LLMs
+    over Neurally Compressed Text") for further discussion and an alternative padding
+    approach that gives similar results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When compressing an additional character would result in a bitstream that is
+    greater than $W$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We use $b$).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'GZip: As a baseline, we also explore training over text compressed using GZip
+    [[17](#bib.bib17)] as implemented in the Python [[65](#bib.bib65)] zlib library
+    using the default compression level. GZip uses the DEFLATE algorithm—a combination
+    of Huffman Trees [[32](#bib.bib32)] and LZ77 [[77](#bib.bib77)]. First LZ77 is
+    used to replace repeated substrings in the text with pointers back to the original
+    substring. Then a Huffman Tree is built for the current—LZ77 compressed—example
+    and used to compress it. Note that this setting is dynamic, as the Huffman tree,
+    and hence the binary codes for each character, are unique to the example. These
+    experiments explore a setting where both the modeling and coding components of
+    compression are different from Arithmetic Coding.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.4 Tokenization of Compressed Text
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Table 1: “Token” vs. “bit” compression ratios. Larger vocabularies require
+    more bits to store each token, and thus incur a cost in terms of absolute compression.
+    However, when trying to minimize the compute an LLM uses to process a given piece
+    of text, token sequence length is what matters.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Token Compression Ratio | Bit Compression Ratio |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SentencePiece | $4.28$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AC$[v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AC$[v\mathord{=}65\text{k}]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: Most compression methods output a bitstream, but training M2 directly over bits
+    would not be ideal. As M1 was trained over UTF-8 bytes, the bit-level output of
+    compression would result in M2 being applied to much longer sequences. Additionally,
+    models are generally trained with vocabulary sizes much larger than two. Thus,
+    we need a method to segment the bitstream into tokens, creating a more standard
+    sequence for training language models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We convert the bitstream into a token sequence by grouping every $N$. As the
+    tokens are created from the compressed bitstream, we expect the distribution of
+    tokens to be more uniform than the usual Zipfian [[76](#bib.bib76)] distribution
+    of word or subword tokens, allowing us to use larger vocabularies without encountering
+    issues of rare or unattested tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Throughout this work, we focus on the “token compression ratio” $L_{iT}/L_{oT}$-bit
+    tokens from the output of Arithmetic Coding does not change the bit compression
+    ratio—the total number of bits is unchanged—but it does reduce the number of tokens
+    in the sequence, and thus the number of tokens the LLM must process. We compute
+    compression ratios over the C4 dev set, which is unseen during M1 training.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To highlight the differences between the tokenization methods above, we measure
+    the performance (as bits/byte on a sample of the C4 validation set) of two trivial
+    models for each tokenizer in [Table 3](#S3.T3 "In 3.4 Tokenization of Compressed
+    Text ‣ 3 Methods ‣ Training LLMs over Neurally Compressed Text"). The “uniform”
+    model naïvely assigns equal probability to each token, regardless of context.
+    The “unigram” model also ignores context, but assigns probabilities based on the
+    global token frequencies observed in the training data. With byte-level tokenization,
+    each UTF-8 byte encodes to a single $8$ bits/byte. For more powerful tokenizers,
+    the uniform model is stronger, indicating that the tokenizer itself has some language
+    modeling ability. We observe that our compression-based tokenizers (AC, EqualInfoAC
+    and GZip) output a near-uniform distribution of tokens across their vocabulary.
+    This is reflected in the near-zero gain over “uniform” achieved by modeling unigram
+    statistics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 2: Weakening the “model” or “coding” component of Arithmetic Coding reduces
+    the compression rate. The reduction of M1 to a static unigram distribution results
+    in the worst compression ratio. When using EqualInfoAC, M1 is weaker, as it has
+    less context, and coding is weaker, as padding is often required at the end of
+    windows. The compression ratio improves with larger window sizes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Compression Ratio |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AC$[v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| StaticAC$[v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}32,\,v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}64,\,v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}128,\,v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 3: Bits/byte ($\downarrow$) performance of two trivial models across
+    tokenizers. “Uniform” assigns equal probability to each token. “Unigram” assigns
+    probabilities based on the empirical token frequencies. As the compression-based
+    tokenizers output near-uniform distributions over tokens, there is little gain
+    in modeling unigram statistics. Thus, learning over this data requires modeling
+    longer contexts.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Uniform bits/byte | Unigram bits/byte | $\Delta$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Bytes | $8.000$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SentencePiece | $3.497$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AC$[v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| StaticAC$[v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}32,\,v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}64,\,v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}128,\,v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GZip$[v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: 3.5 Training M2 on Compressed Data
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Each M2 model is trained for $200{,}000$%) are non-padding tokens; see [Appendix C](#A3
+    "Appendix C The Amount of Raw Text Bytes Seen by M2 ‣ Training LLMs over Neurally
+    Compressed Text") for details and [Table 13](#A3.T13 "In Appendix C The Amount
+    of Raw Text Bytes Seen by M2 ‣ Training LLMs over Neurally Compressed Text") for
+    the exact size of each dataset. As methods with higher compression ratios cover
+    more raw text per token, we also include the total number of bytes in each dataset.
+    Shuffling of training sets is seeded, and dataset state is checkpointed during
+    training, so each training run results in the model seeing each example exactly
+    once.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Models are trained at four sizes, as shown in [Table 4](#S3.T4 "In 3.5 Training
+    M2 on Compressed Data ‣ 3 Methods ‣ Training LLMs over Neurally Compressed Text"),
+    with $25$ tokens. Thus, when training on 16-bit tokens, twice as many bytes are
+    seen per example and in training overall, as compared to 8-bit tokens. All other
+    hyperparameters match those used in M1.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4: Model sizes used in our experiments, and corresponding hyperparameter
+    settings. Note, model parameter counts exclude embedding table parameters.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Parameter Count | Embedding Dim | #Heads | #Layers | Head Dim | MLP Dim |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $3$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $25$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $113$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $403$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $2$ |'
+  prefs: []
+  type: TYPE_TB
+- en: 3.6 Baselines
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We compare our M2 models against baseline models trained with two standard tokenization
+    methods, described below. All hyperparameters, including sequence length ($512$),
+    match those used for our M2 training above.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bytes
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: These baselines train directly over UTF-8 bytes, using the byte tokenizer from
+    ByT5 [[74](#bib.bib74)]. The models see $26.2$ billion bytes total (see [Table 13](#A3.T13
+    "In Appendix C The Amount of Raw Text Bytes Seen by M2 ‣ Training LLMs over Neurally
+    Compressed Text")).
+  prefs: []
+  type: TYPE_NORMAL
+- en: SentencePiece
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: These baselines train on text tokenized with the SentencePiece vocabulary of
+    $32{,}000$ billion bytes total (see [Table 13](#A3.T13 "In Appendix C The Amount
+    of Raw Text Bytes Seen by M2 ‣ Training LLMs over Neurally Compressed Text")).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.7 Numerical Stability
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Arithmetic Coding depends on the creation of “intervals” that cover each symbol
+    in the vocabulary based on the quantized cumulative distribution of a model’s
+    logits when predicting the next token. As such, a small change in the logits due
+    to numerical noise can result in vastly different output bitstreams. This can
+    make the practical use of neural language models in compression difficult. Common
+    sources of noise include changes in batch size, parallel computation, changes
+    to compute infrastructure (CPU vs. GPU vs. TPU, different TPU topology, etc.),
+    changes to inference (computing the logits for the whole sequence at once vs. computing
+    logits for a single token at a time using KV caches), and changes to the longest
+    sequence length in the batch.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Methods like the rank-sorted algorithm used in LLMZip [[63](#bib.bib63)] may
+    help alleviate these issues as only the order of tokens needs to match between
+    settings. The development of alternate methods of LLM-based compression should
+    keep numerical stability issues in mind and ideally alleviate these issues in
+    the design of the algorithm. Increasing the level of quantization could also help
+    reduce numerical noise issues, as differences would mostly be lost in quantization,
+    but this would have a negative impact on the compression ratio.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.8 Evaluation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: As the tokenization scheme varies across the approaches we consider, models
+    cannot be directly compared on “per-token” metrics such as negative log likelihood
+    loss $\ell$, which scales the model’s loss by the token-level compression rate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We also compare models on how much computation (FLOPs) is required to perform
+    inference over a given length of raw text (bytes). More specifically, we calculate
+    M2’s expected FLOPs/byte by scaling FLOPs/token—approximated by $2\,\times\,\texttt{params}$
+    (excluding embedding parameters) following [[35](#bib.bib35)]—by the token-level
+    compression rate (as tokens/byte). For methods using an M1 model during compression,
+    the FLOPs/byte cost of M1 is added.^(10)^(10)10While there is a computational
+    cost to running GZip over the input text, we ignore it as it is insubstantial
+    compared to the cost of running M2 model inference. For more details on the evaluation
+    metrics see [Appendix G](#A7 "Appendix G Evaluation Details ‣ Training LLMs over
+    Neurally Compressed Text").
+  prefs: []
+  type: TYPE_NORMAL
+- en: We evaluate models on a sample of the C4 validation set. During evaluation,
+    the model is run over $20$. Thus, the variance introduced from sampling the validation
+    set is negligible. See [Appendix B](#A2 "Appendix B Variance ‣ Training LLMs over
+    Neurally Compressed Text") for more information about variance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Results
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/607d636837180ddc0c5b9331051d2fd6.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Models trained over compressed text are compared against baseline
+    models in terms of bits/byte ($\downarrow$ outperforming the Bytes baseline at
+    all sizes. While SentencePiece performs the best, the gap between EqualInfoAC
+    and SentencePiece narrows with scale. See [Appendix A](#A1 "Appendix A Numerical
+    Values ‣ Training LLMs over Neurally Compressed Text") for the exact values used
+    in this and other graphs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Simple methods of training over neural-compressed text fail
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: As seen in [Fig. 3](#S4.F3 "In 4 Results ‣ Training LLMs over Neurally Compressed
+    Text"), the most obvious approach—compression using Arithmetic Coding with M1
+    assigning next-token probabilities—fails to learn anything. Regardless of scale,
+    the model only learns to output a uniform distribution over tokens, the performance
+    of which is denoted by the dashed line. As the Arithmetic Coding procedure is
+    near optimal [[45](#bib.bib45)], the compression ratio is essentially determined
+    by the loss of M1\. Thus, even though the M2 model learns nothing useful, when
+    scaled by the compression rate, this setting ends up with the same performance
+    as the M1 model. Similarly, models trained over data compressed with StaticAC—where
+    M1 is replaced with a static unigram model—fail to learn. This result suggests
+    that the difficultly in learning stems from the complexity or brittleness of the
+    Arithmetic Coding process itself, rather than from M2’s inability to model M1\.
+    Note that the weak “modeling” component of this compression scheme results in
+    a much lower compression rate and thus worse bits/byte performance, despite the
+    model also learning a uniform distribution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: SentencePiece is a strong baseline
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Our SentencePiece baseline outperforms all other methods, including our Bytes
+    baseline, across all model sizes. On the surface, this result seems to run counter
+    to the recent findings of [[16](#bib.bib16)], where their byte-level models outperformed
+    subword (BPE) models at medium and large scales. The discrepancy is due to prioritizing
+    different metrics. They report the model’s bit compression rate on fixed-length
+    ($2{,}048$ bytes (but never evaluated on this ability), and are allotted fewer
+    inference FLOPs to process the same text, as compared to the byte-level models.
+    Additionally, *bit* compression ratio penalizes subword models for having larger
+    vocabulary sizes. By contrast, our evaluation tests what perplexity models achieve
+    on sequences of the same length they were trained on, and compares models at matching
+    FLOPs/byte cost. This aligns with our end goal, which is to train an LLM that
+    achieves the best perplexity at whatever sequence length it can handle, given
+    a fixed budget for training and inference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/bd3e43703b6dfcc0c2c847599cca34f5.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: Comparing models in terms of bits/byte ($\downarrow$ model is on
+    this frontier.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Equal-Info Windows make AC learnable
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: '[Fig. 3](#S4.F3 "In 4 Results ‣ Training LLMs over Neurally Compressed Text")
+    shows that EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}256]$ curve compared to the
+    Bytes curve—due to shorter sequence lengths.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using $16$ outperforms the Bytes baseline at all model sizes. It underperforms
+    the SentencePiece baseline, but the gap diminishes with scale.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}65\text{k}]$ take fewer autoregressive
+    steps to generate the same text than models using SentencePiece encoding. This
+    has the potential to reduce generation latency, at the cost of reduced compute
+    efficiency. This is a tradeoff that is often worth making in production. For instance,
+    speculative decoding [[42](#bib.bib42)] is a popular approach that performs redundant
+    computation in order to potentially accelerate auto-regressive steps.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is noteworthy that the EqualInfoAC M2 models learn well despite being trained
+    on data that has nearly uniform unigram statistics, as we saw in [Table 3](#S3.T3
+    "In 3.4 Tokenization of Compressed Text ‣ 3 Methods ‣ Training LLMs over Neurally
+    Compressed Text"). In the best case, our $2$% fewer FLOPs/byte.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is apparent from [Fig. 3](#S4.F3 "In 4 Results ‣ Training LLMs over Neurally
+    Compressed Text") that if FLOPs/byte were held constant, SentencePiece would achieve
+    slightly better bits/byte than EqualInfoAC. However there is another axis along
+    which EqualInfoAC may still be preferred. Setting aside inference FLOPs, all our
+    SentencePiece models require $23$ model to recover bits/byte performance while
+    retaining the reduced latency. This can be seen visually in [Fig. 4](#S4.F4 "In
+    SentencePiece is a strong baseline ‣ 4 Results ‣ Training LLMs over Neurally Compressed
+    Text").
+  prefs: []
+  type: TYPE_NORMAL
+- en: GZip is not competitive
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Training over GZip-compressed text is relatively ineffective. M2’s performance
+    when trained over GZip highlights a counter-intuitive trend. While the GZip M2
+    models actually learn, it would still be preferable to train over AC-compressed
+    text—even though those models do not learn. This is due to the weak compression
+    offered by GZip. The poor compression rate, coupled with weak learning, means
+    that the GZip M2 models’ bits/byte performance lags behind even the $3$m parameter
+    M1 model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e55fc3e505648431fb2b14a03e1b77ee.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Controlling for Compression Ratio
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/1538e1bc1a45e92cf6b9bd67bb91b79c.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Ignoring Compression Ratio
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 5: Performance of EqualInfoAC across various window sizes, $b$ is second-best.
+    This is due to the higher compression rate achieved by longer Equal Info Windows.
+    When evaluating tokens/byte (right), a monotonic trend emerges, showing that shorter
+    windows are easier to learn.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Short windows are the best
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We see a similar effect in [Fig. 5](#S4.F5 "In GZip is not competitive ‣ 4 Results
+    ‣ Training LLMs over Neurally Compressed Text"), which ablates the EqualInfoAC
+    window size. In terms of bits/byte, the shortest $16$-bit windows, performance
+    improvements with scale are small, but present; see [Table 10](#A1.T10 "In Appendix
+    A Numerical Values ‣ Training LLMs over Neurally Compressed Text") for exact numbers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/3ab3d6f83df7acaa7a313efc5f4e796a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: Using a larger vocabulary for Arithmetic Coding derived methods improves
+    both perplexity (lower bits/byte) as well as token compression rate (lower FLOPs/byte).
+    Among settings where the M2 model actually learns, training over GZip-compressed
+    data is the only case where increasing vocabulary size to $65$k does not help
+    performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Larger M2 vocabulary is helpful
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Tokenizing compressed text using a larger $16$ text mapping. This could be one
+    reason for the performance gain; see [Section 6.1](#S6.SS1 "6.1 EqualInfoAC is
+    less stable and less semantic than SentencePiece ‣ 6 Analysis ‣ Training LLMs
+    over Neurally Compressed Text") for more discussion of “stability”.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Emergence with scale is unlikely
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Given the recent findings of [[55](#bib.bib55)], we anticipate that continuing
+    to scale models beyond $2$ billion parameters is unlikely to deliver an “emergent”
+    ability to learn over AC-compressed text, since the bits/byte metric we use is
+    smooth.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Results persist under “scaling laws” paradigm
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: When scaling models, [[30](#bib.bib30)] recommend that training tokens should
+    be scaled linearly with model size. However, in our experiments above, all models
+    see the same number of tokens, regardless of model size. Consequently, our largest
+    models may be somewhat “undertrained”.^(12)^(12)12The undertraining of our $2$
+    steps, showing the models have not yet converged. To test whether following the
+    “scaling laws” recommendation influences our results, we reevaluate our models
+    at earlier checkpoints selected to maintain a constant ratio of training data
+    to model size. We find that all core trends are unchanged in this setting. See
+    [Appendix D](#A4 "Appendix D Scaling Curves with Scaled Training Data ‣ Training
+    LLMs over Neurally Compressed Text") for details.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Additional Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: At this point, we have established that while the simplest approaches to training
+    over compressed text fail, there are alternate compression schemes that are learnable.
+    In this section, we conduct additional experiments to shed light on which aspects
+    of different compression methods are difficult to learn and what contributes to
+    their learnability.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.1 Bitstream tokenization is not the main source of difficulty
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The compression algorithms we consider output a bitstream, which we later chunk
+    into tokens of a fixed bit depth (e.g., $8$-bit tokens). As such, it is common
+    for the bits representing a single character or UTF-8 byte to be split across
+    multiple tokens. Compounding this issue is that the value of these tokens are
+    contextually determined and may differ depending on the surrounding bytes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The fact that both $8$. We use the same hyperparameters as in [Section 3](#S3
+    "3 Methods ‣ Training LLMs over Neurally Compressed Text"). Working at the bit
+    level means that the output sequence is now longer than the input sequence, which
+    was UTF-8 bytes. As such, this setting is not practical in the real world.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When trained to convergence, the two models have cross entropy losses of $0.693$.
+    This failure mode is the same as in [Fig. 3](#S4.F3 "In 4 Results ‣ Training LLMs
+    over Neurally Compressed Text"), which suggests that AC encoding itself is the
+    main source of difficulty, as opposed to any issue around tokenization or vocabulary
+    size.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.2 Transformers struggle to learn Arithmetic Coding
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Arithmetic Coding is a sequential algorithm that involves tracking multiple
+    state variables as the input (byte) sequence is consumed. Each token in the output
+    sequence represents multiple transformations of these variables, e.g., $8$m model
+    has fewer layers—we see in practice that the Arithmetic Coding algorithm is still
+    difficult to learn.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 5: Transformers struggle to learn Arithmetic Coding. In the sequence-to-sequence
+    setting, a model that learns AC compression/decompression should have an accuracy
+    of $100$ accuracy.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Task | Accuracy | Cross Entropy |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Decompression | $76.98$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Byte Level LM | $76.86$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Compression | $1.7$ |'
+  prefs: []
+  type: TYPE_TB
+- en: To directly diagnose the ability to track Arithmetic Coding, we format AC compression
+    and decompression as sequence-to-sequence tasks. The input provides the model
+    with the true text, so we expect a model that is able to learn Arithmetic Coding
+    should achieve an accuracy of $100$m parameters. Loss, gradients, and evaluation
+    metrics are only computed on the target tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the decompression task, the target tokens are bytes. By ignoring the inputs
+    and just modeling the outputs, the decompression model can achieve decent performance
+    without actually leveraging the input data. To control for this, we also train
+    a byte-level language model baseline on the same sequence-to-sequence data, excluding
+    the input tokens. If the decompression model is actually learning to decompress
+    Arithmetic Coding, we would expect stronger performance than the byte-level baseline.
+    As we see in [Table 5](#S5.T5 "In 5.2 Transformers struggle to learn Arithmetic
+    Coding ‣ 5 Additional Experiments ‣ Training LLMs over Neurally Compressed Text"),
+    the baseline model, which does not see the input tokens, has the same performance
+    as the decompression model.^(14)^(14)14The slight gain is statistically insignificant,
+    $(p=0.07)$. Clearly, the models trained for decompression are not actually learning
+    to do decompression.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The model trained for compression actually shows some signs of learning. Training
+    a language model directly on the compressed output results in the model learning
+    a uniform distribution over tokens, see [Fig. 3](#S4.F3 "In 4 Results ‣ Training
+    LLMs over Neurally Compressed Text"). When the model is able to attend to the
+    input text, we see that the performance in [Table 5](#S5.T5 "In 5.2 Transformers
+    struggle to learn Arithmetic Coding ‣ 5 Additional Experiments ‣ Training LLMs
+    over Neurally Compressed Text") is better than the uniform distribution (which
+    would have a cross entropy loss of $5.545$ it should be able to achieve.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We also find training on these sequence-to-sequence datasets to be less stable
+    than training on the language modeling datasets. In our experiments, large performance
+    swings and divergence were relatively common.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.3 Larger vocabulary helps beyond increasing the compression ratio
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Our best results training over compressed text use EqualInfoAC with $16$ batches.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Table 6](#S5.T6 "In 5.3 Larger vocabulary helps beyond increasing the compression
+    ratio ‣ 5 Additional Experiments ‣ Training LLMs over Neurally Compressed Text")
+    shows that even in this setting, the model with larger vocabulary is stronger.^(16)^(16)16It
+    may be possible to achieve further gains by increasing the token bit depth further.
+    However, most deep learning frameworks do not support using unsigned data types
+    for inputs, and the resulting large vocabulary size can cause a computational
+    bottleneck in the final softmax layer. In fact, *most* of the bits/byte gain ($84$
+    model uses exactly one token to represent each equal-info window. We’ll see in
+    the next section that in EqualInfoAC settings with multiple tokens per window,
+    any non-initial tokens are highly context-dependent, and learning proceeds on
+    a curriculum from the “easy” window-initial tokens to the “harder” window-final
+    tokens.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 6: Most of the gain of increasing vocabulary from $256$k remains even
+    in the “byte matched” setting, where the models train over the same number of
+    raw bytes. Performance gains seen between settings are all statistically significant.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Tokenization | Comparison | Bits/Byte |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}65\text{k}]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}65\text{k}]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: 6 Analysis
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section we examine how neural compression based tokenizers differ from
+    standard tokenizers, and conduct additional analysis on training dynamics and
+    learnability of compressed data. This analysis leads us to several recommendations
+    for future work developing new compression schemes that aim to be learnable by
+    transformer models while delivering stronger compression than subword tokenizers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.1 EqualInfoAC is less stable and less semantic than SentencePiece
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Table 7: Comparing tokenization under SentencePiece vs. EqualInfoAC. SentencePiece
+    gives a fairly stable text $\rightarrow$ is less stable and less semantic. Each
+    occurrence of “elephants” maps to different tokens, and most tokens fail to align
+    with meaningful linguistic boundaries (e.g., word or morpheme).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Input Text | The three currently living species are: African savanna elephants,
+    African forest elephants, and the Asian elephants. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SentencePiece Tokens | [The] [ three] [ currently] [ living] [ species] [ are]
+    [:] [ African] [ ] [s] [a] [v] [anna] [ elephant] [s] [,] [ African] [forest]
+    [ elephant] [s] [,] [ and] [ the] [ Asian] [ elephant] [s] [.] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC [b=16, v=65k] Tokens | [The th] [ree c] [urrently l] [iving ]
+    [species] [ are] [: A] [frica] [n sav] [anna] [ ele] [pha] [nts, ] [Afr] [ican ]
+    [forest ] [eleph] [ants, ] [and the ] [Asi] [an e] [lep] [hant] [s.] |'
+  prefs: []
+  type: TYPE_TB
+- en: While the performance of our EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}65\text{k}]$
+    model approaches that of our SentencePiece baseline, qualitative analysis shows
+    that the two tokenization schemes differ in many regards. [Table 7](#S6.T7 "In
+    6.1 EqualInfoAC is less stable and less semantic than SentencePiece ‣ 6 Analysis
+    ‣ Training LLMs over Neurally Compressed Text") illustrates some of these differences.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we observe that SentencePiece produces a relatively stable text $\rightarrow$ token
+    mapping.^(17)^(17)17See [Appendix L](#A12 "Appendix L Corner Cases of Tokenization
+    lead to Unstable Mappings ‣ Training LLMs over Neurally Compressed Text") for
+    some corner cases where this is not the case. For example, “elephants” appears
+    three times in the sentence, and maps stably to the same two-token sequence in
+    all cases: [ elephant] [s]. Similarly, both occurrences of “African” map to the
+    same token: [ African]. By comparison, the EqualInfoAC tokenization is relatively
+    unstable, with each occurrence of these words being segmented in a different way
+    and yielding a different token sequence.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Second, we find that the SentencePiece tokenization is more “semantic”, by which
+    we mean that the segmentation it induces aligns better with meaningful linguistic
+    units—words and morphemes. While there are some exceptions, e.g. “savanna” being
+    parsed as [s] [a] [v] [anna], the more common case is whole words being parsed
+    as single tokens (e.g., currently), or into meaningful morphemes (e.g., elephant-s).
+    By comparison, EqualInfoAC tokenization appears to almost entirely disregard word
+    and morpheme boundaries. As one example, we see “Asian elephants.” parsed as [Asi] [an e] [lep] [hant] [s.].
+  prefs: []
+  type: TYPE_NORMAL
+- en: Despite these differences, there is an important *similarity* between SentencePiece
+    and EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}65\text{k}]$, will always map to
+    the same output text. This “transparent decoding” property likely makes it easier
+    for a downstream model to learn over these tokens.^(18)^(18)18Padding to reach
+    a specific window size can require extra computation to discern between padding
+    and characters that compress to all zeros, however we find in [Appendix I](#A9
+    "Appendix I M2 Can Handle Padding Zeros at the End of a Window ‣ Training LLMs
+    over Neurally Compressed Text") that it is not an issue for M2 models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 8: Window-initial tokens have stable token $\rightarrow$ and show the
+    full window text in a random sample of cases where a specific token appears at
+    the first or second position within the window.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Token | Window Position | Window Text |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $151$ | [lew ] / [lea] / [led] / [len] / [less] / [led] / [les] / [lew ]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$ | [thoug] / [ust] / [ this] / [etti] / [npo] / [thoug] / [ un] / [imag]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $185$ | [ord a] / [or k] / [ord] / [or f] / [or al] / [or a ] / [ore i] /
+    [ora] |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$ | [ery] / [s may] / [cian] / [onte] / [h de] / [cri] / [opp] / [ides]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: When we move to versions of EqualInfoAC that contain *multiple* tokens per window,
+    such as EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}256]$ always maps to the prefix
+    “le-”. However, when occurring as the *second* token within a two-token window,
+    there are no apparent correspondences between window text.^(19)^(19)19A repeated
+    text substring that happens to be aligned with a window multiple times is one
+    of the few cases where the second token will represent the same text. As EqualInfoAC
+    window length increases, the proportion of tokens that are stable decreases. This
+    may explain the observed difficulty of learning over longer windows. The window
+    text for all instances of these tokens can be seen in [Appendix M](#A13 "Appendix
+    M Window Text Patterns and Token Positions ‣ Training LLMs over Neurally Compressed
+    Text").
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/0e379f70eb19ceebfdb928959017c3d5.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7: An illustration of the mapping between characters (bottom), bits
+    (middle) and tokens (top) in the EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}256]$-bit
+    token tends to only cover one or two characters.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that [Table 8](#S6.T8 "In 6.1 EqualInfoAC is less stable and less semantic
+    than SentencePiece ‣ 6 Analysis ‣ Training LLMs over Neurally Compressed Text")
+    examines window $\rightarrow$-bit tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Fig. 7](#S6.F7 "In 6.1 EqualInfoAC is less stable and less semantic than SentencePiece
+    ‣ 6 Analysis ‣ Training LLMs over Neurally Compressed Text") also highlights that
+    window-initial characters are not being well compressed, with the window-initial
+    token often only covering one or two characters. This is due to our EqualInfoAC
+    procedure fully resetting M1’s context at every window boundary. With no context,
+    M1 cannot make confident predictions, leading to more bits being needed to represent
+    the initial character. On the positive side, this setup guarantees that a window
+    can be decoded in isolation, which should aid learning. However it is worth exploring
+    in future work whether maintaining some M1 context across windows could improve
+    the compression ratio without hurting learnability.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.2 AC decoding is learned step-by-step
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/95f798f8c3c6d93b90eb97d3099b85c7.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Accuracy per token position
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/621c9c433646ebbd6d1f7694fd9ec16f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Increase over “trivial” accuracy per token position
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 8: Earlier tokens within the $8$ bits.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As Arithmetic Coding is a sequential (left-to-right) and contextual algorithm,
+    the text represented by a given token will differ based on the previous token.
+    As such, a model should perform better on a token if it has a strong understanding
+    of the token before it. When using EqualInfoAC compression, each window represents
+    an independent Arithmetic Coding document. As we move deeper into the window,
+    more and more AC decompression must be done to understand the token.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To understand how a token’s position within a window affects learning, we track
+    across training the average accuracy at each position within the $8$ steps of
+    training. Looking at accuracy increase highlights the “sequential learning” trend
+    by discounting any part of accuracy that is text independent. In particular, we
+    note that window-final tokens have a non-uniform distribution due to the use of
+    window-final padding bits (see our EqualInfoAC formulation in [Section 3.3](#S3.SS3
+    "3.3 Compression Methods ‣ 3 Methods ‣ Training LLMs over Neurally Compressed
+    Text")), which can be learned without any understanding of the text.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We observe two interesting trends. First, there is a clear ordering as to when
+    the model starts to make meaningful (non-trivial) progress on a given position.
+    The initial token (#1) is learned first, followed fairly quickly by #2 and then
+    #3\. Later tokens are only “unlocked” after $10{,}000$ training steps, suggesting
+    that the ability to model these tokens builds on a foundation of understanding
+    the preceding tokens within the window.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second trend concerns the accuracy reached at each position. Here, we observe
+    an increase in accuracy from #1 < #2 < #3, followed by a decrease from #3 < #4
+    < #5 and so on.^(22)^(22)22The final token #8 also fits this trend when looking
+    at the increase over non-trivial accuracy. The raw accuracy in this position is
+    higher than previous tokens #4–7, due to the skewed distribution introduced by
+    window-final padding. We interpret the increase across the first three positions
+    as due to the benefit of extra leftward context. This is akin to the initial byte
+    in a word being harder to predict than the following bytes. The decreasing performance
+    at tokens #4 and beyond suggests the model is unable to track AC decompression
+    indefinitely. While the model clearly learns to decompress longer sequences as
+    training progresses, reliably decoding past $32$ bits of AC output appears to
+    be a challenge.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.3 Learnable distributions are less uniform
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8c0a973290d92fa7adb5d95c9a385967.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) *bit* n-grams counting all overlapping occurrences
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/889f46c68ac7320752c940db1b171136.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) n-bit *tokens* following our M2 tokenization
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 9: As the bitstream is grouped into larger units, the empirical distribution
+    moves away from uniform. We plot KL divergence of observed n-gram distributions
+    from the uniform distribution, across various n-gram sizes. While AC compressed
+    data would be difficult to distinguish from random data, we find there are still
+    patterns to capture when using other compression schemes, particularly for GZip
+    and shorter EqualInfoAC windows. Compared to the left plot, we find that the tokenized
+    bitstream (see [Section 3.4](#S3.SS4 "3.4 Tokenization of Compressed Text ‣ 3
+    Methods ‣ Training LLMs over Neurally Compressed Text")) has even more information
+    for M2 to capture.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A well-known result in the compression literature is that there can be no recursive
+    compression [[45](#bib.bib45)]. The compression algorithm removes information
+    captured by its model, resulting in a uniform output that appears random to the
+    original model. However, our setting is not recursive compression. Instead, a
+    separate and larger model is trained on the compressed output, which should be
+    able to capture new patterns in the bitstream.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Despite this, the output of compression using M1 appears very uniform, as evidenced
+    by the minimal gains from modeling the unigram token distribution in [Table 3](#S3.T3
+    "In 3.4 Tokenization of Compressed Text ‣ 3 Methods ‣ Training LLMs over Neurally
+    Compressed Text"). Therefore, it seems reasonable that this uniformity could make
+    it hard for M2 to learn (as all patterns must be contextual). We investigate this
+    by plotting the KL divergence [[39](#bib.bib39)] between the observed empirical
+    distribution and a uniform distribution for different segmentations of the bitstream.
+    If the underlying distribution of bits was truly random and independent, then
+    the distribution of unigrams for some bitstream segmentation should remain uniform
+    as $p(b_{i},\dots,b_{i+n})=\prod_{j=i}^{i+n}(p(b_{j}))$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We segment the bitstream either into bit n-grams, where successive n-grams are
+    allowed to overlap, or into n-bit tokens, following our M2 tokenization procedure—see
+    [Section 3.4](#S3.SS4 "3.4 Tokenization of Compressed Text ‣ 3 Methods ‣ Training
+    LLMs over Neurally Compressed Text"). We only plot tokenization into $n$ setting.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As a baseline, we used the cryptographic secrets package in Python to generate
+    bitstreams that should be truly random and independent. As such, the KL divergence
+    should remain at $0$. This holds, but it is obfuscated by the log scaling in [Fig. 9](#S6.F9
+    "In 6.3 Learnable distributions are less uniform ‣ 6 Analysis ‣ Training LLMs
+    over Neurally Compressed Text"). In fact, the magnitude of the noise for settings
+    such as GZip and EqualInfoAC is larger than for AC or RNG. This noise behavior
+    is seen in [Fig. 12](#A10.F12 "In Appendix J Entropy Estimation ‣ Training LLMs
+    over Neurally Compressed Text"). See [Appendix J](#A10 "Appendix J Entropy Estimation
+    ‣ Training LLMs over Neurally Compressed Text") for more information on entropy
+    estimation and bias correction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The AC and RNG lines in [Fig. 9](#S6.F9 "In 6.3 Learnable distributions are
+    less uniform ‣ 6 Analysis ‣ Training LLMs over Neurally Compressed Text") are
+    very similar and their sampling noise intervals have large overlaps. This suggests
+    that the data generated by AC compression with M1 is difficult to distinguish
+    from random data.^(24)^(24)24For <math id="footnote24.m1.1" class="ltx_Math" alttext="n></math>
+    decimal places. This is a possible explanation for why M2 models trained on AC
+    data only learn to output a uniform distribution, as seen in [Fig. 3](#S4.F3 "In
+    4 Results ‣ Training LLMs over Neurally Compressed Text").
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [Fig. 9](#S6.F9 "In 6.3 Learnable distributions are less uniform ‣ 6 Analysis
+    ‣ Training LLMs over Neurally Compressed Text"), we see that GZip is the least
+    uniform, which is expected as it has the worst compression rate among these settings.
+    However, the segmentation into tokens does not result in much extra information.
+    This is again suggestive that the differences between the “coding” components
+    of GZip and Arithmetic Coding are important for learnability. It is also a possible
+    explanation of why GZip is the one setting where using $16$-bit tokens does not
+    improve performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Similarly, [Fig. 9](#S6.F9 "In 6.3 Learnable distributions are less uniform
+    ‣ 6 Analysis ‣ Training LLMs over Neurally Compressed Text") shows that EqualInfoAC$[b\mathord{=}16]$,
+    suggesting that weakening the “coding” component of Arithmetic Coding is a more
+    effective way to retain information and increase learnability for M2.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We have shown there is promise in the idea of training LLMs over neural-compressed
+    text. In the best case, this will allow training over text that is better compressed
+    than standard subword token sequences, while maintaining learnability. This an
+    appealing prospect, as models that read and write more text per token are more
+    efficient to train and serve, and can model longer dependencies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While the “very simplest” approach does not work (training directly over a tokenized
+    AC-encoded bitstream), we showed that a relatively simple modification—compression
+    via Equal Info Windows—already brings us within striking distance of popular tokenizers.
+    When measured in terms of perplexity achievable at fixed inference cost (FLOPs/byte),
+    we find that our method outperforms raw byte-level models, and comes increasingly
+    close to the performance of SentencePiece tokenization as scale increases to $2$
+    billion parameters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While bespoke compression methods have developed around different modalities
+    (e.g., text, audio, images, video) and different applications (e.g., delta-of-delta
+    for regular repeating timestamps [[50](#bib.bib50)]), to our knowledge, no efficient
+    compression methods have been designed specifically for use as LLM tokenizers.
+    We are optimistic that future work will create such methods. Compared to today’s
+    subword tokenizers, we expect these methods (i) will deliver higher compression
+    rates, (ii) will come closer to equal information per token, thus allocating compute
+    more effectively, and (iii) will give models a more direct view of the underlying
+    raw text, thus helping on spelling and pronunciation tasks. As a tradeoff, we
+    expect these neural tokenizers will be *somewhat* less stable in their text $\leftrightarrow$ token
+    mapping, but perhaps not so unstable as our approach here. In particular, we think
+    it is worth exploring methods under which a given word typically maps to a relatively
+    small number (tens not thousands) of relatable token sequences.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One direction we left unexplored is the idea of passing information between
+    the compressing model (M1) and the LLM trained over compressed text (M2). Some
+    additional signal of M1’s internal state or output may be helpful for M2 to accurately
+    simulate M1, which is a prerequisite to flawlessly encoding and decoding M1-compressed
+    text.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For hill-climbing in this space, we found it useful to iterate on the sequence-to-sequence
+    sub-tasks of compression and decompression, which should, in theory, be learnable
+    with high accuracy. Specifically, if future work can devise a strong (~$10\times$)
+    compressor that a transformer can be trained to accurately encode and decode,
+    we expect that this will be an ideal candidate for tokenizing text for LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Acknowledgements
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We would like to thank Ben Adlam, Grégoire Delétang, Rosanne Liu, and Colin
+    Raffel for detailed comments on an earlier draft. We’re also grateful to Peter
+    Liu, both for helpful discussion, as well as for building some of the infrastructure
+    that made our experiments easier to run. Finally, we thank Doug Eck, Noah Fiedel,
+    and the PAGI team for ongoing guidance and feedback.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[1] J. Ainslie, S. Ontanon, C. Alberti, V. Cvicek, Z. Fisher, P. Pham, A. Ravula,
+    S. Sanghai, Q. Wang, and L. Yang. [ETC: Encoding Long and Structured Inputs in
+    Transformers](https://aclanthology.org/2020.emnlp-main.19). In B. Webber, T. Cohn,
+    Y. He, and Y. Liu, editors, Proceedings of the 2020 Conference on Empirical Methods
+    in Natural Language Processing (EMNLP), pages 268–284, Online, Nov. 2020\. Association
+    for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[2] R. Al-Rfou, D. Choe, N. Constant, M. Guo, and L. Jones. [Character-Level
+    Language Modeling with Deeper Self-Attention](https://ojs.aaai.org/index.php/AAAI/article/view/4182).
+    Proceedings of the AAAI Conference on Artificial Intelligence, 33(01):3159–3166,
+    Jul. 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[3] A. Baevski, H. Zhou, A. Mohamed, and M. Auli. [wav2vec 2.0: A Framework
+    for Self-Supervised Learning of Speech Representations](https://proceedings.neurips.cc/paper/2020/file/92d1e1eb1cd6f9fba3227870bb6d7f07-Paper.pdf).
+    In Proceedings of the 34th International Conference on Neural Information Processing
+    Systems, NeurIPS’20, Red Hook, NY, USA, 2020\. Curran Associates Inc.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[4] J. Ballé, S. J. Hwang, and E. Agustsson. [TensorFlow Compression: Learned
+    Data Compression](http://github.com/tensorflow/compression), 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[5] I. Beltagy, M. E. Peters, and A. Cohan. [Longformer: The Long-Document
+    Transformer](http://arxiv.org/abs/2004.05150), Dec. 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[6] Z. Borsos, R. Marinier, D. Vincent, E. Kharitonov, O. Pietquin, M. Sharifi,
+    D. Roblek, O. Teboul, D. Grangier, M. Tagliasacchi, and N. Zeghidour. [AudioLM:
+    A Language Modeling Approach to Audio Generation](https://arxiv.org/abs/2209.03143).
+    IEEE/ACM Transactions on Audio, Speech, and Language Processing, 31:2523–2533,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[7] J. Bradbury, R. Frostig, P. Hawkins, M. J. Johnson, C. Leary, D. Maclaurin,
+    G. Necula, A. Paszke, J. VanderPlas, S. Wanderman-Milne, and Q. Zhang. [JAX: composable
+    transformations of Python+NumPy programs](http://github.com/google/jax), 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[8] P. F. Brown, V. J. D. Pietra, S. A. D. Pietra, and R. L. Mercer. [The Mathematics
+    of Statistical Machine Translation: Parameter Estimation](https://aclanthology.org/J93-2003/).
+    Comput. Linguist., 19(2):263–311, jun 1993.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[9] R. Child, S. Gray, A. Radford, and I. Sutskever. [Generating Long Sequences
+    with Sparse Transformers](http://arxiv.org/abs/1904.10509), Apr. 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[10] D. Choe, R. Al-Rfou, M. Guo, H. Lee, and N. Constant. [Bridging the Gap
+    for Tokenizer-Free Language Models](http://arxiv.org/abs/1908.10322). CoRR, abs/1908.10322,
+    2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[11] J. Chung, S. Ahn, and Y. Bengio. [Hierarchical Multiscale Recurrent Neural
+    Networks](https://openreview.net/forum?id=S1di0sfgl). In International Conference
+    on Learning Representations, 2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[12] Y.-A. Chung, Y. Zhang, W. Han, C.-C. Chiu, J. Qin, R. Pang, and Y. Wu.
+    [w2v-BERT: Combining Contrastive Learning and Masked Language Modeling for Self-Supervised
+    Speech Pre-Training](https://arxiv.org/abs/2108.06209). In 2021 IEEE Automatic
+    Speech Recognition and Understanding Workshop (ASRU), pages 244–250, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[13] J. H. Clark, D. Garrette, I. Turc, and J. Wieting. [Canine: Pre-training
+    an Efficient Tokenization-Free Encoder for Language Representation](https://aclanthology.org/2022.tacl-1.5).
+    Transactions of the Association for Computational Linguistics, 10:73–91, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[14] Z. Dai, Z. Yang, Y. Yang, J. Carbonell, Q. Le, and R. Salakhutdinov. [Transformer-XL:
+    Attentive Language Models beyond a Fixed-Length Context](https://aclanthology.org/P19-1285).
+    In Proceedings of the 57th Annual Meeting of the Association for Computational
+    Linguistics, pages 2978–2988, Florence, Italy, July 2019. Association for Computational
+    Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[15] S. DeDeo, R. X. D. Hawkins, S. Klingenstein, and T. Hitchcock. [Bootstrap
+    Methods for the Empirical Study of Decision-Making and Information Flows in Social
+    Systems](https://www.mdpi.com/1099-4300/15/6/2246). Entropy. An International
+    and Interdisciplinary Journal of Entropy and Information Studies, 15(6):2246–2276,
+    2013.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[16] G. Delétang, A. Ruoss, P.-A. Duquenne, E. Catt, T. Genewein, C. Mattern,
+    J. Grau-Moya, L. K. Wenliang, M. Aitchison, L. Orseau, M. Hutter, and J. Veness.
+    [Language Modeling Is Compression](https://arxiv.org/abs/2309.10668). In ICLR,
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[17] P. Deutsch. [GZIP file format specification](https://www.rfc-editor.org/rfc/rfc1952.txt).
+    RFC 1952, May 1996.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[18] P. Deutsch and J.-L. Gailly. [ZLIB Compressed Data Format Specification](https://www.rfc-editor.org/rfc/rfc1950.txt).
+    RFC 1950, May 1996.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[19] J. Duda. [Asymmetric Numeral Systems: Entropy Coding Combining Speed of
+    Huffman Coding with Compression Rate of Arithmetic Coding](http://arxiv.org/abs/1311.2540),
+    Jan. 2014.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[20] B. Efron. [Bootstrap Methods: Another Look at the Jackknife](http://www.jstor.org/stable/2958830).
+    The Annals of Statistics, 7(1):1–26, 1979.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[21] J. H. Friedman. [Greedy Function Approximation: A Gradient Boosting Machine](https://doi.org/10.1214/aos/1013203451).
+    The Annals of Statistics, 29(5):1189–1232, 2001.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[22] K. Fukushima. [Cognitron: A Self-Organizing Multilayered Neural Network](https://link.springer.com/article/10.1007/BF00342633).
+    Biological Cybernetics, 20:121–136, 1975.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[23] P. Gage. [A New Algorithm for Data Compression](http://www.pennelynn.com/Documents/CUJ/HTML/94HTML/19940045.HTM).
+    C Users Journal, 12(2):23–38, 1994.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[24] L. Gao, S. Biderman, S. Black, L. Golding, T. Hoppe, C. Foster, J. Phang,
+    H. He, A. Thite, N. Nabeshima, S. Presser, and C. Leahy. [The Pile: An 800GB Dataset
+    of Diverse Text for Language Modeling](http://arxiv.org/abs/2101.00027), Dec.
+    2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[25] N. Godey, R. Castagné, É. de la Clergerie, and B. Sagot. [MANTa: Efficient
+    Gradient-Based Tokenization for End-to-End Robust Language Modeling](https://aclanthology.org/2022.findings-emnlp.207).
+    In Findings of the Association for Computational Linguistics: EMNLP 2022, pages
+    2859–2870, Abu Dhabi, United Arab Emirates, Dec. 2022. Association for Computational
+    Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[26] O. Goldman, A. Caciularu, M. Eyal, K. Cao, I. Szpektor, and R. Tsarfaty.
+    [Unpacking Tokenization: Evaluating Text Compression and its Correlation with
+    Model Performance](http://arxiv.org/abs/2403.06265), Mar. 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[27] A. Graves. [Adaptive Computation Time for Recurrent Neural Networks](http://arxiv.org/abs/1603.08983),
+    Feb. 2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[28] J. Heek, A. Levskaya, A. Oliver, M. Ritter, B. Rondepierre, A. Steiner,
+    and M. van Zee. [Flax: A neural network library and ecosystem for JAX](http://github.com/google/flax),
+    2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[29] G. Hinton, O. Vinyals, and J. Dean. [Distilling the Knowledge in a Neural
+    Network](http://arxiv.org/abs/1503.02531), Mar. 2015.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[30] J. Hoffmann, S. Borgeaud, A. Mensch, E. Buchatskaya, T. Cai, E. Rutherford,
+    D. de las Casas, L. A. Hendricks, J. Welbl, A. Clark, T. Hennigan, E. Noland,
+    K. Millican, G. van den Driessche, B. Damoc, A. Guy, S. Osindero, K. Simonyan,
+    E. Elsen, O. Vinyals, J. W. Rae, and L. Sifre. [Training Compute-Optimal Large
+    Language Models](https://openreview.net/forum?id=iBBcRUlOAPR). In Advances in
+    Neural Information Processing Systems, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[31] P. G. Howard and J. S. Vitter. [Analysis of Arithmetic Coding for Data
+    Compression](https://www.sciencedirect.com/science/article/pii/0306457392900669).
+    Information Processing & Management, 28(6):749–763, 1992.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[32] D. A. Huffman. [A Method for the Construction of Minimum-Redundancy Codes](https://ieeexplore.ieee.org/document/4051119).
+    Proceedings of the IRE, 40(9):1098–1101, 1952.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[33] J. D. Hunter. [Matplotlib: A 2D Graphics Environment](https://ieeexplore.ieee.org/document/4160265).
+    Computing in Science & Engineering, 9(3):90–95, 2007.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[34] Z. Jiang, M. Y. R. Yang, M. Tsirlin, R. Tang, and J. Lin. [Less is More:
+    Parameter-Free Text Classification with Gzip](http://arxiv.org/abs/2212.09410),
+    Dec. 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[35] J. Kaplan, S. McCandlish, T. Henighan, T. B. Brown, B. Chess, R. Child,
+    S. Gray, A. Radford, J. Wu, and D. Amodei. [Scaling Laws for Neural Language Models](http://arxiv.org/abs/2001.08361),
+    Jan. 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[36] N. Kitaev, L. Kaiser, and A. Levskaya. [Reformer: The Efficient Transformer](https://openreview.net/forum?id=rkgNKkHtvB).
+    In International Conference on Learning Representations, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[37] T. Kudo. [Subword Regularization: Improving Neural Network Translation
+    Models with Multiple Subword Candidates](https://aclanthology.org/P18-1007). In
+    Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics
+    (Volume 1: Long Papers), pages 66–75, Melbourne, Australia, July 2018\. Association
+    for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[38] T. Kudo and J. Richardson. [SentencePiece: A Simple and Language Independent
+    Subword Tokenizer and Detokenizer for Neural Text Processing](https://aclanthology.org/D18-2012).
+    In Proceedings of the 2018 Conference on Empirical Methods in Natural Language
+    Processing: System Demonstrations, pages 66–71, Brussels, Belgium, Nov. 2018\.
+    Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[39] S. Kullback and R. A. Leibler. [On Information and Sufficiency](https://doi.org/10.1214/aoms/1177729694).
+    The Annals of Mathematical Statistics, 22(1):79–86, 1951.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[40] M. O. Külekci. [Compressed Context Modeling for Text Compression](https://ieeexplore.ieee.org/document/5749495).
+    In 2011 Data Compression Conference, pages 373–382, 2011.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[41] B. Lester, J. Yurtsever, S. Shakeri, and N. Constant. [Reducing Retraining
+    by Recycling Parameter-Efficient Prompts](https://arxiv.org/abs/2208.05577). arXiv
+    preprint arXiv:2208.05577, aug 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[42] Y. Leviathan, M. Kalman, and Y. Matias. Fast inference from transformers
+    via speculative decoding, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[43] Y. Leviathan, M. Kalman, and Y. Matias. [Fast Inference from Transformers
+    via Speculative Decoding](https://proceedings.mlr.press/v202/leviathan23a.html).
+    In Proceedings of the 40th International Conference on Machine Learning, volume
+    202 of Proceedings of Machine Learning Research, pages 19274–19286\. PMLR, 23–29
+    Jul 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[44] R. Liu, D. Garrette, C. Saharia, W. Chan, A. Roberts, S. Narang, I. Blok,
+    R. Mical, M. Norouzi, and N. Constant. [Character-Aware Models Improve Visual
+    Text Rendering](https://aclanthology.org/2023.acl-long.900). In Proceedings of
+    the 61st Annual Meeting of the Association for Computational Linguistics (Volume
+    1: Long Papers), pages 16270–16297, Toronto, Canada, July 2023\. Association for
+    Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[45] M. Mahoney. [Data Compression Explained](https://mattmahoney.net/dc/dce.html).
+    2013.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[46] G. Miller. [Note on the Bias of Information Estimates](https://www.scienceopen.com/document?vid=357d299f-62fa-4bda-8dd2-e4d5b5abde5d).
+    In Information Theory in Psychology: Problems and Methods, pages 95–100\. Free
+    Press, 1955.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[47] V. Nair and G. E. Hinton. [Rectified Linear Units Improve Restricted Boltzmann
+    Machines](https://www.cs.toronto.edu/~fritz/absps/reluICML.pdf). In Proceedings
+    of the 27th International Conference on International Conference on Machine Learning,
+    ICML’10, pages 807–814, Madison, WI, USA, 2010\. Omnipress.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[48] L. Paninski. [Estimation of Entropy and Mutual Information](https://doi.org/10.1162/089976603321780272).
+    Neural Computation, 15(6):1191–1253, June 2003.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[49] R. Pasco. [Source Coding Algorithms for Fast Data Compression (Ph.D. Thesis
+    Abstr.)](https://ieeexplore.ieee.org/document/1055739). IEEE Transactions on Information
+    Theory, 23(4):548–548, 1977.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[50] T. Pelkonen, S. Franklin, J. Teller, P. Cavallaro, Q. Huang, J. Meza,
+    and K. Veeraraghavan. [Gorilla: a Fast, Scalable, In-Memory Time Series Database](https://doi.org/10.14778/2824032.2824078).
+    Proc. VLDB Endow., 8(12):1816–1827, aug 2015.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[51] O. Press, N. Smith, and M. Lewis. [Train Short, Test Long: Attention with
+    Linear Biases Enables Input Length Extrapolation](https://openreview.net/forum?id=R8sQPpGCv0).
+    In International Conference on Learning Representations, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[52] C. Raffel, N. Shazeer, A. Roberts, K. Lee, S. Narang, M. Matena, Y. Zhou,
+    W. Li, and P. J. Liu. [Exploring the Limits of Transfer Learning with a Unified
+    Text-to-Text Transformer](https://jmlr.org/papers/v21/20-074.html). Journal of
+    Machine Learning Research (JMLR 2020), 21(140):1–67, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[53] J. J. Rissanen. [Generalized Kraft Inequality and Arithmetic Coding](https://ieeexplore.ieee.org/document/5391119).
+    IBM Journal of Research and Development, 20(3):198–203, 1976.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[54] A. Roberts, H. W. Chung, G. Mishra, A. Levskaya, J. Bradbury, D. Andor,
+    S. Narang, B. Lester, C. Gaffney, A. Mohiuddin, C. Hawthorne, A. Lewkowycz, A. Salcianu,
+    M. van Zee, J. Austin, S. Goodman, L. B. Soares, H. Hu, S. Tsvyashchenko, A. Chowdhery,
+    J. Bastings, J. Bulian, X. Garcia, J. Ni, A. Chen, K. Kenealy, K. Han, M. Casbon,
+    J. H. Clark, S. Lee, D. Garrette, J. Lee-Thorp, C. Raffel, N. Shazeer, M. Ritter,
+    M. Bosma, A. Passos, J. Maitin-Shepard, N. Fiedel, M. Omernick, B. Saeta, R. Sepassi,
+    A. Spiridonov, J. Newlan, and A. Gesmundo. [Scaling Up Models and Data with t5x
+    and seqio](http://jmlr.org/papers/v24/23-0795.html). Journal of Machine Learning
+    Research, 24(377):1–8, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[55] R. Schaeffer, B. Miranda, and S. Koyejo. [Are Emergent Abilities of Large
+    Language Models a Mirage?](https://arxiv.org/abs/2304.15004) In Thirty-Seventh
+    Conference on Neural Information Processing Systems, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[56] R. Sennrich, B. Haddow, and A. Birch. [Neural Machine Translation of Rare
+    Words with Subword Units](https://aclanthology.org/P16-1162). In Proceedings of
+    the 54th Annual Meeting of the Association for Computational Linguistics (Volume
+    1: Long Papers), pages 1715–1725, Berlin, Germany, Aug. 2016\. Association for
+    Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[57] C. E. Shannon. [A Mathematical Theory of Communication](http://plan9.bell-labs.com/cm/ms/what/shannonday/shannon1948.pdf).
+    The Bell System Technical Journal, 27:379–423, 1948.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[58] P. Shaw, J. Uszkoreit, and A. Vaswani. [Self-Attention with Relative Position
+    Representations](https://aclanthology.org/N18-2074). In Proceedings of the 2018
+    Conference of the North American Chapter of the Association for Computational
+    Linguistics: Human Language Technologies, Volume 2 (Short Papers), pages 464–468,
+    New Orleans, Louisiana, June 2018\. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[59] N. Shazeer and M. Stern. [Adafactor: Adaptive Learning Rates with Sublinear
+    Memory Cost](https://proceedings.mlr.press/v80/shazeer18a.html). In Proceedings
+    of the 35th International Conference on Machine Learning, volume 80 of Proceedings
+    of Machine Learning Research, pages 4596–4604\. PMLR, July 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[60] S. Stanton, P. Izmailov, P. Kirichenko, A. Alemi, and A. G. Wilson. [Does
+    Knowledge Distillation Really Work?](https://arxiv.org/abs/1911.09189) 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[61] Y. Tay, V. Q. Tran, S. Ruder, J. Gupta, H. W. Chung, D. Bahri, Z. Qin,
+    S. Baumgartner, C. Yu, and D. Metzler. [Charformer: Fast Character Transformers
+    via Gradient-based Subword Tokenization](https://openreview.net/forum?id=JtBRnrlOEFN).
+    In International Conference on Learning Representations, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[62] D. Tito Svenstrup, J. Hansen, and O. Winther. [Hash Embeddings for Efficient
+    Word Representations](https://proceedings.neurips.cc/paper_files/paper/2017/file/f0f6ba4b5e0000340312d33c212c3ae8-Paper.pdf).
+    In Advances in Neural Information Processing Systems, volume 30\. Curran Associates,
+    Inc., 2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[63] C. S. K. Valmeekam, K. Narayanan, D. Kalathil, J.-F. Chamberland, and
+    S. Shakkottai. [LLMZip: Lossless Text Compression using Large Language Models](http://arxiv.org/abs/2306.04050),
+    June 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[64] A. van den Oord, O. Vinyals, and K. Kavukcuoglu. [Neural Discrete Representation
+    Learning](https://proceedings.neurips.cc/paper_files/paper/2017/file/7a98af17e63a0ac09ce2e96d03992fbc-Paper.pdf).
+    In Proceedings of the 31st International Conference on Neural Information Processing
+    Systems, NeurIPS’17, page 6309–6318, Red Hook, NY, USA, 2017\. Curran Associates
+    Inc.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[65] G. Van Rossum and F. L. Drake. Python 3 Reference Manual. CreateSpace,
+    Scotts Valley, CA, 2009.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[66] D. Varis and O. Bojar. [Sequence Length is a Domain: Length-based Overfitting
+    in Transformer Models](https://aclanthology.org/2021.emnlp-main.650). In Proceedings
+    of the 2021 Conference on Empirical Methods in Natural Language Processing, pages
+    8246–8257, Online and Punta Cana, Dominican Republic, Nov. 2021\. Association
+    for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[67] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez,
+    Ł. Kaiser, and I. Polosukhin. [Attention Is All You Need](http://papers.nips.cc/paper/7181-attention-is-all-you-need.pdf).
+    In Advances in Neural Information Processing Systems 30, pages 5998–6008\. Curran
+    Associates, Inc., 2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[68] L. Vilnis, Y. Zemlyanskiy, P. Murray, A. T. Passos, and S. Sanghai. [Arithmetic
+    Sampling: Parallel Diverse Decoding for Large Language Models](https://proceedings.mlr.press/v202/vilnis23a.html).
+    In Proceedings of the 40th International Conference on Machine Learning, volume
+    202 of Proceedings of Machine Learning Research, pages 35120–35136\. PMLR, 23–29
+    Jul 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[69] P. Virtanen, R. Gommers, T. E. Oliphant, M. Haberland, T. Reddy, D. Cournapeau,
+    E. Burovski, P. Peterson, W. Weckesser, J. Bright, S. J. van der Walt, M. Brett,
+    J. Wilson, K. J. Millman, N. Mayorov, A. R. J. Nelson, E. Jones, R. Kern, E. Larson,
+    C. J. Carey, İ. Polat, Y. Feng, E. W. Moore, J. VanderPlas, D. Laxalde, J. Perktold,
+    R. Cimrman, I. Henriksen, E. A. Quintero, C. R. Harris, A. M. Archibald, A. H.
+    Ribeiro, F. Pedregosa, P. van Mulbregt, and SciPy 1.0 Contributors. [SciPy 1.0:
+    Fundamental Algorithms for Scientific Computing in Python](https://scipy.org/).
+    Nature Methods, 17:261–272, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[70] S. Wang, B. Z. Li, M. Khabsa, H. Fang, and H. Ma. Linformer: Self-Attention
+    with Linear Complexity, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[71] M. L. Waskom. [Seaborn: Statistical Data Visualization](https://doi.org/10.21105/joss.03021).
+    Journal of Open Source Software, 6(60):3021, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[72] B. L. Welch. [The Generalization of “Student’s” Problem when Several Different
+    Population Variances are Involved](http://www.jstor.org/stable/2332510). Biometrika,
+    34(1/2):28–35, 1947.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[73] I. H. Witten, R. M. Neal, and J. G. Cleary. [Arithmetic Coding for Data
+    Compression](https://doi.org/10.1145/214762.214771). Communications of The Acm,
+    30(6):520–540, June 1987.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[74] L. Xue, A. Barua, N. Constant, R. Al-Rfou, S. Narang, M. Kale, A. Roberts,
+    and C. Raffel. [ByT5: Towards a Token-Free Future with Pre-trained Byte-to-Byte
+    Models](https://aclanthology.org/2022.tacl-1.17). Transactions of the Association
+    for Computational Linguistics, 10:291–306, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[75] M. Zaheer, G. Guruganesh, K. A. Dubey, J. Ainslie, C. Alberti, S. Ontanon,
+    P. Pham, A. Ravula, Q. Wang, L. Yang, et al. Big bird: Transformers for longer
+    sequences. Advances in Neural Information Processing Systems, 33, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[76] G. K. Zipf. The Psycho-Biology of Language. Houghton Mifflin, 1935.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[77] J. Ziv and A. Lempel. [A Universal Algorithm for Sequential Data Compression](https://courses.cs.duke.edu/spring03/cps296.5/papers/ziv_lempel_1977_universal_algorithm.pdf).
+    IEEE Transactions on Information Theory, 23(3):337–343, 1977.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[78] A. Zvonkin and L. Levin. [The Complexity of Finite Objects and the Development
+    of the Concepts of Information and Randomness by Means of the Theory of Algorithms](https://www.cs.bu.edu/fac/lnd/dvi/ZL-e.pdf).
+    Russian Mathematical Surveys, 25:83, 10 2007.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Numerical Values
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Table 9: Numerical values from [Fig. 3](#S4.F3 "In 4 Results ‣ Training LLMs
+    over Neurally Compressed Text"). Methods that use $16$). Note: One thousand million
+    is used over one billion to make comparison of FLOPs/byte values easier.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Dataset | Size | bits/byte | FLOPs/byte |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Bytes | $25$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | uniform | $8.00$ | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SentencePiece | $25$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | uniform | $3.47$ | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AC$[v\mathord{=}256]$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | uniform | $1.46$ | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AC$[v\mathord{=}65\text{k}]$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '| StaticAC$[v\mathord{=}256]$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | uniform | $4.62$ | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| StaticAC$[v\mathord{=}65\text{k}]$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}256]$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | uniform | $3.01$ | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}65\text{k}]$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GZip$[v\mathord{=}256]$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | uniform | $3.59$ | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GZip$[v\mathord{=}65\text{k}]$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$M |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 10: Numerical values from [Fig. 5](#S4.F5 "In GZip is not competitive
+    ‣ 4 Results ‣ Training LLMs over Neurally Compressed Text"). Values for EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}256]$
+    showed slight improvements beyond the significant digits shown here as the model
+    scales.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Dataset | Size | bits/byte | FLOPs/byte |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}32,\,v\mathord{=}256]$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}32,\,v\mathord{=}65\text{k}]$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}64,\,v\mathord{=}256]$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}64,\,v\mathord{=}65\text{k}]$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}128,\,v\mathord{=}256]$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}128,\,v\mathord{=}65\text{k}]$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$M |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 11: Numerical values from [Fig. 11](#A9.F11 "In Appendix I M2 Can Handle
+    Padding Zeros at the End of a Window ‣ Training LLMs over Neurally Compressed
+    Text"), comparing our multiple implementations of EqualInfoAC.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Dataset | Compression Ratio | Size | bits/byte | FLOPs/byte |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}256]$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $113$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $403$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $2$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}256]$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $113$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $403$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $2$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}65\text{k}]$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $113$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $403$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $2$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}65\text{k}]$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $113$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $403$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $2$M |'
+  prefs: []
+  type: TYPE_TB
+- en: '[Table 9](#A1.T9 "In Appendix A Numerical Values ‣ Training LLMs over Neurally
+    Compressed Text") includes the specific values used to create [Fig. 3](#S4.F3
+    "In 4 Results ‣ Training LLMs over Neurally Compressed Text"). Similarly, [Table 10](#A1.T10
+    "In Appendix A Numerical Values ‣ Training LLMs over Neurally Compressed Text")
+    includes the values used to create [Fig. 5](#S4.F5 "In GZip is not competitive
+    ‣ 4 Results ‣ Training LLMs over Neurally Compressed Text"). The numerical values
+    from [Fig. 6](#S4.F6 "In Short windows are the best ‣ 4 Results ‣ Training LLMs
+    over Neurally Compressed Text") can be found across [Table 9](#A1.T9 "In Appendix
+    A Numerical Values ‣ Training LLMs over Neurally Compressed Text") and [Table 10](#A1.T10
+    "In Appendix A Numerical Values ‣ Training LLMs over Neurally Compressed Text").
+    [Table 11](#A1.T11 "In Appendix A Numerical Values ‣ Training LLMs over Neurally
+    Compressed Text") includes the numerical values from [Fig. 11](#A9.F11 "In Appendix
+    I M2 Can Handle Padding Zeros at the End of a Window ‣ Training LLMs over Neurally
+    Compressed Text").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B Variance
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Sampling from the validation set was seeded. For a given seed, the same batches
+    are sampled at each evaluation step within a training run. Similarly, when models
+    of a different size are trained on the same compressed data, the same evaluation
+    batches are sampled, allowing for fair comparison. As the Bytes and SentencePiece
+    baselines use deterministic datasets, the validation seed is not used. Instead
+    the “start_step” is incremented by $20$ batches.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Model initialization and the order of the training data is controlled by the
+    training seed. This seed was also changed during variance testing. During training,
+    the dataset is checkpointed and therefore each example is seen exactly once. The
+    exact order of the training data is determined by the seed. As the Bytes and SentencePiece
+    baselines use deterministic datasets, the training order is fixed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: $5$m parameters were trained with different seeds (both validation and training)
+    for each compression method and the two baselines. The mean and standard deviation
+    can be found in [Table 12](#A2.T12 "In Appendix B Variance ‣ Training LLMs over
+    Neurally Compressed Text"). The variance is so low that we only report single
+    values for most other experimental settings, such as larger models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 12: Variance in performance is low. Even with maximum changes between
+    runs—different evaluation samples, different training orders, and different parameter
+    initialization—there is very little variance in final performance. Statistics
+    were calculated over $5$m parameter training runs for each method.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | bits/byte |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Bytes | $1.2899\pm 0.0020$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SentencePiece | $1.1171\pm 0.0006$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AC$[v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| StaticAC$[v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}32,\,v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}64,\,v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}128,\,v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GZip$[v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: Training models of size $403$ re-runs in the most problematic case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix C The Amount of Raw Text Bytes Seen by M2
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[Table 13](#A3.T13 "In Appendix C The Amount of Raw Text Bytes Seen by M2 ‣
+    Training LLMs over Neurally Compressed Text") shows the number of tokens and bytes
+    found in the training dataset for each compression method. During the data generation
+    process, sequences of $10{,}240$ fewer tokens. All compression datasets are created
+    from the same source sequences, thus the underlying byte sequences compressed
+    by weaker methods are prefixes of the underlying sequences compressed by stronger
+    methods.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 13: Compression ratios (bytes $/$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Compression Ratio | Tokens | Bytes |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Bytes | $1.0$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SentencePiece | $4.28$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AC$[v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| StaticAC$[v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GZip$[v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}32,\,v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}64,\,v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}128,\,v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AC$[v\mathord{=}65\text{k}]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| StaticAC$[v\mathord{=}65\text{k}]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GZip$[v\mathord{=}65\text{k}]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}65\text{k}]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}32,\,v\mathord{=}65\text{k}]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}64,\,v\mathord{=}65\text{k}]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}128,\,v\mathord{=}65\text{k}]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix D Scaling Curves with Scaled Training Data
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[[30](#bib.bib30)] found that when scaling models, the training data should
+    be scaled with the model size. As such, when comparing settings with constant
+    training FLOPs, a large part of the FLOPs budget should be used by adding more
+    training data. We apply this technique to compensate for our $2$k steps. Otherwise,
+    the settings match those in [Fig. 3](#S4.F3 "In 4 Results ‣ Training LLMs over
+    Neurally Compressed Text"). Numerical values used in the graph can be found in
+    [Table 14](#A4.T14 "In Appendix D Scaling Curves with Scaled Training Data ‣ Training
+    LLMs over Neurally Compressed Text").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Scaling the training data adjusts the absolute slopes of the lines for all models
+    that learn. Models that do not learn still only predict a uniform distribution.
+    The trends between settings are unchanged. Thus we opt to plot the versions where
+    training data is held constant across model sizes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/5adef71f610860135c0b0276ab634f2d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 10: Training language models over compressed text while scaling training
+    data with model size results in steeper slopes. When scaling model size, it has
+    been found that the training data should be scaled proportionally [[30](#bib.bib30)].
+    We apply this scaling technique by plotting values for smaller models at earlier
+    training steps. The trends are similar to [Fig. 3](#S4.F3 "In 4 Results ‣ Training
+    LLMs over Neurally Compressed Text"), even down to things like where the EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}256]$m
+    parameter models).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 14: Numerical values from [Fig. 10](#A4.F10 "In Appendix D Scaling Curves
+    with Scaled Training Data ‣ Training LLMs over Neurally Compressed Text"). Values
+    for the uniform distribution and FLOPs/byte values can be found in [Table 9](#A1.T9
+    "In Appendix A Numerical Values ‣ Training LLMs over Neurally Compressed Text").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Dataset | Size | Step | bits/byte |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Bytes | $25$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SentencePiece | $25$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AC$[v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AC$[v\mathord{=}65\text{k}]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| StaticAC$[v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| StaticAC$[v\mathord{=}65\text{k}]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}65\text{k}]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GZip$[v\mathord{=}256]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GZip$[v\mathord{=}65\text{k}]$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $113$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $403$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$ |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix E GZip Headers and Footers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: GZip compressed documents have both a header—two bytes that identify the file
+    type—and a footer—two bytes representing the Adler-$32$-bit vocabulary does not
+    help. In this work, we use the version of GZip datasets that include the header
+    and footers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 15: Removal of the GZip header and footer results in minimal performance
+    differences.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | bits/byte |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GZip$[v\mathord{=}256]$ | 2.33 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|     $-$header/footer | 2.35 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GZip$[v\mathord{=}65\text{k}]$ | 2.91 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|     $-$header/footer | 2.92 |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix F Arithmetic Coding Details
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: While it is easiest to imagine the narrowing of the bit interval process in
+    Arithmetic Coding as a second step after the character interval $I_{n}$ or the
+    overlap conditions outlined above happen again. This is repeated until a bit interval
+    that is enclosed by the final interval is found.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This fact is critical in finite precision implementations. Once a bit is locked
+    in, it can be emitted. This allows for the rescaling of the current interval and
+    is how over/underflow is avoided.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix G Evaluation Details
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In our experiments, different settings have different vocabulary size, tokenization,
+    and has a different amount of underlying text due to variations in compression
+    rate. Thus, they are not directly comparable using “per-token” versions metrics
+    like the cross-entropy, negative log likelihood loss, or perplexity. To address
+    this, we convert our token-level negative log likelihood loss, $\ell$. Note that
+    we use “per byte” metrics over “per character” metrics as there is ambiguity as
+    to what counts as a character when working with UTF-8 Unicode.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As is common in evaluation of work related to compression, instead of the negative
+    log likelihood loss $\ell_{\text{byte}}$, when the input tokens represent bytes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As one of the main advantages of an M2 model that processes compressed text
+    is that it needs to be run over fewer tokens, we also compare models based on
+    the amount of FLOPs required during inference. Different compression methods result
+    in different sequence lengths for the M2 model to process. Therefore, we need
+    to standardize our FLOPs measurement to the byte-level so that it is comparable
+    across methods. We start with FLOPs/token—approximated by $2\times\text{num\_params}$
+    (not including embedding parameters) following [[35](#bib.bib35)]—and divide it
+    by that method’s token-level compression rate to get the FLOPs/byte, just like
+    the bits/byte conversion. For methods that require running an M1 model over each
+    byte, the FLOPs/byte cost of the M1 model is added. Note, while there is a computational
+    cost to running GZip over the input text, we ignore it as it is insubstantial
+    compared to the cost of running model inference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Evaluation of language models is often done by running the model on the entire
+    validation set, moving the sliding window formed by the model’s context window
+    by a single token at each step. This yields stronger models by providing the most
+    context possible when making predictions for a token. As we care about relative
+    performances between methods, opposed to absolute performance, we opt to evaluate
+    the model on a sample of the C4 validation set. During evaluation, the model is
+    run over $20$. Thus, the variance introduced from sampling the validation set
+    is negligible. See [Appendix B](#A2 "Appendix B Variance ‣ Training LLMs over
+    Neurally Compressed Text") for more information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix H Alternative Compression Methods
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: H.1 Equal-Text Windows
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We also considered what is essentially the inverse of Equal-Info Windows—Equal-Text
+    Windows. Instead of consuming a variable amount of text and outputting a consistent
+    number of bits, Equal-Text Windows feed a consistent amount of text into the Arithmetic
+    Coder which is compressed to a variable number of bits.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To deal with this variability, we thought M2 would require delimiter tokens
+    between windows in order to tell which tokens are part of the same independently
+    compressed chunk. We thought this would hurt the compression rate too much, especially
+    for the short AC compressed windows that we found most effective in [Fig. 5](#S4.F5
+    "In GZip is not competitive ‣ 4 Results ‣ Training LLMs over Neurally Compressed
+    Text").
+  prefs: []
+  type: TYPE_NORMAL
+- en: Further exploration of this method, especially to see if the delimiters are
+    actually required, would be interesting future work as the Equal-Text Windows
+    algorithm is much simpler than Equal-Info Windows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: H.2 Huffman Coding
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We also considered using Huffman Coding [[32](#bib.bib32)] as a baseline compression
+    implementation. As most implementations use static probabilities for characters,
+    we thought the compression rate would be too low to be competitive. With static
+    Huffman Coding, it is much easier to create a map between bitstream subsequences
+    and characters, which may result in being more learnable by M2 models. However,
+    this is because the coding component assigns each character a whole number of
+    bits, resulting in a less optimal coding compared to Arithmetic Coding. Huffman
+    Coding can be made adaptive by updating the induced codebook periodically, based
+    on newer data. When considering bit-level compression, adaptive Huffman Coding
+    performs similar to static Huffman Coding [[45](#bib.bib45)]. However, when considering
+    token-level compression, and the fact that the adaptive distribution will come
+    from M1, not unigrams of the recent data, training M2 models on adaptive Huffman
+    Coding could be interesting future work. As Huffman coding is part of the GZip
+    algorithm, we opted to not explore using just Huffman Coding.
+  prefs: []
+  type: TYPE_NORMAL
+- en: H.3 Asymmetric Numeral Systems
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Another compression algorithm we considered was Asymmetric Numeral Systems (ANS)
+    [[19](#bib.bib19)]. ANS has strong coding performance and is amenable to adaptive
+    probabilities. The internal state is only a single natural number, which may be
+    easier for an LLM to track than the two real numbers used in AC. However, the
+    encoding and decoding algorithm are more like a stack, where the encoder runs
+    left to right while the decoder runs right to left. By the time the full input
+    is seen, there are no more computation steps for the LLM to actually decode. Thus,
+    we opted to not explore ANS in this work. However, the simpler state is appealing
+    and using ANS for compression would be of interest as future work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix I M2 Can Handle Padding Zeros at the End of a Window
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the implementation of EqualInfoAC$[b\mathord{=}W]$ bits, padding of the compressed
+    bitstream without that additional character must be done.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In cases where the final character in the window only adds zeros to the bitstream,
+    it is unclear at first glance if that final character was included in the window,
+    or if it was omitted and the trailing zeros are all padding. However, the compression
+    scheme is still lossless if we are consistent in our encoding. By always including
+    the most input characters possible in each window, we know that, during decoding,
+    if the addition of a final character (which is compressed to all zeros) still
+    results in the same compressed bitstream, then that final character is part of
+    that window. The decoding algorithm also knows when to stop adding characters
+    to input—when the addition of a new character would generate more than $W$ bits.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This kind of padding is present in many Arithmetic Coding implementations and
+    is generally solved by either giving the AC decoder the original input sequence
+    length and the compressed message, or by the AC decoder using a special termination
+    character. These fixes aim to identify padding in a single run of the AC decoder,
+    but would be difficult to apply in our setting. Passing the number of tokens present
+    in a window to M2 would be possible during training, but it would make inference
+    much more complex (requiring a solution such as M2 generating fertility scores
+    that specify how many characters the generated tokens represent [[8](#bib.bib8)]).
+    As such, we achieve lossless compression by allowing the AC decoder to be run
+    multiple times as the decoding algorithm nears the end of the input, incrementing
+    the sequence length until we find the sequence that matches the compressed output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This window decoding algorithm is not well aligned with how transformers processes
+    data. It essentially involves a look-ahead where the AC decoder is run over prospective
+    inputs and if they are inconsistent with the compressed tokens, backtracking is
+    done and decisions about the previous tokens are made. In contrast, the transformer
+    has a fairly fixed budget when processing a single window, just the layers in
+    the model and the part of the sequence that is inside that window.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An alternative windowed compression scheme more inline with transformer computation
+    is to avoid input characters that compress to all zeros. During compression, when
+    a window is about to be emitted and an additional character would fit into the
+    window, but compresses to all zeros, we opt to not include this character. That
+    is, we compress as many characters into the window as possible, while ensuring
+    that each new character results in a change in the bitstream compared to the previous
+    value (plus padding). This results in a much simpler decoding algorithm where
+    new input characters are added until the correct compressed bitstream is emitted.
+    As we always include the least number of characters that can possibly output this
+    bitstream, we know the input without needing to look-ahead at the result of compressing
+    the next character. As our normal implementation compresses the most number of
+    tokens possible into the current window, this version results in a reduction in
+    compression rate, dropping from $2.66$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8681c664da597857086697f81ac88e6d.png)![Refer to caption](img/31ea8cfadc9839eaa2a2b754c4c1dd27.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 11: The model is able to effectively discern between padding and trailing
+    zeros that represent an input character in our implementation of EqualInfoAC.
+    When using EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}256]$, the absolute bits/byte
+    performance is greater using the new implementation, but the reduction in compression
+    rate means the original implementation is still preferred when the inference cost
+    is considered. This is especially clear in the right graph, where the original
+    implementation’s superior compression rate is obvious.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [Fig. 11](#A9.F11 "In Appendix I M2 Can Handle Padding Zeros at the End of
+    a Window ‣ Training LLMs over Neurally Compressed Text") we see a comparison when
+    training M2 models over data compressed with each method. We see that when using
+    the new implementation with EqualInfoAC$[b\mathord{=}16,\,v\mathord{=}256]$, the
+    new compression implementation makes slight, but still greater than one standard
+    deviation, improvement in terms of bits/byte. However, the reduction in the compression
+    ratio means training models over this implementation will lose some of the computational
+    advantages that training over compressed text yields. Thus, it fails to fully
+    eclipse the original implementation. Numerical values can be found in [Table 11](#A1.T11
+    "In Appendix A Numerical Values ‣ Training LLMs over Neurally Compressed Text").
+    It is clear that the model is able to discern between trailing zeros that represent
+    characters and those the represent padding. Thus, we opt to use the implementation
+    that maximized the compression ratio throughout this work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix J Entropy Estimation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: (a) *bit* n-grams counting all overlapping occurrences
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/891028397535a917f032478d97942ed2.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) n-bit *tokens* following our M2 tokenization
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 12: The amount of noise in the entropy estimate grows as the length
+    of bit segments grow. Larger segmentations of the bitstream result in larger vocabularies
+    and therefore require larger sample sizes for accurate entropy estimates. For
+    each setting, we plot the $5\%$ are noisier than AC, despite this not being apparent
+    in [Fig. 9](#S6.F9 "In 6.3 Learnable distributions are less uniform ‣ 6 Analysis
+    ‣ Training LLMs over Neurally Compressed Text").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To account for noise in the entropy estimation, we partition the data into $100$
+    and that settings like GZip and EqualInfoAC are noisier than AC and RNG. These
+    trends are seen in [Fig. 12](#A10.F12 "In Appendix J Entropy Estimation ‣ Training
+    LLMs over Neurally Compressed Text") where the entropy has been normalized based
+    on the mean entropy calculated across the partitions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/c7e3962c4c87f75e38bf1f0dfa02f5ce.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) N-Grams
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/412cccf35e38cc4bc1f22743325d3da8.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Tokens
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 13: Bias corrected KL divergence between the observed and uniform distributions
+    for different segmentations of the bitstream. This plot is similar to [Fig. 9](#S6.F9
+    "In 6.3 Learnable distributions are less uniform ‣ 6 Analysis ‣ Training LLMs
+    over Neurally Compressed Text"), however, the KL divergence calculations use the
+    entropy of the observed distribution after applying the Miller-Madow bias correction.
+    After applying bias correction, we see that the expected $0$s above the 50th percentile
+    for RNG, however, it is hard to disentangle the two as their 5th percentile lines
+    are similar.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The maximum likelihood, or plug-in, estimator of entropy, $\hat{H}=-\sum_{x\in\mathcal{X}}\hat{p}(x)\log_{2}\hat{p}(x)$
+    is the size of the current segmentation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When we plot the KL divergence between the Miller-Madow estimated entropy and
+    the uniform distribution, we see that the percentile interval for the RNG baseline
+    now includes $0$, we opt to plot the plug-in estimator in [Fig. 9](#S6.F9 "In
+    6.3 Learnable distributions are less uniform ‣ 6 Analysis ‣ Training LLMs over
+    Neurally Compressed Text") instead of the Miller-Madow estimator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix K Analysis Implementation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Matplolib [[33](#bib.bib33)] and Seaborn [[71](#bib.bib71)] were used to make
+    all the included graphs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Statistical significance tests were done using Welch’s t-test [[72](#bib.bib72)]
+    using the function scipy.stats.ttest_ind_from_stats from SciPy [[69](#bib.bib69)].
+    We used $p<0.05$ as the statistical significance threshold.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix L Corner Cases of Tokenization lead to Unstable Mappings
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: There are some cases where SentencePiece does not have stable text $\rightarrow$ [6406].
+    When you look at the surface text substring “chair”, it seems to map to multiple
+    tokens, however when you look at the full surface term “chairs” the stability
+    returns. This is in contrast to a byte-level vocabulary where the text “chair”
+    always maps to [102, 107, 100, 108, 117], even as part of the text “chairs” where
+    an extra [118] is appended to the end. While the loss of shared representations
+    of clearly related concepts in unfortunate, the performance of modern models based
+    on this kind of tokenization shows that it is well handled by the model. While
+    these edge cases exist, they are rare enough that the SentencePiece tokenizer
+    should be considered stable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Similarly, there are cases where the initial token $\rightarrow$ is stable as
+    no characters cross windows. Therefore, we consider EqualInfoAC stable enough
+    to enable learnability by M2.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Interestingly, [[40](#bib.bib40)] point out this same issue, where a fixed size
+    view of a variable length stream can cause false equivalencies when prefixes match.
+    Similar to our findings, they find the models do have some limited ability to
+    deal with these situations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix M Window Text Patterns and Token Positions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We tokenize $20$ of attested tokens appear more than once. [Table 16](#A13.T16
+    "In Appendix M Window Text Patterns and Token Positions ‣ Training LLMs over Neurally
+    Compressed Text") shows all the window text for repeated tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 16: The deduplicated window text from all instances of tokens that appear
+    multiple times when we tokenized $20$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Token | Window Position | Window Text |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $185$ | [or ] / [or a ] / [or ac] / [or al] / [or cr] / [or d] / [or f] /
+    [or h] |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | [or hi] / [or i] / [or k] / [or ma] / [or pr] / [or r] / [or s] / [or se]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | [or su] / [or t] / [or to] / [or v] / [or wha] / [or y] / [or yo] /
+    [or, t] |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | [or-] / [or.] / [ora] / [orc] / [orce ] / [ord] / [ord a] / [order]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | [ore a] / [ore e] / [ore ev] / [ore g] / [ore i] |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$ | [ 4] / [ of F] / [ records ] / [. Lo] / [Alt] / [OI] / [ase ] /
+    [at y] |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | [cian] / [cri] / [d. I] / [ery] / [h de] / [hen s] / [ides] / [n ne]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | [oft] / [om i] / [onte] / [opp] / [pir] / [rev] / [reve] / [s may]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | [tion a] / [y do] / [y t] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $151$ | [le] / [le s] / [le t] / [le. ] / [lea] / [lec] / [led] / [led ]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | [led t] / [leg] / [lege] / [leh] / [lem ] / [leme] / [lems] / [len]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | [ler] / [les] / [less] / [let] / [lett] / [level] / [lew ] / [ley]
+    / [lf ] |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $2$ | [ all ] / [ nut] / [ this] / [ un] / [. I w] / [Ni] / [as t] / [ceed ]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | [choos] / [e Mi] / [e-li] / [etti] / [imag] / [ion a] / [k a] / [ne a]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | [ng up] / [niversi] / [npo] / [nt pr] / [pi] / [rvices] / [s T] / [s your]
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | [s?] / [so c] / [stag] / [thou] / [thoug] / [ust] / [ust ] |'
+  prefs: []
+  type: TYPE_TB

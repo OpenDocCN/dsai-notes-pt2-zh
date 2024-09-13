@@ -1,0 +1,1846 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 19:04:28'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'MINI-LLM: Memory-Efficient Structured Pruning for Large Language Models'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2407.11681](https://ar5iv.labs.arxiv.org/html/2407.11681)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Hongrong Cheng¹    Miao Zhang²¹¹1Corresponding author.    Javen Qinfeng Shi¹
+    ¹University of Adelaide, Adelaide, Australia
+  prefs: []
+  type: TYPE_NORMAL
+- en: ²Harbin Institute of Technology, Shenzhen, China
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{hongrong.cheng, javen.shi}@adelaide.edu.au, zhangmiao@hit.edu.cn'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'As Large Language Models (LLMs) grow dramatically in size, there is an increasing
+    trend in compressing and speeding up these models. Previous studies have highlighted
+    the usefulness of gradients for importance scoring in neural network compressing,
+    especially in pruning medium-size networks. However, the substantial memory requirements
+    involved in calculating gradients with backpropagation impede the utilization
+    of gradients in guiding LLM pruning. As a result, most pruning strategies for
+    LLMs rely on gradient-free criteria, such as weight magnitudes or a mix of magnitudes
+    and activations. In this paper, we devise a hybrid pruning criterion, which appropriately
+    integrates magnitude, activation, and gradient to capitalize on feature map sensitivity
+    for pruning LLMs. To overcome memory requirement barriers, we estimate gradients
+    using only forward passes. Based on this, we propose a Memory-effIcieNt structured
+    prunIng procedure for LLMs (MINI-LLM) to remove no-critical channels and multi-attention
+    heads. Experimental results demonstrate the superior performance of MINI-LLM over
+    existing gradient-free methods on three LLMs: LLaMA, BLOOM, and OPT across various
+    downstream tasks (classification, multiple-choice, and generation), while MINI-LLM
+    maintains a GPU memory footprint akin to gradient-free methods.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The advent of pre-trained Large Language Models (LLMs), such as GPT-4 OpenAI
+    ([2023](#bib.bib37)) and LLaMA Touvron et al. ([2023](#bib.bib44)), has made remarkable
+    processes across various complex Natural Language Processing (NLP) tasks, such
+    as natural language generation Wu et al. ([2020](#bib.bib48)), question answering Brown
+    et al. ([2020](#bib.bib2)), and recommendation system Wu et al. ([2023](#bib.bib49)).
+    However, this remarkable capability usually entails a large model size, resulting
+    in significant computational costs in terms of storage, memory, and computation
+    time, which presents considerable difficulties during the training and deployment
+    phases. To this end, there has been considerable interest in compressing LLMs Ma
+    et al. ([2023](#bib.bib30)); Dettmers et al. ([2023](#bib.bib7)); Frantar and
+    Alistarh ([2023](#bib.bib8)); Xiao et al. ([2023](#bib.bib51)); Li et al. ([2020](#bib.bib26))
+    to make them more practical for various tasks. Neural network pruning Ma et al.
+    ([2023](#bib.bib30)); Frantar and Alistarh ([2023](#bib.bib8)); Sun et al. ([2024](#bib.bib42));
+    Xia et al. ([2024](#bib.bib50)), as one of the indispensable approaches for compressing
+    and accelerating neural networks, has recently found its way into LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the traditional pruning methods Molchanov et al. ([2017](#bib.bib34)); Lee
+    et al. ([2019](#bib.bib23)); Sanh et al. ([2020](#bib.bib39)); Liu et al. ([2021](#bib.bib29));
+    Fu et al. ([2022](#bib.bib10)) for compressing small or medium-size models, gradients
+    of loss functions w.r.t. weights, masks, or feature maps have demonstrated more
+    reliable performance than gradient-free methods (e.g., magnitude-based methods)
+    in discriminating important weights/channels. For example, Lee et al. ([2019](#bib.bib23))
+    exploits the first-order Taylor expansion to identify the connection sensitivity
+    caused by setting some weights to zero, which outperforms magnitude-based methods
+    and obtains extremely sparse networks with similar accuracy as the reference networks.
+    However, due to the huge number of parameters in LLMs, computing gradients with
+    backpropagation requires a prohibitive amount of memory. LLM-Pruner Ma et al.
+    ([2023](#bib.bib30)), which uses gradients calculated via backpropagation for
+    structured pruning, consumes about twice the GPU resources compared to magnitude-based
+    methods during pruning LLaMA-7B, as illustrated in Figure [1](#S1.F1 "Figure 1
+    ‣ 1 Introduction ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large Language
+    Models")²²2We obtained the data on an NVIDIA A100 (40GB). Even though the recovery
+    stage can be executed on a single RTX 4090 (24GB) with the help of Low-Rank Adaption
+    (LoRA) Hu et al. ([2022](#bib.bib14)), the GPU consumption during the pruning
+    stage has become the bottleneck for GPU resource usage in the entire pruning framework.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To avoid incurring untenable memory costs for computing gradients on LLMs, some
+    pruning methods Frantar and Alistarh ([2023](#bib.bib8)); Sun et al. ([2024](#bib.bib42))
+    constructed gradient-free criteria. For example, SparseGPT Frantar and Alistarh
+    ([2023](#bib.bib8)) employed the combination of weight magnitude and the inverse
+    Hessian matrix which is formed from the product of given input features to score
+    weights for unstructured pruning. However, the computation of the inverse Hessian
+    matrix is resource-intensive, and the utility of gradient information remains
+    under-exploited. Some pruning methods, such as Sheared LLaMA [Xia et al. ([2024](#bib.bib50))],
+    combine pruning with pre-training, which requires substantial GPU resources. For
+    example, Sheared LLaMA requires 8 A100 (80GB) GPUs for pruning and 16 for pre-training.
+    Since this paper focuses on memory-efficient pruning methods and follows the mainstream
+    framework that starts with pruning and then fine-tuning, without pre-training,
+    although outstanding in performance, these methods are not within the scope of
+    our discussion.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this paper, we propose the Memory-effIcieNt structured prunIng procedure
+    for LLMs (MINI-LLM), which scores weights using estimated gradients with only
+    forward passes. We make this approach tractable by contributing multiple techniques.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/5cbe9ccac74ab77d1f17a87b471341bd.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: The peak GPU-memory Usage for pruning LLaMA-7B. The backpropagation
+    gradient-based pruning method, LLM-Pruner, consumes about twice the GPU resources
+    compared to gradient-free methods and our method MINI-LLM during pruning LLaMA-7B.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our main contributions are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We design a novel pruning criterion called Feature Map Sensitivity (FMS) score,
+    integrating weight magnitude, activation, and gradient. This criterion optimally
+    utilizes the pivotal information from the three critical aspects, which facilitates
+    a more nuanced assessment of feature map sensitivity and provides effective scoring
+    in LLMs.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We propose a structured pruning framework for LLMs called MINI-LLM which utilizes
+    estimated gradients with only forward passes by using comparable GPU memory usage
+    to gradient-free methods, significantly improving GPU memory efficiency over traditional
+    backpropagation gradients.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The experiments on three types of LLMs: LLaMA, BLOOM, and OPT over different
+    downstream tasks (classification, multiple-choices, and generation) demonstrate
+    that the novel pruning criterion FMS can effectively boost the performance of
+    gradient-based methods. Additionally, our proposed gradient-based structured pruning
+    method MINI-LLM steadily exceeds gradient-free pruning methods in performance
+    and rivals or surpasses backpropagation gradient-based method at times, while
+    using similar GPU memory as gradient-free methods.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 2 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Structured/Unstructured/Semi-structured LLM pruning. The pruning methods for
+    LLMs can still be generally categorized as unstructured (Sun et al. ([2024](#bib.bib42));
+    Frantar et al. ([2022](#bib.bib9))), semi-structured (Frantar and Alistarh ([2023](#bib.bib8))),
+    and structured (Ma et al. ([2023](#bib.bib30)); Wang et al. ([2020b](#bib.bib46)))
+    pruning methods, similar to the categorization for pruning small and mid-size
+    neural networks. Unstructured pruning achieves substantial sparsity by directly
+    setting weights or their masks to zero while maintaining a comparable performance
+    compared to the vanilla models. However, the irregular sparsity results in no
+    compression in the model size, and actual acceleration necessitates the support
+    of specialized software/hardware. In contrast, structured pruning discards the
+    whole grouped parameters (such as channels and attention heads), leading to physically
+    reduced model size and enabling inference acceleration without any special requirements
+    of software/hardware (Zhou et al. ([2022](#bib.bib55)); Frantar and Alistarh ([2023](#bib.bib8))).
+    Semi-structure pruning, such as 2:4 or 4:8 patterns in Frantar and Alistarh ([2023](#bib.bib8)),
+    provides a balance between performance and hardware speedup. In this paper, we
+    focus on structured pruning for LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pruning criteria for LLMs. Neural network pruning methods search for an optimal
+    subnetwork by removing unimportant weights. As one of the most popular criterion
+    factors, gradients have already been demonstrated effective in constructing scoring
+    functions for pruning small or medium-size networks Liu et al. ([2021](#bib.bib29));
+    Fu et al. ([2022](#bib.bib10)); Wang et al. ([2020a](#bib.bib45)); Yu et al. ([2022](#bib.bib52));
+    Molchanov et al. ([2019](#bib.bib35)); Kwon et al. ([2022](#bib.bib21)). However,
+    calculating gradients using backpropagation is highly resource-intensive for GPU
+    memory, making it challenging to implement for LLMs, where meeting such high memory
+    demands is difficult. For example, LLM-Pruner Ma et al. ([2023](#bib.bib30)) employs
+    gradients calculated through backpropagation for LLM pruning, but the GPU memory
+    required for pruning exceeds that of fine-tuning. To this end, there are some
+    gradient-free pruning methods (Frantar and Alistarh ([2023](#bib.bib8)); Sun et
+    al. ([2024](#bib.bib42)); Nova et al. ([2023](#bib.bib36)); Kurtic et al. ([2023](#bib.bib20));
+    Li et al. ([2022b](#bib.bib28))). Most of them are centered on post-training (retraining-free)
+    approaches that involve pruning while concurrently compensating for performance.
+    For instance, Wanda Sun et al. ([2024](#bib.bib42)) multiplies weight magnitude
+    and the corresponding activation to implement unstructured post-training pruning
+    for LLMs. Even though these gradient-free methods are GPU memory efficient, the
+    utility of gradient remains under-exploited. This paper actively seeks an effective
+    estimation method to overcome memory requirement barriers related to computing
+    gradients with backpropagation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Zeroth-Order optimization. Zeroth-Order (ZO) optimization can fall in the general
+    class of weight perturbation methods. An early method referred to as the Finite
+    Difference Stochastic Approximation (FDSA) Kiefer and Wolfowitz. ([1952](#bib.bib16))
+    estimated the gradient by using $2d$ value would result in serious computational
+    challenges. A more efficient gradient estimation method is Simultaneous Perturbation
+    Stochastic Approximation (SPSA) Spall ([1992](#bib.bib40)); Li et al. ([2022a](#bib.bib27))
+    which approximates gradients using only two forward passes. In previous work,
+    ZO gradient estimation was used for solving optimization-related problems, such
+    as for model training. For example, Malladi et al. Malladi et al. ([2023](#bib.bib31))
+    propose a Memory-efficient ZO-SGD (MeZO) to adapt SPSA to fine-tuning LLMs in
+    a memory-efficient way. In this paper, for the first time, we apply ZO gradient
+    estimation for pruning LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Method
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section, we propose a Memory-effIcieNt structured prunIng procedure
+    for LLMs termed MINI-LLM. We start by describing a new pruning criterion that
+    evaluates feature map saliency from three critical factors: gradient, weight magnitude,
+    and activation. To evaluate gradients in a memory-efficient way, we exploit ZO
+    gradients to approximate the backpropagation based gradients. Finally, to recover
+    performance, we utilize LoRA Hu et al. ([2022](#bib.bib14)) to fine-tune the pruned
+    model, which has high training throughput, but low GPU memory requirement.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Pruning Criterion in MINI-LLM
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Problem Definition. The pruning problem for LLMs starts from a pre-trained
+    dense model $W_{0}\in\mathbb{R}^{d}$ (i.e., the percentage of removed weights),
+    our goal is to remove the weights that has the least impact on the model’s prediction.
+    Therefore, neural network pruning can be formulated as the following constrained
+    optimization problem:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | $1$2 |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle\text{s.t.}\quad\lvert&#124;\hat{W}_{0}\rvert&#124;_{0}\leq\lvert&#124;W_{0}\rvert&#124;_{0}\times(1-p),$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\ell(\cdot)$ norm.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Gradient-based Pruning. To evaluate the significance of a specific weight $W_{l}^{k}$
+    is included versus when it is excluded from the model (i.e., LLaMA-7B). Thus,
+    the loss change can be formulated as LeCun et al. ([1989](#bib.bib22)):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\Delta\mathcal{L}$ |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle\approx\Delta W^{T}\frac{\partial\mathcal{L}(\mathcal{D})}{\partial
+    W_{l}^{k}}-\frac{1}{2}\Delta W^{T}H\Delta W$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle=W_{l}^{k}\frac{\partial\mathcal{L}(\mathcal{D})}{\partial
+    W_{l}^{k}}-\frac{1}{2}W_{l}^{k}HW_{l}^{k},$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $\Delta W=W_{l}^{k}$ can be approximated as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\Delta\mathcal{L}=\mathcal{L}_{W_{l}^{k}}(\mathcal{D})-\mathcal{L}_{W_{l}^{k}=0}(\mathcal{D})\approx
+    W_{l}^{k}\frac{\partial\mathcal{L}(\mathcal{D})}{\partial W_{l}^{k}}.$ |  | (3)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Activation-based Pruning. As recently observed in LLMs larger than 6.7B (Dettmers
+    et al. ([2022](#bib.bib6))), a small set of hidden state features emerges with
+    significantly larger magnitudes (outliers) than the remainders and zeroing out
+    these features causes a significant degradation of performance. The vanilla scoring
+    function Eq. ([3](#S3.E3 "In 3.1 Pruning Criterion in MINI-LLM ‣ 3 Method ‣ MINI-LLM:
+    Memory-Efficient Structured Pruning for Large Language Models")) does not highlight
+    the unique characteristics of LLMs compared with smaller models. Given the $l$,
+    which most closely approximates the initial output as determined by the squared
+    error metric. Assuming that the activation and weight matrices possess a suitable
+    rectangular shape, the neural network pruning is defined as the following optimization
+    problem Frantar and Alistarh ([2023](#bib.bib8)):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | $\displaystyle\mathop{\textrm{min}}\limits_{\hat{W}_{l}}\ \lvert&#124;\hat{W}_{l}X_{l}-W_{l}X_{l}\rvert&#124;_{2}^{2}=\lvert&#124;\Delta
+    W_{l}X_{l}\rvert&#124;_{2}^{2},$ |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle\text{s.t.}\quad\hat{W}_{l}\in\mathcal{C}.$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'To evaluate the significance of a specific weight $W_{l}^{k}$ is preserved
+    versus when it is excluded from the model and write the formulation as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\lvert&#124;\Delta W_{l}X_{l}\rvert&#124;_{2}=\left&#124;W_{l}^{k}X_{l}^{k}\right&#124;,$
+    |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\Delta W_{l}=W_{l}^{k}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Feature Map Sensitivity (FMS). Eq. ([5](#S3.E5 "In 3.1 Pruning Criterion in
+    MINI-LLM ‣ 3 Method ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large
+    Language Models")) only considers the output changes in a single layer and does
+    not take into account the global loss change across the entire network. We notice
+    that, with the weight gradients, the global loss change can be quantified with
+    weight change as shown in Eq. ([3](#S3.E3 "In 3.1 Pruning Criterion in MINI-LLM
+    ‣ 3 Method ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large Language
+    Models")). To calculate the salience of each weight relative to the change in
+    global loss and layer-wise output, we measure $\Delta W_{l}$ from Eq. ([3](#S3.E3
+    "In 3.1 Pruning Criterion in MINI-LLM ‣ 3 Method ‣ MINI-LLM: Memory-Efficient
+    Structured Pruning for Large Language Models")) and propose a heuristic hybrid
+    sensitivity scoring function called Feature Map Sensitivity (FMS) as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $S(W_{l}^{k})_{ours}=\left&#124;W_{l}^{k}\frac{\partial\mathcal{L}(\mathcal{D})}{\partial
+    W_{l}^{k}}X_{l}^{k}\right&#124;.$ |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Compared to Eq. ([3](#S3.E3 "In 3.1 Pruning Criterion in MINI-LLM ‣ 3 Method
+    ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large Language Models")) and
+    Eq. ([5](#S3.E5 "In 3.1 Pruning Criterion in MINI-LLM ‣ 3 Method ‣ MINI-LLM: Memory-Efficient
+    Structured Pruning for Large Language Models")), our criterion Eq. ([6](#S3.E6
+    "In 3.1 Pruning Criterion in MINI-LLM ‣ 3 Method ‣ MINI-LLM: Memory-Efficient
+    Structured Pruning for Large Language Models")) integrates magnitude, activation,
+    and gradient to optimally utilize the pivotal information from the three critical
+    aspects, so as calculate the feature map sensitivity along with the loss changes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Pruning with Estimated Gradients
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Let $\mathcal{L}(W;\mathcal{B})$. The following Definition [7](#S3.E7 "In Definition
+    1 (ZO Gradient Estimation.). ‣ 3.2 Pruning with Estimated Gradients ‣ 3 Method
+    ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large Language Models") describes
+    a classical ZO gradient estimation based on SPSA (Spall ([1992](#bib.bib40))).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Definition 1  (ZO Gradient Estimation.).
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Given a model with parameters $W\in\mathbb{R}^{d}$ is as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  $1$2  |  | (7) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\nabla\mathcal{L}(W;\mathcal{B})$) is then
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\hat{g}_{l}^{k}=\frac{\mathcal{L}(W+\epsilon z;\mathcal{B})-\mathcal{L}(W-\epsilon
+    z;\mathcal{B})}{2\epsilon z_{l}^{k}},$ |  | (8) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $z_{l}^{k}\in z$. In this way, the practical pruning score used in our
+    MINI-LLM is defined as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\hat{S}(W_{l}^{k})_{ours}=\left&#124;W_{l}^{k}\hat{g}_{l}^{k}X_{l}^{k}\right&#124;.$
+    |  | (9) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Dependency-aware structured LLM pruning. To maintain structural integrity,
+    it is crucial for structured pruning to identify groups of interdependent structures
+    within LLMs. Following Ma et al. Ma et al. ([2023](#bib.bib30)), we prune heads
+    for Multi-Head Attention (MHA) and channels for Feed-Forward Network (FFN), respectively.
+    We arrange the interconnected weights into groups and determine the sensitivity
+    of each group (a set of coupled structures) defined as $G=\{W_{i}\}_{i=1}^{M}$
+    is the number of interdependent structures in the group. Our structured pruning
+    approach MINI-LLM is outlined in Algorithm [1](#alg1 "Algorithm 1 ‣ 3.2 Pruning
+    with Estimated Gradients ‣ 3 Method ‣ MINI-LLM: Memory-Efficient Structured Pruning
+    for Large Language Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 1 The structured pruning algorithm MINI-LLM
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Input: Dataset $\mathcal{D}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Output: The pruned model'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:  Clear every weight’s sensitivity score $\hat{S}(W_{l}^{k})=0$;9:  end for10:  return
+    the pruned model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Recovery with Low-rank Approximation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: After pruning, we need a recovery stage to regain the performance. Due to the
+    huge number of parameters, full fine-tuning becomes less feasible. LoRA Hu et
+    al. ([2022](#bib.bib14)), as one of the most popular Parameter-Efficient Fine-Tuning
+    (PEFT) methods He et al. ([2023](#bib.bib12)); Li and Liang ([2021](#bib.bib25));
+    Jia et al. ([2022](#bib.bib15)); Chavan et al. ([2023](#bib.bib3)); Lester et
+    al. ([2021](#bib.bib24)), has demonstrated strong capability for performance recovery,
+    while significantly reducing GPU memory usage Dettmers et al. ([2023](#bib.bib7)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To facilitate this, we fine-tune the pruned models by employing LoRA which
+    only updates two injected low-rank decomposition matrices that are attached to
+    a frozen pre-trained weight matrix. Given two low-rank matrices $A\in\mathbb{R}^{r\times
+    k}$ ), the forward computation can be written as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $f(x)=xW_{0}+xBA,$ |  | (10) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $x\in\mathbb{R}^{n\times d}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we evaluate the performance of our MINI-LLM on three kinds
+    of LLMs, covering a wide range of tasks. We first introduce the experimental setup,
+    then present the main results and provide ablation studies for further analysis.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Experimental Setup
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Models, datasets, and evaluation metrics. To verify the effectiveness and versatility
+    of our MINI-LLM, we test it over three open-source LLMs with different structures:
+    LLaMA-7B Touvron et al. ([2023](#bib.bib44)), BLOOM-7B Workshop ([2023](#bib.bib47)),
+    and OPT-6.7B Zhang et al. ([2022](#bib.bib54)). All models undergo evaluation
+    in a task-agnostic framework. We assess the zero-shot ability of pruned models
+    on WikiText2 Merity et al. ([2016](#bib.bib33)) and PTB Marcus et al. ([1993](#bib.bib32))
+    for language generation with the perplexity (PPL)³³3https://huggingface.co/spaces/evaluate-metric/perplexity
+    analysis, and smaller is better. Besides, we follow LLaMA to implement zero-shot
+    task classification and multiple-choice on four common sense reasoning datasets:
+    BoolQ Clark et al. ([2019](#bib.bib5)), PIQA Bisk et al. ([2020](#bib.bib1)),
+    HellaSwag Zellers et al. ([2019](#bib.bib53)), and WinoGrande Sakaguchi et al.
+    ([2021](#bib.bib38)). In addition to zero-shot evaluation, we conduct experiments
+    on few-shot tasks to evaluate pruned LLMs’ ability to learn in context. We choose
+    the Massive Multitask Language Understanding benchmark (MMLU) [Hendrycks et al.
+    ([2021](#bib.bib13))] and conduct a 5-shot evaluation to remain consistent with
+    the evaluation approach described by [Touvron et al. ([2023](#bib.bib44))]. In
+    task classification and multiple-choice on common sense reasoning datasets, as
+    well as on MMLU, classification accuracy is used as the performance metric.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Prune ratio | Method | GPU (GB) | WikiText2$\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 0% | LLaMA-7B Touvron et al. ([2023](#bib.bib44))* | 0 | - | - | 76.50 |
+    79.8 | 76.10 | 70.10 | 75.63 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-7B Ma et al. ([2023](#bib.bib30))* | 0 | 12.62 | 22.15 | 73.18 | 78.35
+    | 72.99 | 67.01 | 72.88 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 20% w/ tune | LLM-Pruner Ma et al. ([2023](#bib.bib30))* | 40.00 | 17.58
+    | 30.11 | 64.62 | 77.20 | 68.80 | 63.14 | 68.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| magnitude-l1 | 21.60 | 24.32 | 43.19 | 58.47 | 75.35 | 65.40 | 60.93 | 65.04
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| magnitude-l2 | 21.60 | 24.23 | 36.16 | 65.02 | 75.14 | 65.07 | 62.12 | 66.84
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SparseGPT Frantar and Alistarh ([2023](#bib.bib8)) | 40.00 | 20.84 | 36.23
+    | 55.05 | 75.84 | 66.88 | 61.64 | 64.85 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wanda Sun et al. ([2024](#bib.bib42)) | 21.90 | 20.36 | 36.15 | 60.92 | 74.70
+    | 66.70 | 62.33 | 66.16 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | MINI-LLM (ours) | 22.40 | 18.32 | 32.54 | 66.76 | 75.46 | 65.61 | 62.43
+    | 67.57 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 30% w/ tune | LLM-Pruner Ma et al. ([2023](#bib.bib30)) | 37.16 | 21.55 |
+    37.67 | 64.89 | 73.72 | 63.45 | 62.67 | 66.18 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| magnitude-l1 | 20.10 | 31.17 | 54.28 | 61.80 | 73.23 | 58.02 | 56.91 | 62.49
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| magnitude-l2 | 20.10 | 31.11 | 51.29 | 61.89 | 73.45 | 57.84 | 58.72 | 62.98
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SparseGPT Frantar and Alistarh ([2023](#bib.bib8)) | 40.00 | 26.82 | 45.71
+    | 56.64 | 73.45 | 61.23 | 59.51 | 62.71 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wanda Sun et al. ([2024](#bib.bib42)) | 20.33 | 27.08 | 46.25 | 56.97 | 74.27
+    | 59.27 | 60.46 | 62.74 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | MINI-LLM (ours) | 20.90 | 24.28 | 39.02 | 64.55 | 73.74 | 58.74 | 58.93
+    | 63.99 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 40% w/ tune | LLM-Pruner Ma et al. ([2023](#bib.bib30)) | 36.13 | 28.10 |
+    48.66 | 60.46 | 71.33 | 55.62 | 56.43 | 60.96 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| magnitude-l1 | 18.80 | 43.96 | 66.63 | 47.03 | 70.89 | 49.79 | 52.96 | 55.17
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| magnitude-l2 | 18.80 | 45.26 | 67.68 | 48.72 | 71.65 | 50.21 | 53.43 | 56.00
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SparseGPT Frantar and Alistarh ([2023](#bib.bib8)) | 40.00 | 37.16 | 66.12
+    | 58.26 | 71.44 | 53.91 | 56.99 | 60.15 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wanda Sun et al. ([2024](#bib.bib42)) | 19.13 | 36.44 | 66.37 | 49.91 | 71.38
+    | 53.85 | 58.72 | 58.47 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | MINI-LLM (ours) | 19.83 | 31.78 | 49.23 | 63.65 | 71.59 | 53.31 | 55.56
+    | 61.02 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 50% w/ tune | LLM-Pruner Ma et al. ([2023](#bib.bib30))* | 35.00 | 38.12
+    | 66.35 | 60.28 | 69.31 | 47.06 | 53.43 | 57.52 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| magnitude-l1 | 17.59 | 61.39 | 91.79 | 40.73 | 66.32 | 42.66 | 51.85 | 50.39
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| magnitude-l2 | 17.59 | 58.12 | 89.67 | 38.50 | 67.08 | 43.47 | 52.80 | 50.46
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SparseGPT Frantar and Alistarh ([2023](#bib.bib8)) | 40.00 | 49.52 | 82.28
+    | 42.84 | 68.01 | 45.38 | 55.96 | 53.05 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wanda Sun et al. ([2024](#bib.bib42)) | 18.82 | 45.98 | 78.82 | 40.49 | 69.04
+    | 45.10 | 54.93 | 52.39 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | MINI-LLM (ours) | 18.82 | 44.69 | 69.83 | 61.35 | 67.85 | 45.39 | 53.12
+    | 56.93 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 1: Zero-shot performance of the pruned LLaMA-7B models. “Prune Ratio”
+    refers to the proportion of parameters removed relative to the original number
+    of parameters. “GPU (GB)” indicates the peak GPU memory usage for pruning. “Average”
+    is calculated among four classification datasets. Bold/Underline mark the best/second
+    best performance at the same compression rate with fine-tuning, respectively,
+    excluding LLM-Pruner in the comparison. An asterisk (*) signifies the results
+    are taken directly from the corresponding papers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pruning and fine-tuning settings. Our MINI-LLM conducts in a one-shot pruning
+    framework. That is scoring only once and then pruning the network to the target
+    prune ratio Cheng et al. ([2023](#bib.bib4)). In the model pruning process, we
+    use 10 randomly selected samples from Bookcorpus Zhu et al. ([2015](#bib.bib56))
+    as the calibration data for evaluating the weight gradients and 128 samples for
+    computing each layer’s input (i.e., activation). Due to the varying sensitivity
+    of each layer to pruning Ma et al. ([2023](#bib.bib30)), the first four layers
+    and the last three layers are retained. During the recovery phase, we utilize
+    the Alpaca-cleaned Taori et al. ([2023](#bib.bib43)) as the training dataset,
+    which contains approximately 50k samples, to fine-tune the pruned models with
+    a batch size of 64\. Following [Ma et al. ([2023](#bib.bib30))], the learning
+    rate is set to 1e-4 and a total of 2 epochs. Each pruned model is recovered by
+    an Adam optimizer Kingma and Ba ([2015](#bib.bib17)) paired with a cosine decay
+    schedule for the learning rate. We set LoRA $r=8$, and attach LoRA modules on
+    all linear layers of the base model. In the inference stage, all the evaluations
+    are implemented with a context length of 128.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Baselines. We compare MINI-LLM with four one-shot structured pruning methods
+    for LLMs. Magnitude-l1/l2: pruning based on the absolute values or the l2-norm
+    of weights, respectively. LLM-Pruner Ma et al. ([2023](#bib.bib30)): pruning using
+    criterion Eq. ([3](#S3.E3 "In 3.1 Pruning Criterion in MINI-LLM ‣ 3 Method ‣ MINI-LLM:
+    Memory-Efficient Structured Pruning for Large Language Models")) with backpropagation
+    gradients. Wanda Sun et al. ([2024](#bib.bib42)): pruning based on the product
+    of the magnitude of weights and their corresponding activations. Given that vanilla
+    SparseGPT and Wanda are retraining-free unstructured methods, we adapt them for
+    structured pruning with pruning and fine-tuning stages for a fair comparison while
+    maintaining the same criterion. Except for LLM-pruner, which is a gradient-based
+    method, the other methods are all gradient-free methods.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Main Results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Zero-shot performance on LLaMA-7B. We prune LLaMA-7B with four prune ratios:
+    from 20% to 50% and fine-tune the pruned models by using LoRA to restore model
+    accuracy. The comparisons with the baselines are reported in Table [1](#S4.T1
+    "Table 1 ‣ 4.1 Experimental Setup ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient
+    Structured Pruning for Large Language Models"). From the results, we see that
+    our MINI-LLM consistently surpasses all the gradient-free methods and closely
+    matches or even outperforms the LLM-Pruner with backpropagation gradients across
+    four prune ratios. For example, at a 20% prune ratio, MINI-LLM achieves an average
+    classification accuracy of 67.57% across four inference datasets, better than
+    other gradient-free methods, and obtains 92.71% of the accuracy achieved by the
+    original model. Although LLM-Pruner achieves better accuracy with 93.91% of the
+    accuracy attained by the dense model, the peak GPU memory required for pruning
+    by LLM-Pruner is approximately twice that of MINI-LLM. Moreover, although both
+    Wanda and MINI-LLM use weight magnitude and activation, MINI-LLM performs better,
+    which indicates that estimated gradients are beneficial in guiding pruning. In
+    addition, at a 40% prune ratio, MINI-LLM achieves an average accuracy of 61.02%
+    on the four tasks, even better than LLM-Pruner’s average accuracy of 60.96%.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'However, similar to the observation in Ma et al. Ma et al. ([2023](#bib.bib30)),
+    with a high prune ratio, such as 50%, an obvious performance decline is observed,
+    as shown in Table [1](#S4.T1 "Table 1 ‣ 4.1 Experimental Setup ‣ 4 Experiments
+    ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large Language Models"). In
+    this situation, our MINI-LLM and LLM-Pruner only retain 78.11% and 78.92% of the
+    dense model’s accuracy, respectively. Even for LLMs, structurally pruning under
+    high prune ratios remains a major challenge.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Zero-shot performance on BLOOM-7B and OPT-6.7B. To validate MINI-LLM on other
+    LLMs broadly, we prune both BLOOM-7B and OPT-6.7B with two prune ratios: 10% and
+    30%, and fine-tune the pruned models to restore model accuracy. The results in
+    Table [2](#S4.T2 "Table 2 ‣ 4.2 Main Results ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient
+    Structured Pruning for Large Language Models") illustrate that our MINI-LLM steadily
+    outperforms all gradient-free methods and exhibits performance comparable to,
+    even surpasses at times, that of LLM-Pruner. For instance, at a 30% compression
+    rate on BLOOM-7B, MINI-LLM achieves a perplexity of 54.07 on the WikiText2 dataset,
+    obviously outperforming LLM-Pruner’s perplexity of 58.11\. Similarly, at a 30%
+    compression rate on OPT-6.7B, MINI-LLM achieves a perplexity of 40.89 on the WikiText2
+    dataset and 57.44 on the PTB dataset, outperforming LLM-Pruner’s perplexity of
+    42.94 and 65.09, respectively. In addition, at a 10% prune ratio on OPT-6.7B,
+    MINI-LLM achieves an average classification accuracy of 67.81% across four datasets
+    and obtains 98.60% of the accuracy achieved by the original model, which is even
+    better than LLM-Pruner’ s 67.50% and 98.15%. This demonstration validates the
+    effectiveness of MINI-LLM in efficiently compressing models of various structures
+    to a specified size, while optimizing memory usage.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Prune ratio | Method | GPU (GB) | WikiText2$\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 0% | BLOOM-7B Workshop ([2023](#bib.bib47)) | 0 | 26.58 | 50.55 | 62.94 |
+    73.61 | 59.69 | 64.4 | 65.16 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10% w/ tune | LLM-Pruner Ma et al. ([2023](#bib.bib30)) | 40.00 | 35.32 |
+    75.21 | 62.14 | 72.14 | 55.39 | 57.85 | 61.88 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| magnitude-l1 | 22.04 | 40.89 | 92.87 | 59.28 | 71.82 | 52.44 | 56.21 | 59.94
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| magnitude-l2 | 22.04 | 40.73 | 95.45 | 59.33 | 72.04 | 52.58 | 56.04 | 60.00
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SparseGPT Frantar and Alistarh ([2023](#bib.bib8)) | 40.00 | 40.42 | 92.15
+    | 59.17 | 70.73 | 52.38 | 56.2 | 59.62 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wanda Sun et al. ([2024](#bib.bib42)) | 22.81 | 40.81 | 93.60 | 59.94 | 72.25
+    | 52.60 | 57.14 | 60.48 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | MINI-LLM (ours) | 25.03 | 38.12 | 86.23 | 59.97 | 72.05 | 53.54 | 56.43
+    | 60.50 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 30% w/ tune | LLM-Pruner Ma et al. ([2023](#bib.bib30)) | 38.51 | 58.11 |
+    147.52 | 62.11 | 67.79 | 44.04 | 53.28 | 56.81 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| magnitude-l1 | 19.49 | 87.25 | 166.21 | 61.04 | 65.40 | 41.46 | 51.70 | 54.90
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| magnitude-l2 | 19.49 | 79.75 | 167.83 | 59.45 | 66.87 | 42.36 | 50.91 | 54.89
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SparseGPT Frantar and Alistarh ([2023](#bib.bib8)) | 40.00 | 75.51 | 173.51
+    | 52.02 | 67.14 | 42.86 | 53.28 | 53.83 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wanda Sun et al. ([2024](#bib.bib42)) | 20.34 | 84.89 | 170.16 | 53.61 |
+    67.03 | 41.34 | 50.99 | 53.24 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | MINI-LLM (ours) | 22.11 | 54.07 | 121.61 | 62.17 | 68.82 | 44.95 | 51.93
+    | 56.97 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 0% | OPT-6.7B Zhang et al. ([2022](#bib.bib54)) | 0 | 26.45 | 32.03 | 66.06
+    | 76.55 | 67.21 | 65.27 | 68.77 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10% w/ tune | LLM-Pruner Ma et al. ([2023](#bib.bib30)) | 38.00 | 27.89 |
+    39.33 | 63.06 | 76.77 | 66.33 | 63.85 | 67.50 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| magnitude-l1 | 22.81 | 39.17 | 55.68 | 58.17 | 75.30 | 60.35 | 59.59 | 63.35
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| magnitude-l2 | 22.81 | 39.40 | 54.49 | 59.08 | 74.86 | 60.45 | 60.22 | 63.65
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SparseGPT Frantar and Alistarh ([2023](#bib.bib8)) | 40.00 | 36.58 | 50.99
+    | 61.93 | 74.81 | 61.25 | 60.46 | 64.61 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wanda Sun et al. ([2024](#bib.bib42)) | 23.04 | 37.09 | 53.54 | 66.09 | 75.46
+    | 62.24 | 62.59 | 66.60 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | MINI-LLM (ours) | 23.65 | 30.15 | 38.64 | 65.90 | 76.12 | 65.66 | 63.54
+    | 67.81 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 30% w/ tune | LLM-Pruner Ma et al. ([2023](#bib.bib30)) | 34.66 | 42.94 |
+    65.09 | 61.93 | 73.83 | 56.98 | 59.98 | 63.60 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| magnitude-l1 | 19.91 | 81.96 | 104.01 | 48.50 | 69.59 | 44.99 | 53.75 | 54.21
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| magnitude-l2 | 19.91 | 76.10 | 98.86 | 54.22 | 69.37 | 44.83 | 54.14 | 56.11
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SparseGPT Frantar and Alistarh ([2023](#bib.bib8)) | 40.00 | 77.00 | 103.61
+    | 54.31 | 69.21 | 44.56 | 55.56 | 55.91 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wanda Sun et al. ([2024](#bib.bib42)) | 20.07 | 82.93 | 107.32 | 60.34 |
+    69.53 | 44.58 | 54.46 | 57.23 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | MINI-LLM (ours) | 20.65 | 40.89 | 57.44 | 62.17 | 72.58 | 54.07 | 56.20
+    | 61.26 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: Zero-shot performance of the pruned BLOOM-7B and OPT-6.7B. Columns
+    is consistent with the definitions in Table [1](#S4.T1 "Table 1 ‣ 4.1 Experimental
+    Setup ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large
+    Language Models"). Unless otherwise specified, “Prune Ratio” and Bold/Underline
+    have the same meaning as Table [1](#S4.T1 "Table 1 ‣ 4.1 Experimental Setup ‣
+    4 Experiments ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large Language
+    Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In addition, we observe that the pruning outcomes achieved by gradient-free
+    methods such as Wanda and magnitude l1/l2 shown in Table [2](#S4.T2 "Table 2 ‣
+    4.2 Main Results ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient Structured Pruning
+    for Large Language Models") significantly fell short in comparison to gradient-based
+    pruning methods such as LLM-Pruner and MINI-LLM at a prune ratio of 30% on the
+    WikiText2 and PTB datasets for BLOOM and OPT. Using LLM-Pruner as a high-quality
+    benchmark, we compare Wanda, representing gradient-free approaches, by assessing
+    the similarity of their retained channels per layer against LLM-Pruner on the
+    WikiText2 dataset. Similarly, we evaluate the similarity between LLM-Pruner and
+    MINI-LLM. Specifically, the similarity is calculated by the formula: $\lvert|\text{Intersection}(A,B)\rvert|_{0}/\lvert|A\rvert|_{0}\times
+    100\%$ denote the sets of the pruned channels obtained by LLM-Pruner and the examined
+    method, respectively. The results are illustrated in Figure [2](#S4.F2 "Figure
+    2 ‣ 4.2 Main Results ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient Structured Pruning
+    for Large Language Models"). We can see that LLM-Pruner and MINI-LLM have more
+    similar pruned channels compared to LLM-Pruner and Wanda. As a result, compared
+    to gradient-free methods, the perplexity of MINI-LLM in Table [2](#S4.T2 "Table
+    2 ‣ 4.2 Main Results ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient Structured Pruning
+    for Large Language Models") is closer to the results of LLM-Pruner.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/70f2604d21fe01ee4b2e443475a6ae82.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) BLOOM-7B
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/2d1241d3e6369eef018115fb4bb73175.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) OPT-6.7B
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 2: Similarity in pruned channels at the prune ratio of 30%. LLM-Pruner
+    and MINI-LLM (ours) have more similar pruned channels compared to LLM-Pruner and
+    Wanda.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Zero-shot Performance on LLaMA-13B Due to the efficient approximation for the
+    gradients of the pre-trained weights, MINI-LLM enables pruning on larger-scale
+    LLMs, such as LLaMA-13B ⁴⁴4https://huggingface.co/huggyllama/llama-13b/tree/main.
+    We prune LLaMA-13B with five pruning ratios: from 10% to 50% and present the zero-shot
+    performance of the pruned LLaMA-13B without fine-tuning in Table [3](#S4.T3 "Table
+    3 ‣ 4.2 Main Results ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient Structured Pruning
+    for Large Language Models") and with fine-tuning in Figure [3](#S4.F3 "Figure
+    3 ‣ 4.2 Main Results ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient Structured Pruning
+    for Large Language Models"), respectively. Except for the model pruned with a
+    ratio of 50%, for which fine-tuning is conducted for two epochs, the compressed
+    models obtained from all other pruning ratios are fine-tuned for just one epoch.
+    The other fine-tuning settings, such as the learning rate and batch size, are
+    the same as those for recovering LLaMA-7B. We follow Wanda Sun et al. ([2024](#bib.bib42))
+    to conduct inference with 2048 tokens.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As shown in Table [3](#S4.T3 "Table 3 ‣ 4.2 Main Results ‣ 4 Experiments ‣
+    MINI-LLM: Memory-Efficient Structured Pruning for Large Language Models"), MINI-LLM
+    outperforms the magnitude-based method (l2-norm) significantly when fine-tuning
+    is not applied. For example, with a pruning ratio of 30%, MINI-LLM achieves a
+    perplexity of 11.04 compared to the magnitude-based method’s 316.65 on the WikiText2
+    dataset. Similarly, as depicted in Figure [3](#S4.F3 "Figure 3 ‣ 4.2 Main Results
+    ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large Language
+    Models"), MINI-LLM consistently maintains its substantial advantage over the magnitude-based
+    method across a spectrum of pruning ratios when subjected to fine-tuning.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Dataset | Prune Ratio |  |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 0% | 10% | 20% | 30% | 40% | 50% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Magnitude (l2-norm) | WikiText2 | 5.09 | 13.78 | 21.42 | 316.65 | 3918.40
+    | 12550.30 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MINI-LLM | 5.09 | 5.87 | 7.51 | 11.04 | 22.32 | 115.13 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Magnitude (l2-norm) | PTB | 19.24 | 50.89 | 91.87 | 694.34 | 4236.80 | 12847.92
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MINI-LLM | 19.24 | 23.86 | 33.38 | 49.91 | 91.43 | 176.93 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 3: Zero-shot perplexity of the pruned LLaMA-13B when fine-tuning is not
+    applied.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/05477c1ad50418f75a315a24da98dfc4.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) WikiText2
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/02055f5b79bc71495c23684c7fbb9f15.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) PTB
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 3: Zero-shot perplexity of the pruned LLaMA-13B models when fine-tuning
+    is applied. MINI-LLM consistently maintains its substantial advantage over the
+    magnitude-based method across a spectrum of pruning ratios.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Few-shot performance on LLaMA-7B. In Table [4](#S4.T4 "Table 4 ‣ 4.2 Main Results
+    ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large Language
+    Models"), we report the mean accuracies for both dense LLMs and sparse LLMs with
+    20% to 50% sparsity. In the few-shot setting, MINI-LLM performs competitively
+    with other methods, including backpropagation gradient-based LLM-Pruner. Specifically,
+    at a 20% prune ratio, MINI-LLM achieves an average accuracy of 26.60%, which surpasses
+    SparseGPT’s 25.80% and LLM-Pruner’s 25.30%. Notably, estimated gradient-based
+    MINI-LLM consistently surpasses backpropagation gradient-based LLM-Pruner. This
+    performance is not observed in zero-shot setting.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Ratio | Method | MMLU (5-shot) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| STEM | Humans | Social | Other | Avg. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 0% | - | 32.60 | 34.10 | 40.40 | 40.90 | 36.70 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 20% | SparseGPT Frantar and Alistarh ([2023](#bib.bib8)) | 25.30 | 25.90
+    | 25.50 | 26.30 | 25.80 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wanda Sun et al. ([2024](#bib.bib42)) | 23.30 | 25.80 | 23.20 | 24.60 | 24.40
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-Pruner Ma et al. ([2023](#bib.bib30)) | 24.40 | 25.30 | 23.80 | 27.30
+    | 25.30 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | MINI-LLM (ours) | 25.50 | 25.90 | 26.20 | 29.00 | 26.60 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 30% | SparseGPT Frantar and Alistarh ([2023](#bib.bib8)) | 25.80 | 25.70
+    | 24.60 | 23.50 | 25.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wanda Sun et al. ([2024](#bib.bib42)) | 25.80 | 27.10 | 25.00 | 24.80 | 25.80
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-Pruner Ma et al. ([2023](#bib.bib30)) | 23.90 | 24.90 | 23.50 | 26.00
+    | 24.60 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | MINI-LLM (ours) | 24.10 | 24.80 | 25.70 | 26.20 | 25.20 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 40% | SparseGPT Frantar and Alistarh ([2023](#bib.bib8)) | 26.10 | 25.50
+    | 23.30 | 23.90 | 24.80 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wanda Sun et al. ([2024](#bib.bib42)) | 25.80 | 24.50 | 24.80 | 23.60 | 25.80
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-Pruner Ma et al. ([2023](#bib.bib30)) | 22.70 | 24.40 | 21.40 | 24.00
+    | 23.30 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | MINI-LLM (ours) | 26.20 | 24.10 | 27.50 | 27.50 | 26.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 50% | SparseGPT Frantar and Alistarh ([2023](#bib.bib8)) | 26.40 | 24.70
+    | 25.40 | 24.20 | 25.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wanda Sun et al. ([2024](#bib.bib42)) | 26.00 | 25.10 | 24.30 | 25.00 | 25.10
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-Pruner Ma et al. ([2023](#bib.bib30)) | 21.30 | 24.20 | 21.70 | 23.70
+    | 22.90 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | MINI-LLM (ours) | 26.30 | 24.80 | 25.00 | 25.30 | 25.30 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 4: Few-shot performance of the pruned LLaMA-7B models. “Ratio”, Bold/Underline,
+    “Avg.” have the same meaning as Table [1](#S4.T1 "Table 1 ‣ 4.1 Experimental Setup
+    ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large Language
+    Models")'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Model size, complexity, and inference time. Table [5](#S4.T5 "Table 5 ‣ 4.3
+    Ablation Study ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient Structured Pruning
+    for Large Language Models") shows the number of parameters, MACs, GPU memory requirements,
+    and total inference time for running the original model and the pruned LLaMA-7B
+    models at different prune ratios. The results indicate that when the model is
+    pruned by 50%, the total inference time is reduced to 58% and the GPU memory usage
+    concurrently drops to 50% of its original values, respectively. The evaluation
+    is conducted in the inference mode and the sequence length is set to 64\. The
+    inference time is tested under the test dataset of WikiText2 on a single NVIDIA
+    GeForce RTX 3090Ti (24GB).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 Ablation Study
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Efficacy of estimated gradients on LLaMA-7B. To enhance GPU memory efficiency
+    over traditional backpropagation gradients, we utilize the classical ZO gradient
+    estimation based on SPSA to approximately compute weight gradients with only forward
+    passes for LLM pruning. Although SPSA-based ZO optimization is theoretically founded
+    (Spall ([1992](#bib.bib40), [1997](#bib.bib41)); Gasnikov et al. ([2022](#bib.bib11))),
+    we especially reveal the effectiveness of the estimated gradients for guiding
+    pruning LLMs in Figure [4](#S4.F4 "Figure 4 ‣ 4.3 Ablation Study ‣ 4 Experiments
+    ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large Language Models"). As
+    we can see, the results demonstrate that our score function FMS, $\left|W\hat{\nabla}\mathcal{L}(W)X\right|$
+    compared to Wanda’s. This indicates that the performance improvement over Wanda’s
+    comes from the estimated gradient information. This observation underscores the
+    superior performance and effectiveness of gradient-based pruning methods in our
+    experiments. However, as we previously mentioned, gradients based on backpropagation
+    lead to substantial memory consumption and are less feasible. Therefore, gradient
+    estimation based on the forward passes becomes valuable, allowing the criterion
+    to incorporate guidance information from gradients.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/51f534e80914735417882e4120ad97b0.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) WikiText2
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/81e69457070e53bc2f2beca14d2c5eb4.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) PTB
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 4: The outcomes of gradient-based vs. gradient-free criteria for pruning
+    LLaMA-7B. The results demonstrate that our score function FMS consistently yields
+    better performance compared to Wanda’s pruning criterion.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Ratio | #Params | #MACs | GPU Memory | Inference Time |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 0% | 6.74B | 424.02G | 12884.5MB | 88.81s |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 20% | 5.42B | 340.48G | 10375.5MB | 71.77s |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 50% | 3.39B | 279.37G | 6519.0MB | 51.18s |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 5: Model size, complexity, and inference time of the original model and
+    the pruned LLaMA-7B models. “Inference Time” means the total inference time on
+    WikiText2 test dataset. The evaluation is conducted in inference mode with a sequence
+    length of 64, and the inference time is tested on a single NVIDIA GeForce RTX
+    3090 Ti (24GB).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Efficacy of Estimated Gradients on BLOOM-7B and OPT-6.7B In the main body,
+    we explored the effectiveness of the estimated gradients for guiding the pruning
+    of LLaMA-7B. Here, we delve further into the effectiveness of the estimated gradients
+    in guiding the pruning process for BLOOM-7B ⁵⁵5https://huggingface.co/bigscience/bloom-7b1/tree/main
+    and OPT-6.7B ⁶⁶6https://huggingface.co/facebook/opt-6.7b/tree/main. The experimental
+    results presented in Table [6](#S4.T6 "Table 6 ‣ 4.3 Ablation Study ‣ 4 Experiments
+    ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large Language Models") indicate
+    that our score function FMS, $|W\hat{\nabla}\mathcal{L}(W)X|$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Prune Ratio | Model/Criterion | WikiText2$\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 0% | BLOOM-7B | 26.58 | - | 50.55 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10% | $&#124;WX&#124;$ | 40.81 | 2.69 | 93.60 | 7.37 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| w/ tune | $&#124;W\hat{\nabla}\mathcal{L}(W)X&#124;$ | 38.12 | 86.23 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 30% | $&#124;WX&#124;$ | 84.89 | 30.82 | 170.16 | 48.55 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| w/ tune | $&#124;W\hat{\nabla}\mathcal{L}(W)X&#124;$ | 54.07 | 121.61 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 0% | OPT-6.7B | 26.45 | - | 32.03 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10% | $&#124;WX&#124;$ | 37.09 | 6.94 | 53.54 | 14.90 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| w/ tune | $&#124;W\hat{\nabla}\mathcal{L}(W)X&#124;$ | 30.15 | 38.64 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 30% | $&#124;WX&#124;$ | 82.93 | 42.04 | 107.32 | 49.88 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| w/ tune | $&#124;W\hat{\nabla}\mathcal{L}(W)X&#124;$ | 40.89 | 57.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 6: The outcomes of gradient-based vs. gradient-free criteria for pruning
+    BLOOM-7B and OPT-6.7B. $\Delta$ value indicates a greater improvement in performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Efficacy of activation on LLaMA-7B. Dettmers et al. ([2022](#bib.bib6)); Kovaleva
+    et al. ([2021](#bib.bib18)) identified a distinct property of LLMs that a few
+    hidden state features possess notably high magnitudes. Eliminating these features
+    results in a considerable decline in performance. As argued in Section [3.1](#S3.SS1
+    "3.1 Pruning Criterion in MINI-LLM ‣ 3 Method ‣ MINI-LLM: Memory-Efficient Structured
+    Pruning for Large Language Models"), the vanilla pruning criterion $\left|W\nabla\mathcal{L}(W)\right|$,
+    almost does not require additional GPU memory overhead.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Ratio | Criterion | WikiText2$\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 20% | $\left&#124;W\nabla\mathcal{L}(W)\right&#124;$ | 17.79 | 0.34 | 30.57
+    | -0.12 | 68.44 | 0.91 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\left&#124;W\nabla\mathcal{L}(W)X\right&#124;$ | 17.45 | 30.69 | 69.35 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 30% | $\left&#124;W\nabla\mathcal{L}(W)\right&#124;$ | 21.55 | 0.38 | 37.67
+    | 0.80 | 66.18 | 0.39 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\left&#124;W\nabla\mathcal{L}(W)X\right&#124;$ | 21.17 | 36.87 | 66.57 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 40% | $\left&#124;W\nabla\mathcal{L}(W)\right&#124;$ | 28.10 | 0.08 | 48.66
+    | 2.05 | 60.96 | 1.11 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\left&#124;W\nabla\mathcal{L}(W)X\right&#124;$ | 28.02 | 46.61 | 62.07 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 50% | $\left&#124;W\nabla\mathcal{L}(W)\right&#124;$ | 39.48 | 0.38 | 66.37
+    | 3.53 | 57.52 | 0.94 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\left&#124;W\nabla\mathcal{L}(W)X\right&#124;$ | 39.10 | 62.84 | 58.46 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 7: Zero-shot performance of the pruned LLaMA-7B models achieved by using
+    backpropagation gradient-based pruning criterion with/without activations. “Ratio”
+    refers to the prune ratio. $\Delta$ value indicates a greater improvement in performance.
+    “Avg.” has the same meaning as “Average” in Table [1](#S4.T1 "Table 1 ‣ 4.1 Experimental
+    Setup ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large
+    Language Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In Table [7](#S4.T7 "Table 7 ‣ 4.3 Ablation Study ‣ 4 Experiments ‣ MINI-LLM:
+    Memory-Efficient Structured Pruning for Large Language Models"), gradients in
+    both pruning criteria are calculated by backpropagation. In contrast, the results
+    in Table [8](#S4.T8 "Table 8 ‣ 4.3 Ablation Study ‣ 4 Experiments ‣ MINI-LLM:
+    Memory-Efficient Structured Pruning for Large Language Models") demonstrate the
+    effectiveness of activation in estimated gradients-based pruning criteria. Similar
+    to Table [7](#S4.T7 "Table 7 ‣ 4.3 Ablation Study ‣ 4 Experiments ‣ MINI-LLM:
+    Memory-Efficient Structured Pruning for Large Language Models"), the difference
+    between the two criteria in Table [8](#S4.T8 "Table 8 ‣ 4.3 Ablation Study ‣ 4
+    Experiments ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large Language
+    Models") also lies in whether they include activation information or not. The
+    results in Table [8](#S4.T8 "Table 8 ‣ 4.3 Ablation Study ‣ 4 Experiments ‣ MINI-LLM:
+    Memory-Efficient Structured Pruning for Large Language Models") indicate that
+    using the pruning criterion with activation consistently yielded better results.
+    For example, on the WikiText2 dataset, the model pruned with 50% of its parameters
+    using $|W\hat{\nabla}\mathcal{L}(W)X|$. Switching to the PTB dataset on the same
+    compression rate, also yielded positive results, with the model’s perplexity dropping
+    from 75.50 to 69.83, confirming the efficacy of the activation-inclusive pruning
+    criterion across diverse data.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Consequently, the results in Table [7](#S4.T7 "Table 7 ‣ 4.3 Ablation Study
+    ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large Language
+    Models") and Table [8](#S4.T8 "Table 8 ‣ 4.3 Ablation Study ‣ 4 Experiments ‣
+    MINI-LLM: Memory-Efficient Structured Pruning for Large Language Models") demonstrate
+    our pruning criterion FWS overall outperforms its counterpart without activation,
+    whether the gradients are backpropagated or approximated.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Ratio | Criterion | WikiText2$\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 20% | $&#124;W\hat{\nabla}\mathcal{L}(W)&#124;$ | 20.40 | 2.08 | 34.17 |
+    1.63 | 67.24 | 0.33 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $&#124;W\hat{\nabla}\mathcal{L}(W)X&#124;$ | 18.32 | 32.54 | 67.57 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 30% | $&#124;W\hat{\nabla}\mathcal{L}(W)&#124;$ | 25.09 | 0.81 | 40.89 |
+    1.87 | 61.97 | 2.02 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $&#124;W\hat{\nabla}\mathcal{L}(W)X&#124;$ | 24.28 | 39.02 | 63.99 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 40% | $&#124;W\hat{\nabla}\mathcal{L}(W)&#124;$ | 35.25 | 3.47 | 52.30 |
+    3.07 | 58.95 | 2.07 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $&#124;W\hat{\nabla}\mathcal{L}(W)X&#124;$ | 31.78 | 49.23 | 61.02 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 50% | $&#124;W\hat{\nabla}\mathcal{L}(W)&#124;$ | 53.23 | 8.54 | 75.50 |
+    5.67 | 54.73 | 2.20 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $&#124;W\hat{\nabla}\mathcal{L}(W)X&#124;$ | 44.69 | 69.83 | 56.93 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 8: Zero-shot performance of the pruned LLaMA-7B models achieved by using
+    ZO gradient-based pruning criterion with/without activations. The columns have
+    the same meaning as Table [7](#S4.T7 "Table 7 ‣ 4.3 Ablation Study ‣ 4 Experiments
+    ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large Language Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Efficacy of activations on BLOOM-7B and OPT-6.7B Table [9](#S4.T9 "Table 9
+    ‣ 4.3 Ablation Study ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient Structured Pruning
+    for Large Language Models"), Table [10](#S4.T10 "Table 10 ‣ 4.3 Ablation Study
+    ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large Language
+    Models") and Table [11](#S4.T11 "Table 11 ‣ 4.3 Ablation Study ‣ 4 Experiments
+    ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large Language Models") show
+    the zero-shot results of the pruned models with/without fine-tuning to discover
+    the effectiveness of activations for guiding pruning LLMs. From the results in
+    Table [9](#S4.T9 "Table 9 ‣ 4.3 Ablation Study ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient
+    Structured Pruning for Large Language Models"), it is evident that incorporating
+    activations $|W\nabla\mathcal{L}(W)X|$, the perplexity result decreased by 0.51.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Prune Ratio | Model/Criterion | WikiText2$\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 0% | BLOOM-7B | 26.58 | - | 50.55 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10% | $&#124;W\nabla\mathcal{L}(W)&#124;$ | 38.12 | 2.59 | 86.23 | 8.63 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| w/ tune | $&#124;W\nabla\mathcal{L}(W)X&#124;$ | 35.53 | 77.60 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 30% | $&#124;W\nabla\mathcal{L}(W)&#124;$ | 58.11 | -0.24 | 147.52 | 9.72
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| w/ tune | $&#124;W\nabla\mathcal{L}(W)X&#124;$ | 58.35 | 137.80 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 0% | OPT-6.7B | 26.45 | - | 32.03 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10% | $&#124;W\nabla\mathcal{L}(W)&#124;$ | 27.89 | -0.38 | 39.33 | 0.39
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| w/ tune | $&#124;W\nabla\mathcal{L}(W)X&#124;$ | 28.27 | 38.94 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 30% | $&#124;W\nabla\mathcal{L}(W)&#124;$ | 42.94 | 0.75 | 65.09 | 0.51 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| w/ tune | $&#124;W\nabla\mathcal{L}(W)X&#124;$ | 42.19 | 64.58 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 9: Zero-shot perplexity of the pruned BLOOM-7B and OPT-6.7B models achieved
+    by using backpropagation gradient-based pruning criterion with/without activations.
+    The columns have the same meaning as Table [6](#S4.T6 "Table 6 ‣ 4.3 Ablation
+    Study ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large
+    Language Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In Table [9](#S4.T9 "Table 9 ‣ 4.3 Ablation Study ‣ 4 Experiments ‣ MINI-LLM:
+    Memory-Efficient Structured Pruning for Large Language Models"), gradients are
+    computed by backpropagation. In contrast, the results presented in Table [10](#S4.T10
+    "Table 10 ‣ 4.3 Ablation Study ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient Structured
+    Pruning for Large Language Models") and [11](#S4.T11 "Table 11 ‣ 4.3 Ablation
+    Study ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large
+    Language Models") highlight the effectiveness of incorporating activations in
+    estimated gradient-based pruning criteria when fine-tuning is applied or not.
+    For instance, when fine-tuning is not applied, the model pruned with 30% of BLOOM-7B’s
+    parameters using $|W\hat{\nabla}\mathcal{L}(W)X|$. In contrast, after undergoing
+    fine-tuning, although the increase in performance becomes less pronounced as shown
+    in Table [11](#S4.T11 "Table 11 ‣ 4.3 Ablation Study ‣ 4 Experiments ‣ MINI-LLM:
+    Memory-Efficient Structured Pruning for Large Language Models"), it is still evident
+    that activations play a significant role in enhancing performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Prune Ratio | Model/Criterion | WikiText2$\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 0% | BLOOM-7B | 26.58 | - | 50.55 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10% | $&#124;W\hat{\nabla}\mathcal{L}(W)&#124;$ | 78.21 | 4.74 | 231.67 |
+    27.22 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| w/o tune | $&#124;W\hat{\nabla}\mathcal{L}(W)X&#124;$ | 73.47 | 204.45 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 30% | $&#124;W\hat{\nabla}\mathcal{L}(W)&#124;$ | 106.07 | 14.64 | 239.96.52
+    | 31.48 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| w/o tune | $&#124;W\hat{\nabla}\mathcal{L}(W)X&#124;$ | 91.43 | 208.48 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 10: Zero-shot perplexity of the pruned BLOOM-7B achieved by using ZO
+    gradient-based pruning criterion with/without activations. The columns have the
+    same meaning as Table [6](#S4.T6 "Table 6 ‣ 4.3 Ablation Study ‣ 4 Experiments
+    ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large Language Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Prune Ratio | Model/Criterion | WikiText2$\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 0% | OPT-6.7B | 26.45 | - | 32.03 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10% | $&#124;W\hat{\nabla}\mathcal{L}(W)&#124;$ | 30.51 | 0.36 | 39.17 |
+    0.53 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| w/ tune | $&#124;W\hat{\nabla}\mathcal{L}(W)X&#124;$ | 30.15 | 38.64 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 30% | $&#124;W\hat{\nabla}\mathcal{L}(W)&#124;$ | 43.87 | 2.98 | 58.12 |
+    0.68 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| w/ tune | $&#124;W\hat{\nabla}\mathcal{L}(W)X&#124;$ | 40.89 | 57.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 11: Zero-shot perplexity of the pruned OPT-6.7B achieved by using ZO
+    gradient-based pruning criterion with/without activations. The columns have the
+    same meaning as Table [6](#S4.T6 "Table 6 ‣ 4.3 Ablation Study ‣ 4 Experiments
+    ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large Language Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Layer Sensitivity for Pruning Based on the findings in [Ma et al. ([2023](#bib.bib30))]
+    that the first and last layers significantly affect the model’s performance, we
+    investigate the impact of involving different ranges of layers in the pruning
+    process on LLaMA-7B’s performance. It includes analyzing the performance of models
+    with pruning applied from the 1st to the 30th layer (represented by layer-1-30
+    in Figure [5](#S4.F5 "Figure 5 ‣ 4.3 Ablation Study ‣ 4 Experiments ‣ MINI-LLM:
+    Memory-Efficient Structured Pruning for Large Language Models")), from the 3rd
+    to the 30th layer (layer-3-30), from the 4th to the 29th layer (layer-4-29), and
+    from the 5th to the 28th layer (layer-5-28) ⁷⁷7LLaMA-7B has 32 layers, from 0th
+    to the 31st layer.. From the results in Figure [5](#S4.F5 "Figure 5 ‣ 4.3 Ablation
+    Study ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large
+    Language Models"), it is evident that layer-1-30 has the worst performance, while
+    layer-3-30 and layer-4-29 have comparably better performance for both pruning
+    methods. In contrast, the models derived from layer-5-28 pruning exhibit varying
+    responses to different pruning methods. For instance, for MINI-LLM, their performance
+    is similar to that of the layer-4-29 models, whereas, for LLM-Pruner [Ma et al.
+    ([2023](#bib.bib30))], their performance is somewhat inferior compared to both
+    layer-4-29 and layer-3-30 models. Since the layer-4-29 pruning demonstrates consistent
+    performance across various pruning methods, we conduct pruning for layer-4-29
+    in all LLaMA-7B experiments.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/1587c20104f58297cfa9d5a7dd8f94ef.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) MINI-LLM (ours)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e00dec4ed27fbbed87943485dfb7b05d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) LLM-Pruner
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 5: The zero-shot perplexity of the pruned models achieved by enabling
+    different ranges of layers involved in pruning LLaMA-7B on the PTB dataset. Layer-1-30
+    has the worst performance, while layer-3-30 and layer-4-29 have comparably better
+    performance for both pruning methods. In contrast, the models derived from layer-5-28
+    pruning exhibit varying responses to different pruning methods.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Considering the inferior performance of layer-1-31, in Figure [6](#S4.F6 "Figure
+    6 ‣ 4.3 Ablation Study ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient Structured
+    Pruning for Large Language Models"), we only display the proportions of layers
+    involved in pruning for layer-3-30, layer-4-29, and layer-5-28\. In addition,
+    we present the average perplexity of LLM-Pruner and MINI-LLM for the three ranges
+    of layers, marked with the orange or the blue five-pointed stars in Figure [6](#S4.F6
+    "Figure 6 ‣ 4.3 Ablation Study ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient Structured
+    Pruning for Large Language Models"), which is averaged over three pruning ratios:
+    30%, 40%, and 50 % on WikiText2 and PTB. The average perplexity results in Figure [6](#S4.F6
+    "Figure 6 ‣ 4.3 Ablation Study ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient Structured
+    Pruning for Large Language Models") illustrate that our MINI-LLM exhibits performance
+    close to, even surpasses at times, that of LLM-Pruner. For instance, for layer-5-28,
+    MINI-LLM achieves an average perplexity of 51.87 on PTB, outperforming LLM-Pruner’s
+    53.73\. These results demonstrate that MINI-LLM is a memory-efficient and effective
+    method for gradient-based pruning.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e1f8f85bdcd731c16fb1465bf396b30d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) WikiText2
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a0f23475494f95b4bc2d976e824617ec.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) PTB
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 6: The percentage of different ranges of layers involved in pruning
+    LLaMA-7B and the average perplexity. MINI-LLM exhibits performance close to, even
+    surpasses LLM-Pruner.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4 Generations From Pruned Model
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Table [12](#S4.T12 "Table 12 ‣ 4.4 Generations From Pruned Model ‣ 4 Experiments
+    ‣ MINI-LLM: Memory-Efficient Structured Pruning for Large Language Models") shows
+    the generation examples of the original and the pruned LLaMA-7B models achieved
+    by MINI-LLM. The five experimental instructions encompass math, common sense,
+    translation, and writing tasks. From the responses presented in Table [12](#S4.T12
+    "Table 12 ‣ 4.4 Generations From Pruned Model ‣ 4 Experiments ‣ MINI-LLM: Memory-Efficient
+    Structured Pruning for Large Language Models"), it is evident that when pruning
+    20% of the parameters, the pruned model maintains high performance in these tasks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Generated Sentences |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-7B (ratio=0%) | Instruction: What are Fibonacci numbers? Response:
+    Fibonacci numbers is a sequence of integer numbers, generated by a simple formula
+    which has the form of sum of two numbers. This sequence has a few very interesting
+    properties which can be summarized as follows: Every Fibonacci number is the sum
+    of two preceding Fibonacci numbers. The formula is Fn= Fn-1 + Fn-2\. Start with
+    1,2,3,5,8,13,21,34,55,89,… |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Instruction: What is the difference between a cat and a tiger? Response:
+    A tiger is a member of the cat family, but is a big, powerful animal with striped
+    fur. It is bigger than a normal housecat. The tiger is native to India and southwestern
+    Asia. In contrast, a cat is smaller than the tiger. There are three main types
+    of cats. Most cats are of the domestic. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Instruction: AI can create a logo in seconds Response: When you think about
+    a logo, the first thought may be to sit down and draw something, or even create
+    a vector file. But the truth is that it is possible to do this easily and quickly
+    by using AI. So, the question is, why not use it? For example, I was recently
+    working with the logo of an Italian company and I only needed to sit down at the
+    computer for 5 minutes to create the basic elements that I would then change to
+    meet the needs of the brand. In just 2 minutes you can create a 3D logo. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Instruction: Compose a poem about summer. Response: Sandy toes, Cooling ocean,
+    Water lilies, the warm sun, Making the clouds, dissolve, and the birds sing. Their
+    songs lull me to sleep, With soft breeze. Summer is, the best, because there is
+    no one to bother, in the summer days. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Instruction: Translate the English sentence ”large language models” into
+    Spanish. Response: The answer for the English sentence is ”grandes modelos lenguas”
+    in Spanish. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-7B (ratio=20%) | Instruction: What are Fibonacci numbers? Response:
+    In mathematics and physics, the Fibonacci numbers are the sequence of integers
+    starting from the 2nd number as the sum of the previous two numbers in the sequence:
+    1, 1, 2, 3, 5, 8, 13, 21, 34, 55,… |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Instruction: What is the difference between a cat and a tiger? Response:
+    The cat and the tiger are both Felines, which means both species belong to the
+    same Biological Taxonomic Classification family. However, the difference between
+    a cat and a tiger lies primarily in the physical differences between the two species.
+    A cat is generally smaller in size, with an average weight of 5 - 10 pounds (2.7
+    - 4.4 kilograms). Cats are more domesticated, often being kept as pets. They are
+    known for being more social, and their distinctive meowing, hisses, and growls
+    are used to communicate with other felines. On the other hand, tigers are bigger
+    in size, with an average weight of around 125 pounds (69.5 kilograms). They are
+    also more wild, with little domestication. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Instruction: AI can create a logo in seconds Response: AI can create a logo
+    in seconds, a visual designer can bring your brand idea to life. When it comes
+    to creating a brand identity, our first step is to conduct a thorough market analysis
+    and develop a brand position. From there we can create a creative brand identity
+    that is in line with the core values of your business. Our creative design team
+    is trained in building brands that are aesthetically pleasing, easy to recognize
+    and communicate a clear message to your target audience. The design can incorporate
+    many elements including illustrations, photography, infographics, videos, typography
+    and layout. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Instruction: Compose a poem about summer. Response: A summer sun is all aglow,
+    Reflecting in the calm, clear waters below, Tossed by gentle breeze, Warm and
+    golden, Far beyond sight. A perfect sight for sight, In an endless horizon, Reflecting
+    in the calm, Clear waters below. A summer sun, That never sets, Far beyond sight.
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Instruction: Translate the English sentence ”large language models” into
+    Spanish. Response: Here’s a suggested sentence in Spanish: ”Modelo grande de lenguas.”
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 12: Generated Examples from the original and pruned LLaMA-7B.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this paper, we presented MINI-LLM, an one-shot structured pruning approach
+    designed to address the high GPU memory demands of computing backpropagation-based
+    gradients of pre-trained LLMs. First, we proposed a novel criterion called the
+    Feature Map Sensitivity (FMS) score which integrates magnitude, activation, and
+    gradient information to guide the pruning process effectively. By employing estimated
+    gradients based on forward passes, MINI-LLM not only reduces the GPU memory requirement
+    for gradient-guided pruning but also achieves superior performance compared to
+    existing gradient-free methods. Our extensive experiments on three LLMs: LLaMA,
+    BLOOM, and OPT, across various downstream tasks demonstrate MINI-LLM’s effectiveness
+    and efficiency in GPU memory usage. In the future, our objective is to further
+    enhance the pruning results of MINI-LLM at higher compression rates.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Bisk et al. [2020] Yonatan Bisk, Rowan Zellers, Ronan Le Bras, Jianfeng Gao,
+    and Yejin Choi. PIQA: Reasoning about physical commonsense in natural language.
+    In AAAI, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Brown et al. [2020] Tom Brown, Benjamin Mann, Nick Ryder, et al. Language models
+    are few-shot learners. Advances in neural information processing systems, 33:1877–1901,
+    2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chavan et al. [2023] Arnav Chavan, Zhuang Liu, Deepak Gupta, Eric Xing, and
+    Zhiqiang Shen. One-for-All: Generalized lora for parameter-efficient fine-tuning.
+    arXiv preprint arXiv:2306.07967, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Cheng et al. [2023] Hongrong Cheng, Miao Zhang, and Javen Qinfeng Shi. A survey
+    on deep neural network pruning-taxonomy, comparison, analysis, and recommendations.
+    arXiv preprint arXiv:2308.06767, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Clark et al. [2019] Christopher Clark, Kenton Lee, Ming-Wei Chang, Tom Kwiatkowski,
+    Michael Collins, and Kristina Toutanova. BoolQ: Exploring the surprising difficulty
+    of natural yes/no questions. In NAACL, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. [2022] Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer.
+    LLM.int8(): 8-bit matrix multiplication for transformers at scale. In NeurIPS,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. [2023] Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, and Luke
+    Zettlemoyer. QLoRA: Efficient finetuning of quantized LLMs. arXiv preprint arXiv:2305.14314,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Frantar and Alistarh [2023] Elias Frantar and Dan Alistarh. SparseGPT: Massive
+    language models can be accurately pruned in one-shot. arXiv preprint arXiv:2301.00774,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Frantar et al. [2022] Elias Frantar, Sidak Pal Singh, and Dan Alistarh. Optimal
+    brain compression: A framework for accurate post-training quantization and pruning.
+    In NeurIPS, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Fu et al. [2022] Yonggan Fu, Haichuan Yang, Jiayi Yuan, Meng Li, Cheng Wan,
+    Raghuraman Krishnamoorthi, Vikas Chandra, and Yingyan Lin. Depthshrinker: a new
+    compression paradigm towards boosting real-hardware efficiency of compact neural
+    networks. In ICML, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Gasnikov et al. [2022] Alexander Gasnikov, Darina Dvinskikh, Pavel Dvurechensky,
+    Eduard Gorbunov, Aleksander Beznosikov, and Alexander Lobanovu. Randomized gradient-free
+    methods in convex optimization. arXiv preprint arXiv:2211.13566, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: He et al. [2023] Haoyu He, Jianfei Cai, Jing Zhang, Dacheng Tao, and Bohan Zhuang.
+    Sensitivity-aware visual parameter-efficient tuning. In ICCV, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hendrycks et al. [2021] Dan Hendrycks, Collin Burns, Steven Basart, Andy Zou,
+    Mantas Mazeika, Dawn Song, and Jacob Steinhardt. Measuring massive multitask language
+    understanding. In International Conference on Learning Representations (ICLR),
+    2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hu et al. [2022] Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu,
+    Yuanzhi Li, Shean Wang, and Weizhu Chen. LoRA: Low-rank adaptation of large language
+    models. In ICLR poster, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Jia et al. [2022] Menglin Jia, Luming Tang, Bor-Chun Chen, Claire Cardie, Serge
+    Belongie, Bharath Hariharan, and Ser-Nam Lim. Visual prompt tuning. In ECCV, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kiefer and Wolfowitz. [1952] J. Kiefer and J. Wolfowitz. Stochastic estimation
+    of the maximum of a regression function. Ann. Math. Statist, 23:462–466, 1952.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kingma and Ba [2015] Diederik P. Kingma and Jimmy Ba. Adam: A method for stochastic
+    optimization. In ICLR, 2015.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kovaleva et al. [2021] Olga Kovaleva, Saurabh Kulshreshtha, Anna Rogers, and
+    Anna Rumshisky. BERT Busters: Outlier dimensions that disrupt transformers. In
+    ACL, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kurtic et al. [2022] Eldar Kurtic, Daniel Campos, Tuan Nguyen, Elias Frantar,
+    Mark Kurtz, Benjamin Fineran, Michael Goin, and Dan Alistarh. The optimal BERT
+    surgeon: Scalable and accurate second-order pruning for large language models.
+    In EMNLP, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kurtic et al. [2023] Eldar Kurtic, Elias Frantar, and Dan Alistarh. ZipLM:
+    Inference-aware structured pruning of language models. In NeurIPS, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kwon et al. [2022] Woosuk Kwon, Sehoon Kim, Michael W. Mahoney, Joseph Hassoun,
+    Kurt Keutzer, and Amir Gholami. A fast post-training pruning framework for transformers.
+    In NeurIPS, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: LeCun et al. [1989] Yann LeCun, John Denker, and Sara Solla. Optimal brain damage.
+    In NIPS, pages 598–605, 1989.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lee et al. [2019] Namhoon Lee, Thalaiyasingam Ajanthan, and Philip H. S. Torr.
+    SNIP: Single-shot network pruning based on connection sensitivity. In ICLR, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Lester et al. [2021] Brian Lester, Rami Al-Rfou, and Noah Constant. The power
+    of scale for parameter-efficient prompt tuning. In EMNLP, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li and Liang [2021] Xiang Lisa Li and Percy Liang. Prefix-Tuning: Optimizing
+    continuous prompts for generation. In IJCNLP, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. [2020] Yawei Li, Shuhang Gu, Christoph Mayer, Luc Van Gool, and Radu
+    Timofte. Group sparsity: The hinge between filter pruning and decomposition for
+    network compression. In CVPR, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. [2022a] Shiru Li, Yong Xia, and Zi Xu. Simultaneous perturbation
+    stochastic approximation: towards one-measurement per iteration. arXiv preprint
+    arXiv:2203.03075, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Li et al. [2022b] Yuchao Li, Fuli Luo, Chuanqi Tan, Mengdi Wang, Songfang Huang,
+    Shen Li, and Junjie Bai. Parameter-efficient sparsity for large language models
+    fine-tuning. In IJCAI, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Liu et al. [2021] Liyang Liu, Shilong Zhang, Zhanghui Kuang, Aojun Zhou, Jing-Hao
+    Xue, Xinjiang Wang, Yimin Chen, Wenming Yang, Qingmin Liao, and Wayne Zhang. Group
+    fisher pruning for practical network compression. In ICML, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ma et al. [2023] Xinyin Ma, Gongfan Fang, and Xinchao Wang. LLM-Pruner: On
+    the structural pruning of large language models. In NeurIPS, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Malladi et al. [2023] Sadhika Malladi, Tianyu Gao, Eshaan Nichani, Alex Damian,
+    Jason D. Lee, Danqi Chen, and Sanjeev Arora. Fine-tuning language models with
+    just forward passes. In NeurIPS, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Marcus et al. [1993] Mitchell Marcus, Beatrice Santorini, and Mary Ann Marcinkiewicz.
+    Building a large annotated corpus of English: The penn treebank. Computational
+    Linguistics, 19:313–330, 1993.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Merity et al. [2016] Stephen Merity, Caiming Xiong, James Bradbury, and Richard
+    Socher. Pointer sentinel mixture models. arXiv preprint arXiv:1609.07843, 2016.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Molchanov et al. [2017] Pavlo Molchanov, Stephen Tyree, Tero Karras, Timo Aila,
+    and Jan Kautz. Pruning convolutional neural networks for resource-efficient inference.
+    In ICLR, 2017.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Molchanov et al. [2019] Pavlo Molchanov, Arun Mallya, Stephen Tyree, Iuri Frosio,
+    and Jan Kautz. Importance estimation for neural network pruning. In CVPR, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Nova et al. [2023] Azade Nova, Hanjun Dai, and Dale Schuurmans. Gradient-free
+    structured pruning with unlabeled data. In ICML, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: OpenAI [2023] OpenAI. GPT-4 technical report. arXiv preprint arXiv:2303.08774,
+    2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sakaguchi et al. [2021] Keisuke Sakaguchi, Ronan Le Bras, Chandra Bhagavatula,
+    and Yejin Choi. WinoGrande:an adversarial winograd schema challenge at scale.
+    Communications of the ACM, 64:99–106, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sanh et al. [2020] Victor Sanh, Thomas Wolf, and Alexander M. Rush. Movement
+    pruning: Adaptive sparsity by fine-tuning. In NeurIPS, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Spall [1992] James C. Spall. Multivariate stochastic approximation using a simultaneous
+    perturbation gradient approximation. IEEE Transactions on Automatic Control, 37:332–341,
+    1992.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Spall [1997] James C. Spall. A one-measurement form of simultaneous perturbation
+    stochastic approximation. Automatics, 33:109–112, 1997.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sun et al. [2024] Mingjie Sun, Zhuang Liu, Anna Bair, and J. Zico Kolter. A
+    simple and effective pruning approach for large language models. In Proceedings
+    of International Conference on Learning Representations (ICLR) poster, 2024.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Taori et al. [2023] Rohan Taori, Ishaan Gulrajani, Tianyi Zhang, Yann Dubois,
+    Xuechen Li, Carlos Guestrin, Percy Liang, and Tatsunori B. Hashimoto. Stanford
+    alpaca: An instruction-following llama model. [https://github.com/tatsu-lab/stanford_alpaca](https://github.com/tatsu-lab/stanford_alpaca),
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. [2023] Hugo Touvron, Thibaut Lavril, Gautier Izacard, et al.
+    LLaMA: Open and efficient foundation language models. arXiv preprint arXiv:2302.13971,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wang et al. [2020a] Chaoqi Wang, Guodong Zhang, and Roger Grosse. Picking winning
+    tickets before training by preserving gradient flow. In ICLR, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wang et al. [2020b] Ziheng Wang, Jeremy Wohlwend, and Tao Lei. Structured pruning
+    of large language models. In EMNLP, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Workshop [2023] BigScience Workshop. BLOOM: A 176b-parameter open-access multilingual
+    language model. arXiv preprint arXiv:2211.05100, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wu et al. [2020] Yiquan Wu, Kun Kuang, Yating Zhang, Xiaozhong Liu, Changlong
+    Sun, Jun Xiao, Yueting Zhuang, Luo Si, and Fei Wu. De-biased court’s view generation
+    with causality. In EMNLP, pages 763–780, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wu et al. [2023] Likang Wu, Zhi Zheng, Zhaopeng Qiu, et al. A survey on large
+    language models for recommendation. arXiv preprint arXiv:2305.19860, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xia et al. [2024] Mengzhou Xia, Tianyu Gao, Zhiyuan Zeng, and Danqi Chen. Sheared
+    LLaMA: Accelerating language model pre-training via structured pruning. In ICLR,
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xiao et al. [2023] Guangxuan Xiao, Ji Lin, Mickael Seznec, Hao Wu, Julien Demouth,
+    and Song Han. SmoothQuant: Accurate and efficient post-training quantization for
+    large language models. In ICML, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yu et al. [2022] Xin Yu, Thiago Serra, Srikumar Ramalingam, and Shandian Zhe.
+    The combinatorial brain surgeon: Pruning weights that cancel one another in neural
+    networks. In ICML, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zellers et al. [2019] Rowan Zellers, Ari Holtzman, Yonatan Bisk, Ali Farhadi,
+    and Yejin Choi. Hellaswag: Can a machine really finish your sentence? In ACL,
+    2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. [2022] Susan Zhang, Stephen Roller, Naman Goyal, et al. OPT: Open
+    pre-trained transformer language models. arXiv preprint arXiv:2205.01068, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhou et al. [2022] Minxuan Zhou, Weihong Xu, Jaeyoung Kang, and Tajana Rosing.
+    TransPIM: A memory-based acceleration via software-hardware co-design for transformer.
+    In HPCA, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhu et al. [2015] Yukun Zhu, Ryan Kiros, Rich Zemel, Ruslan Salakhutdinov,
+    Raquel Urtasun, Antonio Torralba, and Sanja Fidler. Aligning books and movies:
+    Towards story-like visual explanations by watching movies and reading books. In
+    ICCV, 2015.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

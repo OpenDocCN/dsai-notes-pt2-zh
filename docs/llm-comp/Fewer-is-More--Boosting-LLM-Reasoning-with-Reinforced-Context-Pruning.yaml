@@ -1,0 +1,2176 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 19:05:07'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Fewer is More: Boosting LLM Reasoning with Reinforced Context Pruning'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2312.08901](https://ar5iv.labs.arxiv.org/html/2312.08901)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Xijie Huang^(1,2∗)    Li Lyna Zhang^(2‡)   Kwang-Ting Cheng¹    Fan Yang²   
+    Mao Yang²
+  prefs: []
+  type: TYPE_NORMAL
+- en: ¹Hong Kong University of Science and Technology     ²Microsoft Research
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Large Language Models (LLMs) have shown impressive capabilities, yet they still
+    struggle with math reasoning. In this work, we propose CoT-Influx, a novel approach
+    that pushes the boundary of few-shot Chain-of-Thoughts (CoT) learning to improve
+    LLM mathematical reasoning. Motivated by the observation that adding more concise
+    CoT examples in the prompt can improve LLM reasoning performance, CoT-Influx employs
+    a coarse-to-fine pruner to maximize the input of effective and concise CoT examples.
+    The pruner first selects as many crucial CoT examples as possible and then prunes
+    unimportant tokens to fit the context window. A math reasoning dataset with diverse
+    difficulty levels and reasoning steps is used to train the pruner, along with
+    a math-specialized reinforcement learning approach. As a result, by enabling more
+    CoT examples with double the context window size in tokens, CoT-Influx significantly
+    outperforms various prompting baselines across various LLMs (LLaMA2-7B, 13B, 70B)
+    and 5 math datasets, achieving up to 4.55% absolute improvements. Remarkably,
+    without any fine-tuning, LLaMA2-70B with CoT-Influx surpasses GPT-3.5 and a wide
+    range of larger LLMs (PaLM, Minerva 540B, etc.) on the GSM8K. CoT-Influx serves
+    as a plug-and-play module for LLMs and is compatible with most existing reasoning
+    prompting techniques, such as self-consistency and self-verification.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '^($*$)^($*$)footnotetext: Work was done during the internship at Microsoft
+    Research^($\ddagger$)^($\ddagger$)footnotetext: Corresponding author: lzhani@microsoft.com'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Large Language Models (LLMs) have demonstrated remarkable capabilities across
+    a range of tasks Brown et al. ([2020](#bib.bib1)); OpenAI ([2023a](#bib.bib33)).
+    However, it remains a significant challenge to improve LLM performance on reasoning
+    tasks, especially for smaller LLMs like LLaMA Touvron et al. ([2023a](#bib.bib44))
+    on math reasoning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'While existing efforts focus on optimizing Chain-of-Thought (CoT) prompts Wei
+    et al. ([2022](#bib.bib52)); Wang et al. ([2023d](#bib.bib51)); Yao et al. ([2023](#bib.bib58))
+    and fine-tuning LLMs Luo et al. ([2023](#bib.bib30)) under the zero-shot setting,
+    the potential of few-shot learning in improving LLM reasoning has not been fully
+    explored. Inspired by the human reasoning process, we propose the hypothesis:
+    if LLMs are exposed to more step-by-step problem-solving examples (i.e., CoTs)
+    before answering questions, it could potentially improve LLMs reasoning capability
+    to generate a correct solution. This leads to our question: what’s the boundary
+    of LLM reasoning capability achievable through inputting more CoT examples?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, we face two major obstacles. First, the limited token length of LLMs’
+    context window restricts the number of few-shot examples. Extending the context
+    window is one solution, but it requires expensive fine-tuning and increases inference
+    overhead Chen et al. ([2023a](#bib.bib2)); Peng et al. ([2023a](#bib.bib36)).
+    While prompt compression Li et al. ([2023b](#bib.bib26)); Jiang et al. ([2023](#bib.bib19))
+    is another approach, it underperforms in math reasoning. Tokens like numerical
+    and format ones, though identified redundant, are crucial for few-shot math problem
+    solving.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Second, it’s challenging to select helpful CoT examples. Section [3](#S3 "3
+    Pilot Study ‣ Fewer is More: Boosting LLM Reasoning with Reinforced Context Pruning")
+    reveals that random choices can even harm reasoning performance. Existing retrieval-based
+    methods Liu et al. ([2021](#bib.bib28)); Scarlatos and Lan ([2023](#bib.bib42))
+    are not tailored for math reasoning, making them suboptimal. These retrieved examples
+    are model-agnostic, while we found that different LLMs favor CoT examples of varying
+    characteristics (e.g., diverse difficulty levels).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this work, we propose CoT-Influx, which addresses all the above challenges
+    and pushes the boundaries of utilizing few-shot learning to improve LLM math reasoning
+    capability. CoT-Influx is motivated by the observation that current LLM context
+    window has not been fully utilized due to redundancy at both the example and token
+    levels in natural language input. As such, these redundant inputs can be pruned
+    to free up space for more informative context. The central idea of CoT-Influx
+    is to input long lengthy CoT examples, select the crucial examples for the target
+    LLM, and then prune redundant tokens to fit within the original LLM context window.
+    As a result, by inputting much more helpful CoT examples, each composed solely
+    of informative tokens and with a shorter length, we greatly improve LLM ability
+    to solve math problems. Moreover, as all these inputs remain within the context
+    window, we do not increase any inference overhead. This stands in stark contrast
+    to other methods Hao et al. ([2022](#bib.bib15)); Chen et al. ([2023a](#bib.bib2)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'CoT-Influx treats the target LLM as a black box, and serves as a plug-and-play
+    module for LLMs as shown in Fig. [3](#S3.F3 "Figure 3 ‣ 3 Pilot Study ‣ Fewer
+    is More: Boosting LLM Reasoning with Reinforced Context Pruning"). The key module
+    is a coarse-to-fine pruner involving two steps: (i) a shot pruner first selects
+    the most helpful CoT examples from a large batch of shots, and (ii) a token pruner
+    then removes unimportant tokens from these selected CoT examples. To effectively
+    train the pruner module tailored for math reasoning, CoT-Influx is built upon
+    the following novel techniques.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, CoT-Influx requires a CoT dataset for training and inference. Existing
+    CoT examples, heavily reliant on costly human engineering, often struggle with
+    diversity and quality. To address this, we employ GPT-4 OpenAI ([2023a](#bib.bib33))
+    and Evol-Instruct Xu et al. ([2023](#bib.bib57)) to create a math reasoning dataset,
+    called MRD³. With problems of varying difficulty and reasoning steps, MRD³ enables
+    CoT-Influx to generalize across a wide range of math problems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Second, training the pruner presents two challenges: (1) since we identify
+    discrete tokens before the LLM tokenizer, the loss gradient cannot be backpropagated
+    through the tokenizer to update the pruner; (2) The high difficulty of many math
+    problems, which consistently yield incorrect answers regardless of the quality
+    of compressed few-shot examples, poses a challenge to the effective training of
+    the pruner. To this end, we introduce a novel training approach with reinforcement
+    learning to mitigate the gradient issue. We design a reward function to measure
+    the LLM loss, few-shot math reasoning effectiveness, and token length constraints.
+    Then, we design a difficulty-aware dataloader filtering appropriate problems and
+    introduce two techniques to stabilize the RL training.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Extensive experiments on various LLMs and five math datasets demonstrate the
+    effectiveness of CoT-Influx. CoT-Influx significantly boosts LLM reasoning capability,
+    achieving 1.36%-14.09% absolute improvements over SOTA baselines, and establishes
+    a new prompting-based benchmark in math reasoning accuracy without any fine-tuning
+    or additional inference costs. Remarkably, LLaMA2-70B with CoT-Influx outperforms
+    a broad range of larger LLMs and surpasses GPT-3.5 by 2.5% on GSM8K. Moreover,
+    CoT-Influx excels over retrieval and prompt compression baselines in example selection
+    and identifying crucial tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Related Works
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'LLMs for Math Reasoning. Drawing from the Chain-of-Thought (CoT) Wei et al.
+    ([2022](#bib.bib52)), recent research has greatly improved the reasoning capabilities
+    of LLMs by providing step-by-step reasoning paths. The main efforts are twofold:
+    enhancing CoT prompts, such as Program-of-Thoughts Chen et al. ([2023b](#bib.bib3)),
+    Tree-of-Thoughts Yao et al. ([2023](#bib.bib58)), and Everything-of-Thoughts Ding
+    et al. ([2023](#bib.bib10)), and innovating CoT-based training data for fine-tuning
+    LLMs like WizardMath Luo et al. ([2023](#bib.bib30)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, most works focus on the zero-shot setting with only task instruction
+    or CoT prompts, leaving the potential of few-shot CoT largely untapped. We explore
+    leveraging few-shot CoT learning to improve LLMs’ math reasoning capabilities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Prompt Compression. To address the challenge of limited few-shot examples due
+    to restricted context window length, one related work involves prompt compression.
+    Key approaches include: (1) token pruning Kim et al. ([2022](#bib.bib20)); Li
+    et al. ([2023a](#bib.bib25)); (2) soft prompt compression methods Wingate et al.
+    ([2022](#bib.bib55)); Mu et al. ([2023](#bib.bib32)); Chevalier et al. ([2023](#bib.bib4));
+    Ge et al. ([2023](#bib.bib13)); and (3) information-entropy-based approaches Li
+    et al. ([2023b](#bib.bib26)); Jiang et al. ([2023](#bib.bib19)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, they do not effectively solve our problem for two reasons. First, they
+    prune tokens based on designed metrics, often failing to remove redundancy of
+    the entire CoT examples. Second, some tokens such as numerical and format tokens,
+    although redundant, are crucial for math reasoning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Prompt Retrieval optimizes task performance by selecting high-quality few-shot
+    examples using either heuristics or a supervised retriever model. Heuristic methods,
+    such as the widely used TopK retrieval Liu et al. ([2021](#bib.bib28)); Gao et al.
+    ([2021](#bib.bib12)), BM25 Robertson et al. ([2009](#bib.bib39)), VoteK Hongjin
+    et al. ([2022](#bib.bib17)), and entropy Lu et al. ([2022](#bib.bib29)), select
+    examples based on semantic similarity. Recently, supervised-based methods like
+    EPR Rubin et al. ([2021](#bib.bib41)), LLM-R Wang et al. ([2023b](#bib.bib49)),
+    and IDS Qin et al. ([2023](#bib.bib38)) have been proposed, which train a retrieval
+    model to learn better example selection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, these methods are sub-optimal for math reasoning, as they retrieve
+    model-agnostic examples. In contrast, LLMs with different capabilities favor CoT
+    examples of varying complexities. Moreover, they don’t account for token redundancy,
+    which restricts the number of retrieved examples.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Pilot Study
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7b202963638c262b8fd2ac91417fd2f3.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: LLaMA2-7B reasoning accuracy under an increasing number of TopK retrieved
+    CoT examples.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This section presents our key observations of few-shot learning in improving
+    LLMs math reasoning, upon which the CoT-Influx design is based. Note that experiments
+    are done with our proposed CoT dataset, MRD³, as introduced in Sec. [4.1](#S4.SS1
+    "4.1 CoT Dataset Collection ‣ 4 CoT-Influx Methodology ‣ Fewer is More: Boosting
+    LLM Reasoning with Reinforced Context Pruning").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Observation 1: LLMs can improve reasoning with more helpful CoT examples, but
+    the current context window restricts the number of CoT examples.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A standard practice for evaluating LLMs’ math reasoning capability is the use
+    of 8-shot manually-designed CoTs Wei et al. ([2022](#bib.bib52)). We increase
+    the number of CoT shots to see if reasoning accuracy improves. To avoid poor-quality
+    examples, we use the TopK method Liu et al. ([2021](#bib.bib28)) to select the
+    $k$The input token length is less than the context window token limit, as the
+    answer generation also shares this limit. . As Fig. [1](#S3.F1 "Figure 1 ‣ 3 Pilot
+    Study ‣ Fewer is More: Boosting LLM Reasoning with Reinforced Context Pruning")
+    shows, increasing CoT examples improves LLaMA2-7B’s reasoning accuracy on the
+    GSM8K dataset, significantly outperforming the standard 8-shot setting. However,
+    the limited LLM context window hinders the full potential of few-shot CoT learning
+    for improving math reasoning. For instance, even with 20 CoTs not hitting the
+    token limit, accuracy drops as the large input context limits the LLM’s response
+    space.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Observation 2: CoT example selection is crucial for math reasoning. Simply
+    adding CoT examples randomly doesn’t boost performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The prior study suggests that more CoT examples can improve LLM reasoning performance.
+    However, the quality of CoT examples is crucial to the final performance. As shown
+    in Table [1](#S3.T1 "Table 1 ‣ 3 Pilot Study ‣ Fewer is More: Boosting LLM Reasoning
+    with Reinforced Context Pruning"), even with up to 16 CoT shots, random selection
+    underperforms the standard 8-shot setting, which is manually curated for quality.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: The selection of CoT examples heavily impacts LLM reasoning performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Manual 8 Shots | Method (16 Shots) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Random 1 | Random 2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA2-7B | 13.79 | 12.36 | 13.27 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA2-13B | 27.82 | 23.04 | 23.28 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Observation 3: A CoT example contains redundant tokens for math reasoning,
+    which can be pruned to free up space for more informative content.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Observation 2 indicates that few-shot CoT examples contain useless or even
+    harmful examples that can be pruned. We further observe that a CoT example often
+    has redundant tokens. For instance, the blue tokens in Fig. [2](#S3.F2 "Figure
+    2 ‣ 3 Pilot Study ‣ Fewer is More: Boosting LLM Reasoning with Reinforced Context
+    Pruning") can be removed without affecting LLM performance. However, identifying
+    redundant tokens for math reasoning poses a challenge. Simply using existing prompt
+    compression methods Jiang et al. ([2023](#bib.bib19)); Li et al. ([2023b](#bib.bib26))
+    leads to a significant performance decline. Fig. [2](#S3.F2 "Figure 2 ‣ 3 Pilot
+    Study ‣ Fewer is More: Boosting LLM Reasoning with Reinforced Context Pruning")
+    shows a compressed example using LLMLingua Jiang et al. ([2023](#bib.bib19)).
+    Some numerical and format tokens (colored in red), while identified as redundant,
+    are crucial for LLM to comprehend the context for solving a math problem.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/fdc4499c46ba36546d785a6d0bef1904.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: A compressed CoT example using the prompt compression tool of LLMLingua Jiang
+    et al. ([2023](#bib.bib19)). The pruned tokens contain truly redundant tokens
+    (colored in blue) and crucial tokens (colored in red).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/47adeee3397abe11ae5ae0102e62b2e1.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Above: The overview procedure of CoT-Influx; Below: an example illustrating
+    the use of CoT-Influx to first prune entire CoT examples and then prune tokens.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 CoT-Influx Methodology
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Motivated by our observations, this section introduces CoT-Influx, which maximizes
+    CoT examples within the LLM context window by identifying the most important CoT
+    examples and tokens from long lengthy input contexts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 CoT Dataset Collection
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We start by collecting a high-quality math reasoning dataset, comprising diverse
+    CoT examples with varying steps and difficulties. We merge the training set of
+    GSM8K Cobbe et al. ([2021](#bib.bib6)), MAWPS, MAWPS-single Koncel-Kedziorski
+    et al. ([2016](#bib.bib23)), and 1000 random examples from AQuA Ling et al. ([2017](#bib.bib27))
+    to create an initial dataset of 9.7K question-answer pairs. Then, we prompt GPT-4
+    to generate formatted CoT reasoning steps. Notably, it’s crucial to maintain a
+    consistent format for each example in few-shot learning. Our dataset also assigns
+    a difficulty score from 1 to 10 for each question, based on GPT-4’s evaluation,
+    where 1 signifies the easiest questions and 10 is the most difficult.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We observe that most questions in this initial dataset score between 2-4\. To
+    improve difficulty diversity, we use GPT-4 to mutate questions, generating corresponding
+    CoTs with varied difficulty levels. We apply 5 mutation schemes, three to increase
+    reasoning difficulty and two to simple questions. The final dataset is referred
+    to as Math Reasoning Dataset with Diverse Difficulty (MRD³).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Problem Formulation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Let $\mathcal{D}$. CoT-Influx is designed to perform a two-step pruning process:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  $1$2  |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: Initially, non-useful CoT examples are pruned from $\hat{\mathcal{D}}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let $x^{\text{question}}$. Formally, we optimize the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  $1$2  |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $L_{\text{LLM}}$, this will be elaborated in Sec. [4.4](#S4.SS4 "4.4
+    End-to-end RL Optimization ‣ 4 CoT-Influx Methodology ‣ Fewer is More: Boosting
+    LLM Reasoning with Reinforced Context Pruning").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Overview. Fig. [3](#S3.F3 "Figure 3 ‣ 3 Pilot Study ‣ Fewer is More: Boosting
+    LLM Reasoning with Reinforced Context Pruning") illustrates our approach. The
+    core component is a lightweight, plug-and-play module (Sec. [4.3](#S4.SS3 "4.3
+    Coarse-to-fine Pruner Design ‣ 4 CoT-Influx Methodology ‣ Fewer is More: Boosting
+    LLM Reasoning with Reinforced Context Pruning")), which consists of a small text
+    embedding extractor and a coarse-to-fine pruner.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To train the pruner, we face the challenge of gradient backpropagation when
+    pruning discrete tokens outside the LLM. The LLM loss gradient cannot be backpropagated
+    through the tokenizer. To address this, we design a multi-objective reward function
+    and use reinforcement learning for effective training (Sec. [4.4](#S4.SS4 "4.4
+    End-to-end RL Optimization ‣ 4 CoT-Influx Methodology ‣ Fewer is More: Boosting
+    LLM Reasoning with Reinforced Context Pruning")). The overall training process
+    is outlined in Algorithm [1](#alg1 "Algorithm 1 ‣ 4.3 Coarse-to-fine Pruner Design
+    ‣ 4 CoT-Influx Methodology ‣ Fewer is More: Boosting LLM Reasoning with Reinforced
+    Context Pruning").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 Coarse-to-fine Pruner Design
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Text embedding extractor. As CoT-Influx serves as an external module, we need
+    to extract text embedding as prediction features. However, it’s non-trivial to
+    extract features for long inputs beyond the LLM context window. To address this,
+    we use a small encoder model, BERT-Large Devlin et al. ([2018](#bib.bib9)), to
+    extract sentence-level (i.e., a CoT example) embedding instead of extracting token
+    embedding from the entire long context. For a batch of $k$ is BERT’s hidden dimension
+    size.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'State. As shown in Fig. [3](#S3.F3 "Figure 3 ‣ 3 Pilot Study ‣ Fewer is More:
+    Boosting LLM Reasoning with Reinforced Context Pruning"), we define state $s_{\text{shot}}\in\mathbb{R}^{k\times
+    N}$ is the number of retained examples.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Action. Let $a_{\text{shot}}$ predicts the pruning of each token in the retained
+    CoT examples.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Two-stage policy network. The pruner module is a two-stage policy network,
+    each stage is a two-layer feed-forward network (MLP) with GELU activation. This
+    module outputs a continuous categorical distribution $\pi$, the policy network
+    sequentially make two action predictions as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\pi(a_{\text{shot}}&#124;s_{\text{shot}};\theta)=\sigma\left(\text{MLP}\left(H_{s_{\text{shot}}}\right)\right)$
+    |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\pi(a_{\text{token}}&#124;s_{\text{token}};\theta)=\sigma\left(\text{MLP}\left(H_{s_{\text{token}}}\right)\right),$
+    |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $a_{\text{shot}}$ with a softmax function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 1 Pruner Training and Inference
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Input: target LLM, dataset $\mathcal{D}$'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:  $\blacktriangleright$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4 End-to-end RL Optimization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Multi-objective Reward. Our objective in Eq. [2](#S4.E2 "Equation 2 ‣ 4.2 Problem
+    Formulation ‣ 4 CoT-Influx Methodology ‣ Fewer is More: Boosting LLM Reasoning
+    with Reinforced Context Pruning") is to train the pruner module to identify the
+    most crucial CoT examples and useful tokens for math problem solving, while keeping
+    the final tokens within the original LLM context window. To achieve this, we design
+    a multi-objective reward.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let $x^{\text{input}}$ is defined as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle R\left(x^{\text{input}}\right)=(\frac{1}{1+L_{\text{LLM}}}+R_{\text{Acc}})\times\left[\frac{t}{T}\right]^{w}$
+    |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: where the first term evaluates the effectiveness of inputted CoT tokens, and
+    the second term ensures they are within the LLM context window. $L_{\text{LLM}}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In addition to $L_{\text{LLM}}$ with a value of -0.1.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Optimization with REINFORCE. We employ reinforcement learning to maximize the
+    reward and train the two-stage policy network. According to REINFORCE Williams
+    ([1992](#bib.bib54)), the network parameters are updated by the gradients:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  $R\cdot\nabla_{\theta}\text{log}\pi(a_{\text{shot}}&#124;s_{\text{shot}})\pi(a_{\text{token}}&#124;s_{\text{token}})$  |  |
+    (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Notably, as shown in Fig. [3](#S3.F3 "Figure 3 ‣ 3 Pilot Study ‣ Fewer is More:
+    Boosting LLM Reasoning with Reinforced Context Pruning"), only the parameters
+    of the policy network require training. The embedding extractor and LLM are frozen,
+    thus, the overall training overhead is lightweight.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Difficulty-aware data filter. Existing LLMs, particularly smaller ones, underperform
+    in math reasoning. If the question is too challenging for LLMs, the answer will
+    always be incorrect, regardless of the quality of compressed few-shot CoT examples,
+    making it challenging to effectively train our pruner module. To address it, we
+    use a difficulty filter to sample a math question set $\mathcal{D}_{\text{question}}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Stabilize the training. Another challenge is that pruning CoT and tokens during
+    training introduces instability, making it difficult for effective training.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, despite the optimization of question set $\mathcal{D}_{\text{question}}$
+    in Eq. [5](#S4.E5 "Equation 5 ‣ 4.4 End-to-end RL Optimization ‣ 4 CoT-Influx
+    Methodology ‣ Fewer is More: Boosting LLM Reasoning with Reinforced Context Pruning").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Second, during the early training, our pruner module makes random decisions,
+    leading to arbitrary removal of CoT examples and tokens. These randomly pruned
+    few-shot prompts can cause instability in RL training. Empirically, we append
+    the manually-designed 8-shot CoTs Wei et al. ([2022](#bib.bib52)) to the pruned
+    prompts. This ensures a good lower bound and stabilizes the training.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/2240dee28425d75fdc628ebedfb019d4.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: EM(%) accuracy on GSM8K with inputting different number of CoT examples
+    for CoT-Influx.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 2: Comparison of EM (%) accuracy on GSM8K with state-of-the-art baselines.
+    Note that the 20 CoT shots of retrieval baselines are the max number, given that
+    the context window limit of LLaMA2 is 4096 tokens.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | #Input CoT shots | #Average tokens | LLaMA2-7B | LLaMA2-13B | LLaMA2-70B
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Zero-shot | 0 | - | 4.25 | 5.84 | 11.45 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Zero-shot-CoT Kojima et al. ([2022](#bib.bib21)) | 0 | - | 1.74 | 12.28 |
+    21.91 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Few-shot-CoT Wei et al. ([2022](#bib.bib52)) | 8 | 655 | 13.79 | 27.82 |
+    55.42 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Random retrieval | 20 | 3379.8 | 12.51 | 22.21 | 53.07 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| TopK retrieval Liu et al. ([2021](#bib.bib28)) | 20 | 3535.4 | 14.56 | 23.65
+    | 54.59 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BM25 retrieval Zhenyu et al. ([2023](#bib.bib60)) | 20 | 3816.1 | 13.42 |
+    25.17 | 54.21 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| TopK+GPT4 Compression | 40 | 1376.0 | 7.08 | 11.01 | 25.17 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| TopK+Selective Context Li et al. ([2023b](#bib.bib26)) | 40 | 2262.4 | 0.45
+    | 0.76 | 2.50 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| TopK+LLMLingua Jiang et al. ([2023](#bib.bib19)) | 40 | 2048.0 | 5.38 | 8.34
+    | 22.74 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CoT-Influx | 48 | 2037.0 | 15.92 | 32.37 | 59.59 |'
+  prefs: []
+  type: TYPE_TB
+- en: 5 Evaluation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Table 3: Comparison of EM (%) accuracy on Addsub, Multiarith, Svamp, and Singleeq
+    math reasoning dataset'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Method | AddSub | Multiarith | Svamp | Singleeq | Avg. |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Zero-shot | 58.73 | 5.50 | 32.2 | 62.79 | 39.81 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Few-shot-CoT | 56.96 | 43.67 | 38.1 | 66.54 | 51.32 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA2-7B | TopK retrieval | 46.08 | 34.50 | 38.1 | 46.46 | 41.29 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | TopK+LLMLingua | 12.91 | 10.50 | 19.5 | 19.49 | 15.60 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CoT-Influx | 62.28 | 47.00 | 40.2 | 72.05 | 55.38 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Zero-shot | 70.13 | 6.50 | 43.8 | 71.07 | 47.88 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Few-shot-CoT | 65.82 | 72.83 | 42.7 | 77.36 | 64.68 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA2-13B | TopK retrieval | 60.76 | 57.00 | 50.2 | 68.50 | 59.12 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | TopK+LLMLingua | 22.28 | 22.33 | 27.5 | 25.20 | 24.33 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CoT-Influx | 69.62 | 73.87 | 50.5 | 83.07 | 69.26 |'
+  prefs: []
+  type: TYPE_TB
+- en: Models, datasets and metric. We evaluate CoT-Influx on LLaMA2-7B, LLaMA2-13B,
+    and LLaMA2-70B. The mathematical datasets for evaluation include GSM8K Cobbe et al.
+    ([2021](#bib.bib6)), AddSub Hosseini et al. ([2014](#bib.bib18)), Multiarith Roy
+    and Roth ([2015](#bib.bib40)), Svamp Patel et al. ([2021](#bib.bib35)), and Singleeq Koncel-Kedziorski
+    et al. ([2015](#bib.bib22)). For evaluation metric, we report Exact Match (EM)
+    accuracy of the predicted answers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Baselines We set three baselines for comparison:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'CoT and few-shot CoT prompting: We compare with widely-used prompts for LLM
+    reasoning, including zero-shot, zero-shot-CoT Kojima et al. ([2022](#bib.bib21)),
+    and the standard few-shot-CoT Wei et al. ([2022](#bib.bib52)) with 8 shots.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Prompt retrieval: we also compare with retrieval baselines, specifically using
+    random, TopK Liu et al. ([2021](#bib.bib28)), and BM25 Robertson et al. ([2009](#bib.bib39))
+    methods. We select as many CoT examples as possible using each method, without
+    exceeding LLM context window. Random retrieval is to reflect the average quality
+    of our CoT dataset.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Prompt compression: To evaluate the effectiveness of identifying crucial tokens,
+    we compare the resulting compressed prompts from the same batch of CoT shots with
+    state-of-the-art prompt compression baselines: Selective Context Li et al. ([2023b](#bib.bib26)),
+    LLMLingua Jiang et al. ([2023](#bib.bib19)), and compression through GPT-4.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 5.1 Main Results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Effectiveness of enabling more few-shot CoTs. We first evaluate how far the
+    boundary of few-shot learning can be pushed using CoT-Influx. For comparison,
+    we set up two baselines: (i) Few-shot CoT, using 8 manual-designed CoT shots as
+    the default LLM evaluation setting on GSM8K. (ii) TopK retrieves 20 CoT shots
+    from our dataset, denoting the max shot number within LLaMA2 context window.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For CoT-Influx, we test LLaMA2 7B and 13B on GSM8K, adjusting the number of
+    CoT shots from 16 to 64 examples, which corresponds to 0.7$\times$ the token count
+    of LLaMA2 context window. As shown in Fig. [4](#S4.F4 "Figure 4 ‣ 4.4 End-to-end
+    RL Optimization ‣ 4 CoT-Influx Methodology ‣ Fewer is More: Boosting LLM Reasoning
+    with Reinforced Context Pruning"), we make two observations: (1) More CoT shots,
+    facilitated by CoT-Influx, indeed boosts LLM math reasoning performance, particularly
+    for larger LLMs. On LLaMA2-13B, by inputting 48 CoTs, we significantly outperform
+    the standard few-shot CoT and TopK by 4.55% and 8.72%, respectively. (2) There
+    is an optimal number of CoT shots for CoT-Influx. Its peak performance on LLaMA2
+    7B and 13B are at 40 and 48 shots, respectively. We attribute this to two potential
+    reasons. First, an extremely large number of shots complicates CoT-Influx’s optimization.
+    Second, there may be an upper limit to improving LLM reasoning capability through
+    few-shot learning.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Comparison with state-of-the-art baselines. Table [2](#S4.T2 "Table 2 ‣ 4.4
+    End-to-end RL Optimization ‣ 4 CoT-Influx Methodology ‣ Fewer is More: Boosting
+    LLM Reasoning with Reinforced Context Pruning") and Table [3](#S5.T3 "Table 3
+    ‣ 5 Evaluation ‣ Fewer is More: Boosting LLM Reasoning with Reinforced Context
+    Pruning") present the comparison results of CoT-Influx with state-of-the-art baselines
+    across LLaMA2 family and 5 mathematical datasets, highlighting the following observations:
+    (1) by utilizing more few-shot CoTs that are twice the LLM context window, CoT-Influx
+    significantly outperforms all baselines, with 2.13% to 4.55% absolute improvements.
+    (2) Despite using fewer input tokens, CoT-Influx consistently outperforms retrieval
+    baselines by 1.36% to 14.09% absolute improvements. This is because our compressed
+    tokens indicate more informational CoT examples without redundancy. In contrast,
+    they select entire examples, which may contain redundant tokens, based on semantic
+    similarity between the target question and CoT examples, without considering the
+    different CoT preference of the target LLM. (3) CoT-Influx significantly outperforms
+    prompt compression baselines in preserving the most crucial tokens for math reasoning,
+    while methods like Selective Context and LLMLingua suffer accuracy declines due
+    to difficulties in maintaining few-shot prompt structure. GPT-4 tends to prune
+    essential reasoning steps, which negatively impacts CoT effectiveness.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We further demonstrate the effectiveness of CoT-Influx by comparing LLaMA2-70B
+    with larger size LLMs on GSM8K. As shown in Table [4](#S5.T4 "Table 4 ‣ 5.1 Main
+    Results ‣ 5 Evaluation ‣ Fewer is More: Boosting LLM Reasoning with Reinforced
+    Context Pruning"), CoT-Influx significantly boosts LLM reasoning capabilities.
+    Remarkably, without any fine-tuning, LLaMA2-70B with CoT-Influx outperform much
+    larger LLMs. LLaMA2-70B surpasses GPT-3.5 with an absolute improvement of 2.5%.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4: Comparison of EM (%) accuracy on GSM8K with larger LLMs under the
+    few-shot-CoT setting.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Parameters | EM (%) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Finetuned GPT-3 Wei et al. ([2022](#bib.bib52)) | 175B | 34.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Chinchilla Hoffmann et al. ([2022](#bib.bib16)) | 70B | 43.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Text-davinci-002 Kojima et al. ([2022](#bib.bib21)) | 175B | 51.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PaLM Chowdhery et al. ([2022](#bib.bib5)) | 540B | 56.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPT-3.5 OpenAI ([2023a](#bib.bib33)) | - | 57.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Minerva Lewkowycz et al. ([2022](#bib.bib24)) | 540B | 58.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA2-70B+CoT-Influx | 70B | 59.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Compatible with existing reasoning prompts. As a method to improve LLM reasoning
+    capability, CoT-Influx is complementary with other advanced reasoning-based prompts.
+    To prove this, we apply self-consistency Wang et al. ([2023d](#bib.bib51)) and
+    self-verification Weng et al. ([2023](#bib.bib53)) to compressed prompts generated
+    by CoT-influx. For evaluation efficiency, we sampled 20 times. As Table [5](#S5.T5
+    "Table 5 ‣ 5.1 Main Results ‣ 5 Evaluation ‣ Fewer is More: Boosting LLM Reasoning
+    with Reinforced Context Pruning") shows, applying self-consistency and self-verification
+    further improve LLaMA2’s performance on GSM8k.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 5: CoT-Influx is compatible with advanced prompt techniques like self-consistency
+    (i.e., maj@20) and self-verification (i.e., verify@20).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | LLaMA2-13B | LLaMA2-70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CoT-Influx | 32.37 | 59.59 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CoT-Influx+maj@20 | 33.43 | 60.73 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CoT-Influx+verify@20 | 34.04 | 61.79 |'
+  prefs: []
+  type: TYPE_TB
+- en: 5.2 Ablation Study and Analysis
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The effectiveness of MRD³ dataset. Beyond our pruner, we introduce MRD³ dataset,
+    which is evolved by GPT-4 for diverse reasoning steps and difficulties. We compare
+    with two baselines: (1) MRD³ without evolution, excluding GPT-4 evolved examples,
+    and (2) the human-labeled GSM8K training set, which excludes GPT-4’s reformatted
+    generation. We apply our pruner on these datasets under the same setting. As shown
+    in Table [6](#S5.T6 "Table 6 ‣ 5.2 Ablation Study and Analysis ‣ 5 Evaluation
+    ‣ Fewer is More: Boosting LLM Reasoning with Reinforced Context Pruning"), both
+    GPT-4 generated and evolved CoT examples are vital for improving the reasoning
+    performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 6: Comparison of EM(%) on GSM8K using CoT-Influx pruner across different
+    CoT datasets.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| CoT dataset | LLaMA2-7B | LLaMA2-13B | LLaMA2-70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MRD³ | 15.92 | 32.37 | 59.59 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MRD³ w/o evolution | 14.94 | 30.55 | 57.70 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GSM8K training set | 14.18 | 29.64 | 56.71 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Ablation study on coarse-to-fine pruner. Our pruner operates at both shot and
+    token levels to fully exploit redundancy within CoT examples. To verify the effectiveness,
+    we conduct experiments with only shot or token pruner under the same setting.
+    As shown in Table [7](#S5.T7 "Table 7 ‣ 5.2 Ablation Study and Analysis ‣ 5 Evaluation
+    ‣ Fewer is More: Boosting LLM Reasoning with Reinforced Context Pruning"), removing
+    any pruning stage decreases performance. Notably, removing token-only pruning
+    causes a larger accuracy drop than shot-only pruning, indicating that shot-level
+    redundancy is easier for the pruner to learn.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 7: Comparison of EM(%) on GSM8K with different pruning strategies.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Pruning Strategy | LLaMA2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 7B | 13B | 70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CoT-Influx (Prune shot and token) | 15.92 | 32.37 | 59.59 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Prune shot only | 15.69 | 31.08 | 57.77 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Prune token only | 12.05 | 25.32 | 49.36 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 8: The total inference costs on GSM8K.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | #Input-shot | #Token | Time | GPU Memory |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA2-7B | 12 | 2108.6 | 2.99h | 19.7GB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Selective Context | 40 | 2262.4 | 4.38h | 23.5GB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLMLingua | 40 | 2048.0 | 3.65h | 33.0GB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CoT-Influx | 40 | 2037.0 | 3.04h | 21.1GB | ![Refer to caption](img/2212498def766cb064f1e2e3b263946f.png)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 5: Token length after each stage of our pruner.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Token pruning ratios. We now investigate token pruning ratios by our pruner.
+    Fig. [5](#S5.F5 "Figure 5 ‣ 5.2 Ablation Study and Analysis ‣ 5 Evaluation ‣ Fewer
+    is More: Boosting LLM Reasoning with Reinforced Context Pruning") shows the remaining
+    token length for LLaMA2-70B after our pruner. In total, we achieve a 4.28$\times$
+    ratio. The results suggest that our pruner favors pruning more coarse-grained
+    shots over fine-grained tokens.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Inference cost. CoT-Influx is a lightweight plug-and-play module, including
+    a 336MB BERT-Large model and a tiny 4MB coarse-to-fine pruner. We measure its
+    additional inference cost. Table [8](#S5.T8 "Table 8 ‣ 5.2 Ablation Study and
+    Analysis ‣ 5 Evaluation ‣ Fewer is More: Boosting LLM Reasoning with Reinforced
+    Context Pruning") shows the total inference latency and GPU memory required to
+    run LLaMA2-7B with different methods on GSM8K, measured on a single NVIDIA A100
+    GPU. The results reveal that CoT-Influx introduces a negligible 1.4GB additional
+    memory and a 1.7% increase in latency. This is more effective than prompt compression
+    baselines, such as Selective Context and LLMLingua, which require significantly
+    higher latency and more GPU memory, potentially hindering efficient deployment.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Implications. Our analysis of retained CoT examples and tokens yields the following
+    insights: (1) More capable LLMs favor harder CoT examples, while smaller LLMs
+    opt for simpler ones. (2) Numerical and format tokens are essential for math reasoning.
+    Function words like with, the, then, and irrelevant background context such as
+    theater can be pruned without affecting reasoning capability.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We present CoT-Influx, a plug-and-play module that improves LLM math reasoning
+    by pruning unnecessary few-shot examples at shot and token levels for a more effective
+    input context. To train the module, we use reinforcement learning to optimize
+    a math reasoning-specific reward with GPT-4 evolved CoT dataset MRD³. Extensive
+    experiments on various datasets and LLMs compared with state-of-the-art baselines
+    demonstrate the effectiveness of our method. This paper highlights the vast potential
+    of few-shot CoT prompting in augmenting LLMs’ math reasoning abilities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Limitations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As in-context learning with LLM heavily relies on the selected examples in the
+    prompt, the performance of CoT-Influx can be influenced by the quality of CoT
+    generation. Despite this, CoT-Influx still demonstrates strong performance on
+    our GPT4-evolved dataset MRD³. We currently use BERT to obtain the feature embedding
+    of a CoT example, which cannot handle long-sequence examples exceeding 512 tokens.
+    We will take these limitations into account and mitigate them in future work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Brown et al. (2020) Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D
+    Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda
+    Askell, Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan,
+    Rewon Child, Aditya Ramesh, Daniel Ziegler, Jeffrey Wu, Clemens Winter, Chris
+    Hesse, Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack
+    Clark, Christopher Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario
+    Amodei. 2020. Language models are few-shot learners. In *Advances in Neural Information
+    Processing Systems*, volume 33.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chen et al. (2023a) Shouyuan Chen, Sherman Wong, Liangjian Chen, and Yuandong
+    Tian. 2023a. Extending context window of large language models via positional
+    interpolation. *arXiv preprint arXiv:2306.15595*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chen et al. (2023b) Wenhu Chen, Xueguang Ma, Xinyi Wang, and William W. Cohen.
+    2023b. Program of thoughts prompting: Disentangling computation from reasoning
+    for numerical reasoning tasks. *Transactions on Machine Learning Research*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chevalier et al. (2023) Alexis Chevalier, Alexander Wettig, Anirudh Ajith, and
+    Danqi Chen. 2023. Adapting language models to compress contexts. *arXiv preprint
+    arXiv:2305.14788*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chowdhery et al. (2022) Aakanksha Chowdhery, Sharan Narang, Jacob Devlin, Maarten
+    Bosma, Gaurav Mishra, Adam Roberts, Paul Barham, Hyung Won Chung, Charles Sutton,
+    Sebastian Gehrmann, et al. 2022. Palm: Scaling language modeling with pathways.
+    *arXiv preprint arXiv:2204.02311*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Cobbe et al. (2021) Karl Cobbe, Vineet Kosaraju, Mohammad Bavarian, Mark Chen,
+    Heewoo Jun, Lukasz Kaiser, Matthias Plappert, Jerry Tworek, Jacob Hilton, Reiichiro
+    Nakano, et al. 2021. Training verifiers to solve math word problems. *arXiv preprint
+    arXiv:2110.14168*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dai et al. (2023) Damai Dai, Yutao Sun, Li Dong, Yaru Hao, Shuming Ma, Zhifang
+    Sui, and Furu Wei. 2023. Why can gpt learn in-context? language models secretly
+    perform gradient descent as meta-optimizers. In *Findings of the Association for
+    Computational Linguistics: ACL 2023*, pages 4005–4019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Deng et al. (2022) Mingkai Deng, Jianyu Wang, Cheng-Ping Hsieh, Yihan Wang,
+    Han Guo, Tianmin Shu, Meng Song, Eric P Xing, and Zhiting Hu. 2022. Rlprompt:
+    Optimizing discrete text prompts with reinforcement learning. *arXiv preprint
+    arXiv:2205.12548*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Devlin et al. (2018) Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina
+    Toutanova. 2018. Bert: Pre-training of deep bidirectional transformers for language
+    understanding. *arXiv preprint arXiv:1810.04805*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ding et al. (2023) Ruomeng Ding, Chaoyun Zhang, Lu Wang, Yong Xu, Minghua Ma,
+    Wei Zhang, Si Qin, Saravan Rajmohan, Qingwei Lin, and Dongmei Zhang. 2023. Everything
+    of thoughts: Defying the law of penrose triangle for thought generation. *arXiv
+    preprint arXiv:2311.04254*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Fu et al. (2023) Yao Fu, Litu Ou, Mingyu Chen, Yuhao Wan, Hao Peng, and Tushar
+    Khot. 2023. Chain-of-thought hub: A continuous effort to measure large language
+    models’ reasoning performance. *arXiv preprint arXiv:2305.17306*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Gao et al. (2021) Tianyu Gao, Adam Fisch, and Danqi Chen. 2021. Making pre-trained
+    language models better few-shot learners. In *Joint Conference of the 59th Annual
+    Meeting of the Association for Computational Linguistics and the 11th International
+    Joint Conference on Natural Language Processing, ACL-IJCNLP 2021*, pages 3816–3830\.
+    Association for Computational Linguistics (ACL).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Ge et al. (2023) Tao Ge, Jing Hu, Xun Wang, Si-Qing Chen, and Furu Wei. 2023.
+    In-context autoencoder for context compression in a large language model. *arXiv
+    preprint arXiv:2307.06945*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Han et al. (2023) Chi Han, Qifan Wang, Wenhan Xiong, Yu Chen, Heng Ji, and
+    Sinong Wang. 2023. Lm-infinite: Simple on-the-fly length generalization for large
+    language models. *arXiv preprint arXiv:2308.16137*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hao et al. (2022) Yaru Hao, Yutao Sun, Li Dong, Zhixiong Han, Yuxian Gu, and
+    Furu Wei. 2022. Structured prompting: Scaling in-context learning to 1,000 examples.
+    *arXiv preprint arXiv:2212.06713*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hoffmann et al. (2022) Jordan Hoffmann, Sebastian Borgeaud, Arthur Mensch, Elena
+    Buchatskaya, Trevor Cai, Eliza Rutherford, Diego de Las Casas, Lisa Anne Hendricks,
+    Johannes Welbl, Aidan Clark, et al. 2022. Training compute-optimal large language
+    models. *arXiv preprint arXiv:2203.15556*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hongjin et al. (2022) SU Hongjin, Jungo Kasai, Chen Henry Wu, Weijia Shi, Tianlu
+    Wang, Jiayi Xin, Rui Zhang, Mari Ostendorf, Luke Zettlemoyer, Noah A Smith, et al.
+    2022. Selective annotation makes language models better few-shot learners. In
+    *The Eleventh International Conference on Learning Representations*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hosseini et al. (2014) Mohammad Javad Hosseini, Hannaneh Hajishirzi, Oren Etzioni,
+    and Nate Kushman. 2014. Learning to solve arithmetic word problems with verb categorization.
+    In *Proceedings of the 2014 Conference on Empirical Methods in Natural Language
+    Processing (EMNLP)*, pages 523–533.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Jiang et al. (2023) Huiqiang Jiang, Qianhui Wu, Chin-Yew Lin, Yuqing Yang,
+    and Lili Qiu. 2023. Llmlingua: Compressing prompts for accelerated inference of
+    large language models. In *Proceedings of the 2023 Conference on Empirical Methods
+    in Natural Language Processing*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kim et al. (2022) Sehoon Kim, Sheng Shen, David Thorsley, Amir Gholami, Woosuk
+    Kwon, Joseph Hassoun, and Kurt Keutzer. 2022. Learned token pruning for transformers.
+    In *Proceedings of the 28th ACM SIGKDD Conference on Knowledge Discovery and Data
+    Mining*, KDD ’22, page 784–794\. Association for Computing Machinery.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kojima et al. (2022) Takeshi Kojima, Shixiang Shane Gu, Machel Reid, Yutaka
+    Matsuo, and Yusuke Iwasawa. 2022. Large language models are zero-shot reasoners.
+    *Advances in neural information processing systems*, 35:22199–22213.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Koncel-Kedziorski et al. (2015) Rik Koncel-Kedziorski, Hannaneh Hajishirzi,
+    Ashish Sabharwal, Oren Etzioni, and Siena Dumas Ang. 2015. Parsing algebraic word
+    problems into equations. *Transactions of the Association for Computational Linguistics*,
+    3:585–597.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Koncel-Kedziorski et al. (2016) Rik Koncel-Kedziorski, Subhro Roy, Aida Amini,
+    Nate Kushman, and Hannaneh Hajishirzi. 2016. MAWPS: A math word problem repository.
+    In *Proceedings of the 2016 Conference of the North American Chapter of the Association
+    for Computational Linguistics: Human Language Technologies*, pages 1152–1157.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Lewkowycz et al. (2022) Aitor Lewkowycz, Anders Andreassen, David Dohan, Ethan
+    Dyer, Henryk Michalewski, Vinay Ramasesh, Ambrose Slone, Cem Anil, Imanol Schlag,
+    Theo Gutman-Solo, et al. 2022. Solving quantitative reasoning problems with language
+    models. *Advances in Neural Information Processing Systems*, 35:3843–3857.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Li et al. (2023a) Junyan Li, Li Lyna Zhang, Jiahang Xu, Yujing Wang, Shaoguang
+    Yan, Yunqing Xia, Yuqing Yang, Ting Cao, Hao Sun, Weiwei Deng, Qi Zhang, and Mao
+    Yang. 2023a. Constraint-aware and ranking-distilled token pruning for efficient
+    transformer inference. In *Proceedings of the 29th ACM SIGKDD Conference on Knowledge
+    Discovery and Data Mining*, KDD ’23, page 1280–1290.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Li et al. (2023b) Yucheng Li, Bo Dong, Chenghua Lin, and Frank Guerin. 2023b.
+    [Compressing context to enhance inference efficiency of large language models](http://arxiv.org/abs/2310.06201).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ling et al. (2017) Wang Ling, Dani Yogatama, Chris Dyer, and Phil Blunsom.
+    2017. Program induction by rationale generation: Learning to solve and explain
+    algebraic word problems. In *Proceedings of the 55th Annual Meeting of the Association
+    for Computational Linguistics (Volume 1: Long Papers)*, pages 158–167.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Liu et al. (2021) Jiachang Liu, Dinghan Shen, Yizhe Zhang, Bill Dolan, Lawrence
+    Carin, and Weizhu Chen. 2021. What makes good in-context examples for gpt-$3$?
+    *arXiv preprint arXiv:2101.06804*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lu et al. (2022) Yao Lu, Max Bartolo, Alastair Moore, Sebastian Riedel, and
+    Pontus Stenetorp. 2022. Fantastically ordered prompts and where to find them:
+    Overcoming few-shot prompt order sensitivity. In *Proceedings of the 60th Annual
+    Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)*,
+    pages 8086–8098.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Luo et al. (2023) Haipeng Luo, Qingfeng Sun, Can Xu, Pu Zhao, Jianguang Lou,
+    Chongyang Tao, Xiubo Geng, Qingwei Lin, Shifeng Chen, and Dongmei Zhang. 2023.
+    Wizardmath: Empowering mathematical reasoning for large language models via reinforced
+    evol-instruct. *arXiv preprint arXiv:2308.09583*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Min et al. (2022) Sewon Min, Xinxi Lyu, Ari Holtzman, Mikel Artetxe, Mike Lewis,
+    Hannaneh Hajishirzi, and Luke Zettlemoyer. 2022. Rethinking the role of demonstrations:
+    What makes in-context learning work? In *Proceedings of the 2022 Conference on
+    Empirical Methods in Natural Language Processing*, pages 11048–11064.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Mu et al. (2023) Jesse Mu, Xiang Lisa Li, and Noah Goodman. 2023. Learning to
+    compress prompts with gist tokens. *arXiv preprint arXiv:2304.08467*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: OpenAI (2023a) OpenAI. 2023a. [Gpt-4 technical report](http://arxiv.org/abs/2303.08774).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: OpenAI (2023b) OpenAI. 2023b. [Welcome to the openai platform](https://platform.openai.com/docs/introduction).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Patel et al. (2021) Arkil Patel, Satwik Bhattamishra, and Navin Goyal. 2021.
+    Are nlp models really able to solve simple math word problems? In *Proceedings
+    of the 2021 Conference of the North American Chapter of the Association for Computational
+    Linguistics: Human Language Technologies*, pages 2080–2094.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Peng et al. (2023a) Bowen Peng, Jeffrey Quesnelle, Honglu Fan, and Enrico Shippole.
+    2023a. Yarn: Efficient context window extension of large language models. *arXiv
+    preprint arXiv:2309.00071*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Peng et al. (2023b) Bowen Peng, Jeffrey Quesnelle, Honglu Fan, and Enrico Shippole.
+    2023b. Yarn: Efficient context window extension of large language models. *arXiv
+    preprint arXiv:2309.00071*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Qin et al. (2023) Chengwei Qin, Aston Zhang, Anirudh Dagar, and Wenming Ye.
+    2023. In-context learning with iterative demonstration selection. *arXiv preprint
+    arXiv:2310.09881*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Robertson et al. (2009) Stephen Robertson, Hugo Zaragoza, et al. 2009. The
+    probabilistic relevance framework: Bm25 and beyond. *Foundations and Trends® in
+    Information Retrieval*, 3(4):333–389.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Roy and Roth (2015) Subhro Roy and Dan Roth. 2015. Solving general arithmetic
+    word problems. In *Proceedings of the 2015 Conference on Empirical Methods in
+    Natural Language Processing*, pages 1743–1752.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Rubin et al. (2021) Ohad Rubin, Jonathan Herzig, and Jonathan Berant. 2021.
+    Learning to retrieve prompts for in-context learning. *arXiv preprint arXiv:2112.08633*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Scarlatos and Lan (2023) Alexander Scarlatos and Andrew Lan. 2023. Reticl:
+    Sequential retrieval of in-context examples with reinforcement learning. *arXiv
+    preprint arXiv:2305.14502*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Shin et al. (2020) Taylor Shin, Yasaman Razeghi, Robert L Logan IV, Eric Wallace,
+    and Sameer Singh. 2020. Autoprompt: Eliciting knowledge from language models with
+    automatically generated prompts. In *Proceedings of the 2020 Conference on Empirical
+    Methods in Natural Language Processing (EMNLP)*, pages 4222–4235.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023a) Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier
+    Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal,
+    Eric Hambro, Faisal Azhar, et al. 2023a. Llama: Open and efficient foundation
+    language models. *arXiv preprint arXiv:2302.13971*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023b) Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert,
+    Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava,
+    Shruti Bhosale, et al. 2023b. Llama 2: Open foundation and fine-tuned chat models.
+    *arXiv preprint arXiv:2307.09288*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Tworkowski et al. (2023) Szymon Tworkowski, Konrad Staniszewski, Mikołaj Pacek,
+    Yuhuai Wu, Henryk Michalewski, and Piotr Miłoś. 2023. [Focused transformer: Contrastive
+    training for context scaling](http://arxiv.org/abs/2307.03170).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Von Oswald et al. (2023) Johannes Von Oswald, Eyvind Niklasson, Ettore Randazzo,
+    João Sacramento, Alexander Mordvintsev, Andrey Zhmoginov, and Max Vladymyrov.
+    2023. Transformers learn in-context by gradient descent. In *International Conference
+    on Machine Learning*, pages 35151–35174\. PMLR.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wang et al. (2023a) Lean Wang, Lei Li, Damai Dai, Deli Chen, Hao Zhou, Fandong
+    Meng, Jie Zhou, and Xu Sun. 2023a. Label words are anchors: An information flow
+    perspective for understanding in-context learning. *arXiv preprint arXiv:2305.14160*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wang et al. (2023b) Liang Wang, Nan Yang, and Furu Wei. 2023b. Learning to retrieve
+    in-context examples for large language models. *arXiv preprint arXiv:2307.07164*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wang et al. (2023c) Weizhi Wang, Li Dong, Hao Cheng, Xiaodong Liu, Xifeng Yan,
+    Jianfeng Gao, and Furu Wei. 2023c. Augmenting language models with long-term memory.
+    *arXiv preprint arXiv:2306.07174*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wang et al. (2023d) Xuezhi Wang, Jason Wei, Dale Schuurmans, Quoc V Le, Ed H.
+    Chi, Sharan Narang, Aakanksha Chowdhery, and Denny Zhou. 2023d. [Self-consistency
+    improves chain of thought reasoning in language models](https://openreview.net/forum?id=1PL1NIMMrw).
+    In *The Eleventh International Conference on Learning Representations*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wei et al. (2022) Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Fei
+    Xia, Ed Chi, Quoc V Le, Denny Zhou, et al. 2022. Chain-of-thought prompting elicits
+    reasoning in large language models. *Advances in Neural Information Processing
+    Systems*, 35:24824–24837.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Weng et al. (2023) Yixuan Weng, Minjun Zhu, Fei Xia, Bin Li, Shizhu He, Shengping
+    Liu, Bin Sun, Kang Liu, and Jun Zhao. 2023. [Large language models are better
+    reasoners with self-verification](http://arxiv.org/abs/2212.09561).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Williams (1992) Ronald J. Williams. 1992. Simple statistical gradient-following
+    algorithms for connectionist reinforcement learning.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wingate et al. (2022) David Wingate, Mohammad Shoeybi, and Taylor Sorensen.
+    2022. Prompt compression and contrastive conditioning for controllability and
+    toxicity reduction in language models. *arXiv preprint arXiv:2210.03162*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Xiao et al. (2023) Guangxuan Xiao, Yuandong Tian, Beidi Chen, Song Han, and
+    Mike Lewis. 2023. Efficient streaming language models with attention sinks. *arXiv*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xu et al. (2023) Can Xu, Qingfeng Sun, Kai Zheng, Xiubo Geng, Pu Zhao, Jiazhan
+    Feng, Chongyang Tao, and Daxin Jiang. 2023. Wizardlm: Empowering large language
+    models to follow complex instructions. *arXiv preprint arXiv:2304.12244*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yao et al. (2023) Shunyu Yao, Dian Yu, Jeffrey Zhao, Izhak Shafran, Thomas L
+    Griffiths, Yuan Cao, and Karthik Narasimhan. 2023. Tree of thoughts: Deliberate
+    problem solving with large language models. *arXiv preprint arXiv:2305.10601*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yoo et al. (2022) Kang Min Yoo, Junyeob Kim, Hyuhng Joon Kim, Hyunsoo Cho,
+    Hwiyeol Jo, Sang-Woo Lee, Sang-goo Lee, and Taeuk Kim. 2022. Ground-truth labels
+    matter: A deeper look into input-label demonstrations. In *Proceedings of the
+    2022 Conference on Empirical Methods in Natural Language Processing*, pages 2422–2437.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhenyu et al. (2023) Wu Zhenyu, Wang Yaoxiang, Ye Jiacheng, Feng Jiangtao,
+    Xu Jingjing, Qiao Yu, and Wu Zhiyong. 2023. Openicl: An open-source framework
+    for in-context learning. *arXiv preprint arXiv:2303.02913*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'This appendix includes additional analysis, the evolution of MRD³, pruner training
+    details, additional related works, and prompt settings. These contents are organized
+    in separate sections as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sec. [A](#A1 "Appendix A Additional Analysis and Case Study ‣ Fewer is More:
+    Boosting LLM Reasoning with Reinforced Context Pruning") provides additional analysis
+    and case studies, including the comparison of CoT-Influx with context window extension
+    methods, performance of CoT-Influx on finetuned LLMs (LLaMA2-13B-Chat and GPT-3.5-Turbo),
+    ablation study on the reward design, and sensitivity analysis on hyperparameters
+    of the pruner. Additional case studies on the GSM8K with different prompting methods
+    are given to extensively prove the effectiveness of our method.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sec. [B](#A2 "Appendix B Evolution of MRD3 ‣ Fewer is More: Boosting LLM Reasoning
+    with Reinforced Context Pruning") introduces the prompt we used for the evolution
+    of the examples in our MRD³. Both the original input and the evolution results
+    are given as examples. We also analyze the difficulty and reasoning step distribution
+    of different evolution methods and derive a new observation regarding difficulty
+    preference for different LLMs.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sec. [C](#A3 "Appendix C Pruner Training and Evaluation Details ‣ Fewer is
+    More: Boosting LLM Reasoning with Reinforced Context Pruning") includes the algorithm
+    for training data preparation as a supplement to Algorithm [1](#alg1 "Algorithm
+    1 ‣ 4.3 Coarse-to-fine Pruner Design ‣ 4 CoT-Influx Methodology ‣ Fewer is More:
+    Boosting LLM Reasoning with Reinforced Context Pruning"). The hyperparameter settings,
+    the training dynamic of the pruner, and the detailed introduction of the evaluation
+    dataset are also included.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sec. [D](#A4 "Appendix D Additional Related Works ‣ Fewer is More: Boosting
+    LLM Reasoning with Reinforced Context Pruning") elaborates previous LLM context
+    window extension and LLM in-context learning methods, and analyzes the advantage
+    of our proposed CoT-Influx compared with various previous methods.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sec. [E](#A5 "Appendix E Prompt Settings ‣ Fewer is More: Boosting LLM Reasoning
+    with Reinforced Context Pruning") demonstrates the prompt we used in this work
+    for difficulty and reasoning step evaluation, and GPT-4 based compression on input
+    few-shot prompts.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Appendix A Additional Analysis and Case Study
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A.1 Comparison with context window extension methods
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'While our work tackle the challenge of limited context window by pruning the
+    redundant input few-shot prompts, another solution is to extend the context window
+    of LLMs. We compare the math reasoning performance of LLaMA2-7B with CoT-Influx
+    and LLaMA2-7B with 32K token context window extended with Positional Interpolation
+    (PI) Chen et al. ([2023a](#bib.bib2)). The results are listed in Table [9](#A1.T9
+    "Table 9 ‣ A.1 Comparison with context window extension methods ‣ Appendix A Additional
+    Analysis and Case Study ‣ Fewer is More: Boosting LLM Reasoning with Reinforced
+    Context Pruning").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 9: Comparsion of EM(%) on GSM8K of LLaMA2-7B with CoT-Influx and LLaMA2-7B-32K
+    with PI.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Number of input shots | 12 | 16 | 20 | 24 | 28 | 32 | 40 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Average number of tokens | 2108.6 | 2820.6 | 3535.4 | 4217.2 | 4929.1 | 5641.2
+    | 7070.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA2-7B | 13.87 | 15.08 | 14.02 | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA2-7B+CoT-Influx | - | - | - | 14.33 | 15.09 | 15.92 | 15.77 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA2-7B-32K | 11.37 | 12.81 | 11.37 | 11.83 | 11.83 | 11.52 | 11.30 |'
+  prefs: []
+  type: TYPE_TB
+- en: When the input prompt does not exceed the window token limit (the number of
+    input shots is not more than 20), we compare the performance of LLaMA2-7B-32K
+    with LLaMA2-7B. When the input prompt exceed the context window length, we apply
+    our CoT-Influx to prune the prompts to make sure that they can be directly input
+    to LLaMA2-7B without PI. The results show that the context window extension weaken
+    the reasoning ability with the same input prompt. The limit of context window
+    can be unlocked with our CoT-Influx. Moreover, our observation that LLMs can improve
+    reasoning with more helpful CoT examples does not hold true for LLMs with extended
+    context window.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A.2 CoT-Influx on finetuned LLMs
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In Sec. [5.1](#S5.SS1 "5.1 Main Results ‣ 5 Evaluation ‣ Fewer is More: Boosting
+    LLM Reasoning with Reinforced Context Pruning"), we verify the effectiveness of
+    CoT-Influx on LLaMA2-7B, 13B, and 70B. LLaMA2-chat Touvron et al. ([2023b](#bib.bib45))
+    and GPT-3.5-Turbo OpenAI ([2023b](#bib.bib34)) are also the widely adopted LLMs
+    that are acquired after supervised instruction finetuning (SIFT) and Reinforcement
+    Learning from Human Feedback (RLHF), respectively. The different finetuning strategy
+    and the various finetuning data result in unique properties of the LLMs. For example,
+    LLaMA2-Chat-13B perform significantly better than LLaMA2-13B on math reasoning
+    tasks with zero-shot-cot prompts. To show that our CoT-Influx can also help improve
+    the reasoning ability of these finetuned LLMs, we conduct experiments of LLaMA2-13B-Chat
+    and GPT-3.5-Turbo (gpt35-turbo-0613) on GSM8K dataset. As shown from the results
+    listed in Table [10](#A1.T10 "Table 10 ‣ A.2 CoT-Influx on finetuned LLMs ‣ Appendix
+    A Additional Analysis and Case Study ‣ Fewer is More: Boosting LLM Reasoning with
+    Reinforced Context Pruning"), our CoT-Influx also surpass a wide range of prompting
+    baselines with more input shots and fewer tokens. Specifically on LLaMA2-13B-Chat,
+    CoT-Influx achieve an absolute improvement 9.78% compared to TopK retrieval baseline
+    with only 57.6% average tokens.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 10: The EM (%) accuracy on GSM8K with CoT-Influx and other baselines.
+    Note that the context window limit of LLaMA2-13B-Chat and GPT-3.5-Turbo are all
+    4096 tokens.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | #Input CoT shots | #Average tokens | LLaMA2-13B-Chat | GPT-3.5-Turbo
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Few-shot-CoT Fu et al. ([2023](#bib.bib11)) | 8 | 655 | 27.82 | 72.55 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| TopK retrieval Liu et al. ([2021](#bib.bib28)) | 20 | 3535.4 | 31.16 | 70.74
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| TopK+LLMLingua Jiang et al. ([2023](#bib.bib19)) | 40 | 2048.0 | 10.69 |
+    49.96 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CoT-Influx | 48 | 2037.0 | 40.94 | 73.31 |'
+  prefs: []
+  type: TYPE_TB
+- en: A.3 Ablation study on reward design
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The reward of our CoT-Influx pruner are made up of three parts: math reasoning
+    accuracy reward $R_{\text{Acc}}$ is the most important because training without
+    this term will cause the pruner not to prune any shot or token and directly output
+    the truncated prompt of the redundant input.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 11: The EM (%) accuracy on GSM8K of LLaMA2-7B and LLaMA2-13B with different
+    reward function.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Reward Function | LLaMA-2-7B | LLaMA-2-13B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Full Reward | 15.92 | 32.37 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| w/o $R_{\text{Acc}}$ | 15.24 | 31.46 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| w/o $R_{\text{Loss}}$ | 14.78 | 31.16 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| w/o $R_{\text{Limit}}$ | 14.25 | 29.72 |'
+  prefs: []
+  type: TYPE_TB
+- en: A.4 Sensitivity analysis on hyperparameters
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We perform sensitivity analysis on the hyperparameters to investigate the robustness
+    of our CoT-Influx pruner training. The most important setting in the training
+    of our CoT-Influx pruner is the token target $T$ should not be too small).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 12: Sensitivity analysis on token target $T$'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Token target $T$ | LLaMA-2-13B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2048 | 32.37 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1024 | 29.57 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 3072 | 32.37 |  | Token penalty co-efficient $w$ | LLaMA-2-13B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (-1,1) | 32.37 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (-0.5,1) | 31.69 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (-1,0.5) | 32.22 |'
+  prefs: []
+  type: TYPE_TB
+- en: A.5 Case Study on different prompt compression methods
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'To show how different prompt compression methods prune input few-shot prompts
+    in different manners, we given an example of a 8-shot prompt selected using TopK
+    retriever. The original full few-shot prompts are listed in the following box:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '<svg id="A1.SS5.p1.1.p1.pic1" class="ltx_picture" height="911.13" overflow="visible"
+    version="1.1" width="588"><g transform="translate(0,911.13) matrix(1 0 0 -1 0
+    0)" fill="#000000" stroke="#000000" stroke-width="0.4pt"><g fill-opacity="1.0"
+    transform="matrix(1.0 0.0 0.0 1.0 21.65 891.39)"><foreignobject width="544.69"
+    height="13.84" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible" color="#FFFFFF">Original
+    full few-shot prompt for math reasoning (1331 tokens):</foreignobject></g> <g
+    fill-opacity="1.0" transform="matrix(1.0 0.0 0.0 1.0 21.65 13.78)"><foreignobject
+    width="544.69" height="859.89" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible"
+    color="#000000">Q: Dave won 11 tickets at the arcade and spent 5 on a beanie.
+    Afterward, he won 10 more tickets. Calculate his final ticket count by first finding
+    the remaining tickets after his purchase and then adding the newly won tickets.
+    A: Let’s think step by step. Dave had 11 tickets, spent 5, leaving him with 6\.
+    Then he won 10 more, resulting in: 6 + 10 = 16 tickets. The answer is 16. Q: At
+    the carnival, tickets for rides cost 0.75 dollars each, or you can buy a 15-dollar
+    armband for unlimited rides for one night. To determine the number of rides where
+    the armband’s cost equals that of individual tickets, set up and solve an equation
+    involving x, the number of rides. A: Let’s think step by step. Let x be the number
+    of rides. Equate the cost of x rides using individual tickets, 0.75x dollars,
+    to the 15-dollar armband cost: 0.75x = 15\. Solve for x: x = 15/0.75, which gives
+    x = 20\. The answer is 20. Q: Mitch, Jam, and Jay went out for a movie. Mitch
+    paid $7 per ticket for 3 friends, Jam purchased 2 popcorn boxes at $1.5 each,
+    and Jay got 3 milk teas for $3 each. To equitably split the expenses, how much
+    should each of them contribute? A: Let’s think step by step. The total cost of
+    3 tickets at $7 each, 2 popcorn boxes at $1.5 each, and 3 milk teas at $3 each
+    is $21 + $3 + $9 = $33\. Dividing the overall expenses among 3 friends results
+    in a contribution of $33/3 = $11 per person. The answer is $11. Q: Connor is taking
+    his date to the movies, with tickets costing $10.00 each. They opt for the large
+    popcorn & 2 drink combo meal at $11.00, and each choose a box of candy at $2.50
+    per box. Determine the combined expenses for the movie tickets, combo meal, and
+    candy to find the total amount Connor will spend on his date. A: Let’s think step
+    by step. Calculate the cost of two movie tickets (2 x $10.00 = $20.00), the combo
+    meal ($11.00), and two boxes of candy (2 x $2.50 = $5.00), then sum them up ($20.00
+    + $11.00 + $5.00 = $36.00). The answer is $36.00. Q: Scott has 4 tickets. Ernest
+    starts with 9 tickets and later discovers a stash of 72 more. Calculate the final
+    number of tickets Ernest possesses. A: Let’s think step by step. Ernest initially
+    holds 9 tickets and acquires 72 additional ones, leading to a total of 9 + 72
+    = 81 tickets. The answer is 81. Q: Joseph and his friends watched two movies at
+    his place. The first movie lasts 1 hour and 30 minutes, and the second is 30 minutes
+    longer. They took 10 minutes for popcorn and double that for fries. Determine,
+    in hours, the cumulative time spent cooking and watching movies by breaking down
+    each component of time spent. A: Let’s think step by step. First, find the second
+    movie’s length (1 hour and 30 minutes + 30 minutes = 2 hours). Then, sum both
+    movies’ lengths (1 hour and 30 minutes + 2 hours = 3 hours and 30 minutes). Next,
+    calculate cooking time (10 minutes for popcorn + 20 minutes for fries = 30 minutes).
+    Lastly, add movie and cooking times (3 hours and 30 minutes + 30 minutes = 4 hours).
+    The answer is 4 hours. Q: The movie theater sold a number of tickets to the horror
+    and romance movies. The horror movie ticket sales were 18 more than three times
+    the romance movie ticket sales. If there were 25 romance movie tickets sold, how
+    many tickets were sold for the horror movie, considering the given relationship?
+    A: Let’s think step by step. Let "h" represent the horror movie tickets sold.
+    Given that h = 3(25) + 18, we can simplify the equation: h = 75 + 18, resulting
+    in h = 93\. The answer is 93. Q: On Saturday, Sara purchased 2 movie theater tickets
+    at $10.62 each, rented a movie for $1.59, and bought another movie for $13.95\.
+    Determine Sara’s total expenditure on movies by performing a step-by-step calculation.
+    A: Let’s think step by step. Firstly, calculate the movie tickets’ cost by multiplying
+    the ticket price ($10.62) by the quantity (2), resulting in $21.24\. Secondly,
+    combine the rental ($1.59) and purchase ($13.95) costs, equaling $15.54\. Lastly,
+    sum the ticket cost and rental/purchase cost: $21.24 + $15.54 = $36.78\. The answer
+    is $36.78.</foreignobject></g></g></svg>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Most of the examples above have similar background and target (tickets, movie,
+    expense, etc.) but the difficulty and number of reasoning steps are various. In
+    addition, the solution of most questions are highly redundant. When performing
+    math reasoning with, it is important to select the most suitable and concise examples
+    considering the characteristic of the current input question. In our evaluation
+    across different methods shown in Sec. [5.1](#S5.SS1 "5.1 Main Results ‣ 5 Evaluation
+    ‣ Fewer is More: Boosting LLM Reasoning with Reinforced Context Pruning"), we
+    have empirically observe the previous methods fail to retain the structural integrity
+    of prompt. We show the pruned prompt with different methods and similar token
+    length in the following box. We can see that Selective Context and LLMLingua frequently
+    discard the important part including ‘Q:’, ‘A:’, ‘$\backslash$n’, “Let’s think
+    step by step”, and “The answer is” in these examples. Although GPT-4 can retain
+    majority of these tokens, the reasoning steps are systematically removed because
+    GPT-4 cannot be instructed to utilize the redundancy in both example-level and
+    token-level. Our proposed CoT-Influx, however, select the most representative
+    examples and only remove the redundant function words.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '<svg id="A1.SS5.1.p1.pic1" class="ltx_picture" height="1144.38" overflow="visible"
+    version="1.1" width="588"><g transform="translate(0,1144.38) matrix(1 0 0 -1 0
+    0)" fill="#000000" stroke="#000000" stroke-width="0.4pt"><g fill-opacity="1.0"
+    transform="matrix(1.0 0.0 0.0 1.0 21.65 1126.18)"><foreignobject width="544.69"
+    height="12.3" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible" color="#FFFFFF">Pruned
+    few-shot prompt of different methods:</foreignobject></g> <g fill-opacity="1.0"
+    transform="matrix(1.0 0.0 0.0 1.0 21.65 316.91)"><foreignobject width="544.69"
+    height="791.55" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible" color="#000000">Selective
+    Context: Q Dave won 11 tickets Afterward won: step Dave 11 tickets spent leaving
+    Then won 10 resulting: 16 Q At tickets rides rides where set solve x: step Let
+    x rides Equate x rides individual tickets dollars = x 20 Q Mitch Jam went paid
+    per 3 friends Jam purchased equitably how: step 3 tickets + 3 friends results
+    $ Q Connor tickets They opt the large popcorn & 2 drink combo meal choose candy
+    combo meal candy Connor: step combo boxes sum $ Q Scott 4 tickets starts 9 tickets
+    discovers 72 Ernest possesses: step initially holds 9 tickets 72 additional ones
+    leading 81 Q Joseph watched lasts They popcorn double hours cooking breaking:
+    step First find + Then sum both movies’ lengths + Next, calculate cooking time
+    popcorn + Lastly add movie cooking times + 4 hours Q sold 25 romance movie tickets
+    considering the given relationship: step Let "h the horror movie tickets Given
+    = 18 simplify 75 93 Q Sara purchased rented movies performing: step Firstly calculate
+    resulting Secondly combine rental Lastly sum $ LLMLingua: : Dave won11ets the
+    and5 a be. After he. his final count by first theets after the: Lets think. Daveets5,,
+    in. : the,ets 5, or a-ollarides for one. To theidesband cost equals of, equation
+    involving r. A: think. Let.ides using individualets, the1ollar cost5 which. :,
+    Jam and Jay a7 ticket3 Jam2orn5 Jay3 milk. To equ the.ets boxes53 milk each1\.
+    the overallenses3 friends a. The : Connor is his,.. They theorn & drinkbo and0\.
+    theandy think. ofets0 theboal and two then :. Ernest and later a7\. think. Ernest
+    initially and, 9: friends at movie the minutes They and for. the spent by think,
+    the, calculate The a the and ticket, think.:, bought.by-step calculation. A: Let’s
+    think step by step. Firstly, calculate the movie tickets’ cost by multiplying
+    the ticket price ($10.62) by the quantity (2), resulting in $21.24\. Secondly,
+    combine the rental ($1.59) and purchase ($13.95) costs, equaling $15.54\. Lastly,
+    sum the ticket cost and rental/purchase cost: $21.24 + $15.54 = $36.78\. The answer
+    is $36.78. GPT-4 Compression: Q: Dave won 11, spent 5 and won 10 more. Determine
+    final count. A: The answer is 16. Q: Tickets cost 0.75 per ride, armband cost
+    15\. Determine rides that armband’s cost equals tickets. A: The answer is 20.
+    Q: $7 per ticket for 3, 2 popcorn boxes at $1.5, 3 milk teas for $3\. Determine
+    each contribute. A: The answer is $11. Q: Tickets cost $10.00 each, meal cost
+    $11.00, a box of candy at $2.50\. Determine the expenses. A: The answer is $36.00.
+    Q: Scott has 4\. Ernest starts with 9 and discovers 72 more. Determine the final
+    number. A: The answer is 81. Q: The first 1.5 hour, the second is 30 minutes longer.
+    10 minutes for popcorn. Determine the time. A: The answer is 4 hours. Q: Horror
+    movie were 18 more than 3 times romance. 25 romance movie sold, Determine number
+    of horror movie. A: The answer is 93. Q: Sara purchased 2 at $10.62 each, a movie
+    for $1.59, and another $13.95\. Determine total expenditure. A: The answer is
+    $36.78.</foreignobject></g> <g fill-opacity="1.0" transform="matrix(1.0 0.0 0.0
+    1.0 21.65 13.78)"><foreignobject width="544.69" height="279.51" transform="matrix(1
+    0 0 -1 0 16.6)" overflow="visible" color="#000000">CoT-Influx: Q: Mitch, Jam,
+    and went out a. Mitch paid $7 per ticket for 3, Jam purchased 2 boxes at $1.5
+    each, and got 3 for $3 each. To equitably split, how much should each them contribute?
+    A: Let’s think step by step. The total cost 3 tickets $7 each, 2 popcorn boxes
+    $1.5 each, and 3 milk $3 each is $21 + $3 + $9 = $33\. Dividing the overall expenses
+    among 3 results of $33/3 = $11 per. The answer is $11. Q: The theater sold number
+    tickets to horror and romance movies. The horror movie ticket sales were 18 more
+    than three times romance ticket. If there 25 romance sold, how many tickets were
+    sold horror movie, considering? A: Let’s think step by step. Let "h" represent
+    horror tickets sold. Given h = 3(25) + 18, we can simplify equation: h = 75 +
+    18, resulting h = . The answer is 93. Q: On, Sara purchased 2 theater tickets
+    $10.62 each, rented movie $1.59, and bought movie $13.95\. Determine Sara’s total
+    expenditure movies performing a calculation. A: Let’s think step by step. , calculate
+    tickets’ cost price ($10.62) by quantity (2), resulting $21.24\. Secondly, combine
+    rental ($1.59) purchase ($13.95), equaling. Lastly, sum ticket rental/purchase:
+    $21.24 + $15.54\. The answer is $36.78.</foreignobject></g></g></svg>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B Evolution of MRD³
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: B.1 Prompt template for evolution
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The prompt we used for evolution of the examples in our dataset are listed
+    as follow:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '<svg id="A2.SS1.p1.1.p1.pic1" class="ltx_picture" height="629.26" overflow="visible"
+    version="1.1" width="588"><g transform="translate(0,629.26) matrix(1 0 0 -1 0
+    0)" fill="#000000" stroke="#000000" stroke-width="0.4pt"><g fill-opacity="1.0"
+    transform="matrix(1.0 0.0 0.0 1.0 21.65 611.06)"><foreignobject width="544.69"
+    height="12.3" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible" color="#FFFFFF">Prompt
+    for different evolution strategies</foreignobject></g> <g fill-opacity="1.0" transform="matrix(1.0
+    0.0 0.0 1.0 21.65 282.16)"><foreignobject width="544.69" height="311.18" transform="matrix(1
+    0 0 -1 0 16.6)" overflow="visible" color="#000000">I want you to act as a Prompt
+    Rewriter. Your objective is to rewrite a given prompt into a more complex version
+    to make those famous AI systems (e.g., LLaMA, ChatGPT and GPT4) a bit harder to
+    handle. The prompt is made up of a math reasoning question and the corresponding
+    answer. The rewritten prompt must be reasonable and must be understood and responded
+    by humans. Your rewriting cannot omit or change the input and results in #Given
+    Prompt#. Also, please retain the format of ’Question: ’ and ’Answer: ’ in your
+    response. You SHOULD complicate the given prompt using the following method: {Evolution
+    template} You should try your best not to make the #Rewritten Prompt# become verbose,
+    #Rewritten Prompt# can only add 10 to 20 words into #Given Prompt#. The #Rewritten
+    Prompt# should also follow the format that the rewritten question appears after
+    ’Question: ’ and the rewritten answer appears after ’Answer: ’. The rewritten
+    answer should end up with ’The answer is [results]’. #Given Prompt#: Question:
+    {Given question} Answer: {Given answer} #Rewritten Prompt#:</foreignobject></g>
+    <g fill-opacity="1.0" transform="matrix(1.0 0.0 0.0 1.0 21.65 13.78)"><foreignobject
+    width="544.69" height="244.76" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible"
+    color="#000000">Evolution template for evolution strategy add_constraints: Please
+    add one more constraint/requirement to the question of #Given Prompt# Evolution
+    template for evolution strategy deepening: Please increase the depth and breadth
+    of the question and answer of #Given Prompt# Evolution template for evolution
+    strategy increase_reasoning: If #Given Prompt# can be solved with just a few simple
+    thinking processes, please rewrite it to explicitly request multiple-step reasoning.
+    Evolution template for evolution strategy revise_difficulty: Please revise the
+    high difficulty questions to lower difficulty. Evolution template for evolution
+    strategy produce_easier: Please produce a new and easier question with another
+    different topic.</foreignobject></g></g></svg>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Most part of the prompt of different evolution strategies are similar. Based
+    on our quantitatively analysis on the difficulty and reasoning step distribution,
+    GPT-4 can effectively follow our instruction to modify the constraints or difficulty
+    level of input questions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: B.2 Difficulty and Reasoning Steps Distribution of MRD³
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Based on the GPT-4-based estimation, we are able to quantitatively look into
+    the distribution of difficulty and reasoning step distribution in MRD³ without
+    evolution and MRD³ with various evolution schemes. The results are shown in Figure [6](#A2.F6
+    "Figure 6 ‣ B.2 Difficulty and Reasoning Steps Distribution of MRD3 ‣ Appendix
+    B Evolution of MRD3 ‣ Fewer is More: Boosting LLM Reasoning with Reinforced Context
+    Pruning"). The original distribution of both difficulty level and reasoning steps
+    of questions centralized between 2 to 4\. More questions with higher difficulty
+    using add_constraints, deepening, and increase_reasoning. As we discuss in the
+    reward design of our RL pruner, easy questions are important for the stabilization
+    of RL and can help effectively identify the quality of pruned prompt, more easier
+    questions are generated with revise_difficulty and produce_easier evolution scheme.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/b182126af4512b5a500baaf4ac15562d.png)![Refer to caption](img/093c2237885b754e2a23651122b67dea.png)![Refer
+    to caption](img/06fedce597261175bdfc5e20aab918f7.png)![Refer to caption](img/c8708b4ca6b0aeb572feca047505c7ad.png)![Refer
+    to caption](img/7e25a61796ec05b6967e817e7a33b2a9.png)![Refer to caption](img/8170333397d7c0431c52b9ef8062814c.png)![Refer
+    to caption](img/3f2188680d1da9ad8eb4223dae9508c3.png)![Refer to caption](img/2c4ce83e17bc97a964dfab4247575595.png)![Refer
+    to caption](img/17094718cedddeb87b996bc901c5a50b.png)![Refer to caption](img/20fb45f091c7258a963131d4be924e3a.png)![Refer
+    to caption](img/8ba0dab79e33f51f0e9020d3e1135601.png)![Refer to caption](img/e50abb931b373a9036660d8beb3c798c.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: The difficulty distribution (first row) and the number of reasoning
+    steps distribution (second row).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: B.3 Additional observation on difficulty distribution
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'As shown in Figure [6](#A2.F6 "Figure 6 ‣ B.2 Difficulty and Reasoning Steps
+    Distribution of MRD3 ‣ Appendix B Evolution of MRD3 ‣ Fewer is More: Boosting
+    LLM Reasoning with Reinforced Context Pruning"), the difficulty diversity of examples
+    in MRD³ are improved after prompt evolution. We then research into the difficulty
+    distribution of the input examples for in-context learning. The observation is
+    shown as follow in addition to the 3 main observations proposed in Sec. [3](#S3
+    "3 Pilot Study ‣ Fewer is More: Boosting LLM Reasoning with Reinforced Context
+    Pruning"):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Observation 4: LLMs with different capabilities prefer CoT examples of varying
+    difficulties.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In our further exploration of the optimal selection of CoT examples for improve
+    mathematical reasoning, we observe that LLMs of different capabilities exhibit
+    preferences for CoT examples of varying difficulty levels. As Table [13](#A2.T13
+    "Table 13 ‣ B.3 Additional observation on difficulty distribution ‣ Appendix B
+    Evolution of MRD3 ‣ Fewer is More: Boosting LLM Reasoning with Reinforced Context
+    Pruning") shows, we categorize each CoT example in the MRD³-Evol dataset by difficulty
+    level. We then select the top 16 CoT examples from different groups as few-shot
+    examples for LLaMA2 models. Results show LLaMA2-7b prefers CoT examples with a
+    difficulty level of 3-4, while LLaMA2-13b, more capable, prefers those with a
+    difficulty level of 4 or above. This aligns with intuition: for instance, when
+    assisting a middle school student with math problems, it is more beneficial to
+    provide examples of moderate difficulty that they can comprehend, whereas for
+    a high school student, examples with a higher level of difficulty are more useful.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 13: Smaller, less capable LLMs favor simpler CoT examples, while larger
+    ones prefer more complex ones.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Difficulty ($\leq$ 4) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA2-7B | 14.49 | 15.39 | 14.86 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA2-13B | 23.81 | 25.32 | 25.47 |'
+  prefs: []
+  type: TYPE_TB
+- en: In our evaluation of CoT-Influx with various LLMs, we found that the shot selection
+    results are consistent with our observation. The average difficulty score and
+    number of reasoning steps for the examples selected by LLaMA2-70B pruner are 3.57
+    and 3.04, which are higher than the results of LLaMA2-13B are 3.51 and 2.98\.
+    The empirical results further support our assumption that LLMs with larger size
+    prefers harder examples than smaller-scale LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: B.4 Evolution example
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We give an example of a math questions and then show the evolved results of
+    the questions and answers. The evolved results follow our instruction given in
+    Sec. [B.1](#A2.SS1 "B.1 Prompt template for evolution ‣ Appendix B Evolution of
+    MRD3 ‣ Fewer is More: Boosting LLM Reasoning with Reinforced Context Pruning").
+    As can be seen from the evolution results, the answer of input questions can be
+    modified (e.g. ground truth answer change from 16 to 12 in add_constraints). The
+    whole background of the questions can also be replaced (e.g. computation target
+    of question change from current tickets at the arcade to final points of a game
+    in produce_easier). These modification and variation improve the diversity of
+    our prompt candidate sets, which are the building block for the training and reasoning
+    with CoT-Influx.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '<svg id="A2.SS4.1.p1.pic1" class="ltx_picture" height="594.52" overflow="visible"
+    version="1.1" width="588"><g transform="translate(0,594.52) matrix(1 0 0 -1 0
+    0)" fill="#000000" stroke="#000000" stroke-width="0.4pt"><g fill-opacity="1.0"
+    transform="matrix(1.0 0.0 0.0 1.0 21.65 576.31)"><foreignobject width="544.69"
+    height="12.3" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible" color="#FFFFFF">Example
+    of prompt evolution</foreignobject></g> <g fill-opacity="1.0" transform="matrix(1.0
+    0.0 0.0 1.0 21.65 481.42)"><foreignobject width="544.69" height="77.18" transform="matrix(1
+    0 0 -1 0 16.6)" overflow="visible" color="#000000">Input example for evolution:
+    Q: At the arcade Dave won 11 tickets. If he spent 5 tickets on a beanie and later
+    won 10 more tickets, how many would he have? A: Dave initially had 11 tickets,
+    spent 5 on a beanie, and later won 10 more, resulting in a total of: 11 - 5 +
+    10 = 16 tickets. The answer is 16.</foreignobject></g> <g fill-opacity="1.0" transform="matrix(1.0
+    0.0 0.0 1.0 21.65 13.78)"><foreignobject width="544.69" height="444.01" transform="matrix(1
+    0 0 -1 0 16.6)" overflow="visible" color="#000000">Evolution result of add_constraints:
+    Q: At the arcade, Dave won 11 tickets. If he spent 5 tickets on a beanie, won
+    10 more tickets, and gave 4 tickets to his friend, how many would he have? A:
+    Dave initially had 11 tickets, spent 5 on a beanie, won 10 more, and gave 4 to
+    his friend, resulting in a total of: 11 - 5 + 10 - 4 = 12 tickets. The answer
+    is 12. Evolution result of deepening: Q: At the arcade, Dave triumphed in a game
+    and earned 11 tickets. He redeemed 5 of those tickets for a beanie and subsequently
+    won an additional 10 tickets. What is his final ticket count? A: Dave started
+    with 11 tickets, used 5 to acquire a beanie, and later added 10 more to his collection,
+    resulting in: 11 - 5 + 10 = 16 tickets. The answer is 16. Evolution result of
+    increase_reasoning: Q: Dave won 11 tickets at the arcade and spent 5 on a beanie.
+    Afterward, he won 10 more tickets. Calculate his final ticket count by first finding
+    the remaining tickets after his purchase and then adding the newly won tickets.
+    A: Dave had 11 tickets, spent 5, leaving him with 6\. Then he won 10 more, resulting
+    in: 6 + 10 = 16 tickets. The answer is 16. Evolution result of revise_difficulty:
+    Q: Dave got 11 tickets at the arcade. He used 5 tickets to get a beanie and then
+    won 10 more tickets. How many tickets does he have now? A: Dave started with 11
+    tickets, used 5 for a beanie, and won 10 more, giving him: 11 - 5 + 10 = 16 tickets.
+    The answer is 16. Evolution result of produce_easier: Q: In a game, Sarah scored
+    11 points. She lost 5 points in a penalty and then scored 10 more points. What
+    is her final score? A: Sarah initially scored 11 points, lost 5 due to a penalty,
+    and scored 10 more, resulting in a total of: 11 - 5 + 10 = 16 points. The answer
+    is 16.</foreignobject></g></g></svg>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix C Pruner Training and Evaluation Details
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: C.1 Detailed algorithm for training data preparation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'As a supplement to phase 1 in Algorithm [1](#alg1 "Algorithm 1 ‣ 4.3 Coarse-to-fine
+    Pruner Design ‣ 4 CoT-Influx Methodology ‣ Fewer is More: Boosting LLM Reasoning
+    with Reinforced Context Pruning"), we show the algorithm for training data preparation
+    in Algorithm [2](#alg2 "Algorithm 2 ‣ C.1 Detailed algorithm for training data
+    preparation ‣ Appendix C Pruner Training and Evaluation Details ‣ Fewer is More:
+    Boosting LLM Reasoning with Reinforced Context Pruning"). Both the difficulty
+    level and number of reasoning step are involved in the GPT-4-based evaluation.
+    However, we omit the reasoning step in this algorithm as we only use difficulty
+    level in the training set split.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 2 Training dataset preparation
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Input: CoT dataset $\{x^{\text{cot}}_{i}\}_{i=1}^{L}$,'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Output: MRD³ $\mathcal{D}=\{x^{\text{cot}}_{j},d_{j}\}_{j=1}^{L^{\text{MRD${}^{3}$}}}$'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:  $\blacktriangleright$
+  prefs: []
+  type: TYPE_NORMAL
+- en: C.2 Detailed settings and hyperparameters
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The detailed hyper-parameters setting of different LLMs’ pruner are listed
+    in Table [14](#A3.T14 "Table 14 ‣ C.2 Detailed settings and hyperparameters ‣
+    Appendix C Pruner Training and Evaluation Details ‣ Fewer is More: Boosting LLM
+    Reasoning with Reinforced Context Pruning"). Majority of these hyperparameters
+    are shared across different LLMs. The evolution subset as the prompt candidates
+    for evaluation are determined by searching the performance of math reasoning on
+    100 random examples.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 14: Detailed hyper-parameters for pruner training scheme of different
+    LLMs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | LLaMA2-7B | LLaMA2-13B | LLaMA2-70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Epoch | 3 | 3 | 3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Batch Size | 1 | 1 | 1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Pruner LLM Base | LLaMA2-13B | LLaMA2-13B | LLaMA2-70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Input Shot | 40 | 48 | 48 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Input Shot (TopK) | 32 | 32 | 32 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Input Shot (Few-shot) | 8 | 16 | 16 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Optimizer | AdamW | AdamW | AdamW |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Weight Decay | 1$e^{-2}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Learning Rate | 1$e^{-5}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Embedding Extractor | BERT-Large (cased) | BERT-Large (cased) | BERT-Large
+    (cased) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Embedding Size | 1024 | 1024 | 1024 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Tokenizer Padding | 512 | 512 | 512 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Difficulty Threshold $d_{\text{thr}}$ | 2 | 2 | 2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Token Target $T$ | 2048 | 2048 | 2048 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Token Penalty Coefficient $w$ | (-1,1) | (-1,1) | (-1,1) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Selection Repeat $t_{\text{repeat}}$ | 10 | 10 | 5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Evol Subset | add_constraints | increase_reasoning | increase_reasoning |'
+  prefs: []
+  type: TYPE_TB
+- en: '| temperature | 0.8 | 0.8 | 0.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| top_p | 0.95 | 0.95 | 0.95 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| top_k | 40 | 40 | 40 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| num_beams | 1 | 1 | 1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| max_new_tokens | 1 | 1 | 1 |'
+  prefs: []
+  type: TYPE_TB
+- en: C.3 Training dynamics
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We visualize the RL training dynamics of the LLaMA2-13B pruner in Figure [7](#A3.F7
+    "Figure 7 ‣ C.3 Training dynamics ‣ Appendix C Pruner Training and Evaluation
+    Details ‣ Fewer is More: Boosting LLM Reasoning with Reinforced Context Pruning")
+    including the LLM loss reward $\frac{1}{1+L_{\text{LLM}}}$, the oscillation phenomenon
+    are more obvious compared with other reward term. This highlight the effectiveness
+    of question repetition and using Exponential Moving Average (EMA) of final reward
+    to suppress this oscillation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/ca075ad6ec629d6542b516dc65048d78.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: ((a)) LLM loss reward $\frac{1}{1+L_{\text{LLM}}}$
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8463e3596081730d4f4adc1d90f82fd9.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: ((b)) Prediction reward $R_{\text{Acc}}$
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/34cd71879fa3e0f77eadaccf59a8e41b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: ((c)) EMA pruner reward $R$
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e46074268cdd24374a87d434d41563ed.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: ((d)) Remaining token $t$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 7: RL training dynamics of the LLaMA2-13B pruner.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: C.4 Detailed introduction of dataset for evaluation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We introduce the details of the datasets we used for evaluation as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: GSM8K Cobbe et al. ([2021](#bib.bib6)) is a math reasoning dataset consisting
+    high quality linguistically diverse grade school math word problems created by
+    human problem writers. There are 7473 training examples and 1319 validation examples
+    in the dataset.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: SVAMP Patel et al. ([2021](#bib.bib35)) representing Simple Variations on Arithmetic
+    Math word Problems that conduct question sensitivity variation, reasoning ability
+    variation, and structural variation on existing math datasets. There is a total
+    of 1000 examples and all of them are used for evaluation in our settings.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: MultiArith Roy and Roth ([2015](#bib.bib40)) is a collection of multi-step arithmetic
+    problems with 600 examples and all of them are used for evaluation in our settings.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: AddSub Hosseini et al. ([2014](#bib.bib18)) is a dataset consisting of addition
+    and subtraction problems with 395 examples and all of them are used for evaluation
+    in our settings.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: SingleEq Koncel-Kedziorski et al. ([2015](#bib.bib22)) consists grade-school
+    algebra word problems that map to single equations with varying length. Every
+    equation may involve multiple math operations including multiplication, division,
+    subtraction, and addition over non-negative rational numbers and only one variable.
+    There are 508 problems, 1117 sentences, and 15292 words in the dataset.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: C.5 Rule-based prompt reconstruction
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To make sure the input prompt for inference remain structurally intact, we apply
+    a rule-based prompt reconstruction on the input. For example, “$\backslash$n’,
+    “Let’s think step by step”, and “The answer is”.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix D Additional Related Works
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: LLM In-Context Learning In-context learning (ICL) are one of the emerging abilities
+    of LLMs that conduct various downstream tasks with provided few-shot demonstrations.
+    To fully understand optimize the ICL paradigm, previous research mainly focus
+    on the underlying mechanism of ICL or the proper application of ICL. Pioneering
+    research Von Oswald et al. ([2023](#bib.bib47)); Dai et al. ([2023](#bib.bib7))
+    empirically find the similarity between gradient-descent (GD) and ICL, which interprets
+    the trained LLMs are meta-optimizer that can learn the examples in context in
+    forward pass. More recently, Wang et al. ([2023a](#bib.bib48)) propose a hypothesis
+    that label words in examples serve as anchors in ICL, and the anchors can help
+    aggregate and distribute the task-relevant information flow. To better utilize
+    ICL, previous research also research on the input format Yoo et al. ([2022](#bib.bib59))
+    and order of examples Min et al. ([2022](#bib.bib31)). Our work falls in the second
+    category that shows the compressed examples are an optimal choice for the input
+    of ICL.
+  prefs: []
+  type: TYPE_NORMAL
+- en: LLM Context Window Extension Recently, there has been rising interests in extending
+    the context window of existing pre-trained LLMs. Common approaches include augmenting
+    external memory modules Tworkowski et al. ([2023](#bib.bib46)); Wang et al. ([2023c](#bib.bib50)),
+    which add extra modules to memorize long past contexts but requires complex training,
+    manipulating attention mechanisms Han et al. ([2023](#bib.bib14)); Xiao et al.
+    ([2023](#bib.bib56)) or the positional encoding Chen et al. ([2023a](#bib.bib2));
+    Peng et al. ([2023b](#bib.bib37)). However, these require LLM modifications. Our
+    method, applicable to black-box LLMs and extendable context windows, is orthogonal
+    to this direction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Comparison of CoT-Influx with Previous Methods We summarize the advantage of
+    our CoT-Influx compared with previous prompting strategies in Table [15](#A4.T15
+    "Table 15 ‣ Appendix D Additional Related Works ‣ Fewer is More: Boosting LLM
+    Reasoning with Reinforced Context Pruning"). Gradient-free indicates the methods
+    do not need to backward through LLMs. Unlimited-token represents the original
+    input prompt for these methods are not limited by the context window length of
+    LLMs. Difficulty-aware refers to whether the method take the difficulty of problems
+    into the consideration of their prompt design. Dynamic #Shots means we do not
+    need to setup a target shot number and the pruned input shot numbers are different
+    across various questions. Our CoT-Influx demonstrate significant advantage over
+    all previous methods.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 15: Comparison of the advantage of different prompting strategies.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Methods | Frozen LLMs | Automated | Gradient-free | Unlimited-token | Transferable
+    | Interpretable | Difficulty-aware | Dynamic #Shots |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fine-Tuning | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Manual Prompt | ✓ | ✗ | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Soft Prompt Tuning | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Prompt Retrieval | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AutoPrompt Shin et al. ([2020](#bib.bib43)) | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ |
+    ✗ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RLPrompt Deng et al. ([2022](#bib.bib8)) | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ✗ | ✗
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Context Extension | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLMLingua Jiang et al. ([2023](#bib.bib19)) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
+    ✗ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CoT-Influx(Ours) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix E Prompt Settings
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section, we show the prompt we used in this work for reproducibility.
+    The prompt for evaluating the difficulty and reasoning steps of each examples
+    are:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '<svg id="A5.1.p1.pic1" class="ltx_picture" height="194.84" overflow="visible"
+    version="1.1" width="588"><g transform="translate(0,194.84) matrix(1 0 0 -1 0
+    0)" fill="#000000" stroke="#000000" stroke-width="0.4pt"><g fill-opacity="1.0"
+    transform="matrix(1.0 0.0 0.0 1.0 21.65 176.63)"><foreignobject width="544.69"
+    height="12.3" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible" color="#FFFFFF">Prompt
+    for difficulty and reasoning steps estimation:</foreignobject></g> <g fill-opacity="1.0"
+    transform="matrix(1.0 0.0 0.0 1.0 21.65 13.78)"><foreignobject width="544.69"
+    height="145.13" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible" color="#000000">We
+    would like you to evaluate and rate the difficulty and complexity of the following
+    question. You should first give an overall score on a scale of 1 to 10, where
+    a higher score indicates higher difficulty and complexity. You should then evaluate
+    the answer and give how many reasoning steps are in the answer. You must just
+    give the score and the number of reasoning steps without any other reasons. The
+    reply format should be ’Score’: [score], ’Steps: [#steps]’ ## Question: {Given
+    question} ## Answer: {Given answer} ## Evaluation:</foreignobject></g></g></svg>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The prompt for GPT-4 Compression on prompts are shown as follow. Note that we
+    encode the restriction of token limits in both the prompt and API by setting the
+    max_new_token. However, the prompt compression results still fail to follow the
+    restrictions for most cases. This disadvantages of uncontrollable token length
+    is also discussed in previous work Jiang et al. ([2023](#bib.bib19)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '<svg id="A5.2.p1.pic1" class="ltx_picture" height="129.96" overflow="visible"
+    version="1.1" width="588"><g transform="translate(0,129.96) matrix(1 0 0 -1 0
+    0)" fill="#000000" stroke="#000000" stroke-width="0.4pt"><g fill-opacity="1.0"
+    transform="matrix(1.0 0.0 0.0 1.0 21.65 111.75)"><foreignobject width="544.69"
+    height="12.3" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible" color="#FFFFFF">Prompt
+    for GPT-4-based compression:</foreignobject></g> <g fill-opacity="1.0" transform="matrix(1.0
+    0.0 0.0 1.0 21.65 13.78)"><foreignobject width="544.69" height="80.25" transform="matrix(1
+    0 0 -1 0 16.6)" overflow="visible" color="#000000">Please compress the following
+    examplars for few-shot in-context learning on math reasoning. The complete examplars
+    could be removed if they are redundant and the tokens within each examplars can
+    also be pruned. ’The answer is’ in each examplar should be retained and please
+    keep less than {Given token} tokens in total: {Given examplars}</foreignobject></g></g></svg>'
+  prefs: []
+  type: TYPE_NORMAL

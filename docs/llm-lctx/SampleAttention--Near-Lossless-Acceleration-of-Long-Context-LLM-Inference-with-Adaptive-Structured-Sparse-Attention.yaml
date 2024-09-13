@@ -1,0 +1,1656 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:56:14'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'SampleAttention: Near-Lossless Acceleration of Long Context LLM Inference with
+    Adaptive Structured Sparse Attention'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2406.15486](https://ar5iv.labs.arxiv.org/html/2406.15486)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Qianchao Zhu^†, Jiangfei Duan^‡, Chang Chen^†, Siran Liu^†, Xiuhong Li^†, Guanyu
+    Feng^§
+  prefs: []
+  type: TYPE_NORMAL
+- en: Xin Lv^§, Huanqi Cao^∪, Chuanfu Xiao^†, Xingcheng Zhang^∩, Dahua Lin^(‡∩), Chao
+    Yang^†
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^†Peking University  ^‡The Chinese University of Hong Kong
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^§Zhipu.AI  ^∪Tsinghua University  ^∩Shanghai AI Lab
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Large language models (LLMs) now support extremely long context windows, but
+    the quadratic complexity of vanilla attention results in significantly long Time-to-First-Token
+    (TTFT) latency. Existing approaches to address this complexity require additional
+    pretraining or finetuning, and often sacrifice model accuracy. In this paper,
+    we first provide both theoretical and empirical foundations for near-lossless
+    sparse attention. We find dynamically capturing head-specific sparse patterns
+    at runtime with low overhead is crucial. To address this, we propose SampleAttention,
+    an adaptive structured and near-lossless sparse attention. Leveraging observed
+    significant sparse patterns, SampleAttention attends to a fixed percentage of
+    adjacent tokens to capture local window patterns, and employs a two-stage query-guided
+    key-value filtering approach, which adaptively select a minimum set of key-values
+    with low overhead, to capture column stripe patterns. Comprehensive evaluations
+    show that SampleAttention can seamlessly replace vanilla attention in off-the-shelf
+    LLMs with nearly no accuracy loss, and reduces TTFT by up to $2.42\times$ compared
+    with FlashAttention.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Recent advances [[1](#bib.bib1), [2](#bib.bib2), [3](#bib.bib3), [4](#bib.bib4),
+    [5](#bib.bib5)] race to scale the context window of large language models (LLMs) [[6](#bib.bib6),
+    [7](#bib.bib7), [8](#bib.bib8)] for more complex applications, including document
+    analysis [[9](#bib.bib9)], code copilot [[10](#bib.bib10), [11](#bib.bib11)],
+    and prolonged conversations [[12](#bib.bib12), [13](#bib.bib13)]. Popular LLMs
+    like Gemini [[14](#bib.bib14)], Claude [[15](#bib.bib15)] and Kimi [[16](#bib.bib16)]
+    now support context lengths exceeding 1 million tokens. However, the increase
+    in context length makes it challenging to support live interactions due to the
+    quadratic complexity of attention mechanism. As illustrated in Figure [1](#S1.F1
+    "Figure 1 ‣ 1 Introduction ‣ SampleAttention: Near-Lossless Acceleration of Long
+    Context LLM Inference with Adaptive Structured Sparse Attention"), the attention
+    computation time increases quadratically with sequence length, quickly dominating
+    the Time to First Token (TTFT) latency (i.e. prefill latency). For example, in
+    a 1 million token context, the attention of ChatGLM-6B [[17](#bib.bib17)] takes
+    $1555$ seconds, constituting over 90% of the TTFT when evaluated on an A100 GPU.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Various solutions have been proposed to address the quadratic complexity of
+    attention, but none of them can be seamlessly and practically applied to pretrained
+    LLMs without finetuning or pretraining and sacrificing model accuracy. Prior approaches
+    explore to approximate dense attention with static or dynamic sparse attention [[18](#bib.bib18),
+    [19](#bib.bib19), [20](#bib.bib20), [21](#bib.bib21), [22](#bib.bib22), [23](#bib.bib23),
+    [24](#bib.bib24), [25](#bib.bib25), [26](#bib.bib26)], low-rank matrices [[27](#bib.bib27),
+    [28](#bib.bib28), [29](#bib.bib29)], and unified sparse and low-rank attention [[30](#bib.bib30),
+    [31](#bib.bib31)]. Recurrent states [[32](#bib.bib32), [33](#bib.bib33), [34](#bib.bib34)]
+    and external memory [[35](#bib.bib35), [36](#bib.bib36)] are also investigated
+    to mitigate the complexity. However, these approaches require pretraining from
+    scratch or additional finetuning, and cannot achieve the same accuracy of full
+    attention. StreamingLLM [[37](#bib.bib37)] offers a tuning-free sparse attention
+    for infinite generation scenarios, but it cannot effectively reduce TTFT without
+    accuracy loss. Therefore, we ask the question,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/9b92eaacd2ebefcc5134639c7bc7a79a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Comparison of sparse attention pattern and TTFT latency speedup.
+    SampleAttention features adaptive structured sparse, compared with previous static
+    and dynamic sparse attention. It achieves significant reduction in TTFT compared
+    with FlashAttention.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How can we reduce the TTFT for off-the-shelf long context LLMs with near-lossless¹¹1Near-lossless
+    refers to that model accuracy stays above $99\%$ of the baseline according to
+    MLPerf[[38](#bib.bib38)]. model accuracy?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this paper, we first provide both theoretical and empirical foundations
+    for near-lossless sparse attention. We find that the sparsity of intermediate
+    score matrix in long-context attention is inherently-high, head-specific, and
+    content-aware. Specifically, for a given long context prompt, some attention heads
+    focus on only $0.2\%$ of the tokens, while others may need to attend to over half.
+    From the dynamic sparse patterns, we also demonstrate some inherent local window
+    and column stripe patterns as illustrated in Figure [1](#S1.F1 "Figure 1 ‣ 1 Introduction
+    ‣ SampleAttention: Near-Lossless Acceleration of Long Context LLM Inference with
+    Adaptive Structured Sparse Attention"). Except for adjacent tokens in the local
+    window, some dynamic column stripes appear to be critical for near-lossless attention.
+    This flexible sparsity indicates that sparse attention should dynamically capture
+    the head-specific sparse patterns at runtime to be near-lossless. However, adaptive
+    selection of essential elements involves significant overhead. The trade-off between
+    efficiency and accuracy is a permanent topic in sparse attention design.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To address these challenges, we propose SampleAttention, an adaptive structured
+    sparse attention that can be seamlessly integrated into off-the-shelf long context
+    LLMs with near-lossless model accuracy. SampleAttention leverages the significant
+    window and stripe sparse patterns, thus achieves structured sparse and is hardware-efficient.
+    To resolve the adaptive sparsity, SampleAttention attends to a fixed percentage
+    of adjacent tokens to capture local window patterns, and employs a two-stage query-guided
+    key-value filtering approach, which adaptively select a minimum set of key-values
+    with low overhead, to focus on column stripe patterns. SampleAttention significantly
+    accelerates vanilla attention by reducing both I/O and computation requirements.
+    We also implement hardware-efficient kernels. Notably, SampleAttention aims to
+    reduce the computation overhead of attention, and is orthogonal and can be combined
+    with existing KV cache eviction approaches [[39](#bib.bib39), [40](#bib.bib40),
+    [41](#bib.bib41)] to further reduce memory consumption.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We evaluate SampleAttention on ChatGLM2 and InternLM2 with a suite of popular
+    benchmarks covering various generative tasks across different sequence lengths.
+    Experimental results show that SampleAttention achieves nearly no accuracy loss
+    for different LLMs, significantly outperforming prior works, and reduces the TTFT
+    by up to $2.42\times$ compared with FlashAttention.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Approximate Attention. Plenty of works have been proposed to approximate quadratic
+    attention with lower complexity[[18](#bib.bib18), [19](#bib.bib19), [20](#bib.bib20),
+    [21](#bib.bib21), [22](#bib.bib22), [23](#bib.bib23), [24](#bib.bib24), [25](#bib.bib25),
+    [26](#bib.bib26), [27](#bib.bib27), [28](#bib.bib28), [29](#bib.bib29), [30](#bib.bib30),
+    [31](#bib.bib31), [42](#bib.bib42), [40](#bib.bib40), [25](#bib.bib25)]. For example,
+    BigBird [[20](#bib.bib20)] combines window-, global- and random-attention to capture
+    long range dependency. Reformer [[21](#bib.bib21)] reduces computional cost via
+    locality-sensitive hashing. LongNet [[22](#bib.bib22)] replaces full attention
+    with dilated attention. Linformer [[27](#bib.bib27)] employs low-rank matrix to
+    approximate attention. HyperAttention [[26](#bib.bib26)] utilizes locality sensitive
+    hashing to identify important entries on attention map. However, these approaches
+    uses either static or coarse-grained sparse pattern, and often overlook the head-specific
+    sparsity pattern. They cannot be losslessly applied in pretrained LLMs without
+    additional finetuning or training.
+  prefs: []
+  type: TYPE_NORMAL
+- en: KV Cache Compression. Long sequence comes with substantial KV cache memory consumption.
+    StreamingLLM [[37](#bib.bib37)] keeps attention sinks and several recent tokens
+    for infinite length generation. H2O [[39](#bib.bib39)] dynamically retains a balance
+    of recent and heavy hitter tokens according to attention score during decoding.
+    FastGen [[43](#bib.bib43)] adaptively construct KV cache according to observed
+    head-specific policies. Recent efforts also quantize KV cache to lower precision
+    to reduce memory consumption [[44](#bib.bib44), [45](#bib.bib45), [46](#bib.bib46)].
+    These works target on reducing the memory consumption of KV cache, while SampleAttention
+    focuses on mitigating the long context computation overhead. SampleAttention can
+    be combined with these approaches to further reduce memory consumption of KV cache.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Foundation of Near-Lossless Sparse Attention
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We start with a regular full attention mechanism for one attention head, while
+    the following contents can be seamlessly applied to multiple attention heads.
+    Let $\textbf{Q}\in\mathbb{R}^{S_{q}\times d}$ can be formulated as,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\textbf{P}=\texttt{softmax}(\frac{\textbf{QK}^{T}}{\sqrt{d}})\in[0,1]^{S_{q}\times
+    S_{k}},\quad\textbf{O}=\textbf{PV}\in\mathbb{R}^{S_{q}\times d},$ |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: where softmax is applied in row-wise, and P is the attention score. We find,
+    in long context LLMs, the attention score matrix P becomes extremely large, leading
+    to inefficiencies. Moreover, applying softmax over long sequences tends to reduce
+    the influence of smaller elements, making them less significant. This insight
+    motivates us to investigate the inherent sparsity in the attention scores, which
+    can potentially accelerate the attention mechanism without compromising accuracy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Theoretical Foundation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We first present a theoretical foundation to explore the attention score sparsity.
+    Suppose we apply an attention mask $\textbf{M}\in\{0,1\}^{S_{q}\times S_{k}}$
+    can be formulated as,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\tilde{\textbf{P}}=\textbf{M}*\textbf{P}\in[0,1]^{S_{q}\times S_{k}},\quad\tilde{\textbf{O}}=\tilde{\textbf{P}}\textbf{V}\in\mathbb{R}^{S_{q}\times
+    d},$ |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $*$ represents the element-wise product. We give a theorem for near-lossless
+    sparse attention.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Theorem 1.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: (near-lossless sparse attention) Assume that $L_{1}$ near-losslessly approximates
+    the attention output O.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The proof of Theorem [1](#Thmtheorem1 "Theorem 1\. ‣ 3.1 Theoretical Foundation
+    ‣ 3 Foundation of Near-Lossless Sparse Attention ‣ SampleAttention: Near-Lossless
+    Acceleration of Long Context LLM Inference with Adaptive Structured Sparse Attention")
+    please refer to Appendix [A.1](#A1.SS1 "A.1 Proof of Theorems ‣ Appendix A Appendix
+    ‣ SampleAttention: Near-Lossless Acceleration of Long Context LLM Inference with
+    Adaptive Structured Sparse Attention"). Theorem [1](#Thmtheorem1 "Theorem 1\.
+    ‣ 3.1 Theoretical Foundation ‣ 3 Foundation of Near-Lossless Sparse Attention
+    ‣ SampleAttention: Near-Lossless Acceleration of Long Context LLM Inference with
+    Adaptive Structured Sparse Attention") suggests that we can always find an attention
+    mask M to achieve near-lossless approximate attention for a given threshold. We
+    then define a key metric that helps understand and quantify the efficiency of
+    a sparse attention.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Definition 1.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The sparsity degree (SD) measures the maximum percentage of key-value elements
+    that can be dropped while maintaining a specified CRA threshold $\alpha$, and
+    formulated as,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: where CRA evaluates the degree to which the attention score matrix can be recovered.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Definition 2.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The cumulative residual attention (CRA) is defined as the minimum sum of the
+    remaining attention probabilities among each query after sparsification with M,
+    and formulated as,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\textbf{CRA}(\textbf{M})=\min_{i\in\{0,\cdots,S_{q}-1\}}\sum_{k=0}^{i}\tilde{\textbf{P}}_{ik},\quad\text{where}\quad\tilde{\textbf{P}}=\textbf{M}*\textbf{P}$
+    |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: Here we use minimum for CRA because we want to ensure even the row with minimal
+    residual attention score can be near-losslessly recovered. We can show that the
+    CRA of near-lossless sparse attention has a lower bound.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lemma 1.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Given <math id="Thmlemma1.p1.1.1.m1.1" class="ltx_Math" alttext="\epsilon></math>.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Lemma [1](#Thmlemma1 "Lemma 1\. ‣ 3.1 Theoretical Foundation ‣ 3 Foundation
+    of Near-Lossless Sparse Attention ‣ SampleAttention: Near-Lossless Acceleration
+    of Long Context LLM Inference with Adaptive Structured Sparse Attention") can
+    be easily proved since $||\tilde{\textbf{P}}-\textbf{P}||_{1}=1-\textbf{CRA}(\textbf{M})$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Takeaway: By discovering an effective attention mask M that meets a desired
+    CRA threshold $\alpha$) brings greater acceleration.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a48dddd8b02b99e54e295f725bb7a652.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Statistics of ChatGLM-6B (Model1, 28 layers$\times$=0.95) across
+    different heads under a 90K sequence, indicating significant disparities in sparsity
+    among the heads. (d) Different contexts cause the same head to display varied
+    sparse structures, while numerous attention heads follow two primary patterns:
+    column stripe and local window. (e) Relationship between the ratio of selected
+    top-k strips and CRA. The high row-wise numerical distribution similarity enables
+    a small amount of critical column stripes to cover the majority values of the
+    full attention score matrix. Further details are presented in Appendix [A.3](#A1.SS3
+    "A.3 Visualization of attention ‣ Appendix A Appendix ‣ SampleAttention: Near-Lossless
+    Acceleration of Long Context LLM Inference with Adaptive Structured Sparse Attention"),
+    [A.4](#A1.SS4 "A.4 Sparisty analysis ‣ Appendix A Appendix ‣ SampleAttention:
+    Near-Lossless Acceleration of Long Context LLM Inference with Adaptive Structured
+    Sparse Attention").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Empirical Foundation of Adaptive Sparsity in Attention
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Section [3.1](#S3.SS1 "3.1 Theoretical Foundation ‣ 3 Foundation of Near-Lossless
+    Sparse Attention ‣ SampleAttention: Near-Lossless Acceleration of Long Context
+    LLM Inference with Adaptive Structured Sparse Attention") uncovers the possibility
+    of approximating the attention output using near-lossless sparse attention, with
+    the key lying in finding an effective attention mask. In this section, we present
+    our empirical findings that reveal the inherently-high, head-specific, and content-aware
+    adaptive sparsity and the significant patterns. These can be leveraged to achieve
+    efficient near-lossless sparse attention.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Inherently-High Sparsity Degree. Our observations reveal that LLMs inherently
+    exhibit a significant sparsity degree when using near-lossless sparse attention.
+    In Figure [2](#S3.F2 "Figure 2 ‣ 3.1 Theoretical Foundation ‣ 3 Foundation of
+    Near-Lossless Sparse Attention ‣ SampleAttention: Near-Lossless Acceleration of
+    Long Context LLM Inference with Adaptive Structured Sparse Attention")(a), the
+    average sparsity degree across different layers of various LLMs is depicted, with
+    a threshold of $\alpha=0.95$ for near-lossless model accuracy. We find that most
+    layers exhibit remarkably high sparsity degree, surpassing 90%, regardless of
+    the input length. Notably, the first layer has a lower sparsity degree.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To further quantify the variation in sparsity degree with increasing sequence
+    length, we conduct a scaling evaluation on the "Needle in a Haystack" [[47](#bib.bib47)]
+    task, as illustrated in Figure [2](#S3.F2 "Figure 2 ‣ 3.1 Theoretical Foundation
+    ‣ 3 Foundation of Near-Lossless Sparse Attention ‣ SampleAttention: Near-Lossless
+    Acceleration of Long Context LLM Inference with Adaptive Structured Sparse Attention")(b).
+    Our findings indicate that as the context becomes longer, there is a corresponding
+    increase in the sparsity degree.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Adaptive Sparsity. The attention sparsity is head-specific and content-aware.
+    The sparsity degree and structure varies across different attention heads and
+    input contexts. Figure [2](#S3.F2 "Figure 2 ‣ 3.1 Theoretical Foundation ‣ 3 Foundation
+    of Near-Lossless Sparse Attention ‣ SampleAttention: Near-Lossless Acceleration
+    of Long Context LLM Inference with Adaptive Structured Sparse Attention")(c) demonstrates
+    that certain heads in most layers exhibit lower SD($\alpha$. This suggests that
+    different heads may have distinct roles in processing long sequences, indicating
+    that uniform compression across all heads may not be optimal. Figure [2](#S3.F2
+    "Figure 2 ‣ 3.1 Theoretical Foundation ‣ 3 Foundation of Near-Lossless Sparse
+    Attention ‣ SampleAttention: Near-Lossless Acceleration of Long Context LLM Inference
+    with Adaptive Structured Sparse Attention")(d) shows that different contents of
+    similar length result in noticeable variations in sparse patterns within the same
+    layer and head. This indicates that regions with higher attention scores change
+    significantly based on the given scenario, such as different user prompts.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Significant Window and Stripe Patterns. We identify two significant sparse
+    patterns that substantially contribute to the attention score, as depicted in
+    Figure [2](#S3.F2 "Figure 2 ‣ 3.1 Theoretical Foundation ‣ 3 Foundation of Near-Lossless
+    Sparse Attention ‣ SampleAttention: Near-Lossless Acceleration of Long Context
+    LLM Inference with Adaptive Structured Sparse Attention")(d). The local window
+    pattern captures recent context information, while column stripe pattern embodies
+    the key global contextual information. By adaptively combining these two patterns,
+    LLMs can effectively handle both fine-grained information and key contextual cues.
+    Figure [2](#S3.F2 "Figure 2 ‣ 3.1 Theoretical Foundation ‣ 3 Foundation of Near-Lossless
+    Sparse Attention ‣ SampleAttention: Near-Lossless Acceleration of Long Context
+    LLM Inference with Adaptive Structured Sparse Attention")(e) demonstrates that
+    selecting a small amount of critical column strips is able to cover the majority
+    values of the full attention score matrix, thus achieving a high CRA. This indicates
+    the high numerical distribution similarity across rows.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although similar patterns have been observed in recent works [[43](#bib.bib43),
+    [37](#bib.bib37), [39](#bib.bib39)], they focus on reducing KV cache memory consumption
+    during decoding. Directly migrating these approaches to accelerate prefill attention
+    requires computing full attention score, which is unaffordable in long context.
+    How to effectively explore these patterns for near-lossless acceleration of prefill
+    is remain challenging.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Takeaway: Attention sparsity is inherently-high, head-specific, and content-aware,
+    and exhibits significant local window and column stripe patterns. This adaptive
+    sparsity indicates that sparse attention should dynamically capture the adaptive
+    sparse patterns at runtime to be near-lossless.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 SampleAttention
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we introduce our approach to efficiently discover effective
+    attention masks with observed significant sparse patterns and accelerate the attention
+    with near-lossless sparse attention.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Problem Formulation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'As discussed, the key to utilizing near-lossless sparse attention is to find
+    an attention mask M with the following properties to achieve superior performance:
+    1) near-lossless: meets a desired CRA threshold $\alpha$, 2) adaptive: varies
+    across different heads, layers and contents, 3) hardware-efficient: maximizes
+    hardware efficiency, 4) efficiently discoverable: can be found with minimal overhead.
+    A static mask clearly cannot meet these criteria, and these properties pose significant
+    challenges.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Selecting an attention mask $\textbf{M}\in\{0,1\}^{S_{q}\times S_{k}}$,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $w$ maintains near-lossless property,
+  prefs: []
+  type: TYPE_NORMAL
+- en: Theorem 2.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The hardware-efficient structured sparse pattern mask $\hat{\textbf{M}}$ maintains
+    near-lossless sparse.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The proof of Theorem [2](#Thmtheorem2 "Theorem 2\. ‣ 4.1 Problem Formulation
+    ‣ 4 SampleAttention ‣ SampleAttention: Near-Lossless Acceleration of Long Context
+    LLM Inference with Adaptive Structured Sparse Attention") please refer to Appendix [A.1](#A1.SS1
+    "A.1 Proof of Theorems ‣ Appendix A Appendix ‣ SampleAttention: Near-Lossless
+    Acceleration of Long Context LLM Inference with Adaptive Structured Sparse Attention").
+    Given the formulation, the problem now is to find $w$ for each head to meet the
+    required properties during runtime.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Method
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Tuned Window Size $w$ is the sequence length of the input request. The percentage
+    is tuned to be enough large to capture important local windows, and it also accommodates
+    dynamic window sizes across various context lengths. While previous works have
+    explored window attention [[20](#bib.bib20), [39](#bib.bib39), [37](#bib.bib37)],
+    they typically rely on a fixed window size, which cannot adequately capture local
+    dependencies across various context lengths.
+  prefs: []
+  type: TYPE_NORMAL
+- en: KV Indices of Interest $I_{KV}$,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Ideally, computing the entire attention score matrix P and then selecting $I_{KV}$
+    would be optimal, but this incurs unaffordable quadratic overhead in both computation
+    and memory consumption. Fortunately, the similar distribution of large numerical
+    values across rows, as observed in Section [3.2](#S3.SS2 "3.2 Empirical Foundation
+    of Adaptive Sparsity in Attention ‣ 3 Foundation of Near-Lossless Sparse Attention
+    ‣ SampleAttention: Near-Lossless Acceleration of Long Context LLM Inference with
+    Adaptive Structured Sparse Attention"), can be leveraged to simplify the indices
+    selection process. SampleAttention introduces a two-stage query-guided key-value
+    filtering approach to approximate the solution. The PyTorch-style algorithm refers
+    to Appendix [A.7](#A1.SS7 "A.7 PyTorch-Style Implementation Algorithm ‣ Appendix
+    A Appendix ‣ SampleAttention: Near-Lossless Acceleration of Long Context LLM Inference
+    with Adaptive Structured Sparse Attention"). Our evaluations show that the approximation
+    performs pretty well (Section [5](#S5 "5 Experiments ‣ SampleAttention: Near-Lossless
+    Acceleration of Long Context LLM Inference with Adaptive Structured Sparse Attention")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Stage-1: Query-Guided Attention Sampling. SampleAttention first samples the
+    attention score matrix by computing exact scores for a few queries (Figure [3](#S4.F3
+    "Figure 3 ‣ 4.2 Method ‣ 4 SampleAttention ‣ SampleAttention: Near-Lossless Acceleration
+    of Long Context LLM Inference with Adaptive Structured Sparse Attention")①). This
+    is motivated by the significant column stripe sparse pattern: a high score for
+    $\textbf{P}_{ik}$. Experiments show that this simple approach is effective: sampling
+    a small amount of rows can accurately approximate the real CRA, further details
+    can be found in Appendix [A.5](#A1.SS5 "A.5 Effectiveness of sampling ‣ Appendix
+    A Appendix ‣ SampleAttention: Near-Lossless Acceleration of Long Context LLM Inference
+    with Adaptive Structured Sparse Attention").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Stage-2: Score-Based Key-Value Filtering. SampleAttention then filters key-values
+    indices of interest base on the sampled attention score. Exactly solve Equation [6](#S4.E6
+    "In 4.2 Method ‣ 4 SampleAttention ‣ SampleAttention: Near-Lossless Acceleration
+    of Long Context LLM Inference with Adaptive Structured Sparse Attention") for
+    sampled queries is inefficient due to long sequence length. To resolve this, SampleAttention
+    filters key-values based on the accumulated attention scores along column (Figure [3](#S4.F3
+    "Figure 3 ‣ 4.2 Method ‣ 4 SampleAttention ‣ SampleAttention: Near-Lossless Acceleration
+    of Long Context LLM Inference with Adaptive Structured Sparse Attention")②), which
+    is more statistical approximation of attention score. After column-wise reduction,
+    SampleAttention separately select top-k key-value indices that can meet the desired
+    CRA threshold $\alpha$ for each head. Attention sinks can also be discovered in
+    this way.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/13e1b338ba1218fd30490c4ec57e9e11.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: SampleAttention replaces the original full attention with a two-stage
+    implementation. In the first stage, attention scores are computed by performing
+    stride sampling across multiple rows and accumulating the scores along the column.
+    In the second stage, the indices $I_{KV}$ is then merged with the masks of the
+    local window and bottom area to enable sparse computation of the attention.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: The meaning of hyperparameters and tuning approach.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Hyperparameter | Description | Tuning |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\alpha$ | The desired CRA threshold | Offline profiling separately |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $r_{row}$ | The sampling ratio in stage-1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $r_{w}\%$ | The ratio of local window size |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Hyperparameter Tuning. SampleAttention needs to tune several hyperparameters
+    as listed in Table [1](#S4.T1 "Table 1 ‣ 4.2 Method ‣ 4 SampleAttention ‣ SampleAttention:
+    Near-Lossless Acceleration of Long Context LLM Inference with Adaptive Structured
+    Sparse Attention"). These hyperparameters affects both model accuracy and inference
+    latency. For example, a large $\alpha$ increases the sampling overhead but reduces
+    the attention approximation error. We find that fixed hyperparameter, obtained
+    by lightweight offline profiling, for an LLM performs well across different tasks.
+    Thus we use a small dataset that contains 22 requests ranging from 25K-96K context
+    length to determine these hyperparameters. The detailed effects of varying these
+    hyperparameters are studied in Section [5.3](#S5.SS3 "5.3 Hyperparameter Ablation
+    Study ‣ 5 Experiments ‣ SampleAttention: Near-Lossless Acceleration of Long Context
+    LLM Inference with Adaptive Structured Sparse Attention").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 Hardware-efficient Implementation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To achieve substantial speedup in wall-clock time, SampleAttention is implemented
+    with IO-awareness to maximize hardware-efficiency. First, the query-guided key-value
+    filtering involves a series of small operators (bmm, softmax, reduction) that
+    read and write large intermediate results. SampleAttention significantly reduces
+    IO overhead by fusing these operators. Second, SampleAttention implements an efficient
+    adaptive structured sparse attention kernel by modifying FlashAttention [[48](#bib.bib48)].
+    These hardware-aware optimizations enhance speed performance significantly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 5.1 Setup
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Backbones. We evaluate our method on two widely used open-source LLM variants:
+    ChatGLM2-6B with a 96K context window based on GLM [[17](#bib.bib17)], and internLM2-7B [[49](#bib.bib49)]
+    with a 200K context window based on LLAMA2 [[8](#bib.bib8)]. All utilized models
+    are decoder-only transformers [[50](#bib.bib50)], and are pre-trained via causal
+    language modeling. They encompass similar architectural components, such as rotary
+    positional encoding [[51](#bib.bib51)], and grouped-query attention [[52](#bib.bib52)].
+    Simultaneously, there are notable differences, e.g., the former augments the context
+    window capacity via continued training with an extended sequence length, whereas
+    the latter achieves length extrapolation through rope scaling. We only replace
+    the full attention implementation during the prompt prefill stage with SampleAttention
+    and various baselines, while maintaining an uncompressed KV cache in the decode
+    phase.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Tasks. We evaluate SampleAttention and other methods’ understanding capabilities
+    in long-context scenarios on three distinct tasks: LongBench [[53](#bib.bib53)],
+    BABILong [[54](#bib.bib54)], and Needle in a Haystack [[47](#bib.bib47)]. LongBench,
+    a multi-task benchmark, comprises single and multi-document QA, summarization,
+    few-shot learning, synthetic tasks, and code completion. It offers over 4,750
+    test cases with task lengths from 4K-35K. BABILong is a generative benchmark test
+    designed to assess long-context inferencing capability, consisting of 20 different
+    tasks. Given its generative nature, task lengths can be flexibly set from 4K-88K.
+    Additionally, the "Needle in a Haystack" stress test challenges models to accurately
+    extract information from a specific sentence buried within a lengthy document
+    at a random position. We have set the number of depth intervals at 32, with lengths
+    ranging from 10K-96K. Note that in these tasks, each case is evaluated after the
+    model provides an output. This output is compared against a standard answer or
+    judged by more advanced models, such as GPT-4 [[55](#bib.bib55)], for scoring.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.2 Accuracy Results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Table 2: Accuracy comparison across various sparse methods on LongBench and
+    BABILong. The best results are highlighted in Bold while the second best results
+    are marked with an Underline.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Model Baseline LongBench BABILong Single- Doc QA Multi- Doc QA Summari- zation
+    Few-shot Learning Synthetic Tasks Code Completion Total Scores Total Scores ChatGLM2
+    6B Full Attention 161.15 147.76 98.64 243.66 87.00 99.20 837.40 30.20 SampleAttention($\alpha=0.95$)
+    77.53 76.01 98.52 254.95 53.02 126.83 686.86 36.88 BigBrid 72.55 73.16 95.59 254.87
+    19.88 120.99 637.04 34.12 Streaming LLM 31.49 26.44 35.32 133.53 3.33 89.44 319.55
+    5.96 HyperAttention 87.98 33.40 38.52 95.78 3.09 77.80 336.57 16.64 Hash-Sparse
+    20.12 11.37 24.32 49.88 5.87 45.28 156.84 2.82
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/efba74be3dba7153eab3657454f4e773.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: Scores of different methods on the "Needle in a Haystack" task at
+    various lengths.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Baselines and settings. We consider the full attention (as the gold baseline),
+    BigBrid [[20](#bib.bib20)], Streaming-LLM [[37](#bib.bib37)], HyperAttention [[26](#bib.bib26)]
+    and Hash-Sparse [[24](#bib.bib24)] as baselines to compare model accuracy across
+    different tasks. To maintain consistency, we assign the same window size ratio
+    $8\%$ for SampleAttention are set to 5% and 0.95, respectively, through offline
+    profiling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Main results. Table [2](#S5.T2 "Table 2 ‣ 5.2 Accuracy Results ‣ 5 Experiments
+    ‣ SampleAttention: Near-Lossless Acceleration of Long Context LLM Inference with
+    Adaptive Structured Sparse Attention") and Figure [4](#S5.F4 "Figure 4 ‣ 5.2 Accuracy
+    Results ‣ 5 Experiments ‣ SampleAttention: Near-Lossless Acceleration of Long
+    Context LLM Inference with Adaptive Structured Sparse Attention") display the
+    accuracy results of the models on three downstream tasks. Detailed results are
+    listed in Appendix [A.2](#A1.SS2 "A.2 Detailed results ‣ Appendix A Appendix ‣
+    SampleAttention: Near-Lossless Acceleration of Long Context LLM Inference with
+    Adaptive Structured Sparse Attention"). The results show that:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The performance in accuracy of SampleAttention is consistently robust across
+    all benchmarks (including subdomains), various models, and diverse sequence lengths.
+    When compared to full attention, which serves as the gold standard, SampleAttention
+    consistently achieves scores above 99% of full attention, demonstrating near-lossless
+    efficiency.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: BigBrid exhibits varying degrees of performance degradation across different
+    tasks, with "Synthetic Task" presenting a significant challenge. Nonetheless,
+    on average, BigBrid still attains scores that are approximately 91% of those achieved
+    by full attention.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: StreamingLLM, HyperAttention and Hash-Sparse result in performance degradation
+    across all tasks, demonstrating that these techniques fail to capture critical
+    KV elements in long sequences at the prefill stage.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 5.3 Hyperparameter Ablation Study
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We conducted further tests on the impact of three critical hyperparameters
+    in SampleAttention on the accuracy of downstream tasks. These experiments adhered
+    to the settings outlined in Section [5.2](#S5.SS2 "5.2 Accuracy Results ‣ 5 Experiments
+    ‣ SampleAttention: Near-Lossless Acceleration of Long Context LLM Inference with
+    Adaptive Structured Sparse Attention"), with only one hyperparameter changed at
+    a time. Detailed results under different hyperparameter configurations are provided
+    in Table [5.2](#S5.SS2 "5.2 Accuracy Results ‣ 5 Experiments ‣ SampleAttention:
+    Near-Lossless Acceleration of Long Context LLM Inference with Adaptive Structured
+    Sparse Attention").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 3: Results of varying the three hyperparameters in the SampleAttention
+    on the ChatGLM2-6B. The best results are highlighted in Bold while the second
+    best results are marked with an Underline.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Task full attention CRA threshold $\alpha$ $r_{w}=8$ LongBench 837.40 820.30
+    824.98 833.00 829.80 792.87 833.00 809.34 833.00 831.14 BABILong 30.20 27.28 29.08
+    31.04 31.16 31.12 31.04 28.92 31.04 30.64 Needle in a Haystack 2235 2130 2090
+    2239 2231 2084 2239 2106 2239 2231
+  prefs: []
+  type: TYPE_NORMAL
+- en: CRA threshold $\alpha$ for a given model is essential.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Local window size and sampling ratio. Additionally, setting excessively small
+    local window ratios or sampling ratios also results in performance decreases.
+    Specifically, halving the ratio of the local window size (k=4) results in a performance
+    decline of over 6% in the LongBench and "Needle-in-a-Haystack" tasks. This confirms
+    the high significance of KV elements within the local window area. Additionally,
+    reducing the sampling ratio to 2% results in an approximate 4.5% performance loss.
+    However, performance stabilizes once the sampling ratio reaches a certain threshold,
+    as the top-k results for the approximate attention becomes stable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.4 Acceleration Speedup Benchmarking
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We conducted micro-benchmarks on a single NVIDIA-A100 GPU (80GB) to evaluate
+    performance in speed of attention operation during the prefill and TTFT metrics.
+    The baselines selected were PyTorch’s scaled_dot_product_attention (noted as SDPA)
+    and FlashAttention2. All tests were conducted using the configuration from ChatGLM2-6B:
+    32 heads, and $d=128$, with synthetic data from the "Needle-in-a-Haystack" benchmark
+    as input. We standardize the batch size of the input data to 1 to support longer
+    sequence lengths.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Speedup and sampling overhead Figure [5](#S5.F5 "Figure 5 ‣ 5.4 Acceleration
+    Speedup Benchmarking ‣ 5 Experiments ‣ SampleAttention: Near-Lossless Acceleration
+    of Long Context LLM Inference with Adaptive Structured Sparse Attention") displays
+    the profiling results conducted on the model’s full 28 layers using generated
+    data ranging from 8K to 96K. Figure [5](#S5.F5 "Figure 5 ‣ 5.4 Acceleration Speedup
+    Benchmarking ‣ 5 Experiments ‣ SampleAttention: Near-Lossless Acceleration of
+    Long Context LLM Inference with Adaptive Structured Sparse Attention")(a), focusing
+    on the GPU performance of the attention module, indicates that both SampleAttention
+    ($\alpha=0.95$, respectively. Furthermore, Figure [5](#S5.F5 "Figure 5 ‣ 5.4 Acceleration
+    Speedup Benchmarking ‣ 5 Experiments ‣ SampleAttention: Near-Lossless Acceleration
+    of Long Context LLM Inference with Adaptive Structured Sparse Attention")(c) demonstrates
+    that as sequence lengths increase, the proportion of sampling overhead decreases,
+    suggesting that SampleAttention can offer greater acceleration benefits for longer
+    sequences.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f9e963ec7e334475f3a5ada2944586a3.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: (a) Latency comparison for the self-attention module. (b)The proportion
+    of time spent on sampling and sparse computation in SampleAttention. (c) Comparison
+    for the TTFT metric.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Scaling the sequence length to 1M. We conducted GPU performance evaluations
+    scalable to a sequence length of 1 million, based on profiling results from the
+    first layer. Since SampleAttention is content-aware, for sequences longer than
+    128K, we derived the average attention latency per layer from the first layer
+    results of SampleAttention combined with model sparsity analysis to avoid memory
+    issues. Figure [6](#S5.F6 "Figure 6 ‣ 5.4 Acceleration Speedup Benchmarking ‣
+    5 Experiments ‣ SampleAttention: Near-Lossless Acceleration of Long Context LLM
+    Inference with Adaptive Structured Sparse Attention") illustrates that at a sequence
+    scaling to 1M, thresholds of 0.95 and 0.80 respectively achieve reductions in
+    the TTFT metric by $2.27\times$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/b530a455793848fe404fb6954930da39.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: (a) and (b) compare the latency of attention and TTFT metrics as
+    the sequence scales from 8K to 1M, respectively. The numbers represent the speedup
+    compared with FlashAttention2.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this paper, we first present both theoretical and empirical foundation for
+    near-lossless sparse attention, and then leverage observed significant patterns
+    to design SampleAttention, an adaptive structured sparse attention that can seamlessly
+    replace FlashAttention in long context LLMs without accuracy loss. SampleAttention
+    significantly reduces the TTFT of long context requests. Limitations and future
+    work are discussed in Appendix [A.6](#A1.SS6 "A.6 Limitations and Future Work
+    ‣ Appendix A Appendix ‣ SampleAttention: Near-Lossless Acceleration of Long Context
+    LLM Inference with Adaptive Structured Sparse Attention").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[1] Wenhan Xiong, Jingyu Liu, Igor Molybog, Hejia Zhang, Prajjwal Bhargava,
+    Rui Hou, Louis Martin, Rashi Rungta, Karthik Abinav Sankararaman, Barlas Oguz,
+    et al. Effective long-context scaling of foundation models. arXiv preprint arXiv:2309.16039,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[2] Xiaoran Liu, Hang Yan, Shuo Zhang, Chenxin An, Xipeng Qiu, and Dahua Lin.
+    Scaling laws of rope-based extrapolation. arXiv preprint arXiv:2310.05209, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[3] Yukang Chen, Shengju Qian, Haotian Tang, Xin Lai, Zhijian Liu, Song Han,
+    and Jiaya Jia. Longlora: Efficient fine-tuning of long-context large language
+    models. In The Twelfth International Conference on Learning Representations, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[4] Dacheng Li, Rulin Shao, Anze Xie, Ying Sheng, Lianmin Zheng, Joseph E.
+    Gonzalez, Ion Stoica, Xuezhe Ma, and Hao Zhang. How long can open-source llms
+    truly promise on context length?, June 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[5] Shouyuan Chen, Sherman Wong, Liangjian Chen, and Yuandong Tian. Extending
+    context window of large language models via positional interpolation. arXiv preprint
+    arXiv:2306.15595, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[6] Tom B. Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared Kaplan,
+    Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell,
+    Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan, Rewon Child,
+    Aditya Ramesh, Daniel M. Ziegler, Jeffrey Wu, Clemens Winter, Christopher Hesse,
+    Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack Clark,
+    Christopher Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario Amodei.
+    Language models are few-shot learners. In Hugo Larochelle, Marc’Aurelio Ranzato,
+    Raia Hadsell, Maria-Florina Balcan, and Hsuan-Tien Lin, editors, Advances in Neural
+    Information Processing Systems 33: Annual Conference on Neural Information Processing
+    Systems 2020, NeurIPS 2020, December 6-12, 2020, virtual, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[7] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones,
+    Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. Attention is all you need.
+    Advances in neural information processing systems, 30, 2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[8] Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi,
+    Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale,
+    et al. Llama 2: Open foundation and fine-tuned chat models. arXiv preprint arXiv:2307.09288,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[9] Tianyi Zhang, Faisal Ladhak, Esin Durmus, Percy Liang, Kathleen McKeown,
+    and Tatsunori Hashimoto. Benchmarking large language models for news summarization.
+    Transactions of the Association for Computational Linguistics, 12, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[10] Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde de Oliveira
+    Pinto, Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, Greg Brockman,
+    et al. Evaluating large language models trained on code. arXiv preprint arXiv:2107.03374,
+    2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[11] Baptiste Roziere, Jonas Gehring, Fabian Gloeckle, Sten Sootla, Itai Gat,
+    Xiaoqing Ellen Tan, Yossi Adi, Jingyu Liu, Tal Remez, Jérémy Rapin, et al. Code
+    llama: Open foundation models for code. arXiv preprint arXiv:2308.12950, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[12] Wei-Lin Chiang, Zhuohan Li, Zi Lin, Ying Sheng, Zhanghao Wu, Hao Zhang,
+    Lianmin Zheng, Siyuan Zhuang, Yonghao Zhuang, Joseph E. Gonzalez, Ion Stoica,
+    and Eric P. Xing. Vicuna: An open-source chatbot impressing gpt-4 with 90%* chatgpt
+    quality, March 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[13] Rohan Taori, Ishaan Gulrajani, Tianyi Zhang, Yann Dubois, Xuechen Li,
+    Carlos Guestrin, Percy Liang, and Tatsunori B. Hashimoto. Stanford alpaca: An
+    instruction-following llama model. [https://github.com/tatsu-lab/stanford_alpaca](https://github.com/tatsu-lab/stanford_alpaca),
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[14] Gemini Team, Rohan Anil, Sebastian Borgeaud, Yonghui Wu, Jean-Baptiste
+    Alayrac, Jiahui Yu, Radu Soricut, Johan Schalkwyk, Andrew M Dai, Anja Hauth, et al.
+    Gemini: a family of highly capable multimodal models. arXiv preprint arXiv:2312.11805,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[15] Anthropic. Claude. [https://www.anthropic.com/claude](https://www.anthropic.com/claude),
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[16] Moonshot. Kimi chat. [https://kimi.moonshot.cn/](https://kimi.moonshot.cn/),
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[17] Zhengxiao Du, Yujie Qian, Xiao Liu, Ming Ding, Jiezhong Qiu, Zhilin Yang,
+    and Jie Tang. Glm: General language model pretraining with autoregressive blank
+    infilling. arXiv preprint arXiv:2103.10360, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[18] Joshua Ainslie, Santiago Ontanon, Chris Alberti, Vaclav Cvicek, Zachary
+    Fisher, Philip Pham, Anirudh Ravula, Sumit Sanghai, Qifan Wang, and Li Yang. ETC:
+    Encoding long and structured inputs in transformers. In Bonnie Webber, Trevor
+    Cohn, Yulan He, and Yang Liu, editors, Proceedings of the 2020 Conference on Empirical
+    Methods in Natural Language Processing (EMNLP), pages 268–284, Online, November
+    2020\. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[19] Iz Beltagy, Matthew E Peters, and Arman Cohan. Longformer: The long-document
+    transformer. arXiv preprint arXiv:2004.05150, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[20] Manzil Zaheer, Guru Guruganesh, Kumar Avinava Dubey, Joshua Ainslie, Chris
+    Alberti, Santiago Ontanon, Philip Pham, Anirudh Ravula, Qifan Wang, Li Yang, et al.
+    Big bird: Transformers for longer sequences. Advances in neural information processing
+    systems, 33:17283–17297, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[21] Nikita Kitaev, Łukasz Kaiser, and Anselm Levskaya. Reformer: The efficient
+    transformer. arXiv preprint arXiv:2001.04451, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[22] Jiayu Ding, Shuming Ma, Li Dong, Xingxing Zhang, Shaohan Huang, Wenhui
+    Wang, Nanning Zheng, and Furu Wei. Longnet: Scaling transformers to 1,000,000,000
+    tokens. arXiv preprint arXiv:2307.02486, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[23] Rewon Child, Scott Gray, Alec Radford, and Ilya Sutskever. Generating
+    long sequences with sparse transformers. arXiv preprint arXiv:1904.10509, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[24] Matteo Pagliardini, Daniele Paliotta, Martin Jaggi, and François Fleuret.
+    Faster causal attention over large sequences through sparse flash attention. arXiv
+    preprint arXiv:2306.01160, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[25] Aurko Roy, Mohammad Saffar, Ashish Vaswani, and David Grangier. Efficient
+    content-based sparse attention with routing transformers. Transactions of the
+    Association for Computational Linguistics, 9:53–68, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[26] Insu Han, Rajesh Jayaram, Amin Karbasi, Vahab Mirrokni, David Woodruff,
+    and Amir Zandieh. Hyperattention: Long-context attention in near-linear time.
+    In The Twelfth International Conference on Learning Representations, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[27] Sinong Wang, Belinda Z Li, Madian Khabsa, Han Fang, and Hao Ma. Linformer:
+    Self-attention with linear complexity. arXiv preprint arXiv:2006.04768, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[28] Krzysztof Marcin Choromanski, Valerii Likhosherstov, David Dohan, Xingyou
+    Song, Andreea Gane, Tamas Sarlos, Peter Hawkins, Jared Quincy Davis, Afroz Mohiuddin,
+    Lukasz Kaiser, et al. Rethinking attention with performers. In International Conference
+    on Learning Representations, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[29] Angelos Katharopoulos, Apoorv Vyas, Nikolaos Pappas, and François Fleuret.
+    Transformers are rnns: Fast autoregressive transformers with linear attention.
+    In International conference on machine learning, pages 5156–5165\. PMLR, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[30] Beidi Chen, Tri Dao, Eric Winsor, Zhao Song, Atri Rudra, and Christopher
+    Ré. Scatterbrain: Unifying sparse and low-rank attention. Advances in Neural Information
+    Processing Systems, 34:17413–17426, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[31] Beidi Chen, Tri Dao, Kaizhao Liang, Jiaming Yang, Zhao Song, Atri Rudra,
+    and Christopher Re. Pixelated butterfly: Simple and efficient sparse training
+    for neural network models. In International Conference on Learning Representations,
+    2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[32] Albert Gu and Tri Dao. Mamba: Linear-time sequence modeling with selective
+    state spaces. arXiv preprint arXiv:2312.00752, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[33] Bo Peng, Eric Alcaide, Quentin Anthony, Alon Albalak, Samuel Arcadinho,
+    Huanqi Cao, Xin Cheng, Michael Chung, Matteo Grella, Kranthi Kiran GV, et al.
+    Rwkv: Reinventing rnns for the transformer era. arXiv preprint arXiv:2305.13048,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[34] Aydar Bulatov, Yury Kuratov, and Mikhail Burtsev. Recurrent memory transformer.
+    Advances in Neural Information Processing Systems, 35:11079–11091, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[35] Yuhuai Wu, Markus N Rabe, DeLesley Hutchins, and Christian Szegedy. Memorizing
+    transformers. arXiv preprint arXiv:2203.08913, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[36] Sebastian Borgeaud, Arthur Mensch, Jordan Hoffmann, Trevor Cai, Eliza
+    Rutherford, Katie Millican, George Bm Van Den Driessche, Jean-Baptiste Lespiau,
+    Bogdan Damoc, Aidan Clark, et al. Improving language models by retrieving from
+    trillions of tokens. In International conference on machine learning, pages 2206–2240\.
+    PMLR, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[37] Guangxuan Xiao, Yuandong Tian, Beidi Chen, Song Han, and Mike Lewis. Efficient
+    streaming language models with attention sinks. arXiv preprint arXiv:2309.17453,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[38] Vijay Janapa Reddi, Christine Cheng, David Kanter, Peter Mattson, Guenther
+    Schmuelling, Carole-Jean Wu, Brian Anderson, Maximilien Breughe, Mark Charlebois,
+    William Chou, et al. Mlperf inference benchmark. In 2020 ACM/IEEE 47th Annual
+    International Symposium on Computer Architecture (ISCA), pages 446–459\. IEEE,
+    2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[39] Zhenyu Zhang, Ying Sheng, Tianyi Zhou, Tianlong Chen, Lianmin Zheng, Ruisi
+    Cai, Zhao Song, Yuandong Tian, Christopher Ré, Clark Barrett, et al. H2o: Heavy-hitter
+    oracle for efficient generative inference of large language models. Advances in
+    Neural Information Processing Systems, 36, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[40] Luka Ribar, Ivan Chelombiev, Luke Hudlass-Galley, Charlie Blake, Carlo
+    Luschi, and Douglas Orr. Sparq attention: Bandwidth-efficient llm inference. arXiv
+    preprint arXiv:2312.04985, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[41] Jesse Mu, Xiang Li, and Noah Goodman. Learning to compress prompts with
+    gist tokens. Advances in Neural Information Processing Systems, 36, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[42] Lei Zhu, Xinjiang Wang, Zhanghan Ke, Wayne Zhang, and Rynson WH Lau. Biformer:
+    Vision transformer with bi-level routing attention. In Proceedings of the IEEE/CVF
+    conference on computer vision and pattern recognition, pages 10323–10333, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[43] Suyu Ge, Yunan Zhang, Liyuan Liu, Minjia Zhang, Jiawei Han, and Jianfeng
+    Gao. Model tells you what to discard: Adaptive kv cache compression for llms.
+    arXiv preprint arXiv:2310.01801, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[44] Haojie Duanmu, Zhihang Yuan, Xiuhong Li, Jiangfei Duan, Xingcheng Zhang,
+    and Dahua Lin. Skvq: Sliding-window key and value cache quantization for large
+    language models. arXiv preprint arXiv:2405.06219, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[45] Guangxuan Xiao, Ji Lin, Mickael Seznec, Hao Wu, Julien Demouth, and Song
+    Han. Smoothquant: Accurate and efficient post-training quantization for large
+    language models. In International Conference on Machine Learning, pages 38087–38099\.
+    PMLR, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[46] Yilong Zhao, Chien-Yu Lin, Kan Zhu, Zihao Ye, Lequn Chen, Size Zheng,
+    Luis Ceze, Arvind Krishnamurthy, Tianqi Chen, and Baris Kasikci. Atom: Low-bit
+    quantization for efficient and accurate llm serving. arXiv preprint arXiv:2310.19102,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[47] G Kamradt. Needle in a haystack–pressure testing llms, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[48] Tri Dao, Dan Fu, Stefano Ermon, Atri Rudra, and Christopher Ré. Flashattention:
+    Fast and memory-efficient exact attention with io-awareness. Advances in Neural
+    Information Processing Systems, 35:16344–16359, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[49] Zheng Cai, Maosong Cao, Haojiong Chen, Kai Chen, Keyu Chen, Xin Chen,
+    Xun Chen, Zehui Chen, Zhi Chen, Pei Chu, et al. Internlm2 technical report. arXiv
+    preprint arXiv:2403.17297, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[50] Alec Radford, Karthik Narasimhan, Tim Salimans, Ilya Sutskever, et al.
+    Improving language understanding by generative pre-training. 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[51] Jianlin Su, Murtadha Ahmed, Yu Lu, Shengfeng Pan, Wen Bo, and Yunfeng
+    Liu. Roformer: Enhanced transformer with rotary position embedding. Neurocomputing,
+    568:127063, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[52] Joshua Ainslie, James Lee-Thorp, Michiel de Jong, Yury Zemlyanskiy, Federico
+    Lebrón, and Sumit Sanghai. Gqa: Training generalized multi-query transformer models
+    from multi-head checkpoints. arXiv preprint arXiv:2305.13245, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[53] Yushi Bai, Xin Lv, Jiajie Zhang, Hongchang Lyu, Jiankai Tang, Zhidian
+    Huang, Zhengxiao Du, Xiao Liu, Aohan Zeng, Lei Hou, et al. Longbench: A bilingual,
+    multitask benchmark for long context understanding. arXiv preprint arXiv:2308.14508,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[54] Yuri Kuratov, Aydar Bulatov, Petr Anokhin, Dmitry Sorokin, Artyom Sorokin,
+    and Mikhail Burtsev. In search of needles in a 10m haystack: Recurrent memory
+    finds what llms miss. arXiv preprint arXiv:2402.10790, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[55] Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ahmad, Ilge Akkaya,
+    Florencia Leoni Aleman, Diogo Almeida, Janko Altenschmidt, Sam Altman, Shyamal
+    Anadkat, et al. Gpt-4 technical report. arXiv preprint arXiv:2303.08774, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Appendix
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A.1 Proof of Theorems
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'For Theorem [1](#Thmtheorem1 "Theorem 1\. ‣ 3.1 Theoretical Foundation ‣ 3
+    Foundation of Near-Lossless Sparse Attention ‣ SampleAttention: Near-Lossless
+    Acceleration of Long Context LLM Inference with Adaptive Structured Sparse Attention"),'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Proof.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In the worst case, we can set the attention mask M to all ones, ensuring that
+    the sparse attention score $\tilde{\textbf{P}}$. With that attention mask,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (7) |'
+  prefs: []
+  type: TYPE_TB
+- en: Therefore, $||\tilde{\textbf{O}}-\textbf{O}||_{1}\leq\epsilon$, completing the
+    proof. ∎
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For Theorem [2](#Thmtheorem2 "Theorem 2\. ‣ 4.1 Problem Formulation ‣ 4 SampleAttention
+    ‣ SampleAttention: Near-Lossless Acceleration of Long Context LLM Inference with
+    Adaptive Structured Sparse Attention"),'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Proof.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'In the worst case, we can also set the attention mask $\hat{\textbf{M}}$ maintains
+    the decomposed structured sparse pattern. Therefore, following the proof of Theorem [1](#Thmtheorem1
+    "Theorem 1\. ‣ 3.1 Theoretical Foundation ‣ 3 Foundation of Near-Lossless Sparse
+    Attention ‣ SampleAttention: Near-Lossless Acceleration of Long Context LLM Inference
+    with Adaptive Structured Sparse Attention") completes the proof. ∎'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A.2 Detailed results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Figure [7](#A1.F7 "Figure 7 ‣ A.2 Detailed results ‣ Appendix A Appendix ‣
+    SampleAttention: Near-Lossless Acceleration of Long Context LLM Inference with
+    Adaptive Structured Sparse Attention") and Figure [8](#A1.F8 "Figure 8 ‣ A.2 Detailed
+    results ‣ Appendix A Appendix ‣ SampleAttention: Near-Lossless Acceleration of
+    Long Context LLM Inference with Adaptive Structured Sparse Attention") report
+    the detailed scores of the two evaluated models on the BABILong and "Needle in
+    a Haystack" tasks across different sequence lengths, respectively. For settings
+    of the baselines and overall score statistics, please refer to Section [5.2](#S5.SS2
+    "5.2 Accuracy Results ‣ 5 Experiments ‣ SampleAttention: Near-Lossless Acceleration
+    of Long Context LLM Inference with Adaptive Structured Sparse Attention").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/6a664e699e17a6e46f892e18d9eb612f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Full attention
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/96c642ce2ce0f643ada0083e3ff84360.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) SampleAttention
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f45265c1e9ddbeff4442964f222545f2.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (c) BigBrid
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/4137b667ea4139c114a129ee52c3d275.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (d) StreamingLLM
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/6589c94d1f697e0074ac13f3cc529397.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (e) Full attention
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7173e90e339c5096e6d36c8a7e17d8a6.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (f) SampleAttention
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/0f7c5e0e57849a20f3b380e9b6ae0e65.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (g) BigBrid
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/35449fdcf1b2776869be8d4cedd3ff4a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (h) StreamingLLM
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 7: Detailed results of the evaluations on the BABILong benchmark: (a),
+    (b), (c), and (d) are based on the ChatGLM-6B model, while (e), (f), (g), and
+    (h) are based on the InternLM2-7B model.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/1966e7a2f8140fbc8a3591100f8cf142.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Full attention
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/0af63c2d7bf59bb38cf7a05455ce6ac8.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) SampleAttention
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7a210177c85a5e5e141a07347dbb8709.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (c) BigBrid
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/c14d0e1d3596339e21f7a0593b1d9513.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (d) StreamingLLM
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8020b6765a75891d4ae5523c54525af7.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (e) Full attention
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/b06f917260f8a343e6675e8e2155f6b0.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (f) SampleAttention
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/66907bf7832bbab35d729504ead3a866.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (g) BigBrid
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/202bac61cc8d0eb3ae69cb9973610382.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (h) StreamingLLM
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 8: Detailed results of the evaluations on the "Need in a Haystack" task:
+    (a), (b), (c), and (d) are based on the ChatGLM-6B model, while (e), (f), (g),
+    and (h) are based on the InternLM2-7B model.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table [4](#A1.T4 "Table 4 ‣ A.2 Detailed results ‣ Appendix A Appendix ‣ SampleAttention:
+    Near-Lossless Acceleration of Long Context LLM Inference with Adaptive Structured
+    Sparse Attention") displays the sequence scaling results at the prefill stage
+    based on the text-generation-interface serving framework, using the ChatGLM2-6B
+    model with 8$\times$NVIDIA A100 GPUs. The parallelism configuration employed is
+    TP=4 and PP=2, and a chunking implementation on the sequence length has been used
+    for memory-efficiency. The profiled TTFT (Time To First Token) metric and the
+    proportion of self-attention modules demonstrate the influence of the attention
+    mechanism’s quadratic complexity. As sequence lengths increase, this complexity
+    causes a significant rise in the latency of the attention module, which can approach
+    around 90% at sequence lengths of 1 million.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4: Latency breakdown at the prefill stage (Based on the ChatGLM-6B).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Sequence Length | TTFT (ms) | Full Attention (ms) | Precent (%) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 32K | 1273.4 | 410.4 | 32.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 64K | 2917.3 | 1538.1 | 52.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 128K | 7756.5 | 4403.9 | 56.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 256K | 23403.7 | 16839.5 | 72.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 512K | 51084.3 | 43477.0 | 85.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1M | 169653.0 | 148774.1 | 87.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: A.3 Visualization of attention
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Figures [9](#A1.F9 "Figure 9 ‣ A.3 Visualization of attention ‣ Appendix A
+    Appendix ‣ SampleAttention: Near-Lossless Acceleration of Long Context LLM Inference
+    with Adaptive Structured Sparse Attention") and Figures [10](#A1.F10 "Figure 10
+    ‣ A.3 Visualization of attention ‣ Appendix A Appendix ‣ SampleAttention: Near-Lossless
+    Acceleration of Long Context LLM Inference with Adaptive Structured Sparse Attention")
+    present the sparse patterns across various heads in the ChatGLM2-6B model (28
+    layers x 32 heads) under a sequence length of 61K. We conducted row-by-row filtering
+    based on the full attention softmax weight, using a CRA threshold of $\alpha=0.95$,
+    and randomly selected four heads from different layers for display.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'According to the visualization results on the majority of heads, we observed
+    two distinct and prominent patterns prevalent in the heatmap of attention weight:
+    column stripes and local windows. Column stripe patterns embody the global contextual
+    information whereas diagonal window patterns capture local information.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/48a1119234718bd8c23ea5f110251adc.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Layer0
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/5edf9121db3b91a9f0b2c3eb3b9e75e2.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Layer0
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/fd2d1b8d0ff441ac8be57cd1decb0e77.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (c) Layer0
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/1c9f30c8082e33fa1bf9cab84ab9180f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (d) Layer0
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/bacd1e1e177c4869233c8b4cdf719e81.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (e) Layer4
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/2b2316233bfceba83adbe98e6f9c099b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (f) Layer4
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/5c490c0f971bae8736f99f565c138d36.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (g) Layer4
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/2796bab26799d43ac594b341ba9c06eb.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (h) Layer4
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f79f3c0f87fdc0d78d6ed47ef07bb5ac.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (i) Layer8
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/590bdf18e7169d3697249e6469c6da83.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (j) Layer8
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/4784729f933c22669afb106c859ff4e3.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (k) Layer8
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e9d9899d0753fed264bfdaac05b77243.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (l) Layer8
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d647f6d6de405e6a7d40c8571f3fbe7c.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (m) Layer12
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/b3dd88a44d218553ed7dc812b2ca22bf.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (n) Layer12
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/fe20981bbf6d142a2a462252fd6f2f8a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (o) Layer12
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/fcbce890d2f8b58c1486e17b13135ad3.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (p) Layer12
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 9: The visualization attention based on a content length of 61K, displays
+    the sparse patterns for randomly chosen heads from layers 0, 4, 8 and 12.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/6150a3c749f4934a0f798c309bb8f503.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Layer16
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a678f3c2e8e301b1121309351075c50e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Layer16
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f9bf6a4e8dd1b124f165a1f760b12b88.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (c) Layer16
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/39167f8a9fa50c6f371bcb597bd2158e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (d) Layer16
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f51fc7fdf1c62522a8a324bebe8f907a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (e) Layer20
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/79a78c1b96773367e3332ae86fc643f4.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (f) Layer20
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/74a3fc0c2031ba3981b9dbc5596ebe18.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (g) Layer20
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/27a2a3b5924f3f29b9dcbd49c852d42f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (h) Layer20
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/c6c4fdacda76faa23dfa792dab202cac.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (i) Layer24
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d65b8c695d2d2005d0ed9c50fa99a24c.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (j) Layer24
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/00a2f27a4fdc0ba501140116c84acb17.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (k) Layer24
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/76e853c55fa04011d11f2acdb5fcbbc3.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (l) Layer24
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 10: The visualization attention based on a content length of 61K, displays
+    the sparse patterns for randomly chosen heads from layers 16, 20 and 24.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A.4 Sparisty analysis
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'To further quantify the degree of sparsity exposed as sequence lengths increase,
+    we conducted scalability tests on the ChatGLM2-6B model using the "Needle-in-a-Haystack"
+    task to evaluate sparsity. The results are presented in Table [5](#A1.T5 "Table
+    5 ‣ A.4 Sparisty analysis ‣ Appendix A Appendix ‣ SampleAttention: Near-Lossless
+    Acceleration of Long Context LLM Inference with Adaptive Structured Sparse Attention").
+    According to the results, the increase in sequence length introduces more apparent
+    sparsity. With each doubling of length, the proportion of KV elements needed to
+    maintain the same threshold $\alpha$ dimension for heads exhibiting different
+    degrees of sparsity.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 5: Sparsity analysis for ChatGLM2-6B model as sequence length scales.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Sequence length | Average SD ($\alpha$=0.98) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4K | 91.27% | 88.00% | 79.17% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8K | 93.68% | 90.74% | 83.43% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16K | 95.84% | 92.52% | 86.37% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 32K | 96.34% | 93.88% | 88.68% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 64K | 96.91% | 94.89% | 90.70% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 128K | 97.44% | 95.84% | 92.43% |'
+  prefs: []
+  type: TYPE_TB
+- en: '![Refer to caption](img/b30a4ec87c459fb4169bb63ecda2e861.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 11: The frequency reduction results for the retained KV elements in
+    the Sk dimension on two randomly selected heads. The SD ($\alpha=0.95$) for the
+    left head under sequence length of 61K is 41.2%, while 97.5% for the right head.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A.5 Effectiveness of sampling
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'To verify the efficiency of this sampling method, we conducted tests on different
+    heads using two distinct sampling ratios $r_{w}$. We applied different ratios
+    of top-k stripes combined with a tuned window mask to the full attention matrices
+    to observe the changes in CRA. The results, as shown in Table [6](#A1.T6 "Table
+    6 ‣ A.5 Effectiveness of sampling ‣ Appendix A Appendix ‣ SampleAttention: Near-Lossless
+    Acceleration of Long Context LLM Inference with Adaptive Structured Sparse Attention"),
+    indicate that the CRA achieved by selecting top-k stripes at a 5% sampling ratio
+    is remarkably close to that obtained from the full attention score. This confirms
+    that SampleAttention’s simple sampling method is highly efficient.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 6: The CRA percentages that can be achieved by selecting different ratios
+    of top-k stripes under different sampling ratios for each head. The sequence length
+    of tested content is 61K.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ratio of top-k stripes 2.5% 5% 10% 20% 40% 80% sampling ratio 100% 5% 100% 5%
+    100% 5% 100% 5% 100% 5% 100% 5% Layer0-Head0 10.60% 10.31% 17.85% 17.74% 29.49%
+    28.83% 47.09% 46.14% 71.19% 70.15% 97.12% 96.65% Layer13-Head0 75.29% 65.62% 80.57%
+    74.89% 86.33% 81.58% 92.09% 89.98% 97.07% 95.21% 99.85% 98.68% Layer13-Head13
+    98.24% 97.85% 98.63% 98.29% 99.02% 98.73% 99.41% 99.12% 99.76% 99.66% 100.00%
+    99.80a%
+  prefs: []
+  type: TYPE_NORMAL
+- en: A.6 Limitations and Future Work
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We discuss limitations of SampleAttention and future directions in this subsection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Other pattern and sampling.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We also identified additional diagonal structures in heads with lower sparsity
+    levels. Although SampleAttention is capable of covering these areas by selecting
+    an adequate proportion of KVs, accurately capturing these patterns could potentially
+    lead to further performance enhancements. Additionally, considering the time overhead
+    associated with sampling, how to further improve sampling efficiency to achieve
+    acceleration even at shorter sequence lengths remains an important challenge for
+    future research.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hyperparameter tuning.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: The experimental results demonstrate that hyperparameters substantially influence
+    the trade-off between task performance and speedup. Consequently, swiftly determining
+    efficient hyperparameters for a specific model emerges as a critical challenge.
+    In the future, we aim to implement autotuning of these hyperparameters during
+    task runtime, enabling SampleAttention to consistently achieve high accuracy and
+    low latency across diverse sequence lengths and scenarios.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Serving.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: After integrating SampleAttention into the distributed serving framework, we
+    found that requests with ultra-long sequences (>=128K) or large batch sizes will
+    cause memory issues. More engineering efforts are required to achieve memory efficiency,
+    potentially through strategies like implementing pipeline or sequence parallelism
+    and chunking along the sequence dimension.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A.7 PyTorch-Style Implementation Algorithm
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Algorithm [1](#algorithm1 "In A.7 PyTorch-Style Implementation Algorithm ‣
+    Appendix A Appendix ‣ SampleAttention: Near-Lossless Acceleration of Long Context
+    LLM Inference with Adaptive Structured Sparse Attention") presents a succinct
+    pseudo-code of the SampleAttention’s implementation in the PyTorch style. Link
+    to the source code based on PyTorch and Triton, along with scripts to reproduce
+    the main experimental results, will be provided in the camera-ready version.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Input:$\textbf{Q}\in\mathbb{R}^{Sq\times d},\textbf{K}\in\mathbb{R}^{Sk\times
+    d},\textbf{V}\in\mathbb{R}^{Sk\times d},\alpha\in(0,1),r_{row}\in(0,1),r_{w}\in\mathbb{N}$)Output
+    = sparse_flash_attn(Q, K, V, M_Merged)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 1 Implementation of SampleAttention
+  prefs: []
+  type: TYPE_NORMAL

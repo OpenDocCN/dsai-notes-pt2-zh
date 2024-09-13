@@ -1,0 +1,1548 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:51:21'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'FineQuant: Unlocking Efficiency with Fine-Grained Weight-Only Quantization
+    for LLMs'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2308.09723](https://ar5iv.labs.arxiv.org/html/2308.09723)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Young Jin Kim
+  prefs: []
+  type: TYPE_NORMAL
+- en: Microsoft
+  prefs: []
+  type: TYPE_NORMAL
+- en: youki@microsoft.com
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&Rawn Henry¹¹footnotemark: 1'
+  prefs: []
+  type: TYPE_NORMAL
+- en: NVIDIA
+  prefs: []
+  type: TYPE_NORMAL
+- en: rhenry@nvidia.com
+  prefs: []
+  type: TYPE_NORMAL
+- en: Raffy Fahim
+  prefs: []
+  type: TYPE_NORMAL
+- en: Microsoft
+  prefs: []
+  type: TYPE_NORMAL
+- en: raffybekheit@microsoft.com
+  prefs: []
+  type: TYPE_NORMAL
+- en: '&Hany Hassan Awadalla'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Microsoft
+  prefs: []
+  type: TYPE_NORMAL
+- en: hanyh@microsoft.com Equal contribution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Large Language Models (LLMs) have achieved state-of-the-art performance across
+    various language tasks but pose challenges for practical deployment due to their
+    substantial memory requirements. Furthermore, the latest generative models suffer
+    from high inference costs caused by the memory bandwidth bottleneck in the auto-regressive
+    decoding process. To address these issues, we propose an efficient weight-only
+    quantization method that reduces memory consumption and accelerates inference
+    for LLMs. To ensure minimal quality degradation, we introduce a simple and effective
+    heuristic approach that utilizes only the model weights of a pre-trained model.
+    This approach is applicable to both Mixture-of-Experts (MoE) and dense models
+    without requiring additional fine-tuning. To demonstrate the effectiveness of
+    our proposed method, we first analyze the challenges and issues associated with
+    LLM quantization. Subsequently, we present our heuristic approach, which adaptively
+    finds the granularity of quantization, effectively addressing these problems.
+    Furthermore, we implement highly efficient GPU GEMMs that perform on-the-fly matrix
+    multiplication and dequantization, supporting the multiplication of fp16 or bf16
+    activations with int8 or int4 weights. We evaluate our approach on large-scale
+    open source models such as OPT-175B and internal MoE models, showcasing minimal
+    accuracy loss while achieving up to 3.65 times higher throughput on the same number
+    of GPUs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Large Language Models (LLMs) have proven their efficacy in various language
+    tasks by increasing the number of trainable parameters and pre-training models
+    on large-scale data to be used in different downstream tasks (Devlin et al., [2018](#bib.bib7);
+    Radford et al., [2018](#bib.bib24); Liu et al., [2019](#bib.bib22); Raffel et al.,
+    [2020](#bib.bib26)). With the advancement of distributed large-scale training
+    methods (Shazeer et al., [2018](#bib.bib30); Rasley et al., [2020](#bib.bib27);
+    Ren et al., [2021](#bib.bib28); Baines et al., [2021](#bib.bib2)) and large-scale
+    data collection (Raffel et al., [2020](#bib.bib26); Hoffmann et al., [2022](#bib.bib13)),
+    models have grown even larger and achieved state-of-the-art performance with increased
+    capacity to learn, demonstrating the capability for in-context learning (Brown
+    et al., [2020](#bib.bib3); Zhang et al., [2022](#bib.bib36); Chowdhery et al.,
+    [2022](#bib.bib5)) that can be used for various language tasks even without updating
+    parameters for specific tasks. Zhang et al. ([2022](#bib.bib36))
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, deploying such large models comes with a significant cost which increases
+    proportionally with the model size. Model size growth has increased several orders
+    of magnitude over the last few years (1,588 times larger from BERT large - 340
+    million to PaLM 540 billion)(Devlin et al., [2018](#bib.bib7); Chowdhery et al.,
+    [2022](#bib.bib5)), and without improving inference efficiency, inference cost
+    and latency will rise dramatically.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quantization is a compression technique that reduces model size and speeds up
+    inference by approximating floating-point numbers with smaller precision numbers.
+    Numerous studies have demonstrated the effectiveness of quantization in accelerating
+    neural network model inference (Rodriguez et al., [2018](#bib.bib29); Stock et al.,
+    [2019](#bib.bib31); Choukroun et al., [2019](#bib.bib4); Gholami et al., [2022](#bib.bib12)),
+    particularly in natural language generation, such as machine translation (Kim
+    et al., [2019](#bib.bib19); Aji and Heafield, [2020](#bib.bib1); Fan et al., [2021](#bib.bib8);
+    Park et al., [2022](#bib.bib23); Kim et al., [2022](#bib.bib18)) and natural language
+    understanding tasks (Kim and Awadalla, [2020](#bib.bib16)). However, it is still
+    under-explored how weight-only quantization can be effectively utilized in the
+    context of large language models. Also, the existing methods introduce complex
+    and costly procedures such as additional Quantization Aware Training (QAT) and/or
+    calibration on additional data. Otherwise, they compromise either speed or accuracy.
+    To more effectively solve the challenge, we focus on simple weight-only quantization
+    method that requires no additional training in this study because it has multiple
+    advantages - (i) the accuracy could be maintained well because its underlying
+    numerical computation is done in floating-point precision which is more accurate.
+    As a result, we can effectively push the precision to very low bit-ranges. (ii)
+    it could be used for various hardware and GPU architectures without needing specific
+    hardware instructions dealing with low-bit multiplications. (iii) it can avoid
+    expensive additional training steps. Then, the key research questions are how
+    to effectively exploit this low-bit quantization without losing accuracy and how
+    to efficiently implement a GEMM which accepts different types on modern GPUs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this paper, we make the following contributions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Extensive Analyses of Quantization Behaviors: We provide comprehensive analyses
+    of the quantization behaviors on Language Model Models (LLMs). We investigate
+    the impact of applying low-bit quantization (down to 3-bits) on LLM accuracy.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Fine-Grained Quantization Algorithm: We propose a fine-grained quantization
+    algorithm that incorporates group-wise quantization and adaptive selection of
+    granularity. This approach helps preserve the original floating-point precision
+    accuracy even when there is loss due to quantization.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '3.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Highly Efficient GPU Kernels: We implement highly efficient GPU kernels and
+    conduct a thorough performance analysis, considering different batch sizes and
+    context lengths. This analysis allows us to identify the optimal utilization of
+    the proposed approach on real GPUs.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '4.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Accelerated Inference with Large-Scale Models: We demonstrate the effectiveness
+    of the proposed method by applying it to a large-scale open-source dense transformer
+    model called OPT. With its 175 billion parameters and internal MoE models utilizing
+    optimized GPU kernels, our method enables deployment of the 175 billion parameter
+    model on only 2 GPUs, resulting in a significant reduction of overhead and cost
+    by 64%. Moreover, our method achieves 3.65 times higher throughput on the same
+    number of GPUs.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: These contributions collectively advance the understanding of quantization behaviors
+    in LLMs, propose an effective quantization algorithm, optimize GPU implementation,
+    and demonstrate the practical benefits in terms of reduced resource requirements
+    and improved inference throughput.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Background - Challenges of Quantizing LLMs
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 2.1 Fundamental challenges of inferencing generative LLMs
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Increased communication overhead. We must issue an all reduce after each attention
+    and FFN block when doing inference with tensor parallelism. While technologies
+    such as NVLink and NCCL greatly accelerate GPU to GPU communication, it is desirable
+    to use as few GPUs as possible to minimize this overhead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Large weights with small activations. The increase in the model size causes
+    the matrix multiplies in the decoding phase of LLMs to be bottlenecked by memory
+    bandwidth. The weights typically dominate the memory traffic as the activations
+    tend to only have a few tokens once the context has been used to generate the
+    KV attention caches. As the number of parameters increase, the amount of data
+    that must be moved from HBM to the GPU cores increases which places even more
+    pressure on the memory subsystem. In modern processors, compute is much faster
+    than memory so it is desirable to reduce the memory bottleneck.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Given those observations, it is critical to reduce the memory footprint.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2 Quantization challenges
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Quantization is an active research topic to accelerate inference and reduce
+    the memory footprint of LLMs. However, there are still many challenges remaining,
+    and especially there is no single method which can maintain the accuracy and improve
+    the efficiency at the same time without introducing complex procedures to convert
+    and execute an inference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is hard to maintain good accuracy when applying quantizaiton on LLMs. It
+    is known that naive quantization methods could significantly degrade the accuracy
+    compared to the original models’ (Frantar et al., [2022](#bib.bib10)). One reason
+    for this is outliers in the activation based on the previous studies (Dettmers
+    et al., [2022](#bib.bib6); Xiao et al., [2022](#bib.bib33)). Dettmers et al. ([2022](#bib.bib6));
+    Xiao et al. ([2022](#bib.bib33)) proposed methods to mitigate this issue by handling
+    the outliers separately in floating-point arithmetic or by shifting the multiplier
+    to the model weights from the activations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is difficult to achieve high efficiency. Even if some algorithms could maintain
+    the accuracy of the original floating-point models, it is also non-trivial to
+    get efficient implementation of the proposed method in reality. This requires
+    special kernel implementations on GPUs. For example, Dettmers et al. ([2022](#bib.bib6))
+    could achieve a good accuracy with quantization, but the efficiency improvement
+    was marginal. Also, OPTQ Frantar et al. ([2022](#bib.bib10)) does not provide
+    efficient inference kernels other than batch size 1\. However, we note that our
+    efficient GPU kernels can be used with weights quantized by OPTQ., allowing one
+    to benefit from the speed of our kernels and the accuracy of OPTQ.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Added complexity to solve the problem. To overcome the issues of accuracy drop
+    and inefficiency of runtimes, there have been several studies proposed. Those
+    approaches require expensive and complex procedures to achieve the goal, especially
+    with target task specific dataset for the calibration. Yao et al. ([2022](#bib.bib35))
+    uses additional knowledge distillation steps to recover the accuracy drop from
+    the quantization. Park et al. ([2022](#bib.bib23)) uses binary coding quantization
+    and it performs iterative numerical optimization to find the best binary coding
+    scheme for a given model and a task which is non-trivial. Frantar et al. ([2022](#bib.bib10))
+    uses Optimal Brain Quantization (OBQ) to maintain the accuracy of the original
+    floating-point model which shuffles the model weights based on the approximated
+    second-order Hessian matrix information. All of those approaches have introduced
+    non-trivial and dataset specific algorithmic procedures. Especially, the cost
+    of those algorithms grows together with the size of the base models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this work, our goal is to find a scalable, accurate and efficient quantization
+    method without introducing additional cost of model conversion.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Designing Quantization Methods for LLMs - Adaptive Fine-grained Quantization
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This section delves into the phenomenon observed in LLM quantization, specifically
+    focusing on potential issues that can lead to quality degradation, particularly
+    in relation to the quantization range. We thoroughly examine these issues and
+    explore potential strategies to mitigate them while ensuring effective control
+    over the quantization range. Building on our analysis, we propose a heuristic
+    algorithm designed to automatically determine the appropriate quantization range.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '3.1 Quantization methodology: basic settings'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Uniformity of quantization
+  prefs: []
+  type: TYPE_NORMAL
+- en: We conducted experiments involving two quantization techniques that focus on
+    the uniformity of the quantized range. Firstly, we employed linear quantization,
+    which uniformly maps quantized integer values to their corresponding original
+    float values. Secondly, we explored log-based quantization, inspired by Aji and
+    Heafield ([2020](#bib.bib1)), where both integer and float ranges are mapped in
+    a logarithmic scale. In both cases, we applied column-wise quantization to assess
+    the impact of quantization uniformity on model accuracy. Detailed formulations
+    for those two techniques are described in Appendix A.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure [1](#S3.F1 "Figure 1 ‣ 3.1 Quantization methodology: basic settings
+    ‣ 3 Designing Quantization Methods for LLMs - Adaptive Fine-grained Quantization
+    ‣ FineQuant: Unlocking Efficiency with Fine-Grained Weight-Only Quantization for
+    LLMs") illustrates the performance comparison between two quantization techniques
+    applied to FFN layers using low bits. For 3 and 4 bits, both techniques exhibit
+    similar performance. However, with 2-bit quantization, log-scale quantization
+    shows a significant decrease in accuracy. Considering these observations and the
+    computational simplicity, we opt to use uniform quantization for all subsequent
+    experiments.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/9bbb869a0567daf9794cf8091338eeab.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: A comparison of how the quality of the model, as measured by BLEU,
+    changes when quantizing with different precisions using different quantization
+    methods.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Symmetricity - numerical distribution of model weights
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In order to determine the most appropriate quantization approach, we have conducted
+    further analysis on the weight parameter distribution across various layers. Figure [2](#S3.F2
+    "Figure 2 ‣ 3.1 Quantization methodology: basic settings ‣ 3 Designing Quantization
+    Methods for LLMs - Adaptive Fine-grained Quantization ‣ FineQuant: Unlocking Efficiency
+    with Fine-Grained Weight-Only Quantization for LLMs") presents example distributions
+    of model weights, which generally exhibit a normal distribution centered around
+    zero. However, in some cases, outliers can distort the weight distribution, potentially
+    leading to an inaccurate quantization range. Based on our observations and considering
+    implementation efficiency, we choose to employ symmetric quantization around zero.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8cbbc991650f5a510b5b3a5e6258c251.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Example expert weight distribution                                                                                                                                                 (layer
+    6, FFN 2, expert 15)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/1f27ca2e2938d31141325a67a48558db.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Example FFN weight distribution                                                                                                                                                 (layer
+    7, FFN 2)
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 2: A comparison of example weight distributions from MoE and dense FFN
+    layers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Granularity of quantization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Considering the design choices made earlier in this section, the granularity
+    of quantization emerges as the most crucial component of the quantization algorithm.
+    For the sake of efficient computation and reduced memory consumption, it is typical
+    to have 1 quantization scale per tensor or 1 quantization scale for each column
+    in the tensor. However, to maintain a close approximation of the original numerical
+    values with the quantized values, it is desirable to have smaller groups of parameters
+    sharing scales. This is necessary because outliers in the distribution have the
+    potential to significantly skew the data, leading to decreased quantization precision,
+    especially for smaller numerical values.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2.1 Catastrophic collapse of model performance
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Throughout our observations, we have noted a significant decline in performance
+    when employing matrix-wise quantization compared to column-wise quantization across
+    various layers, as demonstrated in Appendix B. Consequently, column-wise quantization
+    serves as the baseline for our experiments. However, even with column-wise quantization,
+    we have encountered instances of catastrophic collapse in LLM performance, particularly
+    when certain outliers exist in the model weights. Figure [3(a)](#S3.F3.sf1 "In
+    Figure 3 ‣ 3.2.1 Catastrophic collapse of model performance ‣ 3.2 Granularity
+    of quantization ‣ 3 Designing Quantization Methods for LLMs - Adaptive Fine-grained
+    Quantization ‣ FineQuant: Unlocking Efficiency with Fine-Grained Weight-Only Quantization
+    for LLMs") depicts the relationship between the Mean Squared Error (MSE) of quantized
+    values and the translation BLEU scores as we modify the group size in the OPT
+    30B model. While increasing granularity leads to a gradual rise in MSE values,
+    the model quickly loses its capability in terms of task BLEU score beyond a certain
+    point. Consequently, it is crucial to determine the optimal granularity for each
+    matrix to preserve the task performance while maximizing the size of the parameter
+    groups which share scales.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a2c56fca832d18ddcdeb0ee1eeec6fd8.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) MSE and BLEU changes with quantization group sizes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/53ce0d7d64419db7b8041f2039d7111f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) BLEU score and model size comparison with adaptive group quantization with
+    reference lines of fp16 and fixed group size (64). X-axis represents threshold
+    value $\alpha$ of adaptive fine-grained quantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 3: Impact analyses of quantization granularity on translation accuracy
+    of OPT-30B.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Adaptive fine-grained quantization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Upon further investigation into the catastrophic failure of a quantized model,
+    we have discovered that the failure could be rectified by adjusting the granularity
+    of four specific matrices out of the 288 quantized matrices. Merely increasing
+    the granularity of these four matrices by a factor of two allowed for the recovery
+    of over 94% of the lost accuracy. Based on this observation, we have developed
+    a simple heuristic-based method to assign varying granularity to different model
+    weight matrices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the process of quantizing a matrix, we start from the column-wise quantization
+    and compute the range of the values that must be quantized. We then halve the
+    quantization group size and compute the range of each group. If for any group,
+    <math id="S3.SS3.p2.1.m1.1" class="ltx_Math" alttext="\frac{new\_range}{old\_range}></math>.
+    Figure [3(b)](#S3.F3.sf2 "In Figure 3 ‣ 3.2.1 Catastrophic collapse of model performance
+    ‣ 3.2 Granularity of quantization ‣ 3 Designing Quantization Methods for LLMs
+    - Adaptive Fine-grained Quantization ‣ FineQuant: Unlocking Efficiency with Fine-Grained
+    Weight-Only Quantization for LLMs") illustrates the impact of adaptive group size
+    on BLEU scores and model sizes in gigabytes (GB). With the adaptive fine-grained
+    quantization approach, there is only a marginal 0.1% difference in BLEU score,
+    while the model size is reduced to a mere 26% of the original FP16 model size.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 4.1 Experimental setup
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Our latency and throughput experiments are conducted using NVIDIA A100 SXM4
+    GPUs inside a Docker container running Ubuntu 20.04 and CUDA 11.8\. All code is
+    compiled using nvcc 11.8.89 and gcc/g++ 9.3\. To carry out the experiments, we
+    use a modified version of FasterTransformer ¹¹1[https://github.com/NVIDIA/FasterTransformer](https://github.com/NVIDIA/FasterTransformer)
+    v5.3\. The weight-only quantization kernels for per-column quantization are already
+    open source.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Task and datasets. For the dense models, we utilize various open-source language
+    tasks, including LAMBADA, HellaSwag, PiQA, WinoGrande, OpenBookQA, RTE, COPA from
+    the lm-evaluation harness (Gao et al., [2021](#bib.bib11)), as well as WMT machine
+    translation task (WMT16 German and English)²²2[https://statmt.org/wmt16/](https://statmt.org/wmt16/).
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the MoE models, we use a multilingual machine translation task that covers
+    10 language translation directions from and into English covering German (de),
+    French (fr), Italian (it), Spanish (es), Dutch (nl), and English (en). We use
+    a 128,000 sub-word vocabulary, built with the sentencepiece library³³3[https://github.com/google/sentencepiece](https://github.com/google/sentencepiece).
+    The number of training sentences is included in Appendix E. To measure the accuracy
+    of the models, we utilized sacrebleu  ⁴⁴4[https://github.com/mjpost/sacrebleu](https://github.com/mjpost/sacrebleu)
+    on the detokenized output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dense model architecture. For the dense model experiments, we utilize various
+    open-source large language models that share a similar architecture, which consists
+    of decoder-only with multiple transformer layers. To evaluate the accuracy of
+    these models, we include GPT-2-XL (1.5B) (Radford et al., [2019](#bib.bib25)),
+    OPT (13B and 30B) (Zhang et al., [2022](#bib.bib36)), and OPT-IML (Max 30B and
+    Max 175B) (Iyer et al., [2022](#bib.bib14)). The number of model parameters ranges
+    from 1.5 billion to 175 billion. The detailed number of layers and hidden dimensions
+    can be found in the original papers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'MoE model architecture. For our MoE model experiments, we utilize internal
+    pre-trained MoE models (5.3B) with a few modifications to the transformer model
+    architecture (Vaswani et al., [2017](#bib.bib32)). These modifications encompass
+    the following: (i) a deep encoder consisting of 24 transformer layers and a shallow
+    decoder comprising 12 transformer layers, (ii) adoption of Transformer with Untied
+    Positional Encoding (TUPE) proposed in Ke et al. ([2021](#bib.bib15)) instead
+    of the conventional sinusoidal positional embedding, and (iii) implementation
+    of pre-layer normalization from Xiong et al. ([2020](#bib.bib34)). For the MoE
+    models, we employ top-1 learned gating from Fedus et al. ([2021](#bib.bib9)) and
+    an MoE layer with 32 experts at every other layer, specifically the even-numbered
+    layers, as utilized in Lepikhin et al. ([2020](#bib.bib20)); Fedus et al. ([2021](#bib.bib9));
+    Kim et al. ([2021](#bib.bib17)). Additionally, we apply jittering noise, balancing
+    loss (ratio of 0.01) (Lepikhin et al., [2020](#bib.bib20); Fedus et al., [2021](#bib.bib9))
+    to more uniformly distribute expert utilization and gating dropout (0.2) (Liu
+    et al., [2022](#bib.bib21)) to prevent overfitting and improve regularization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: GPU kernel implementations. We utilized the kernel implementations developed
+    by Kim et al. ([2022](#bib.bib18)), which rely on CUTLASS to create efficient
+    kernels for fused dequantization and matrix multiplication. These kernels can
+    process either FP16 or BF16 activations, a vector of scales of the same data type
+    as the activation, and int8 or int4 weights. The kernels dequantize the weights
+    to match the data type of the activation and perform floating-point tensor core
+    math. The final output of the kernel is also of the same data type as the input
+    activation. These kernels are available as open source code in FasterTransformer.
+    To support multiple scaling factors for each column, we extended these kernels
+    to process a matrix of scales, enabling us to implement int4 block quantization
+    kernels. We set the block size to 64 for all performance analyses below, since
+    it matches the K tile size of our fused gemm + dequantize kernels.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In compute-bound cases such as an encoder or the context creation phase of
+    GPT, the conversions from integer to float bottlenecks our kernels, rather than
+    tensor core math. As a result, our weight-only quantization GEMMs slower than
+    equivalent FP16xFP16 GEMMs in compute bound cases but offer significant speedup
+    in memory bound cases as seen in Figure [4](#S4.F4 "Figure 4 ‣ 4.2.3 End to End
+    Benchmarks ‣ 4.2 Dense model performance results ‣ 4 Experiments ‣ FineQuant:
+    Unlocking Efficiency with Fine-Grained Weight-Only Quantization for LLMs"). We
+    argue that this kernel is useful because:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Large language models (LLMs) usually spend a lot more time in the memory-bound
+    decoding phase than in the compute-bound context creation phase, especially when
+    the output sequence length is long.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'LLMs are typically served with small batch sizes in most practical cases, which
+    puts significant pressure on the memory system during matrix multiplication as
+    the weights need to be read from the GPU’s HBM. However, our kernel utilizes int4
+    compression, which reduces the number of bytes needed to load the weights by up
+    to 4X. The overhead of loading the scales is small, even for block quantization
+    with block size 64 as shown in Figure [4](#S4.F4 "Figure 4 ‣ 4.2.3 End to End
+    Benchmarks ‣ 4.2 Dense model performance results ‣ 4 Experiments ‣ FineQuant:
+    Unlocking Efficiency with Fine-Grained Weight-Only Quantization for LLMs").'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Quantization Method. All quantization experiments have one scaling factor for
+    each column of the weight matrix, unless a block size $B$ elements in a given
+    column has its own scaling factor. This means we have multiple scaling factors
+    per column.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Dense model performance results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 4.2.1 Accuracy
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Table [1](#S4.T1 "Table 1 ‣ 4.2.3 End to End Benchmarks ‣ 4.2 Dense model performance
+    results ‣ 4 Experiments ‣ FineQuant: Unlocking Efficiency with Fine-Grained Weight-Only
+    Quantization for LLMs") presents the impact of quantization on various natural
+    language tasks using different models. The results show that, in general, 8-bit
+    weight-only quantization does not significantly affect the accuracy compared to
+    fp16\. This is observed across different language tasks, indicating that the models
+    produce similar outputs. However, 4-bit quantization with column-wise granularity
+    leads to some degradation in accuracy due to outliers in the weight distribution,
+    as discussed in Section [3.2](#S3.SS2 "3.2 Granularity of quantization ‣ 3 Designing
+    Quantization Methods for LLMs - Adaptive Fine-grained Quantization ‣ FineQuant:
+    Unlocking Efficiency with Fine-Grained Weight-Only Quantization for LLMs"). To
+    recover the accuracy, we adopt a group-wise quantization strategy, which shows
+    similar accuracy to the original fp16.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We also show similar experiments for OPT-IML for machine translation. Table [5](#S4.T5
+    "Table 5 ‣ 4.2.3 End to End Benchmarks ‣ 4.2 Dense model performance results ‣
+    4 Experiments ‣ FineQuant: Unlocking Efficiency with Fine-Grained Weight-Only
+    Quantization for LLMs") shows the accuracy numbers with different bit quantization
+    on OPT-IML 30B and 175B models. With a group-wise quantization approach, the models
+    could preserve the accuracy while quantizing down to 4-bit and 3-bit for some
+    parts.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2.2 Microbenchmarks
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'To understand how our weight-only quantization accelerates the matrix multiplies,
+    we collect micro-benchmarks from OPT-13B and OPT-30b and present the results in
+    Figure [4](#S4.F4 "Figure 4 ‣ 4.2.3 End to End Benchmarks ‣ 4.2 Dense model performance
+    results ‣ 4 Experiments ‣ FineQuant: Unlocking Efficiency with Fine-Grained Weight-Only
+    Quantization for LLMs"). We find that the matrix multiplies can be accelerated
+    by up to 2.5X for those models when the number of tokens in the activation is
+    small. This is typically the case for the auto-regressive part of LLMs which tends
+    to dominate the overall run-time.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2.3 End to End Benchmarks
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We construct Table [3](#S4.T3 "Table 3 ‣ 4.2.3 End to End Benchmarks ‣ 4.2
+    Dense model performance results ‣ 4 Experiments ‣ FineQuant: Unlocking Efficiency
+    with Fine-Grained Weight-Only Quantization for LLMs") as a reference to compute
+    end to end times for different input and output lengths for OPT-175B on 8, 4 and
+    2 GPUs. Our table shows that the context phase slows done which is primarily due
+    to running on fewer GPUs. Additionally, our weight-only quantization kernels have
+    some slowdown for compute bound cases. However, we show that the time per decoder
+    step is typically within 20 % of FP16 despite using 2X or 4x fewer GPUs. The per-token
+    latency does not scale with the number of GPUs since fewer GPUs need to communicate
+    and our kernels provide significant acceleration (as shown in Table [4](#S4.F4
+    "Figure 4 ‣ 4.2.3 End to End Benchmarks ‣ 4.2 Dense model performance results
+    ‣ 4 Experiments ‣ FineQuant: Unlocking Efficiency with Fine-Grained Weight-Only
+    Quantization for LLMs")) in the decoder phase.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table [4](#S4.T4 "Table 4 ‣ 4.2.3 End to End Benchmarks ‣ 4.2 Dense model performance
+    results ‣ 4 Experiments ‣ FineQuant: Unlocking Efficiency with Fine-Grained Weight-Only
+    Quantization for LLMs") shows end to end times (constructed from Table [3](#S4.T3
+    "Table 3 ‣ 4.2.3 End to End Benchmarks ‣ 4.2 Dense model performance results ‣
+    4 Experiments ‣ FineQuant: Unlocking Efficiency with Fine-Grained Weight-Only
+    Quantization for LLMs")) and associated throughput increases. To calculate the
+    throughput increase, we assume the original FP16 model was sharded across 8-GPUs
+    within a single node and that same node is used to serve INT8 or INT4 models.
+    We measure the throughput per node by assuming that the model is replicated twice
+    on the node for INT8 and 4 times for INT4 (64) and that requests are served to
+    the independent model instances concurrently. We highlight that our compression
+    technique allows serving 4 instances of OPT-175B on a single A100 node with 8
+    GPUs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: Accuracy of various models with low-bit weight only quantization on
+    different natural language tasks. We also include the perplexity on the wikitext
+    dataset for each model. We note that with int4 per-column for OPT-30B actually
+    performs worse than FP16 for OPT-13B. Using block quantization (with block size
+    64) improves the accuracy by 2.3 % over just using per-column'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model type | Precision | LAMBADA | HellaSwag | PiQA | WinoGrande | OBQA |
+    RTE | COPA | Average $\uparrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPT2-XL | fp16 | 51.1% | 40.0% | 70.7% | 58.2% | 22.4% | 52.3% | 73.0% |
+    52.5% | 20.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| int8 | 51.1% | 40.0% | 70.7% | 58.3% | 22.6% | 52.7% | 73.0% | 52.6% | 20.4
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| int4 (64) | 49.3% | 39.6% | 70.7% | 58.4% | 20.6% | 50.9% | 74.0% | 51.9%
+    | 20.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| int4 | 47.5% | 37.4% | 69.4% | 57.1% | 19.4% | 51.9% | 73.0 % | 50.8% | 21.7
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-13B | fp16 | 68.6% | 52.5% | 75.9% | 65.0% | 26.6% | 58.1% | 86.0% |
+    61.8% | 11.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| int8 | 68.5% | 52.4% | 76.0% | 65.4% | 27.%2 | 57.0% | 86.0% | 61.8% | 11.5
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| int4 (64) | 67.4% | 50.7% | 75.6% | 65.4% | 25.8% | 59.2% | 84.0% | 61.2%
+    | 12.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| int4 | 65.5% | 50.2% | 75.5% | 64.8% | 26.4% | 56.0% | 85.0% | 60.5% | 12.8
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-30B | fp16 | 71.5% | 54.3% | 77.6% | 68.2% | 30.2% | 57.4% | 82.0% |
+    63.0% | 10.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| int8 | 71.4% | 54.3% | 77.6% | 67.9% | 30.2% | 58.1% | 82.0% | 63.0% | 10.7
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| int4 (64) | 69.9% | 53.4% | 77.5% | 67.3% | 30.0% | 56.0% | 83.0% | 62.4%
+    | 11.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| int4 | 69.5% | 51.9% | 75.8% | 66.3% | 26.8% | 54.9% | 79.0% | 60.1% | 11.6
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: Perplexity using LM Eval Harness and FasterTransformer. OPT 66B suffers
+    from catastrophic collapse with INT4 per column quantization, but recovers with
+    block quantization with a size of 64.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Dataset | OPT 66B | OPT 175B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | INT8 per col | INT4 per col | INT4 (64) | FP16 | INT8 per col | INT4
+    per col | INT4 (64) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wikitext | 10.15 | 10.15 | 143.16 | 10.66 | 9.08 | 9.08 | 11.08 | 9.84 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 3: We show the time taken to construct the context and the time per decoder
+    step for OPT-175B on 8, 4 and 2 GPUs using our different weight-only quantization
+    schemes. The numbers for int4 per-column quantization are similar to int4 (64)
+    so they are omitted. The compute bound context creation phase is up to 3.5X slower
+    when using INT4 block quantization, but running on 4x fewer GPUs. For INT8, it
+    is up to 1.9X slower but runs on 2X fewer GPUs. In addition, the time per decoder
+    step is typically within 20% of FP16 despite using 2X for 4X fewer GPUs with weight-only
+    quantization. End to end times for different numbers of generated tokens can be
+    estimated from this table by identifying the batch size and input length of interest
+    and computing: context_time + num_generated_tokens * time_per_decoder_step. The
+    batch sizes and sequence lengths shown are the maximum sizes that could fit in
+    GPU memory.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Batch Size | Input length | FP16 (8 GPUs) | INT8 (4 GPUs) | INT4 (64) (2
+    GPUs) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Context time (ms) | Avg time per decoder step (ms) | Context time (ms) |
+    Avg time per decoder step (ms) | Context time (ms) | Avg time per decoder step
+    (ms) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | 128 | 60 | 40 | 76 | 38 | 121 | 43 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | 128 | 82 | 41 | 134 | 38 | 226 | 42 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 128 | 148 | 41 | 283 | 38 | 431 | 43 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 128 | 272 | 41 | 468 | 40 | 835 | 45 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 12 | 128 | 372 | 42 | 743 | 41 | 1173 | 48 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | 128 | 491 | 42 | 890 | 42 | 1627 | 49 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 32 | 128 | 935 | 44 | 1776 | 47 | 3261 | 58 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | 512 | 148 | 42 | 280 | 40 | 427 | 44 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | 512 | 273 | 43 | 470 | 40 | 838 | 45 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 512 | 493 | 43 | 892 | 41 | 1637 | 46 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 512 | 939 | 43 | 1784 | 43 | 3291 | 49 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | 1024 | 271 | 41 | 465 | 39 | 829 | 44 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | 1024 | 498 | 42 | 899 | 39 | 1648 | 46 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 1024 | 945 | 42 | 1795 | 42 | 3307 | 50 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 4: Shows the throughput improvement for batch 1 on a 8-GPU node for different
+    input and output lengths. We assume that the model is replicated twice on the
+    node for INT8 weight-only quantization and 4 times for INT4 (64) weight-only quantization.
+    We show the throughput increase relative to FP16 in parentheses next to through-puts
+    for INT8 and INT4\. The table is constructed using data from Table [3](#S4.T3
+    "Table 3 ‣ 4.2.3 End to End Benchmarks ‣ 4.2 Dense model performance results ‣
+    4 Experiments ‣ FineQuant: Unlocking Efficiency with Fine-Grained Weight-Only
+    Quantization for LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Input Length | Output Length | FP16 throughput per 8 GPU node (generated
+    tokens per sec) | INT8 throughput per 8 GPU node (generated tokens per sec) |
+    INT4 (64) throughput per 8 GPU node (generated tokens per sec) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 128 | 32 | 24 | 49 (2.04$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 128 | 128 | 25 | 52 (2.08$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 512 | 32 | 21 | 41 (1.95$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 512 | 128 | 23 | 47 (2.04$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1024 | 32 | 20 | 37 (1.85$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1024 | 128 | 23 | 47 (2.04$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: <svg id="S4.F4.1.1.pic1" class="ltx_picture" height="244.65" overflow="visible"
+    version="1.1" width="436.01"><g transform="translate(0,244.65) matrix(1 0 0 -1
+    0 0) translate(17.46,0) translate(0,46.89) matrix(1.0 0.0 0.0 1.0 -17.46 -46.89)"
+    fill="#000000" stroke="#000000" stroke-width="0.4pt"><g class="ltx_nestedsvg"
+    transform="matrix(1 0 0 1 0 0) translate(36.76,0) translate(0,46.89)"><g stroke="#000000"
+    fill="#000000" stroke-width="0.4pt"><g transform="matrix(1.0 0.0 0.0 1.0 -3.46
+    -19.71)" fill="#000000" stroke="#000000"><foreignobject width="6.92" height="8.92"
+    transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">1</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 35.91 -19.71)" fill="#000000" stroke="#000000"><foreignobject
+    width="6.92" height="8.92" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">8</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 71.82 -19.71)" fill="#000000" stroke="#000000"><foreignobject
+    width="13.84" height="8.92" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">32</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 111.19 -19.71)" fill="#000000" stroke="#000000"><foreignobject
+    width="13.84" height="8.92" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">64</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 147.1 -19.71)" fill="#000000" stroke="#000000"><foreignobject
+    width="20.76" height="8.92" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">128</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 186.47 -19.71)" fill="#000000" stroke="#000000"><foreignobject
+    width="20.76" height="8.92" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">256</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 222.39 -19.71)" fill="#000000" stroke="#000000"><foreignobject
+    width="27.67" height="8.92" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">2048</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 258.3 -19.71)" fill="#000000" stroke="#000000"><foreignobject
+    width="34.59" height="8.92" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">16384</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 -31.1 -4.46)" fill="#000000" stroke="#000000"><foreignobject
+    width="6.92" height="8.92" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">$0$</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 45.2 -42.28)" fill="#000000" stroke="#000000"><foreignobject
+    width="185.19" height="9.61" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">Number
+    of Rows in Activation</foreignobject></g><g transform="matrix(0.0 1.0 -1.0 0.0
+    -22.54 28.15)" fill="#000000" stroke="#000000"><foreignobject width="118.04" height="12.3"
+    transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">Speedup over FP16</foreignobject></g><g
+    fill="#FFFFFF" stroke="#000000" transform="matrix(1.0 0.0 0.0 1.0 16.55 177)"><g
+    class="ltx_tikzmatrix" transform="matrix(1 0 0 -1 0 8.995)"><g class="ltx_tikzmatrix_row"
+    transform="matrix(1 0 0 1 0 8.99)"><g class="ltx_tikzmatrix_col ltx_nopad_l ltx_nopad_r"
+    transform="matrix(1 0 0 -1 13.01 0) translate(58.28,0) matrix(1.0 0.0 0.0 1.0
+    -16.14 -3.69)" fill="#000000" stroke="#000000"><foreignobject width="32.29" height="9.46"
+    transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">INT8</foreignobject></g><g
+    class="ltx_tikzmatrix_col ltx_nopad_l ltx_nopad_r" transform="matrix(1 0 0 -1
+    142.57 0) translate(58.28,0) matrix(1.0 0.0 0.0 1.0 -16.14 -3.69)" fill="#000000"
+    stroke="#000000"><foreignobject width="32.29" height="9.46" transform="matrix(1
+    0 0 -1 0 16.6)" overflow="visible">INT4</foreignobject></g><g class="ltx_tikzmatrix_col
+    ltx_nopad_l ltx_nopad_r" transform="matrix(1 0 0 -1 272.14 0) translate(72.89,0)
+    matrix(1.0 0.0 0.0 1.0 -30.75 -4.15)" fill="#000000" stroke="#000000"><foreignobject
+    width="61.5" height="13.84" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">INT4
+    (64)</foreignobject></g></g></g></g></g></g></g></svg>
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 4: Demonstrates the speed up over FP16 on only the matrix multiplies
+    for OPT-13B (left) and OPT-30B (right) on a single GPU. We measure the performance
+    of the QKV Projection, Attention Output, FFN1 and FFN2 matrix multiplies and compare
+    our CUTLASS FP16 x INT GEMM against cuBLAS performing FP16 x FP16 GEMM. We report
+    the geometric mean of the speedups across those 4 GEMMs while varying the number
+    of rows in the activation (which represents batch_size $\times$ sequence_length).
+    We highlight that when the number of rows is small (such as the decoding phase
+    of GPT), we achieve up to 2.5X GEMM speedup when doing int4 quantization with
+    block size 64.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 5: Accuracy of OPT-IML models (30B and 175B) with various weight only
+    quantization settings on machine translation tasks. The BLEU score is used as
+    a metric and higher number represent a better result. The group size for the group-wise
+    quantization is specified together with quantization bits.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model type | Attention (group) | Others (group) | WMT 2016 German to English
+    | Model Footprint (GB) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | fp16 | fp16 | 38.20 | 55.21 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | int8 (7,168) | int8 (7,168) | 38.20 | 27.66 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | int4 (16) | int4 (16) | 38.10 | 17.32 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | int4 (64) | int4 (64) | 37.96 | 14.73 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-IML Max 30B | int4 (7,168) | int4 (7,168) | 16.86 | 13.88 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| int4 (adaptive) | int4 (adaptive) | 38.12 | 14.62 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| int3 (64) | int4 (64) | 37.75 | 13.87 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | int4 (64) | int3 (64) | 37.06 | 12.15 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | int3 (16) | int3 (16) | 37.57 | 13.87 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | int3 (64) | int3 (64) | 36.95 | 11.29 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | int3 (7,168) | int3 (7,168) | 0.00 (degenerate) | 10.43 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | fp16 | fp16 | 41.14 | 324.16 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | int8 (12,288) | int8 (12,288) | 41.18 | 162.18 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-IML Max 175B | int4 (64) | int4 (64) | 40.86 | 86.23 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| int4 (12,288) | int4 (12,288) | 0.00 (degenerate) | 81.19 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | int3 (64) | int4 (64) | 40.93 | 81.16 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | int4 (64) | int3 (64) | 37.02 | 71.04 |'
+  prefs: []
+  type: TYPE_TB
+- en: 4.3 MoE model performance results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We evaluate the performance of our weight-only quantization method on an MoE
+    model and report the results in Table [6](#S4.T6 "Table 6 ‣ 4.3 MoE model performance
+    results ‣ 4 Experiments ‣ FineQuant: Unlocking Efficiency with Fine-Grained Weight-Only
+    Quantization for LLMs"). We investigate the impact of different quantization precisions,
+    ranging from 8-bit to 3-bit. Due to the robustness of the MoE FFN layers, the
+    model’s accuracy is preserved quite well even with 3-bit and 4-bit precision,
+    when compared to the original fp16 accuracy.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 6: Accuracy of MoE models with quantization. Speed-up comparison is presented
+    in Figure [5](#S4.F5 "Figure 5 ‣ 4.3 MoE model performance results ‣ 4 Experiments
+    ‣ FineQuant: Unlocking Efficiency with Fine-Grained Weight-Only Quantization for
+    LLMs"). The optimized kernels are implemented for 8-bit and 4-bit precisions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model type | Precision | BLEU ($\Delta$ BLEU compared to fp16) | Size (X
+    times compared to fp16) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MoE 5.3B | fp16 | 46.35 (0.0) | 1.00X |'
+  prefs: []
+  type: TYPE_TB
+- en: '| int8 | 46.34 (-0.01) | 0.55X |'
+  prefs: []
+  type: TYPE_TB
+- en: '| int4 | 46.18 (-0.17) | 0.32X |'
+  prefs: []
+  type: TYPE_TB
+- en: '| int3 | 46.01 (-0.34) | 0.26X |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Figure [5](#S4.F5 "Figure 5 ‣ 4.3 MoE model performance results ‣ 4 Experiments
+    ‣ FineQuant: Unlocking Efficiency with Fine-Grained Weight-Only Quantization for
+    LLMs") shows the end-to-end speed improvements with various batch size with 8-bit
+    and 4-bit quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: <svg id="S4.F5.1.pic1" class="ltx_picture" height="252.92" overflow="visible"
+    version="1.1" width="564.52"><g transform="translate(0,252.92) matrix(1 0 0 -1
+    0 0) translate(40.22,0) translate(0,56.04) matrix(1.0 0.0 0.0 1.0 -40.22 -56.04)"
+    fill="#000000" stroke="#000000" stroke-width="0.4pt"><g class="ltx_nestedsvg"
+    transform="matrix(1 0 0 1 0 0) translate(64.04,0) translate(0,56.04)"><g stroke="#000000"
+    fill="#000000" stroke-width="0.4pt"><g transform="matrix(1.0 0.0 0.0 1.0 -14.22
+    -21.17)" fill="#000000" stroke="#000000"><foreignobject width="28.44" height="13.84"
+    transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">(1,1)</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 29.09 -21.17)" fill="#000000" stroke="#000000"><foreignobject
+    width="28.44" height="13.84" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">(1,2)</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 72.39 -21.17)" fill="#000000" stroke="#000000"><foreignobject
+    width="28.44" height="13.84" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">(8,1)</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 115.7 -21.17)" fill="#000000" stroke="#000000"><foreignobject
+    width="28.44" height="13.84" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">(8,2)</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 155.55 -21.17)" fill="#000000" stroke="#000000"><foreignobject
+    width="35.36" height="13.84" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">(20,1)</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 198.86 -21.17)" fill="#000000" stroke="#000000"><foreignobject
+    width="35.36" height="13.84" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">(20,2)</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 242.16 -21.17)" fill="#000000" stroke="#000000"><foreignobject
+    width="35.36" height="13.84" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">(32,1)</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 285.47 -21.17)" fill="#000000" stroke="#000000"><foreignobject
+    width="35.36" height="13.84" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">(32,2)</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 328.78 -21.17)" fill="#000000" stroke="#000000"><foreignobject
+    width="35.36" height="13.84" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">(64,1)</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 372.09 -21.17)" fill="#000000" stroke="#000000"><foreignobject
+    width="35.36" height="13.84" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">(64,2)</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 415.39 -21.17)" fill="#000000" stroke="#000000"><foreignobject
+    width="35.36" height="13.84" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">(96,1)</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 458.7 -21.17)" fill="#000000" stroke="#000000"><foreignobject
+    width="35.36" height="13.84" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">(96,2)</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 -35.63 -4.46)" fill="#000000" stroke="#000000"><foreignobject
+    width="6.92" height="8.92" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">$1$</foreignobject></g><g
+    transform="matrix(1.0 0.0 0.0 1.0 157.67 -47.97)" fill="#000000" stroke="#000000"><foreignobject
+    width="161.05" height="13.84" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">(Batch
+    Size, Beam Width)</foreignobject></g><g transform="matrix(0.0 1.0 -1.0 0.0 -49.82
+    28.15)" fill="#000000" stroke="#000000"><foreignobject width="118.04" height="12.3"
+    transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">Speedup over FP16</foreignobject></g><g
+    fill="#FFFFFF" stroke="#000000" transform="matrix(1.0 0.0 0.0 1.0 164.02 177)"><g
+    class="ltx_tikzmatrix" transform="matrix(1 0 0 -1 0 8.555)"><g class="ltx_tikzmatrix_row"
+    transform="matrix(1 0 0 1 0 8.58)"><g class="ltx_tikzmatrix_col ltx_nopad_l ltx_nopad_r"
+    transform="matrix(1 0 0 -1 13.01 0) translate(58.28,0) matrix(1.0 0.0 0.0 1.0
+    -16.14 -3.69)" fill="#000000" stroke="#000000"><foreignobject width="32.29" height="9.46"
+    transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">INT8</foreignobject></g><g
+    class="ltx_tikzmatrix_col ltx_nopad_l ltx_nopad_r" transform="matrix(1 0 0 -1
+    142.57 0) translate(58.28,0) matrix(1.0 0.0 0.0 1.0 -16.14 -3.69)" fill="#000000"
+    stroke="#000000"><foreignobject width="32.29" height="9.46" transform="matrix(1
+    0 0 -1 0 16.6)" overflow="visible">INT4</foreignobject></g></g></g></g></g></g></g></svg>
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 5: MoE model speed-up with quantization methods.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Conclusions and Limitations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This paper presents a method for accelerating large language models through
+    the use of low-bit quantization. The proposed weight-only quantization technique
+    demonstrates promising results in compressing very large models with up to 175
+    billion parameters, while still maintaining accuracy. To address the issue of
+    outliers affecting the quantized weight distribution, fine-grained quantization
+    is employed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Despite its strengths, the study does have a few limitations. Firstly, optimized
+    GPU kernels are only implemented for group size 64\. However, we plan to expand
+    support for any power of 2 group size greater than 16\. Secondly, the performance
+    benchmarking is conducted solely on A100 GPUs, so the speed improvements may vary
+    on different GPU architectures. Lastly, the proposed method does not leverage
+    integer instructions even when they are available. These limitations suggest potential
+    directions for future research.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One particularly promising avenue for future work involves exploring the accuracy
+    and efficiency of using int8 activations and int4 weights with integer scales
+    for fine-grained quantization. This approach has the potential to further enhance
+    the efficiency of the models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Aji and Heafield (2020) Alham Fikri Aji and Kenneth Heafield. 2020. Compressing
+    neural machine translation models with 4-bit precision. In *NGT*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Baines et al. (2021) Mandeep Baines, Shruti Bhosale, Vittorio Caggiano, Naman
+    Goyal, Siddharth Goyal, Myle Ott, Benjamin Lefaudeux, Vitaliy Liptchinsky, Mike
+    Rabbat, Sam Sheiffer, et al. 2021. Fairscale: A general purpose modular pytorch
+    library for high performance and large scale training.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Brown et al. (2020) Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D
+    Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda
+    Askell, et al. 2020. Language models are few-shot learners. *Advances in neural
+    information processing systems*, 33:1877–1901.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Choukroun et al. (2019) Yoni Choukroun, Eli Kravchik, and Pavel Kisilev. 2019.
+    Low-bit quantization of neural networks for efficient inference. *2019 IEEE/CVF
+    International Conference on Computer Vision Workshop (ICCVW)*, pages 3009–3018.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chowdhery et al. (2022) Aakanksha Chowdhery, Sharan Narang, Jacob Devlin, Maarten
+    Bosma, Gaurav Mishra, Adam Roberts, Paul Barham, Hyung Won Chung, Charles Sutton,
+    Sebastian Gehrmann, et al. 2022. Palm: Scaling language modeling with pathways.
+    *arXiv preprint arXiv:2204.02311*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. (2022) Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer.
+    2022. Llm.int8(): 8-bit matrix multiplication for transformers at scale. *ArXiv*,
+    abs/2208.07339.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Devlin et al. (2018) Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina
+    Toutanova. 2018. Bert: Pre-training of deep bidirectional transformers for language
+    understanding. *arXiv preprint arXiv:1810.04805*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Fan et al. (2021) Angela Fan, Pierre Stock, Benjamin Graham, Edouard Grave,
+    Rémi Gribonval, Hervé Jégou, and Armand Joulin. 2021. Training with quantization
+    noise for extreme model compression. *ArXiv*, abs/2004.07320.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Fedus et al. (2021) William Fedus, Barret Zoph, and Noam Shazeer. 2021. Switch
+    transformers: Scaling to trillion parameter models with simple and efficient sparsity.
+    *arXiv preprint arXiv:2101.03961*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Frantar et al. (2022) Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan
+    Alistarh. 2022. Gptq: Accurate post-training quantization for generative pre-trained
+    transformers. *arXiv preprint arXiv:2210.17323*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Gao et al. (2021) Leo Gao, Jonathan Tow, Stella Biderman, Sid Black, Anthony
+    DiPofi, Charles Foster, Laurence Golding, Jeffrey Hsu, Kyle McDonell, Niklas Muennighoff,
+    Jason Phang, Laria Reynolds, Eric Tang, Anish Thite, Ben Wang, Kevin Wang, and
+    Andy Zou. 2021. [A framework for few-shot language model evaluation](https://doi.org/10.5281/zenodo.5371628).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Gholami et al. (2022) Amir Gholami, Sehoon Kim, Zhen Dong, Zhewei Yao, Michael W.
+    Mahoney, and Kurt Keutzer. 2022. A survey of quantization methods for efficient
+    neural network inference. *ArXiv*, abs/2103.13630.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hoffmann et al. (2022) Jordan Hoffmann, Sebastian Borgeaud, Arthur Mensch, Elena
+    Buchatskaya, Trevor Cai, Eliza Rutherford, Diego de Las Casas, Lisa Anne Hendricks,
+    Johannes Welbl, Aidan Clark, et al. 2022. Training compute-optimal large language
+    models. *arXiv preprint arXiv:2203.15556*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Iyer et al. (2022) Srinivasan Iyer, Xi Victoria Lin, Ramakanth Pasunuru, Todor
+    Mihaylov, Dániel Simig, Ping Yu, Kurt Shuster, Tianlu Wang, Qing Liu, Punit Singh
+    Koura, et al. 2022. Opt-iml: Scaling language model instruction meta learning
+    through the lens of generalization. *arXiv preprint arXiv:2212.12017*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Ke et al. (2021) Guolin Ke, Di He, and Tie-Yan Liu. 2021. Rethinking positional
+    encoding in language pre-training. *ArXiv*, abs/2006.15595.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kim and Awadalla (2020) Young Jin Kim and Hany Hassan Awadalla. 2020. Fastformers:
+    Highly efficient transformer models for natural language understanding. *arXiv
+    preprint arXiv:2010.13382*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kim et al. (2021) Young Jin Kim, Ammar Ahmad Awan, Alexandre Muzio, Andres Felipe Cruz
+    Salinas, Liyang Lu, Amr Hendy, Samyam Rajbhandari, Yuxiong He, and Hany Hassan
+    Awadalla. 2021. Scalable and efficient moe training for multitask multilingual
+    models. *arXiv preprint arXiv:2109.10465*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kim et al. (2022) Young Jin Kim, Rawn Henry, Raffy Fahim, and Hany Hassan Awadalla.
+    2022. Who says elephants can’t run: Bringing large scale moe models into cloud
+    scale production. *arXiv preprint arXiv:2211.10017*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kim et al. (2019) Young Jin Kim, Marcin Junczys-Dowmunt, Hany Hassan, Alham Fikri
+    Aji, Kenneth Heafield, Roman Grundkiewicz, and Nikolay Bogoychev. 2019. From research
+    to production and back: Ludicrously fast neural machine translation. In *Proceedings
+    of the 3rd Workshop on Neural Generation and Translation*, pages 280–288.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lepikhin et al. (2020) Dmitry Lepikhin, HyoukJoong Lee, Yuanzhong Xu, Dehao
+    Chen, Orhan Firat, Yanping Huang, Maxim Krikun, Noam Shazeer, and Zhifeng Chen.
+    2020. Gshard: Scaling giant models with conditional computation and automatic
+    sharding. *arXiv preprint arXiv:2006.16668*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. (2022) Rui Liu, Young Jin Kim, Alexandre Muzio, and Hany Hassan.
+    2022. Gating dropout: Communication-efficient regularization for sparsely activated
+    transformers. In *International Conference on Machine Learning*, pages 13782–13792\.
+    PMLR.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. (2019) Yinhan Liu, Myle Ott, Naman Goyal, Jingfei Du, Mandar Joshi,
+    Danqi Chen, Omer Levy, Mike Lewis, Luke Zettlemoyer, and Veselin Stoyanov. 2019.
+    Roberta: A robustly optimized bert pretraining approach. *arXiv preprint arXiv:1907.11692*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Park et al. (2022) Gunho Park, Baeseong Park, Se Jung Kwon, Byeongwook Kim,
+    Youngjoo Lee, and Dongsoo Lee. 2022. nuqmm: Quantized matmul for efficient inference
+    of large-scale generative language models. *arXiv preprint arXiv:2206.09557*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Radford et al. (2018) Alec Radford, Karthik Narasimhan, Tim Salimans, Ilya Sutskever,
+    et al. 2018. Improving language understanding by generative pre-training.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Radford et al. (2019) Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario
+    Amodei, Ilya Sutskever, et al. 2019. Language models are unsupervised multitask
+    learners. *OpenAI blog*, 1(8):9.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Raffel et al. (2020) Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee,
+    Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, Peter J Liu, et al. 2020. Exploring
+    the limits of transfer learning with a unified text-to-text transformer. *J. Mach.
+    Learn. Res.*, 21(140):1–67.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Rasley et al. (2020) Jeff Rasley, Samyam Rajbhandari, Olatunji Ruwase, and
+    Yuxiong He. 2020. Deepspeed: System optimizations enable training deep learning
+    models with over 100 billion parameters. *Proceedings of the 26th ACM SIGKDD International
+    Conference on Knowledge Discovery & Data Mining*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ren et al. (2021) Jie Ren, Samyam Rajbhandari, Reza Yazdani Aminabadi, Olatunji
+    Ruwase, Shuangyang Yang, Minjia Zhang, Dong Li, and Yuxiong He. 2021. Zero-offload:
+    Democratizing billion-scale model training. In *USENIX Annual Technical Conference*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Rodriguez et al. (2018) Andres Rodriguez, Eden Segal, Etay Meiri, Evarist Fomenko,
+    Young Jin Kim, Haihao Shen, and Barukh Ziv. 2018. Lower numerical precision deep
+    learning inference and training.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Shazeer et al. (2018) Noam M. Shazeer, Youlong Cheng, Niki Parmar, Dustin Tran,
+    Ashish Vaswani, Penporn Koanantakool, Peter Hawkins, HyoukJoong Lee, Mingsheng
+    Hong, Cliff Young, Ryan Sepassi, and Blake A. Hechtman. 2018. Mesh-tensorflow:
+    Deep learning for supercomputers. *ArXiv*, abs/1811.02084.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Stock et al. (2019) Pierre Stock, Armand Joulin, Rémi Gribonval, Benjamin Graham,
+    and Hervé Jégou. 2019. And the bit goes down: Revisiting the quantization of neural
+    networks. *arXiv preprint arXiv:1907.05686*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Vaswani et al. (2017) Ashish Vaswani, Noam M. Shazeer, Niki Parmar, Jakob Uszkoreit,
+    Llion Jones, Aidan N. Gomez, Lukasz Kaiser, and Illia Polosukhin. 2017. Attention
+    is all you need. In *NIPS*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xiao et al. (2022) Guangxuan Xiao, Ji Lin, Mickael Seznec, Julien Demouth,
+    and Song Han. 2022. Smoothquant: Accurate and efficient post-training quantization
+    for large language models. *arXiv preprint arXiv:2211.10438*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Xiong et al. (2020) Ruibin Xiong, Yunchang Yang, Di He, Kai Zheng, Shuxin Zheng,
+    Chen Xing, Huishuai Zhang, Yanyan Lan, Liwei Wang, and Tie-Yan Liu. 2020. On layer
+    normalization in the transformer architecture. In *ICML*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yao et al. (2022) Zhewei Yao, Reza Yazdani Aminabadi, Minjia Zhang, Xiaoxia
+    Wu, Conglong Li, and Yuxiong He. 2022. Zeroquant: Efficient and affordable post-training
+    quantization for large-scale transformers. *ArXiv*, abs/2206.01861.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. (2022) Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe,
+    Moya Chen, Shuohui Chen, Christopher Dewan, Mona Diab, Xian Li, Xi Victoria Lin,
+    et al. 2022. Opt: Open pre-trained transformer language models. *arXiv preprint
+    arXiv:2205.01068*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Quantization method formulation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Linear quantization with absolute maximum. We used linear quantization with
+    absolute maximum as the main method. Given a matrix ${\bm{A}}$ as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\displaystyle{\bm{s}}_{j}=\frac{2\times\max(|{\bm{A}}_{:,j}|)}{2^{b}-1}$
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\displaystyle{\bm{Q}}_{:,j}=\operatorname{int}(\frac{{\bm{A}}_{:,j}}{{\bm{s}}_{j}})$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here, $s$ as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\displaystyle{\bm{A}}^{{}^{\prime}}{:,j}={\bm{Q}}{:,j}\times{\bm{s}}_{j}$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Log-scale quantization. Another quantization method we experimented is log-scale
+    quantization where $1$, the quantization formula is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\displaystyle{\bm{P}}=sign({{\bm{A}}})$
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\displaystyle{\bm{T}}=clip(\frac{|{\bm{A}}|}{s},1,2^{1-2^{b-1})}$
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\displaystyle{\bm{Q}}=\lceil log_{2}(\frac{2}{3}{\bm{T}})\rceil$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'where $s$ can be chosen in two ways, either (i) the absolute maximum or (ii)
+    the optimal value to minimize the mean squared error (MSE) between the quantized
+    and original values which is described in Aji and Heafield ([2020](#bib.bib1)).
+    We use the second algorithm which we observe a better accuracy with the quantization.
+    At inference time, the quantized weight values are dequantized based on the formula
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\displaystyle{\bm{A}}^{{}^{\prime}}={\bm{P}}\times s\times 2^{\bm{Q}}$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure [1](#S3.F1 "Figure 1 ‣ 3.1 Quantization methodology: basic settings
+    ‣ 3 Designing Quantization Methods for LLMs - Adaptive Fine-grained Quantization
+    ‣ FineQuant: Unlocking Efficiency with Fine-Grained Weight-Only Quantization for
+    LLMs") shows the performance comparison of two quantization methods.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B Channel-wise vs matrix-wise quantization
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Scaling factors are calculated by the quantization algorithm and stored in
+    half precision floating-point (fp16) numbers to dequantize the matrices with.
+    These factors can be chosen on the channel scale or the whole matrix scale. As
+    shown in figure [6](#A2.F6 "Figure 6 ‣ Appendix B Channel-wise vs matrix-wise
+    quantization ‣ FineQuant: Unlocking Efficiency with Fine-Grained Weight-Only Quantization
+    for LLMs"), channel-wise quantization gives quite higher scores than tensor-wise
+    especially for low precision. Additional parameters to store channel-wise scaling
+    factors is small, because only one value is needed for a channel and less than
+    1% of total parameters in a matrix. Therefore, we use channel-wise quantization
+    for all the quantization experiments.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/1f17911dd007ac2610cdf87575ca22d0.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: Linear quantization of expert FFNs with channel-wise and matrix-wise
+    scaling factors.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix C Quantization of different layers in a dense model
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'For the comparison with MoE models which alternate different block types which
+    are an expert block and a dense block, we consider quantizing only half of the
+    dense transformer blocks’ FFNs, because we quantize expert weights only on MoE
+    models which exist only in every other block (even numbered). We compare three
+    different configurations - (1) quantizing even numbered blocks’ FFNs only, (2)
+    quantizing odd numbered blocks’ FFNs only and (3) quantizing all FFN layers. As
+    can be seen in Figure [7](#A3.F7 "Figure 7 ‣ Appendix C Quantization of different
+    layers in a dense model ‣ FineQuant: Unlocking Efficiency with Fine-Grained Weight-Only
+    Quantization for LLMs"), quantizing even numbered blocks’ FFNs affects the accuracy
+    the least, and quantizing all FFN layers give the worst result. Based on this
+    experiment, we quantize only even numbered transformer blocks’ FFNs for the dense
+    model in all the experiments and comparisons.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a34a1a99b55626fdaa72b75d284b6e45.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7: Quantization impact of different layers in a dense model.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix D Skewness of weight matrices in MoE and dense models
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In the analysis of model weight distribution in Section [3](#S3 "3 Designing
+    Quantization Methods for LLMs - Adaptive Fine-grained Quantization ‣ FineQuant:
+    Unlocking Efficiency with Fine-Grained Weight-Only Quantization for LLMs"), we
+    observe that dense models’ FFN layers tend to have more outliers than MoEs’ expert
+    FFN layers. We measure the skewness of weight distribution of those in Table [7](#A4.T7
+    "Table 7 ‣ Appendix D Skewness of weight matrices in MoE and dense models ‣ FineQuant:
+    Unlocking Efficiency with Fine-Grained Weight-Only Quantization for LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 7: Expert vs non-expert FFN layers parameters distribution skewness'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Parameter | skew |'
+  prefs: []
+  type: TYPE_TB
+- en: '| encoder expert 15 FFN fc1 layer 0 | -0.002 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| encoder expert 15 FFN fc2 layer 0 | -0.190 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| encoder expert 15 FFN fc1 layer 6 | -0.002 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| encoder expert 15 FFN fc2 layer 6 | -0.002 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| encoder non-expert FFN fc1 layer 1 | -0.019 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| encoder non-expert FFN fc2 layer 1 | -10.729 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| encoder non-expert FFN fc1 layer 7 | 0.003 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| encoder non-expert FFN fc2 layer 7 | -1.574 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| encoder expert FFN fc1 mean | 0.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| encoder expert FFN fc2 mean | -0.63 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| decoder expert FFN fc1 mean | 0.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| decoder expert FFN fc2 mean | 0.48 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| encoder non-expert FFN fc1 mean | 0.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| encoder non-expert FFN fc2 mean | -1.84 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| decoder non-expert FFN fc1 mean | 0.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| decoder non-expert FFN fc2 mean | -0.09 |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix E Machine translation dataset summary
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Table [8](#A5.T8 "Table 8 ‣ Appendix E Machine translation dataset summary
+    ‣ FineQuant: Unlocking Efficiency with Fine-Grained Weight-Only Quantization for
+    LLMs") shows the number of parallel sentences used to train dense and MoE models.
+    All languages have at least 300 million sentences and the differences in the number
+    among languages are less than two times.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 8: The number of parallel sentences including backtranslation data.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Language | Number of parallel sentences (million) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| xx $\rightarrow$ xx |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DE (German) | 505 | 411 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ES (Spanish) | 448 | 407 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FR (French) | 448 | 376 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| IT (Italian) | 447 | 303 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| NL (Dutch) | 302 | 378 |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix F Robustness comparison between MoE and dense models
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We compared robustness against low-bit quantization between MoE and dense models
+    using the post-training quantization without any QAT. For the dense model, quantization
+    with different bits was applied to the even numbered FFN layers. Appendix [C](#A3
+    "Appendix C Quantization of different layers in a dense model ‣ FineQuant: Unlocking
+    Efficiency with Fine-Grained Weight-Only Quantization for LLMs") shows this is
+    the best layer selection for the dense model. We used two different datasets to
+    verify the proposed quantization method works in different model settings.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/724af0ee50c5821cc22eae98913f1149.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8: Quantization performance comparison between MoE and dense models.
+    10 different language pair scores are averaged.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure [8](#A6.F8 "Figure 8 ‣ Appendix F Robustness comparison between MoE
+    and dense models ‣ FineQuant: Unlocking Efficiency with Fine-Grained Weight-Only
+    Quantization for LLMs") presents the experiment with the model trained with the
+    larger dataset. It shows the average BLEU scores with different quantization precision
+    for both MoE and dense models. The MoE model can maintain accuracy within -0.3
+    down to 3-bit and -1.82 for 2-bit. On the other hand, the dense model can preserve
+    the accuracy only down to 4-bit, but starts to lose significant accuracy more
+    than 2 BLEU scores when it goes down to 3-bits. In case of 2-bits, dense model
+    loses most of capability by -42.96 BLEU scores.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure [9](#A6.F9 "Figure 9 ‣ Appendix F Robustness comparison between MoE
+    and dense models ‣ FineQuant: Unlocking Efficiency with Fine-Grained Weight-Only
+    Quantization for LLMs") presents the experiment with the model trained with the
+    smaller dataset. In this setting, each individual expert is smaller, but there
+    are 4 times more experts in one MoE layer. And, they are trained with smaller
+    dataset, so they do not have equivalent knowledge as the previous model trained
+    on the larger dataset. As can be seen in the Figure, the quantization performance
+    shows a similar pattern. The MoE model preserves accuracy even when it is quantized
+    to 2 or 3 bits. However, dense model quickly loses the performance when it is
+    quantized down to lower than 4-bit. Again, the MoE model is much more robust to
+    quantization than the dense model.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/fe952d67113693032b50d4f56ec8fa10.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 9: Quantization performance comparison between MoE and dense models.
+    20 different WMT language pairs are averaged.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: F.1 Robustness of MoE FFN layers to quantization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'For MoE models, we also conducted a set of experiments with various quantization
+    bits. We divide an MoE model into four parts: (i) expert FFNs, (ii) dense FFN
+    layers, (iii) self-attention layers and (iv) cross-attention layers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure [10](#A6.F10 "Figure 10 ‣ F.1 Robustness of MoE FFN layers to quantization
+    ‣ Appendix F Robustness comparison between MoE and dense models ‣ FineQuant: Unlocking
+    Efficiency with Fine-Grained Weight-Only Quantization for LLMs") shows the evaluation
+    BLEU scores when different parts of the MoE model are quantized. It is observed
+    that quantizing expert FFN layers to 2-bit does not significantly impact the overall
+    model quality. However, quantizing other parts of the model into 2-bit significantly
+    hurts the output quality. Quantized cross-attention and self-attention blocks
+    can still maintain the quality with 3-bit quantization, but their performance
+    gets impacted with 2-bit quantization. On the other hand, dense FFN layers are
+    significantly impacted by lower bit quantization of 2-bit and 3-bit. With 3-bit
+    quantization, the model score drops by 23 % of the original score, and 2-bit quantization
+    on dense FFN layers gives almost zero score. The same study is also included on
+    a dense model in Appendix [C](#A3 "Appendix C Quantization of different layers
+    in a dense model ‣ FineQuant: Unlocking Efficiency with Fine-Grained Weight-Only
+    Quantization for LLMs"), and a similar pattern with 2 and 3 bit quantization is
+    observed.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/9a1c433a895f1dddf604146ccdaedddb.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 10: Quantization impact on different MoE model parts (channel-wise linear
+    quantiztation without any additional training).'
+  prefs: []
+  type: TYPE_NORMAL

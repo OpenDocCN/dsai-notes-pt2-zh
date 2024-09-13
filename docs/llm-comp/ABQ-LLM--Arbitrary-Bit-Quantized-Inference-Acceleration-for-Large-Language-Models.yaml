@@ -1,0 +1,2469 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:47:30'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration for Large Language
+    Models'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2408.08554](https://ar5iv.labs.arxiv.org/html/2408.08554)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Chao Zeng \equalcontrib, Songwei Liu\equalcontrib, Yusheng Xie\equalcontrib,
+    Hong Liu, Xiaojian Wang,
+  prefs: []
+  type: TYPE_NORMAL
+- en: Miao Wei, Shu Yang, Fangmin Chen, Xing Mei Corresponding author.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Code will available at: https://github.com/bytedance/ABQ-LLM'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'Large Language Models (LLMs) have revolutionized natural language processing
+    tasks. However, their practical application is constrained by substantial memory
+    and computational demands. Post-training quantization (PTQ) is considered an effective
+    method to accelerate LLM inference. Despite its growing popularity in LLM model
+    compression, PTQ deployment faces two major challenges. First, low-bit quantization
+    leads to performance degradation. Second, restricted by the limited integer computing
+    unit type on GPUs, quantized matrix operations with different precisions cannot
+    be effectively accelerated. To address these issues, we introduce a novel arbitrary-bit
+    quantization algorithm and inference framework, ABQ-LLM. It achieves superior
+    performance across various quantization settings and enables efficient arbitrary-precision
+    quantized inference on the GPU. ABQ-LLM introduces several key innovations: (1)
+    a distribution correction method for transformer blocks to mitigate distribution
+    differences caused by full quantization of weights and activations, improving
+    performance at low bit-widths. (2) the bit balance strategy to counteract performance
+    degradation from asymmetric distribution issues at very low bit-widths (e.g.,
+    2-bit). (3) an innovative quantization acceleration framework that reconstructs
+    the quantization matrix multiplication of arbitrary precision combinations based
+    on BTC (Binary TensorCore) equivalents, gets rid of the limitations of INT4/INT8
+    computing units. ABQ-LLM can convert each component bit width gain into actual
+    acceleration gain, maximizing performance under mixed precision(e.g., W6A6, W2A8).
+    Based on W2*A8 quantization configuration on LLaMA-7B model, it achieved a WikiText2
+    perplexity of 7.59 (2.17$\downarrow$ memory compression gain.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Recent advancements in large language models (LLMs) (Bubeck et al. [2023](#bib.bib5);
+    Touvron et al. [2023a](#bib.bib34), [b](#bib.bib35)) have demonstrated impressive
+    capabilities across various natural language benchmark, including reasoning (Clark
+    et al. [2019](#bib.bib7), [2018](#bib.bib8)), cognitive processing (Xu et al.
+    [2023a](#bib.bib38); Hardy et al. [2023](#bib.bib15)), and dialogue generation(Hu
+    et al. [2023](#bib.bib18)). However, these models are characterized by a substantial
+    number of parameters, posing significant challenges in terms of memory consumption
+    and bandwidth (Zheng et al. [2024](#bib.bib43); Kim et al. [2023](#bib.bib20)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Post-training quantization (PTQ) effectively reduces both computational and
+    storage requirements. This technique significantly accelerates model inference
+    by converting the weights and activation values of large language models (LLMs)
+    from high-precision floating-point numbers to low-precision integer values for
+    storage, and using efficient integer matrix multiplication operators to handle
+    the bulk of matrix multiplication computations during inference. Currently, 80%
+    of the computation and parameter access in LLMs is concentrated on general matrix
+    multiplication (GEMM) and vector multiplication (GEMV) operations, especially
+    during autoregressive decoding, where all GEMM operations degrade into GEMV operations
+    due to single-token generation. Consequently, the efficiency of GEMV computation
+    and memory access directly determines the efficiency and power consumption of
+    LLM inference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To improve GEMM/GEMV memory access efficiency, LLM inference typically employs
+    a quantized inference strategy. The current mainstream approach is weight-only
+    quantization, where the kernel performs actual computation based on dequantized
+    FP16 values. However, this approach offers limited performance improvement in
+    highly parallel scenarios. To further enhance quantized inference performance,
+    the industry is pursuing full quantization of both weights and activation values
+    to reduce activation memory access and leverage higher computational power using
+    quantized kernels, such as those from NVIDIA. However, current industry practices
+    in weight and activation full quantization (WA full quantization) face several
+    limitations. NVIDIA provides only a limited set of hardware-accelerated instructions(Lin
+    et al. [2024a](#bib.bib23); Ashkboos et al. [2024](#bib.bib2); Zhao et al. [2024](#bib.bib42)),
+    which constrains the design space for quantization algorithms. Other quantization
+    combinations (e.g., W4A8 or W2A4) require type conversion to W8A8 or W4A4 during
+    computation, leading to inefficiency(Lin et al. [2024b](#bib.bib24)). Furthermore,
+    due to GEMV, additional padding calculations are required in scenarios with a
+    batch size less than 8, resulting in inefficient matrix multiplication for W4A4
+    and W8A8\. Finally, WA fully quantized models encounter significant challenges
+    in low-bit quantization (e.g., W2A8, W2A6).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8d4e9f72b10b3052a78695e8c5382c02.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Perplexities analysis (lower is better) on the Wikitext2 dataset
+    of LLaMA-7B with different quantized modules.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this paper, we introduce a novel quantization framework for PTQ, called
+    ABQ-LLM. By examining the quantization sensitivity of components within the transformer
+    block (Figure [1](#S1.F1 "Figure 1 ‣ 1 Introduction ‣ ABQ-LLM: Arbitrary-Bit Quantized
+    Inference Acceleration for Large Language Models")) and the attention map before
+    and after quantization (Figure [2](#S1.F2 "Figure 2 ‣ 1 Introduction ‣ ABQ-LLM:
+    Arbitrary-Bit Quantized Inference Acceleration for Large Language Models")), we
+    find the down_proj linear layer and the attention map particularly sensitive to
+    quantization. To address this, we propose a double cosine similarity distribution
+    correction and an attention map distribution bootstrap for the output of down_proj.
+    This method calibrates the quantization constants and restores the model’s performance
+    at low bit-widths such as W6A6, W4A4 and W2A8\. Additionally, we analyze performance
+    degradation in low-bit quantization and address the asymmetric loss issue in low-bit
+    representations like INT2 using the bit balance strategy. Finally, we implement
+    customized software engine to support fully quantized inference of various precision
+    combinations based on BTC equivalents, fully exploiting the advantages of quantized
+    models under mixed precision. Our contributions are summarized as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We propose a novel block-wise distribution correction and compensation scheme
+    in the PTQ domain to mitigate the distribution discrepancy caused by full quantization
+    of weights and activations, thereby improving model performance at low bit-widths.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We address the problem of asymmetric loss at low bit-widths, such as INT2, and
+    significantly improve INT2 quantization performance using the bit balance strategy,
+    enhancing model performance under the INT2 quantization configuration.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We propose a software engine which achieves quantization freedom for the first
+    time in the LLM field. It eliminates the limitations of INT4/INT8 computational
+    units, and effectively avoids the GEMV problem. Under the LLaMA-7B W2A8 configuration,
+    it has 1.6$\times$ ultimate acceleration compared to SmoothQuant, achieving SOTA
+    performance.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/6ea348358c11f93fb92ef01f849f69db.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Attention maps for the first block (above) and the final block (below)
+    are shown.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: LLM quantization can be broadly divided into weight-only quantization and weight-activation
+    quantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Weight-only quantization. To alleviate computational burdens, some studies focus
+    on weight-only quantization. LLM.int8() (Dettmers et al. [2022](#bib.bib9)) achieves
+    accurate INT8 quantization by retaining significant channels. GPTQ (Frantar et al.
+    [2022](#bib.bib13)) uses Hessian-based error compensation to reduce quantization
+    errors in LLMs, enabling 3-bit quantization. AWQ (Lin et al. [2024a](#bib.bib23))
+    and OWQ (Lee et al. [2024](#bib.bib21)) significantly enhance quantized model
+    performance by considering the impact of activation outliers on weight quantization.
+    Methods like QuIP(Chee et al. [2024](#bib.bib6)), QuIP# (Tseng et al. [2024](#bib.bib36)),
+    and AQLM(Egiazarian et al. [2024](#bib.bib12)) facilitate 2-bit quantization through
+    learnable codebooks or additional fine-tuning. Approaches such as (Dettmers et al.
+    [2023](#bib.bib11); Shang et al. [2023](#bib.bib32); Huang et al. [2024](#bib.bib19))
+    improve PTQ performance through unstructured mixed-precision fine-grained weight
+    grouping. Additionally, research such as (Dettmers et al. [2024](#bib.bib10);
+    Xu et al. [2023b](#bib.bib39); Arshia et al. [2022](#bib.bib1); Bondarenko, Del Chiaro,
+    and Nagel [2024](#bib.bib4)) employs efficient parameter fine-tuning (PEFT) techniques
+    to compress weights through fine-tuning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Weight-activation quantization. Weight-activation quantization differs from
+    weight-only quantization by quantizing both weights and activation (including
+    KV caches) to accelerate LLM inference. The main challenge in quantizing activation
+    is handling outliers, which can cause significant quantization errors. To address
+    this issue, ZeroQuant(Yao et al. [2022](#bib.bib40)) proposes a fine-grained,
+    hardware-friendly quantization scheme for weights and activation. SmoothQuant(Xiao
+    et al. [2023](#bib.bib37)) shifts the quantization difficulty from activation
+    to weights through mathematically equivalent transformations, achieving W8A8 quantization.
+    (Shao et al. [2023](#bib.bib33); Ma et al. [2024b](#bib.bib28); Hu et al. [2024a](#bib.bib16))
+    enhances performance by training quantization parameters. Limited by GPU platform
+    instruction limitations, these jobs can only use W8A8 to perform actual inference,
+    even if they achieve lower quantization bit-widths (e.g., W6A6).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Method
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we provide a detailed introduction to our ABQ-LLM. We first
+    describe the distribution correction and bit balance strategy and then introduce
+    our arbitrary-bit inference framework.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/59e6c554ee842be436d81570e77b0250.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: An overview of our ABQ-LLM. ABQ-LLM use our DLC loss and AKL loss
+    to update learnable parameters.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Preliminary
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '(Xiao et al. [2023](#bib.bib37)) achieves WA full quantization by scaling activation
+    outliers, but this increases the range variability of weights, making weight quantization
+    more sensitive. Conversely, (Lin et al. [2024a](#bib.bib23)) optimizes weight
+    quantization by scaling weights, which significantly increases the diversity of
+    activation, complicating activation quantization. These approaches highlight the
+    drawbacks of manually setting scaling balance factors between activation and weight,
+    making it challenging to achieve a perfect balance. To address this issue, we
+    introduce a distribution correction-guided scaling method. Following (Shao et al.
+    [2023](#bib.bib33)) approach, we set the balance vectors between weights and activation
+    as learnable parameters and add a learnable clipping parameter for weight. By
+    employing our distribution correction and bit balance strategy to optimize model
+    performance, our objectives are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $W$ to control the clipping range of the weight.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Improving Quantization by Distribution Correction
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We observed significant variations in sensitivity across different layers of
+    LLM models during quantization, with some layers having a critical impact on quantization
+    performance. To validate this, as shown in Figure [1](#S1.F1 "Figure 1 ‣ 1 Introduction
+    ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration for Large Language Models"),
+    we quantified various components of the LLaMA-7B model under weight-activation
+    full quantization. While quantizing the gate_proj and up_proj layers in mlp and
+    attention resulted in only minor performance degradation, quantizing the down_proj
+    linear layer caused a substantial performance drop. This indicates that addressing
+    down_proj quantization is crucial for performance recovery. Further analysis revealed
+    that the primary cause of performance degradation due to down_proj quantization
+    is the quantization of down_proj activation. At low bit-widths such as INT4, INT3,
+    and INT2, the limited representation range causes a significant shift in the model
+    distribution compared to full precision. As illustrated in Figure [3](#S3.F3 "Figure
+    3 ‣ 3 Method ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration for Large
+    Language Models"), during the block-wise quantization calibration process, we
+    apply a double logarithm of cosine similarity loss on the output of down_proj
+    to correct the distribution of the quantized model. The loss function called DLC
+    loss $\mathcal{L}^{i}_{DLC}$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $d^{i}_{q}$-th transformer block.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Additionally, we conducted an analysis of the cosine similarity between activation
+    at the input and output of decoder blocks in the LLaMA-7B model. The results revealed
+    significant differences in similarity for the initial and final blocks, indicating
+    their considerable impact on model inference performance. In response, we applied
+    distribution compensation vector to the down_proj layers of these blocks to address
+    and correct the distribution discrepancies using Eq. ([3](#S3.E3 "In 3.2 Improving
+    Quantization by Distribution Correction ‣ 3 Method ‣ ABQ-LLM: Arbitrary-Bit Quantized
+    Inference Acceleration for Large Language Models")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle W_{q}=clamp(\lceil\frac{W+\gamma ab^{\top}}{\bigtriangleup}\rfloor+z,0,2^{n}-1)$
+    |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\lceil\cdot\rfloor$ indicates no compensation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/65f8b9fddba04ef6b5aee1355fe9be47.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f124a819c56baf9071f6362481a1c607.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b)
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 4: (a) System Overview of Custom Software Engine. p and q represent
+    the quantization bit width of input X and weight W. Data flows are carefully designed
+    to support efficient computation: global memory(GL) $\rightarrow$ global memory(GL).
+    (b) ABQ-LLM’s calculation diagram for a Transformer block. ReQuant and DeQuant
+    represent online quantization and dequantization operations respectively, and
+    BitPacking represents the online layout transformation for activation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To enhance the performance of the quantized model, we analyzed the changes
+    in Attention Map distribution before and after quantization, as shown in Figure [2](#S1.F2
+    "Figure 2 ‣ 1 Introduction ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration
+    for Large Language Models"). In the full-precision model, attention is heavily
+    focused on the first token, highlighting its key role in guiding text generation,
+    consistent with LLM-QAT(Liu et al. [2023](#bib.bib25)) findings. However, quantization
+    disrupts this attention pattern, diminishing focus on the first token. To address
+    this and restore the model’s attention during quantization, we introduced attention-aware
+    KL divergence to reconstruct the attention map.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $attn^{i}_{q}$ refers to the full-precision attention map output of the
+    same block.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the end, we combined DLC loss and AKL loss, and our final optimization goal
+    is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $s^{i}_{*}$-th transformer block after calibration. When the distributions
+    of the quantized output and the full-precision output match, we have a loss close
+    to 0, which effectively guides the quantization process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Bit Balance Strategy
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Typically, pre-trained LLM model weight exhibit near-normal distribution, characterized
+    by symmetry. Using Q-Q plots (Quantile-Quantile Plots), we confirmed the strong
+    symmetry in the weight distribution of pre-trained models (see Appendix [A](#A1
+    "Appendix A Bit Balance Analyze ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration
+    for Large Language Models")). However, in standard INT2 quantization, the numerical
+    representation is limited to four values, with symmetric quantization ranges of
+    {-2, -1, 0, 1} or {-1, 0, 1, 2}, disrupting the original symmetric weight distribution
+    (see Appendix [A](#A1 "Appendix A Bit Balance Analyze ‣ ABQ-LLM: Arbitrary-Bit
+    Quantized Inference Acceleration for Large Language Models")). This asymmetry
+    leads to significant performance degradation, as shown in Table [1](#S3.T1 "Table
+    1 ‣ 3.4 Custom Software Engine ‣ 3 Method ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference
+    Acceleration for Large Language Models"), where performance drops by 0.46 from
+    W4A16 to W3A16 and by 5.19 from W3A16 to W2A16, indicating a sharp decline. To
+    address this asymmetry impact on LLM quantization, we adopted the bit balance
+    strategy like (Li et al. [2016](#bib.bib22); Ma et al. [2024a](#bib.bib27)), extending
+    the INT2 symmetric quantization space to {-2, -1, 0, 1, 2}. This modification
+    restored model performance to 7.50, which is within a reasonable range compared
+    to W3A16.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.4 Custom Software Engine
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Reconstructing Arbitrary Bit Computation. To support W1A1 quantization, NVIDIA
+    introduced INT1 TensorCore in Turing and later architectures to provide hardware
+    support. However, W1A1 quantization has not been widely applied due to significant
+    performance degradation. Through mathematical analysis of quantized matrix multiplication,
+    we find that any combination of quantization can be decomposed into a superposition
+    of 1-bit matrix multiplications. Assuming the weight $W$. The key is to observe
+    that the scalar values at any position in W and X can be decomposed into a series
+    of 1-bit scalar numbers. Scalar operations with any combination of precision can
+    be decomposed into 1-bit operations and shift operations. For example, a 2-bit
+    x can be expressed as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle x=x^{1}x^{0},where\quad x^{i}\in INT1$ |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $x^{1}=(x\gg 1)\&amp;1$ can be represented as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle wx=w*(x^{1}x^{0})=OP(w,x^{1})*2+OP(w,x^{0})$ |  | (7) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'The above procedure can be generalized to any combination of matrix multiplications
+    with bit-widths p and q. The detailed formulas are shown in the Appendix [B](#A2
+    "Appendix B Arbitrary Bit Matrix Calculation ‣ ABQ-LLM: Arbitrary-Bit Quantized
+    Inference Acceleration for Large Language Models"). Using these transformations,
+    we decompose the operation of arbitrary quantized combinations into a superposition
+    of 1-bit matrix multiplications, enabling the underlying layer to invoke high-computing
+    instruction implementations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Bits | WikiText2 | C4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-7B | W4A16 | 5.83 | 7.29 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A16 | 6.29 | 8.01 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2A16 | 11.48 | 15.74 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2*A16 | 7.50 | 9.86 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 1: Performance comparison of LLaMA-7B under W4, W3, and W2 quantization
+    configurations. * denotes the use of the bit balance strategy.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Engine Implementation. NVIDIA GPU has many processing elements called Streaming
+    Multiprocessors (SMs) and uses a large number of threads to perform computing
+    tasks in parallel. Threads are structured into thread blocks, which become the
+    smallest scheduling execution unit on SMs. Therefore, the computation target is
+    decomposed and mapped to each thread block, called Thread Block Tile, to achieve
+    parallel computing. As shown in Figure [4](#S3.F4 "Figure 4 ‣ 3.2 Improving Quantization
+    by Distribution Correction ‣ 3 Method ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference
+    Acceleration for Large Language Models")(a), for a GEMM task of shape M×N×K, each
+    thread block is responsible for computing a BM×BN output block, which is decomposed
+    into $\frac{K}{BK}$ is the quantization bit width. Taking input X as an example,
+    this means that its bit perspective layout changes from [M, K, p] to [p, M, K].
+    All threads within a thread block share the same shared memory space. Within each
+    thread block, threads are further organized into a set of warps, with each warp
+    consisting of 32 consecutive threads. <svg id="S3.SS4.p3.5.pic2" class="ltx_picture"
+    height="15.74" overflow="visible" version="1.1" width="15.74"><g transform="translate(0,15.74)
+    matrix(1 0 0 -1 0 0) translate(7.87,0) translate(0,7.87)" fill="#000000" stroke="#000000"
+    stroke-width="0.4pt"><g transform="matrix(1.0 0.0 0.0 1.0 -3.46 -4.46)" fill="#FFFFFF"
+    stroke="#FFFFFF"><foreignobject width="6.92" height="8.92" transform="matrix(1
+    0 0 -1 0 16.6)" overflow="visible" color="#FFFFFF">2</foreignobject></g></g></svg>
+    Next, warps collaborates to load the A matrix (p*BM × BK) and B matrix (BK × q*BN)
+    data required for thread block tile calculation from GL and caches them in SMEM.
+    Thanks to BitPacking, the process of reading p BM*BK single-bit row-major tiles
+    and writing p*BM*BK bits SMEM is efficient and continuous. <svg id="S3.SS4.p3.6.pic3"
+    class="ltx_picture" height="15.74" overflow="visible" version="1.1" width="15.74"><g
+    transform="translate(0,15.74) matrix(1 0 0 -1 0 0) translate(7.87,0) translate(0,7.87)"
+    fill="#000000" stroke="#000000" stroke-width="0.4pt"><g transform="matrix(1.0
+    0.0 0.0 1.0 -3.46 -4.46)" fill="#FFFFFF" stroke="#FFFFFF"><foreignobject width="6.92"
+    height="8.92" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible" color="#FFFFFF">3</foreignobject></g></g></svg>
+    Subsequently, thread block contains multiple warps, so thread block tile can be
+    further decomposed into Warp Tile to achieve warp-level parallelism, and the computing
+    tasks of each warp are WM× WN. In the calculation preparation stage, the A matrix
+    (WM×WK, row-major) and B matrix (WK×WN, col-major) are independently loaded from
+    SMEM to FR. Then, the calculation is decomposed into WM_TILES*WARP_N_TILES TensorCore
+    MMA(matrix-multiply-accumulate). Since A and B are binarized matrices, we actually
+    use Binary TensorCore MMA (BMMA), which has a computing power 8 times and 4 times
+    higher than INT8 and INT4 TensorCore respectively. <svg id="S3.SS4.p3.7.pic4"
+    class="ltx_picture" height="15.74" overflow="visible" version="1.1" width="15.74"><g
+    transform="translate(0,15.74) matrix(1 0 0 -1 0 0) translate(7.87,0) translate(0,7.87)"
+    fill="#000000" stroke="#000000" stroke-width="0.4pt"><g transform="matrix(1.0
+    0.0 0.0 1.0 -3.46 -4.46)" fill="#FFFFFF" stroke="#FFFFFF"><foreignobject width="6.92"
+    height="8.92" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible" color="#FFFFFF">4</foreignobject></g></g></svg>
+    All warps collaboratively complete the Thread Block Tile calculation, and the
+    results are stored in the c fragment of each warp. Therefore, each warp needs
+    to independently write the calculation results back to SMEM. <svg id="S3.SS4.p3.8.pic5"
+    class="ltx_picture" height="15.74" overflow="visible" version="1.1" width="15.74"><g
+    transform="translate(0,15.74) matrix(1 0 0 -1 0 0) translate(7.87,0) translate(0,7.87)"
+    fill="#000000" stroke="#000000" stroke-width="0.4pt"><g transform="matrix(1.0
+    0.0 0.0 1.0 -3.46 -4.46)" fill="#FFFFFF" stroke="#FFFFFF"><foreignobject width="6.92"
+    height="8.92" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible" color="#FFFFFF">5</foreignobject></g></g></svg>
+    As shown in Eq. ([10](#A2.E10 "In Appendix B Arbitrary Bit Matrix Calculation
+    ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration for Large Language Models")),
+    output tile(p*BM × q*BN) is globally reduced to obtain a final result(BM × BN),
+    where each BM × BN sub-Tile needs to be multiplied by a certain scaling factor.
+    We call this process Bit Reduction. <svg id="S3.SS4.p3.9.pic6" class="ltx_picture"
+    height="15.74" overflow="visible" version="1.1" width="15.74"><g transform="translate(0,15.74)
+    matrix(1 0 0 -1 0 0) translate(7.87,0) translate(0,7.87)" fill="#000000" stroke="#000000"
+    stroke-width="0.4pt"><g transform="matrix(1.0 0.0 0.0 1.0 -3.46 -4.46)" fill="#FFFFFF"
+    stroke="#FFFFFF"><foreignobject width="6.92" height="8.92" transform="matrix(1
+    0 0 -1 0 16.6)" overflow="visible" color="#FFFFFF">6</foreignobject></g></g></svg>
+    As the final step, warps collaboratively load the final result from SMEM and write
+    back to the target location in GL.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We implement the above calculation process as a GPU Kernel, called ABQKernel.
+    As shown in Figure [4](#S3.F4 "Figure 4 ‣ 3.2 Improving Quantization by Distribution
+    Correction ‣ 3 Method ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration
+    for Large Language Models")(b), ABQKernel is used to replace all gemm operations
+    in the decoder layer, and assists with necessary BitPacking, quantization, and
+    dequantization operations to achieve arbitrary quantization inference of the LLaMA
+    model. We carefully manages the overhead of quantization operators by fusing them
+    into existing operators and weight BitPacking is implemented offline for increased
+    efficiency.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'GPU Kernel Optimization. When M=1, the GEMM problem of shape MxNxK transforms
+    into a GEMV problem, shifting from computation-intensive to memory-intensive,
+    which becomes a performance bottleneck for model inference. When using ordinary
+    TensorCore for accelerated computation, the dimensions of M are usually chunked
+    in groups of 8, requiring padding if M$<$ 8 = 0, padding can be completely avoided.
+    We call the above optimization strategy GEMV Elimination. In addition, Computational
+    and Pipeline Optimization, Auto Kernel Search, and Bank Conflicts Elimination
+    are also applied. For details, see Appendix [D](#A4 "Appendix D GPU Kernel Optimization
+    Details ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration for Large Language
+    Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '| Bits | Method | LLaMA-7B | LLaMA-13B | LLaMA-2-7B | LLaMA-2-13B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WikiText2 | C4 | WikiText2 | C4 | WikiText2 | C4 | WikiText2 | C4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W6A6 | SmoothQuant | 6.03 | 7.47 | 5.42 | 6.97 | 6.20 | 7.76 | 5.18 | 7.67
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant | 5.96 | 7.43 | 5.28 | 6.84 | 5.87 | 7.48 | 5.14 | 6.74 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| I-LLM | 5.84 | 7.32 | 5.23 | 6.79 | 5.68 | 7.27 | 5.10 | 6.74 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ABQ-LLM | 5.81 | 7.27 | 5.21 | 6.77 | 5.63 | 7.21 | 5.00 | 6.64 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | SmoothQuant | 22.25 | 32.22 | 40.05 | 47.18 | 83.12 | 77.27 | 35.88
+    | 43.19 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant | 11.26 | 14.51 | 10.87 | 13.78 | 14.26 | 18.02 | 12.30 | 14.55
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AffineQuant | 10.28 | 13.64 | 10.32 | 13.44 | 12.69 | 15.76 | 11.45 | 13.97
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| I-LLM | 9.10 | 12.33 | 7.99 | 10.96 | 10.55 | 12.92 | 9.76 | 12.57 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ABQ-LLM | 8.63 | 12.10 | 7.69 | 10.90 | 9.31 | 12.85 | 8.62 | 11.47 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2A8 | OmniQuant | 15.70 | 26.44 | 13.50 | 19.01 | 37.95 | 103.39 | 21.74
+    | 31.72 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AffineQuant | 9.76 | 15.52 | 9.21 | 12.55 | 1483 | 4688 | 12.30 | 29.32 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| I-LLM | 14.08 | 18.89 | 11.80 | 16.19 | 123.93 | 200.54 | 25.74 | 40.59 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ABQ-LLM | 11.35 | 15.41 | 9.20 | 12.48 | 13.47 | 17.82 | 13.24 | 18.07 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2*A8 | ABQ-LLM | 7.59 | 10.00 | 6.49 | 8.53 | 7.85 | 10.33 | 6.65 | 10.01
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: Weight-activation quantization perplexities (lower is better) comparison
+    of quantized LLaMA and LLaMA-2 models. * denotes the use of the bit balance strategy.
+    More results can be found in at Appendix [C](#A3 "Appendix C Full Results for
+    Quantization Algorithms ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration
+    for Large Language Models") Tables [6](#A3.T6 "Table 6 ‣ Appendix C Full Results
+    for Quantization Algorithms ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration
+    for Large Language Models"), [7](#A3.T7 "Table 7 ‣ Appendix C Full Results for
+    Quantization Algorithms ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration
+    for Large Language Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Experimental Setup
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Baseline. For weight-only quantization, we compare our approach with GPTQ(Frantar
+    et al. [2022](#bib.bib13)), AWQ(Lin et al. [2024a](#bib.bib23)), OmniQuant(Shao
+    et al. [2023](#bib.bib33)), and AffineQuant(Ma et al. [2024b](#bib.bib28)). For
+    weight-activation quantization, we benchmark our method against SmoothQuant(Xiao
+    et al. [2023](#bib.bib37)), OmniQuant(Shao et al. [2023](#bib.bib33)), and I-LLM(Hu
+    et al. [2024b](#bib.bib17)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Models and Datasets. We primarily evaluate our method using LLaMA (7B-13B) (Touvron
+    et al. [2023a](#bib.bib34)) and LLaMA-2 (7B-13B) (Touvron et al. [2023b](#bib.bib35))in
+    this paper. Following previous work(Shao et al. [2023](#bib.bib33); Ma et al.
+    [2024b](#bib.bib28)), we evaluate the quantized models by reporting the perplexity
+    of language generation experiments on WikiText2(Merity et al. [2016](#bib.bib29))
+    and C4(Raffel et al. [2020](#bib.bib30)). To assess performance on zero-shot tasks,
+    we select several popular benchmarks including PIQA(Bisk et al. [2020](#bib.bib3)),
+    ARC(Clark et al. [2018](#bib.bib8)), BoolQ(Clark et al. [2019](#bib.bib7)), HellaSwag(Zellers
+    et al. [2019](#bib.bib41)), and Winogrande(Sakaguchi et al. [2021](#bib.bib31))
+    using the lm-evaluation-harness(Gao et al. [2021](#bib.bib14)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Calibration We initialize the balance vectors for weights and activations following
+    (Xiao et al. [2023](#bib.bib37)), with the learnable clipping parameter for weights
+    set to 1\. For distribution correction compensation vectors, we set $a$ starts
+    at 0\. Using the AdamW optimizer (Loshchilov and Hutter [2017](#bib.bib26)) with
+    no weight decay, we set learning rates of 5e-3 for balance vectors and 1e-2 for
+    the clipping parameter and vector compensation vector. Calibration data includes
+    128 randomly selected 2048-token segments from WikiText2\. The calibration process,
+    conducted on an NVIDIA A800-40G GPU, utilized a batch size of 1 and spanned 20
+    epochs. For activation and KV Cache we perform per-token quantization, and for
+    weight we perform per-channel quantization. By default, activation and KV cache
+    use the same quantization bit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7f08951ac62a139939a43dd2a3c33df3.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: The GEMV speedup comparison of our ABQKernel, CUTLASS (W4A4/W8A8),
+    and cuBLAS (W8A8) in RTX 3070\. The left side is compared against W8A8 and the
+    right side against W4A4. More result in RTX 4080 can be found in Appendix [D](#A4
+    "Appendix D GPU Kernel Optimization Details ‣ ABQ-LLM: Arbitrary-Bit Quantized
+    Inference Acceleration for Large Language Models") tables [13](#A4.T13 "Table
+    13 ‣ Appendix D GPU Kernel Optimization Details ‣ ABQ-LLM: Arbitrary-Bit Quantized
+    Inference Acceleration for Large Language Models"), [14](#A4.T14 "Table 14 ‣ Appendix
+    D GPU Kernel Optimization Details ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference
+    Acceleration for Large Language Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Experiments on Language Generation Tasks
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Language generation capability is central to large language models (LLMs).
+    To validate our extraordinary performance in the challenging quantization task,
+    we first compare perplexity, a crucial metric for language generation, with the
+    baseline. As shown in Table [2](#S4.T2 "Table 2 ‣ 4 Experiments ‣ ABQ-LLM: Arbitrary-Bit
+    Quantized Inference Acceleration for Large Language Models"), ABQ-LLM demonstrates
+    outstanding performance across various quantization configurations, surpassing
+    state-of-the-art methods such as AffineQuant and I-LLM. Notably, in the INT2 setting,
+    the application of bit balance strategy yields significant improvements at minimal
+    cost. The W2*A8 configurations substantially outperform the W2A8 configurations.
+    Specifically, perplexity on WikiText2 and C4 datasets decreases by an average
+    of 1.42 and 2.11 points, respectively, for W2*A8 compared to the W4A4\. These
+    findings validate the effectiveness of our distribution correction and bit balance
+    strategy. The results of weight-only quantization are presented in Table [6](#A3.T6
+    "Table 6 ‣ Appendix C Full Results for Quantization Algorithms ‣ ABQ-LLM: Arbitrary-Bit
+    Quantized Inference Acceleration for Large Language Models") at Appendix [C](#A3
+    "Appendix C Full Results for Quantization Algorithms ‣ ABQ-LLM: Arbitrary-Bit
+    Quantized Inference Acceleration for Large Language Models"). Additional results
+    for full WA quantization are provided in Tables [7](#A3.T7 "Table 7 ‣ Appendix
+    C Full Results for Quantization Algorithms ‣ ABQ-LLM: Arbitrary-Bit Quantized
+    Inference Acceleration for Large Language Models") at Appendix [C](#A3 "Appendix
+    C Full Results for Quantization Algorithms ‣ ABQ-LLM: Arbitrary-Bit Quantized
+    Inference Acceleration for Large Language Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Bits | Method | PiQA | ARC-e | ARC-c | BoolQ | HellaSwag | Winogrande
+    | Avg. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-13B | W4A4 | OmniQuant | 69.69 | 47.30 | 33.10 | 62.84 | 58.96 | 55.80
+    | 54.37 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AffineQuant | 66.32 | 43.90 | 29.61 | 64.10 | 56.88 | 54.70 | 52.58 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| I-LLM | 67.95 | 48.15 | 34.47 | 62.29 | 63.13 | 59.98 | 55.99 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ABQ-LLM | 71.82 | 47.60 | 35.67 | 63.52 | 64.31 | 57.54 | 56.74 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2A8 | OmniQuant | 66.76 | 45.62 | 30.20 | 61.13 | 52.93 | 55.72 | 52.06
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AffineQuant | 71.00 | 46.70 | 32.33 | 62.23 | 58.62 | 63.53 | 55.73 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| I-LLM | 67.46 | 43.73 | 29.69 | 62.41 | 53.37 | 55.09 | 51.95 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ABQ-LLM | 72.03 | 46.72 | 31.74 | 65.17 | 58.71 | 62.50 | 56.15 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2*A8 | ABQ-LLM | 74.91 | 54.92 | 38.65 | 68.53 | 68.21 | 66.54 | 61.96 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-13B | W4A4 | OmniQuant | 67.08 | 45.66 | 32.25 | 63.73 | 58.39 |
+    54.61 | 53.62 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AffineQuant | 67.68 | 46.63 | 32.85 | 65.90 | 60.62 | 54.14 | 54.63 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| I-LLM | 68.00 | 45.74 | 30.97 | 64.55 | 60.62 | 54.22 | 54.01 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ABQ-LLM | 69.04 | 47.01 | 33.53 | 64.74 | 62.70 | 54.38 | 55.23 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2A8 | OmniQuant | 62.67 | 38.80 | 28.41 | 62.11 | 49.04 | 51.69 | 48.78
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AffineQuant | 61.31 | 38.51 | 26.96 | 62.04 | 41.92 | 50.74 | 46.91 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| I-LLM | 61.86 | 38.67 | 26.45 | 62.17 | 43.30 | 51.85 | 47.38 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ABQ-LLM | 64.30 | 40.19 | 29.78 | 63.18 | 49.58 | 52.17 | 49.87 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2*A8 | ABQ-LLM | 73.50 | 49.79 | 35.15 | 70.15 | 67.45 | 58.87 | 59.15 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 3: Zero-shot accuracies (higher is better) comparison of quantized LLaMA
+    and LLaMA-2 models. * denotes the use of the bit balance strategy. More results
+    can be found in at Appendix [C](#A3 "Appendix C Full Results for Quantization
+    Algorithms ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration for Large
+    Language Models") Tables [9](#A3.T9 "Table 9 ‣ Appendix C Full Results for Quantization
+    Algorithms ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration for Large
+    Language Models"), [10](#A3.T10 "Table 10 ‣ Appendix C Full Results for Quantization
+    Algorithms ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration for Large
+    Language Models"), [8](#A3.T8 "Table 8 ‣ Appendix C Full Results for Quantization
+    Algorithms ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration for Large
+    Language Models"), [11](#A3.T11 "Table 11 ‣ Appendix C Full Results for Quantization
+    Algorithms ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration for Large
+    Language Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 Experiments on Zero-Shot Tasks
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'To further validate our model, we compare zero-shot accuracy with the baseline
+    method, as shown in Table [3](#S4.T3 "Table 3 ‣ 4.2 Experiments on Language Generation
+    Tasks ‣ 4 Experiments ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration
+    for Large Language Models"). Our ABQ-LLM method outperforms the previous method
+    in most cases. Notably, after applying the bit balance strategy, the performance
+    of W2*A8 improves significantly by 7.50% on average. Combining the performance
+    in both language generation and zero-shot tasks, we conclude that ABQ-LLM achieves
+    state-of-the-art results in handling challenging quantization tasks. See the Appendix [C](#A3
+    "Appendix C Full Results for Quantization Algorithms ‣ ABQ-LLM: Arbitrary-Bit
+    Quantized Inference Acceleration for Large Language Models") for more results
+    and analysis of quantized configurations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4 Inference Engine Evaluation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Kernel Benchmark. We evaluated the GEMV speedup of our ABQKernel across three
+    matrix dimensions in LLaMA-7B and compared it with the quantization kernel provided
+    by cuBLAS and CUTLASS. It is important to note that CUTLASS only supports W4A4
+    and W8A8, while cuBLAS supports only W8A8 for quantization operations. Our experiments
+    were conducted on two different GPUs: the RTX 4080 and the RTX 3070\. Figure [5](#S4.F5
+    "Figure 5 ‣ 4.1 Experimental Setup ‣ 4 Experiments ‣ ABQ-LLM: Arbitrary-Bit Quantized
+    Inference Acceleration for Large Language Models") presents the results, showing
+    that our ABQKernel achieve superior acceleration across all matrix sizes. Specifically,
+    for special bit combinations such as W2A8 and W2A4, our ABQKernel significantly
+    outperforms the baseline approaches, as cuBLAS and CUTLASS require conversion
+    to W8A8 and W4A4 for computation. In the W2A8 configuration, our throughput is
+    improved by 7.47$\times$ (4096, 4096).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/57240d2426a7fa7c4fed4b06efb92b07.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: Inference latency (top) and memory usage (bottom) of the FastTransformer
+    implementation on NVIDIA A800-40GB GPU with a fixed input length of 15\. More
+    results can be found in at Appendix [D](#A4 "Appendix D GPU Kernel Optimization
+    Details ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration for Large Language
+    Models") Table [12](#A4.T12 "Table 12 ‣ Appendix D GPU Kernel Optimization Details
+    ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration for Large Language Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'End-to-end throughput. As shown in Figure [6](#S4.F6 "Figure 6 ‣ 4.4 Inference
+    Engine Evaluation ‣ 4 Experiments ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference
+    Acceleration for Large Language Models"), we integrate our ABQKernel into FastTransformer
+    and compare it with the FP16 implementation of FastTransformer and the INT8 implementation
+    of SmoothQuant. Compared to FP16, our scheme achieves 2.95$\times$ memory compression
+    gain over SmoothQuant, significantly outperforming current mainstream inference
+    methods. This substantial improvement reduces the cost of LLM services and facilitates
+    their practical deployment.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Kernel Optimization Ablation. Table 4 presents the impact of various optimization
+    techniques on the inference latency of the kernel when performing the GEMV operation
+    with dimensions (1, 4096) $\times$. These results significantly outperform CUTLASS.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Latency(us)$\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CUTLASS | 49.96 | 0.67 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Native_kernel | 20.05 | 1.67 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| + Pipeline Optimization | 14.66 | 2.28 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| + Eliminiate GEMV | 10.92 | 3.07 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| + Auto Kernel Search | 6.68 | 5.01 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 4: An ablation study of the impact of optimization techniques used in
+    the inference engine on Kernel latency and throughput.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We present an arbitrary bit quantization inference framework called ABQ-LLM.
+    Through an in-depth analysis of LLM quantization, we introduce distribution correction
+    and bit balance strategy to enhance model performance. We then design a novel
+    arbitrary bit inference engine to fully leverage the advantages of LLM quantization.
+    Extensive experimental results demonstrate that ABQ-LLM achieves outstanding performance
+    across various quantization configurations, including W6A6, W4A4, and W2A8\. Moreover,
+    ABQKernel consistently outperformed both CUTLASS and cuBLAS in all configurations.
+    Our end-to-end inference speed is 1.6 $\times$ memory compression gain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Arshia et al. (2022) Arshia, F. Z.; Keyvanrad, M. A.; Sadidpour, S. S.; and
+    Mohammadi, S. M. R. 2022. PeQA: A Massive Persian Question-Answering and Chatbot
+    Dataset. In *2022 12th International Conference on Computer and Knowledge Engineering
+    (ICCKE)*, 392–397\. IEEE.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ashkboos et al. (2024) Ashkboos, S.; Mohtashami, A.; Croci, M. L.; Li, B.;
+    Jaggi, M.; Alistarh, D.; Hoefler, T.; and Hensman, J. 2024. Quarot: Outlier-free
+    4-bit inference in rotated llms. *arXiv preprint arXiv:2404.00456*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bisk et al. (2020) Bisk, Y.; Zellers, R.; Gao, J.; Choi, Y.; et al. 2020. Piqa:
+    Reasoning about physical commonsense in natural language. In *Proceedings of the
+    AAAI conference on artificial intelligence*, volume 34, 7432–7439.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Bondarenko, Del Chiaro, and Nagel (2024) Bondarenko, Y.; Del Chiaro, R.; and
+    Nagel, M. 2024. Low-Rank Quantization-Aware Training for LLMs. *arXiv preprint
+    arXiv:2406.06385*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bubeck et al. (2023) Bubeck, S.; Chandrasekaran, V.; Eldan, R.; Gehrke, J.;
+    Horvitz, E.; Kamar, E.; Lee, P.; Lee, Y. T.; Li, Y.; Lundberg, S.; et al. 2023.
+    Sparks of artificial general intelligence: Early experiments with gpt-4. *arXiv
+    preprint arXiv:2303.12712*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chee et al. (2024) Chee, J.; Cai, Y.; Kuleshov, V.; and De Sa, C. M. 2024.
+    Quip: 2-bit quantization of large language models with guarantees. *Advances in
+    Neural Information Processing Systems*, 36.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Clark et al. (2019) Clark, C.; Lee, K.; Chang, M.-W.; Kwiatkowski, T.; Collins,
+    M.; and Toutanova, K. 2019. BoolQ: Exploring the surprising difficulty of natural
+    yes/no questions. *arXiv preprint arXiv:1905.10044*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Clark et al. (2018) Clark, P.; Cowhey, I.; Etzioni, O.; Khot, T.; Sabharwal,
+    A.; Schoenick, C.; and Tafjord, O. 2018. Think you have solved question answering?
+    try arc, the ai2 reasoning challenge. *arXiv preprint arXiv:1803.05457*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. (2022) Dettmers, T.; Lewis, M.; Belkada, Y.; and Zettlemoyer,
+    L. 2022. LLM.int8(): 8-bit Matrix Multiplication for Transformers at Scale. *Advances
+    in Neural Information Processing Systems*, 35: 30318–30332.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. (2024) Dettmers, T.; Pagnoni, A.; Holtzman, A.; and Zettlemoyer,
+    L. 2024. Qlora: Efficient finetuning of quantized llms. *Advances in Neural Information
+    Processing Systems*, 36.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. (2023) Dettmers, T.; Svirschevski, R.; Egiazarian, V.; Kuznedelev,
+    D.; Frantar, E.; Ashkboos, S.; Borzunov, A.; Hoefler, T.; and Alistarh, D. 2023.
+    Spqr: A sparse-quantized representation for near-lossless llm weight compression.
+    *arXiv preprint arXiv:2306.03078*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Egiazarian et al. (2024) Egiazarian, V.; Panferov, A.; Kuznedelev, D.; Frantar,
+    E.; Babenko, A.; and Alistarh, D. 2024. Extreme compression of large language
+    models via additive quantization. *arXiv preprint arXiv:2401.06118*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Frantar et al. (2022) Frantar, E.; Ashkboos, S.; Hoefler, T.; and Alistarh,
+    D. 2022. Gptq: Accurate post-training quantization for generative pre-trained
+    transformers. *arXiv preprint arXiv:2210.17323*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Gao et al. (2021) Gao, L.; Tow, J.; Biderman, S.; Black, S.; DiPofi, A.; Foster,
+    C.; Golding, L.; Hsu, J.; McDonell, K.; Muennighoff, N.; et al. 2021. A framework
+    for few-shot language model evaluation. *Version v0\. 0.1\. Sept*, 10: 8–9.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hardy et al. (2023) Hardy, M.; Sucholutsky, I.; Thompson, B.; and Griffiths,
+    T. 2023. Large language models meet cognitive science: LLMs as tools, models,
+    and participants. In *Proceedings of the annual meeting of the cognitive science
+    society*, volume 45.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hu et al. (2024a) Hu, X.; Chen, Y.; Yang, D.; Zhou, S.; Yuan, Z.; Yu, J.; and
+    Xu, C. 2024a. I-LLM: Efficient Integer-Only Inference for Fully-Quantized Low-Bit
+    Large Language Models. *arXiv preprint arXiv:2405.17849*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hu et al. (2024b) Hu, X.; Chen, Y.; Yang, D.; Zhou, S.; Yuan, Z.; Yu, J.; and
+    Xu, C. 2024b. I-LLM: Efficient Integer-Only Inference for Fully-Quantized Low-Bit
+    Large Language Models. *arXiv preprint arXiv:2405.17849*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hu et al. (2023) Hu, Z.; Feng, Y.; Luu, A. T.; Hooi, B.; and Lipani, A. 2023.
+    Unlocking the potential of user feedback: Leveraging large language model as user
+    simulators to enhance dialogue system. In *Proceedings of the 32nd ACM International
+    Conference on Information and Knowledge Management*, 3953–3957.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Huang et al. (2024) Huang, W.; Liu, Y.; Qin, H.; Li, Y.; Zhang, S.; Liu, X.;
+    Magno, M.; and Qi, X. 2024. Billm: Pushing the limit of post-training quantization
+    for llms. *arXiv preprint arXiv:2402.04291*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kim et al. (2023) Kim, S.; Hooper, C.; Gholami, A.; Dong, Z.; Li, X.; Shen,
+    S.; Mahoney, M. W.; and Keutzer, K. 2023. Squeezellm: Dense-and-sparse quantization.
+    *arXiv preprint arXiv:2306.07629*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lee et al. (2024) Lee, C.; Jin, J.; Kim, T.; Kim, H.; and Park, E. 2024. Owq:
+    Outlier-aware weight quantization for efficient fine-tuning and inference of large
+    language models. In *Proceedings of the AAAI Conference on Artificial Intelligence*,
+    volume 38, 13355–13364.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Li et al. (2016) Li, F.; Liu, B.; Wang, X.; Zhang, B.; and Yan, J. 2016. Ternary
+    weight networks. *arXiv preprint arXiv:1605.04711*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lin et al. (2024a) Lin, J.; Tang, J.; Tang, H.; Yang, S.; Chen, W.-M.; Wang,
+    W.-C.; Xiao, G.; Dang, X.; Gan, C.; and Han, S. 2024a. AWQ: Activation-aware Weight
+    Quantization for On-Device LLM Compression and Acceleration. *Proceedings of Machine
+    Learning and Systems*, 6: 87–100.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lin et al. (2024b) Lin, Y.; Tang, H.; Yang, S.; Zhang, Z.; Xiao, G.; Gan, C.;
+    and Han, S. 2024b. Qserve: W4a8kv4 quantization and system co-design for efficient
+    llm serving. *arXiv preprint arXiv:2405.04532*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. (2023) Liu, Z.; Oguz, B.; Zhao, C.; Chang, E.; Stock, P.; Mehdad,
+    Y.; Shi, Y.; Krishnamoorthi, R.; and Chandra, V. 2023. Llm-qat: Data-free quantization
+    aware training for large language models. *arXiv preprint arXiv:2305.17888*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Loshchilov and Hutter (2017) Loshchilov, I.; and Hutter, F. 2017. Decoupled
+    weight decay regularization. *arXiv preprint arXiv:1711.05101*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ma et al. (2024a) Ma, S.; Wang, H.; Ma, L.; Wang, L.; Wang, W.; Huang, S.;
+    Dong, L.; Wang, R.; Xue, J.; and Wei, F. 2024a. The era of 1-bit llms: All large
+    language models are in 1.58 bits. *arXiv preprint arXiv:2402.17764*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ma et al. (2024b) Ma, Y.; Li, H.; Zheng, X.; Ling, F.; Xiao, X.; Wang, R.;
+    Wen, S.; Chao, F.; and Ji, R. 2024b. Affinequant: Affine transformation quantization
+    for large language models. *arXiv preprint arXiv:2403.12544*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Merity et al. (2016) Merity, S.; Xiong, C.; Bradbury, J.; and Socher, R. 2016.
+    Pointer sentinel mixture models. *arXiv preprint arXiv:1609.07843*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Raffel et al. (2020) Raffel, C.; Shazeer, N.; Roberts, A.; Lee, K.; Narang,
+    S.; Matena, M.; Zhou, Y.; Li, W.; and Liu, P. J. 2020. Exploring the limits of
+    transfer learning with a unified text-to-text transformer. *Journal of machine
+    learning research*, 21(140): 1–67.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sakaguchi et al. (2021) Sakaguchi, K.; Bras, R. L.; Bhagavatula, C.; and Choi,
+    Y. 2021. Winogrande: An adversarial winograd schema challenge at scale. *Communications
+    of the ACM*, 64(9): 99–106.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Shang et al. (2023) Shang, Y.; Yuan, Z.; Wu, Q.; and Dong, Z. 2023. Pb-llm:
+    Partially binarized large language models. *arXiv preprint arXiv:2310.00034*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Shao et al. (2023) Shao, W.; Chen, M.; Zhang, Z.; Xu, P.; Zhao, L.; Li, Z.;
+    Zhang, K.; Gao, P.; Qiao, Y.; and Luo, P. 2023. Omniquant: Omnidirectionally calibrated
+    quantization for large language models. *arXiv preprint arXiv:2308.13137*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023a) Touvron, H.; Lavril, T.; Izacard, G.; Martinet, X.;
+    Lachaux, M.-A.; Lacroix, T.; Rozière, B.; Goyal, N.; Hambro, E.; Azhar, F.; et al.
+    2023a. Llama: Open and efficient foundation language models. *arXiv preprint arXiv:2302.13971*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023b) Touvron, H.; Martin, L.; Stone, K.; Albert, P.; Almahairi,
+    A.; Babaei, Y.; Bashlykov, N.; Batra, S.; Bhargava, P.; Bhosale, S.; et al. 2023b.
+    Llama 2: Open foundation and fine-tuned chat models. *arXiv preprint arXiv:2307.09288*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Tseng et al. (2024) Tseng, A.; Chee, J.; Sun, Q.; Kuleshov, V.; and De Sa,
+    C. 2024. Quip#: Even better LLM quantization with hadamard incoherence and lattice
+    codebooks. *arXiv preprint arXiv:2402.04396*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xiao et al. (2023) Xiao, G.; Lin, J.; Seznec, M.; Wu, H.; Demouth, J.; and
+    Han, S. 2023. Smoothquant: Accurate and efficient post-training quantization for
+    large language models. In *International Conference on Machine Learning*, 38087–38099\.
+    PMLR.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xu et al. (2023a) Xu, P.; Shao, W.; Zhang, K.; Gao, P.; Liu, S.; Lei, M.; Meng,
+    F.; Huang, S.; Qiao, Y.; and Luo, P. 2023a. Lvlm-ehub: A comprehensive evaluation
+    benchmark for large vision-language models. *arXiv preprint arXiv:2306.09265*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xu et al. (2023b) Xu, Y.; Xie, L.; Gu, X.; Chen, X.; Chang, H.; Zhang, H.;
+    Chen, Z.; Zhang, X.; and Tian, Q. 2023b. Qa-lora: Quantization-aware low-rank
+    adaptation of large language models. *arXiv preprint arXiv:2309.14717*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yao et al. (2022) Yao, Z.; Yazdani Aminabadi, R.; Zhang, M.; Wu, X.; Li, C.;
+    and He, Y. 2022. Zeroquant: Efficient and affordable post-training quantization
+    for large-scale transformers. *Advances in Neural Information Processing Systems*,
+    35: 27168–27183.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zellers et al. (2019) Zellers, R.; Holtzman, A.; Bisk, Y.; Farhadi, A.; and
+    Choi, Y. 2019. Hellaswag: Can a machine really finish your sentence? *arXiv preprint
+    arXiv:1905.07830*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhao et al. (2024) Zhao, Y.; Lin, C.-Y.; Zhu, K.; Ye, Z.; Chen, L.; Zheng,
+    S.; Ceze, L.; Krishnamurthy, A.; Chen, T.; and Kasikci, B. 2024. Atom: Low-bit
+    quantization for efficient and accurate llm serving. *Proceedings of Machine Learning
+    and Systems*, 6: 196–209.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Zheng et al. (2024) Zheng, L.; Chiang, W.-L.; Sheng, Y.; Zhuang, S.; Wu, Z.;
+    Zhuang, Y.; Lin, Z.; Li, Z.; Li, D.; Xing, E.; et al. 2024. Judging llm-as-a-judge
+    with mt-bench and chatbot arena. *Advances in Neural Information Processing Systems*,
+    36.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Bit Balance Analyze
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'As shown in Figure [7](#A1.F7 "Figure 7 ‣ Appendix A Bit Balance Analyze ‣
+    ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration for Large Language Models"),
+    there is a clear asymmetry in the weights of o_proj after INT2 quantization, particularly
+    evident in the 10th and 20th blocks. This asymmetry shifts the distribution of
+    the model’s weights, resulting in significant performance loss. However, after
+    applying the balancing strategy, the distribution of weights closely aligns with
+    that of the full-precision model, as illustrated in the subsequent figure. This
+    alignment preserves the original symmetric distribution of weights and greatly
+    enhances model performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/db1353db79996769e3d4bd9ecad6ffab.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7: Quantile-Quantile Plots of data distribution with o_proj weights
+    in the 1st, 10th, 20th, and 30th blocks at full precision (up), INT2 quantization
+    (middle) and INT2* quantization (below) in the LLaMA-7B model'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B Arbitrary Bit Matrix Calculation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Formally, given a p-bit weight matrix W and a q-bit activation matrix X, we
+    can first decompose into 1-bit matrices $W^{s},\quad s\in\left\{0,1,...,p-1\right\}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle w^{s}_{i,j}=\left(w_{i,j}\gg s\right)\&amp;1,\quad x^{t}_{i,j}=\left(x_{i,j}\gg
+    t\right)\&amp;1$ |  | (8) |'
+  prefs: []
+  type: TYPE_TB
+- en: If BMMA stands for 1-bit matrix multiplication, then the BMMA operation can
+    be called $p\times q$ times to compute a series of 1-bit matrix multiplication
+    components
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle Y^{s,t}=BMMA\left(W^{s},X^{t}\right)$ |  | (9) |'
+  prefs: []
+  type: TYPE_TB
+- en: Finally, we process all 1-bit matrix multiplication components with bit-stacked
+    scaling factors, after which they are summed to obtain a 32-bit output matrix
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle Y=\sum_{s=0}^{p-1}\sum_{t=0}^{q-1}Y^{s,t}\ast 2^{s+t}$
+    |  | (10) |'
+  prefs: []
+  type: TYPE_TB
+- en: After the above transformation process, we decompose the operation of arbitrary
+    quantized combinations into a special superposition of 1-bit matrix multiplications,
+    so that the underlying layer can be implemented by calling high-computing BMMA
+    instructions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix C Full Results for Quantization Algorithms
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this paper, we mainly publish metrics for per-channel/per-token quantization.
+    However, ABQ-LLM is naturally orthogonal to per-group quantization, and we validate
+    this on LLaMA-7B for W4A4 g128 per-group quantization with the results shown in
+    Table [5](#A3.T5 "Table 5 ‣ Appendix C Full Results for Quantization Algorithms
+    ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration for Large Language Models").
+    Experimental results demonstrate that, in most cases, our method outperforms another
+    state-of-the-art (SOTA) method, Atom(Zhao et al. [2024](#bib.bib42)), which employs
+    per-group quantization. Additionally, our method exhibits a degradation of less
+    than 0.5 in PPL compared to FP16, indicating excellent performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Furthermore, we present the perplexity (PPL) metrics and zero-shot performance
+    of ABQ-LLM under various quantization configurations. Unfortunately, most prior
+    work has not disclosed complete experimental data, with only PPL metrics for common
+    configurations such as W4A16, W3A16, W2A16, W4A4, and W6A6 being published. Additionally,
+    the full zero-shot results were not made publicly available. We aim to establish
+    a comprehensive quantization baseline for post-training quantization (PTQ) by
+    making our extensive data publicly accessible. However, due to limitations in
+    time and computational resources, we can only provide our own comprehensive experimental
+    results and cannot fully reproduce the results of other baselines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Bits | Method | PPL$\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wikitext2 | C4 | PiQA | ARC-e | ARC-c | BoolQ | HellaSwag | Winogrande |
+    Avg. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | - | 5.67 | 7.08 | 77.47 | 52.48 | 41.46 | 73.08 | 73.00 | 67.07 |
+    64.09 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 g128 | Atom | 6.16 | 7.70 | 76.28 | 52.10 | 38.99 | 69.79 | 69.81 |
+    63.69 | 61.78 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 g128 | ABQ-LLM | 6.05 | 7.61 | 76.55 | 51.81 | 38.14 | 71.65 | 70.22
+    | 63.22 | 61.93 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 5: Performance of weight-activation per-group quantization on LLaMA-7B
+    with a group size of 128.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To ensure the reproducibility of our results, we specify that for the PPL test,
+    we follow the GPTQ method by setting the sentence length to 2048\. It is important
+    to note that different sentence lengths may affect the accuracy of the metrics.
+    Additionally, for the zero-shot accuracy test, two metrics may be used: acc or
+    acc_norm. If acc_norm is available, we report acc_norm; otherwise, we report the
+    acc metric. Finally, we have published the quantized model series on the Huggingface
+    platform. Table [6](#A3.T6 "Table 6 ‣ Appendix C Full Results for Quantization
+    Algorithms ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration for Large
+    Language Models") presents the perplexity metrics for weight-only quantization,
+    while Table [7](#A3.T7 "Table 7 ‣ Appendix C Full Results for Quantization Algorithms
+    ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration for Large Language Models")
+    displays the perplexity metrics for various configurations where both weights
+    and activations are quantized simultaneously. The zero-shot accuracies of LLaMA-7B,
+    LLaMA-13B, LLaMA-2-7B, and LLaMA-2-13B are shown in Tables [9](#A3.T9 "Table 9
+    ‣ Appendix C Full Results for Quantization Algorithms ‣ ABQ-LLM: Arbitrary-Bit
+    Quantized Inference Acceleration for Large Language Models"), [10](#A3.T10 "Table
+    10 ‣ Appendix C Full Results for Quantization Algorithms ‣ ABQ-LLM: Arbitrary-Bit
+    Quantized Inference Acceleration for Large Language Models"), [8](#A3.T8 "Table
+    8 ‣ Appendix C Full Results for Quantization Algorithms ‣ ABQ-LLM: Arbitrary-Bit
+    Quantized Inference Acceleration for Large Language Models"), and [11](#A3.T11
+    "Table 11 ‣ Appendix C Full Results for Quantization Algorithms ‣ ABQ-LLM: Arbitrary-Bit
+    Quantized Inference Acceleration for Large Language Models"), respectively. Extensive
+    experiments demonstrate that our method consistently outperforms other baselines
+    across all quantization configurations, achieving state-of-the-art performance
+    in both weight-only quantization and weight-activation quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Bits | Method | LLaMA-7B | LLaMA-13B | LLaMA-2-7B | LLaMA-2-13B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WikiText2 | C4 | WikiText2 | C4 | WikiText2 | C4 | WikiText2 | C4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | - | 5.67 | 7.08 | 5.09 | 6.61 | 5.47 | 6.97 | 4.88 | 6.46 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A16 | GPTQ | 6.13 | 7.43 | 5.40 | 6.84 | 5.83 | 7.37 | 5.13 | 6.70 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 6.08 | 7.52 | 5.34 | 6.86 | 6.15 | 7.68 | 5.12 | 6.74 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant | 5.86 | 7.34 | 5.21 | 6.76 | 5.74 | 7.35 | 5.02 | 6.65 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AffineQuant | 5.84 | 7.30 | 5.20 | 6.75 | 5.69 | 7.29 | 5.01 | 6.64 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ABQ-LLM | 5.83 | 7.29 | 5.19 | 6.75 | 5.64 | 7.20 | 5.01 | 6.63 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A16 | GPTQ | 8.06 | 9.49 | 6.76 | 8.16 | 8.37 | 9.81 | 6.44 | 8.02 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 11.88 | 13.26 | 7.45 | 9.13 | 24.00 | 23.85 | 10.45 | 13.07 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant | 6.49 | 8.19 | 5.68 | 7.32 | 6.58 | 8.65 | 5.58 | 7.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AffineQuant | 6.30 | 8.03 | 5.60 | 7.20 | 6.55 | 8.57 | 5.62 | 7.56 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ABQ-LLM | 6.29 | 8.01 | 5.56 | 7.24 | 6.28 | 8.10 | 5.44 | 7.26 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2A16 | GPTQ | 2.1e3 | 689.13 | 5.5e3 | 2.5e3 | 7.7e3 | NAN | 2.1e3 | 323.12
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant | 15.47 | 24.89 | 13.21 | 18.31 | 37.37 | 90.64 | 17.21 | 26.76
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AffineQuant | 9.53 | 14.89 | 7.54 | 12.46 | 35.07 | 572.22 | 12.42 | 23.67
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ABQ-LLM | 11.48 | 15.74 | 9.34 | 12.28 | 13.11 | 17.81 | 13.09 | 20.49 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2*A16 | ABQ-LLM | 7.50 | 9.86 | 6.64 | 8.43 | 7.82 | 10.33 | 6.52 | 7.87
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 6: Weight-only quantization perplexities (lower is better) comparison
+    of quantized LLaMA and LLaMA-2 models. * denotes the use of the bit balance strategy.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Bits | Method | LLaMA-7B | LLaMA-13B | LLaMA-2-7B | LLaMA-2-13B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wikitext2 | C4 | Wikitext2 | C4 | Wikitext2 | C4 | Wikitext2 | C4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | - | 5.67 | 7.08 | 5.09 | 6.61 | 5.47 | 6.97 | 4.88 | 6.46 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W8A8 | SmoothQuant | 5.73 | - | 5.13 | - | 5.54 | - | 4.95 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ABQ-LLM | 5.68 | 7.09 | 5.10 | 6.62 | 5.48 | 6.99 | 4.89 | 6.47 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A8 | AWQ | 6.33 | - | 5.59 | - | 6.28 | - | 5.25 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| QuaRot | 5.93 | - | 5.29 | - | 5.73 | - | 5.07 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Atom | 6.03 | - | 5.41 | - | 5.91 | - | 5.16 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Qserve | 5.93 | - | 5.28 | - | 5.75 | - | 5.12 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant | 5.87 | 7.34 | - | - | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ABQ-LLM | 5.84 | 7.32 | 5.22 | 6.77 | 5.67 | 7.24 | 5.01 | 6.64 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A6 | OmniQuant | 6.09 | 7.63 | - | - | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ABQ-LLM | 6.01 | 7.58 | 5.37 | 6.96 | 5.89 | 7.56 | 5.17 | 6.87 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A8 | ABQ-LLM | 6.30 | 8.04 | 5.59 | 7.26 | 6.27 | 8.14 | 5.45 | 7.27 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A6 | ABQ-LLM | 6.60 | 8.47 | 5.84 | 7.61 | 6.56 | 8.65 | 5.92 | 7.90 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A4 | ABQ-LLM | 12.16 | 17.19 | 9.96 | 14.36 | 13.65 | 19.00 | 20.35 | 20.09
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2*A8 | ABQ-LLM | 7.59 | 10.00 | 6.49 | 8.53 | 7.85 | 10.33 | 6.65 | 10.01
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2*A6 | ABQ-LLM | 8.08 | 10.89 | 6.99 | 9.30 | 9.08 | 11.74 | 10.91 | 14.89
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 7: Weight-activation quantization perplexities (lower is better) comparison
+    of quantized LLaMA and LLaMA-2 models. * denotes the use of the bit balance strategy.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Bits | Method | PiQA | ARC-e | ARC-c | BoolQ | HellaSwag | Winogrande
+    | Avg. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-7B | FP16 | - | 76.98 | 53.57 | 40.61 | 71.07 | 72.96 | 67.24 | 63.73
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A16 | ABQ-LLM | 77.36 | 53.82 | 39.50 | 70.76 | 71.76 | 66.85 | 63.34 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A16 | ABQ-LLM | 76.55 | 53.66 | 39.24 | 63.97 | 68.93 | 65.90 | 61.38 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2*A16 | ABQ-LLM | 72.79 | 48.14 | 35.32 | 63.94 | 63.21 | 61.79 | 57.53
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W8A8 | ABQ-LLM | 76.76 | 53.53 | 40.35 | 71.19 | 72.84 | 66.92 | 63.60 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W6A6 | ABQ-LLM | 76.77 | 53.20 | 40.44 | 71.37 | 71.81 | 66.22 | 63.30 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A8 | ABQ-LLM | 76.76 | 53.11 | 39.07 | 67.86 | 71.38 | 66.92 | 62.52 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A6 | ABQ-LLM | 76.06 | 52.56 | 38.82 | 67.22 | 70.35 | 64.33 | 61.60 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | ABQ-LLM | 68.55 | 44.11 | 31.31 | 63.12 | 55.29 | 53.82 | 52.70 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A8 | ABQ-LLM | 76.55 | 52.44 | 38.99 | 65.77 | 68.34 | 66.61 | 61.45 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A6 | ABQ-LLM | 74.26 | 51.47 | 37.62 | 65.22 | 66.74 | 63.22 | 59.76 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A4 | ABQ-LLM | 64.47 | 39.56 | 27.47 | 58.81 | 49.28 | 53.28 | 48.81 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2*A8 | ABQ-LLM | 72.74 | 47.81 | 35.07 | 62.78 | 63.31 | 61.09 | 57.13 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2*A6 | ABQ-LLM | 71.98 | 45.54 | 31.66 | 62.14 | 60.14 | 55.25 | 54.45 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 8: Zero-shot accuracy (higher is better) of LLaMA-2-7B under different
+    quantization configuration. * denotes the use of the bit balance strategy.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Bits | Method | PiQA | ARC-e | ARC-c | BoolQ | HellaSwag | Winogrande
+    | Avg. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-7B | FP16 | - | 77.47 | 52.48 | 41.46 | 73.08 | 73.00 | 67.07 | 64.09
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A16 | AffineQuant | 77.53 | 51.85 | 38.65 | 70.89 | 71.49 | 66.93 | 62.89
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ABQ-LLM | 77.80 | 51.55 | 39.59 | 72.66 | 71.41 | 66.14 | 63.19 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A16 | ABQ-LLM | 75.78 | 47.81 | 37.20 | 71.98 | 68.80 | 65.82 | 61.23 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2*A16 | ABQ-LLM | 74.04 | 46.71 | 35.49 | 65.81 | 48.01 | 62.82 | 55.48
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W8A8 | ABQ-LLM | 77.25 | 52.56 | 41.72 | 72.97 | 73.05 | 67.32 | 64.14 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W6A6 | SmoothQuant | 76.75 | 51.64 | 39.88 | 71.75 | 71.67 | 65.03 | 62.81
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant | 77.09 | 51.89 | 40.87 | 72.53 | 71.61 | 65.03 | 63.17 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| I-LLM | 76.99 | 52.66 | 40.78 | 72.94 | 71.31 | 65.67 | 63.39 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ABQ-LLM | 78.07 | 52.81 | 40.10 | 71.90 | 71.80 | 66.53 | 63.53 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A8 | OmniQuant | 77.36 | 51.85 | 38.65 | 70.67 | 71.20 | 64.71 | 62.40
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ABQ-LLM | 77.63 | 52.40 | 38.10 | 73.43 | 71.81 | 65.51 | 63.14 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A6 | OmniQuant | 75.73 | 51.52 | 38.31 | 68.28 | 70.79 | 65.27 | 61.64
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ABQ-LLM | 76.28 | 50.72 | 39.68 | 70.52 | 70.35 | 64.88 | 62.06 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | OmniQuant | 66.15 | 45.20 | 31.14 | 63.51 | 56.44 | 53.43 | 52.65
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AffineQuant | 69.37 | 42.55 | 31.91 | 63.73 | 57.65 | 55.33 | 53.42 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ABQ-LLM | 69.97 | 45.88 | 33.44 | 62.87 | 58.47 | 54.53 | 54.19 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A8 | ABQ-LLM | 75.78 | 48.95 | 38.05 | 70.18 | 68.70 | 65.74 | 61.23 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A6 | ABQ-LLM | 75.57 | 49.03 | 38.57 | 69.57 | 67.12 | 62.35 | 60.37 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A4 | ABQ-LLM | 64.20 | 41.04 | 28.50 | 61.80 | 49.71 | 51.54 | 49.45 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2*A8 | ABQ-LLM | 73.29 | 46.72 | 34.73 | 63.61 | 62.18 | 61.01 | 56.92 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | W2*A6 | ABQ-LLM | 71.98 | 46.00 | 33.53 | 63.95 | 59.19 | 58.72 | 55.56
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 9: Zero-shot accuracy (higher is better) of LLaMA-7B under different
+    quantization configuration. * denotes the use of the bit balance strategy.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Bits | Method | PiQA | ARC-e | ARC-c | BoolQ | HellaSwag | Winogrande
+    | Avg. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-13B | FP16 | - | 79.10 | 59.89 | 44.45 | 68.01 | 76.21 | 70.31 | 66.32
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A16 | AffineQuant | 78.84 | 59.55 | 43.52 | 69.48 | 75.18 | 69.38 | 65.99
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ABQ-LLM | 78.89 | 59.43 | 43.25 | 70.37 | 75.38 | 69.22 | 66.09 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A16 | ABQ-LLM | 77.86 | 57.62 | 42.15 | 66.45 | 73.03 | 69.53 | 64.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2*A16 | ABQ-LLM | 75.03 | 52.99 | 38.48 | 66.42 | 68.69 | 66.53 | 61.36
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W8A8 | ABQ-LLM | 78.73 | 59.01 | 44.11 | 68.17 | 75.96 | 70.09 | 66.01 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W6A6 | SmoothQuant | 77.91 | 56.60 | 42.40 | 64.95 | 75.36 | 69.36 | 64.43
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant | 78.40 | 57.28 | 42.91 | 67.00 | 75.82 | 68.27 | 64.94 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| I-LLM | 77.48 | 56.94 | 44.03 | 64.92 | 75.24 | 69.14 | 64.62 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ABQ-LLM | 78.40 | 57.62 | 42.01 | 66.82 | 75.54 | 69.61 | 65.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A8 | ABQ-LLM | 78.56 | 58.75 | 42.92 | 68.56 | 75.20 | 70.56 | 65.76 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A6 | ABQ-LLM | 77.64 | 56.94 | 42.32 | 67.06 | 74.23 | 68.19 | 64.39 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | OmniQuant | 69.69 | 47.30 | 33.10 | 62.84 | 58.96 | 55.80 | 54.62
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AffineQuant | 66.32 | 43.90 | 29.61 | 64.10 | 56.88 | 54.70 | 52.58 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| I-LLM | 67.95 | 48.15 | 34.47 | 62.29 | 63.13 | 59.98 | 55.99 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ABQ-LLM | 71.82 | 47.60 | 35.67 | 63.52 | 64.31 | 57.54 | 56.74 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A8 | ABQ-LLM | 77.81 | 58.16 | 42.41 | 68.47 | 73.15 | 69.37 | 64.90 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A4 | ABQ-LLM | 64.79 | 42.21 | 30.54 | 60.55 | 55.59 | 53.51 | 51.20 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A6 | ABQ-LLM | 76.71 | 56.19 | 40.53 | 66.39 | 71.59 | 66.14 | 62.93 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2*A8 | ABQ-LLM | 74.92 | 54.92 | 38.65 | 68.53 | 68.21 | 66.54 | 61.96 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2*A6 | ABQ-LLM | 73.71 | 51.89 | 36.60 | 64.98 | 65.55 | 63.22 | 59.33 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 10: Zero-shot accuracy (higher is better) of LLaMA-13B under different
+    quantization configuration. * denotes the use of the bit balance strategy.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Bits | Method | PiQA | ARC-e | ARC-c | BoolQ | HellaSwag | Winogrande
+    | Avg. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-13B | FP16 | - | 79.05 | 57.91 | 44.19 | 69.02 | 76.60 | 69.69 |
+    66.07 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A16 | ABQ-LLM | 78.72 | 58.16 | 44.03 | 63.94 | 75.56 | 69.13 | 64.92 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A16 | ABQ-LLM | 77.48 | 55.39 | 43.86 | 67.58 | 72.63 | 67.56 | 64.08 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2*A16 | ABQ-LLM | 75.41 | 51.39 | 36.43 | 72.63 | 67.03 | 60.62 | 60.59
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W8A8 | ABQ-LLM | 79.22 | 57.66 | 43.94 | 68.62 | 76.47 | 69.46 | 65.90 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W6A6 | ABQ-LLM | 78.62 | 55.81 | 43.69 | 66.33 | 75.51 | 68.27 | 64.70 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A8 | ABQ-LLM | 78.67 | 57.15 | 43.52 | 64.13 | 75.31 | 69.53 | 64.53 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A6 | ABQ-LLM | 77.97 | 57.11 | 43.26 | 67.37 | 74.14 | 66.30 | 64.36 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | ABQ-LLM | 69.04 | 47.01 | 33.53 | 64.74 | 62.70 | 54.38 | 55.23 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A8 | ABQ-LLM | 77.53 | 56.36 | 42.74 | 68.71 | 72.87 | 66.06 | 64.05 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A6 | ABQ-LLM | 76.22 | 53.37 | 40.70 | 68.04 | 71.09 | 66.14 | 62.59 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A4 | ABQ-LLM | 63.60 | 42.55 | 29.35 | 58.62 | 52.62 | 53.19 | 49.99 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2*A8 | ABQ-LLM | 73.50 | 49.79 | 35.15 | 70.15 | 67.45 | 58.88 | 59.15 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 11: Zero-shot accuracy (higher is better) of LLaMA-2-13B under different
+    quantization configuration. * denotes the use of the bit balance strategy.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix D GPU Kernel Optimization Details
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: GEMV Elimination. Our custom engine decomposes the operation of arbitrary quantized
+    combinations into a superposition of 1-bit matrix multiplications. As for GEMV
+    problems, multiple single-bit GEMV are converted to GEMM, fully utilizing the
+    TensorCore while reducing or even avoiding the redundant computation caused by
+    padding. For the $W_{q}A_{p}$ 8, calling TensorCore will introduce 87.5% redundant
+    calculations. In contrast, ABQKernel achieves direct acceleration of W2A8 without
+    any redundant computation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/3438442291512af1e5f8ff5fdf67b7a2.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8: Overview of GEMV Elimination.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Computational Pipeline Optimization. Figure [9](#A4.F9 "Figure 9 ‣ Appendix
+    D GPU Kernel Optimization Details ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference
+    Acceleration for Large Language Models") illustrates our optimization of the computation
+    pipeline to enhance inference performance within the widely adopted Ampere architecture.
+    At the shared memory level, we perform asynchronous writes from global memory
+    to shared memory using the cp.async instruction to hide the latency of subsequent
+    memory accesses. Before processing the first loop, a synchronization instruction
+    ensures that TILE-0, the data required by the first loop, has been written to
+    shared memory. During the processing of the first loop, TILE-1, the data needed
+    for the second loop, is asynchronously written to shared memory. This concurrent
+    execution of data writes for the second loop and computation of the first loop
+    masks the shared memory access latency for subsequent loops. For register-level
+    optimization within the loop, when k=0, TILE-0 data from shared memory is loaded
+    into the first set of registers A0 and B0, while the data required for k=1 is
+    preloaded into registers A1 and B1. Once the data in registers A0 and B0 is ready,
+    the bmma operation is performed on A0 and B0. When k=1, the data A1 and B1 needed
+    for bmma has already been preloaded at k=0, and the data required for k=2 is preloaded
+    into registers A0 and B0, and so on. By doubling the register cache, data is written
+    from shared memory to registers during the Tensor Core bmma computation, effectively
+    masking the register access time. Where bmma denotes a 1-bit matrix multiplication
+    operation, while TILE data refers to a block of data obtained after partitioning
+    and processing the original dataset.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7bdc23b073347045aa50a0f8d285adf7.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 9: Space-time diagram of the computational pipeline.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Auto Kernel Search. To utilize GPU memory more efficiently at all levels, a
+    chunking strategy is essential during computation. Chunk size is crucial for GEMM
+    performance. Before launching an arbitrary precision inference operator, we perform
+    performance tests on different chunk sizes to select the best implementation.
+    As shown in Figure [4](#S3.F4 "Figure 4 ‣ 3.2 Improving Quantization by Distribution
+    Correction ‣ 3 Method ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration
+    for Large Language Models"), for the classical GEMM task, the M × N × K problem
+    is usually chunked by BM × BN × BK at the thread block level, and each thread
+    block is chunked by WM × WN × WK at the warp level. Each warp gets MMA_M × MMA_N
+    × MMA_K based on the Tensor Core chunk size supported by the GPU model and searches
+    for different chunk shapes after obtaining the chunk sizes at the three levels.
+    In the arbitrary precision operator, the number of weight bits (q) and activation
+    bits (p) also need to be considered, so the search space is larger compared to
+    the classical GEMM. Given the BTC chunk sizes MMA_M = 8, MMA_N = 8, MMA_K = 128,
+    the number of weighted warps is computed as W_WARPS_NUM = BN × q / WN, and the
+    number of activation warps is computed as X_WARPS_NUM = BM × p / WM. The total
+    number of warps is 1 $\leq$ configuration, the design process of a candidate instance
+    in the search space is summarized as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1\. Determine the number and layout of Warps contained in the Thread Block based
+    on expert experience. for example, X_WARPS_NUM × W_WARPS_NUM = 1 × 4.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2\. Determine the Thread Block Tile($<$) with the smallest redundant padding
+    based on the quantized bit width p of the activation and the M dimension of the
+    computing task.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3\. The size of the WARP Tile($<$) is calculated based on the layout of Warps
+    and Thread Block Tile. Ultimately, we test the operators at various chunk sizes
+    and adopt the speed-optimized implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/ea5e2f7906d5272f2d2311db720f045f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 10: Address occurs shared memory 4-way bank conflicts. E denotes an
+    element of int32, B denotes bank, and T denotes a thread.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/02a7d53d11ad3bbb088150ce6454df7a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 11: Address remapping avoids shared memory bank conflicts. E denotes
+    an element of int32, B denotes bank, and T denotes a thread.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bank Conflicts Elimination. For attaining high bandwidth, shared memory is segmented
+    into memory modules of uniform size, which are referred to as banks. Each bank
+    occupies 4 bytes, and the continuous 128 bytes in the shared memory form 32 banks.
+    Threads within a warp can access data from various banks simultaneously in one
+    single memory access request. However, if multiple threads access data within
+    the same bank concurrently, it will give rise to a bank conflict, leading to lower
+    throughput.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The above Figure [10](#A4.F10 "Figure 10 ‣ Appendix D GPU Kernel Optimization
+    Details ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration for Large Language
+    Models") shows the scenario where bank conflict occurs (BM=8, BK=512), where E
+    denotes an element of int32, B denotes bank, and T denotes a thread. When data
+    is loaded from global memory to shared memory, each thread accesses 16 bytes in
+    order to fully utilize the memory bandwidth. The 8x512-bit data is divided into
+    four phases, each reading 128 bytes (i.e., two consecutive rows of data in the
+    figure). During this process, no Bank conflicts occur in any of the phases. However,
+    when data is loaded from shared memory to registers, each thread needs to copy
+    4 bytes of data since the 8x8x128 BMMA stores matrix A (8x128 bits) and matrix
+    B (8x128 bits) in 32-bit registers. When copying a matrix block (same color block),
+    threads T0~3, T8~11, T16~19, and T24~27 all access B0~3, while T4~7, T12~15, T20~23,
+    and T28~31 access B16~19, resulting in 4-way bank conflicts.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As depicted in the Figure [11](#A4.F11 "Figure 11 ‣ Appendix D GPU Kernel Optimization
+    Details ‣ ABQ-LLM: Arbitrary-Bit Quantized Inference Acceleration for Large Language
+    Models"), we employ the swizzle operation to address this issue. When the global
+    memory is loaded into the shared memory, the addresses are swizzled, causing the
+    8x128bit data to be scattered across 32 banks. When T0~31 accesses 8x128bit data,
+    the data comes from B0~31 respectively, and no bank conflict will arise, thereby
+    further improving the efficiency of memory access.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| LLaMA-7B |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 128 | 256 | 512 | 1024 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| sequence length | Latency(ms) | Memory(GB) | Latency(ms) | Memory(GB) | Latency(ms)
+    | Memory(GB) | Latency(ms) | Memory(GB) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP 16 | 1490.5 | 13.47 | 3005.95 | 13.534 | 6090.97 | 13.662 | 12561.82 |
+    13.918 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W8A16(CUTLASS) | 868.35 | 7.394 | 1755.62 | 7.458 | 3594.95 | 7.586 | 7559.22
+    | 7.842 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W8A8(SmoothQuant) | 832.25 | 7.394 | 1684.85 | 7.458 | 3445.86 | 7.586 |
+    7257.02 | 7.842 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A16(CUTLASS) | 642.24 | 4.258 | 1312.91 | 4.322 | 2707.26 | 4.45 | 5786.8
+    | 4.706 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2A8(ABQ-LLM) | 505.60 | 2.784 | 1041.39 | 2.848 | 2167.30 | 2.976 | 4657.18
+    | 3.232 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-13B |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 128 | 256 | 512 | 1024 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| sequence length | Latency(ms) | Memory(GB) | Latency(ms) | Memory(GB) | Latency(ms)
+    | Memory(GB) | Latency(ms) | Memory(GB) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP 16 | 2726.66 | 25.6 | 5481.96 | 25.696 | 11071.81 | 25.92 | 22559.77 |
+    26.304 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W8A16(CUTLASS) | 1439.66 | 13.524 | 2900.46 | 13.62 | 5922.28 | 13.844 |
+    12257.27 | 14.228 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W8A8(SmoothQuant) | 1431.2 | 13.526 | 2874.51 | 13.622 | 5867.42 | 13.846
+    | 12193.68 | 14.23 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A16(CUTLASS) | 999.1 | 7.444 | 2020.99 | 7.54 | 4155.94 | 7.764 | 8750.98
+    | 8.148 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2A8(ABQ-LLM) | 766.28 | 4.564 | 1550.21 | 4.66 | 3234.67 | 4.884 | 6885.69
+    | 5.268 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-30B |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 128 | 256 | 512 | 1024 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| sequence length | Latency(ms) | Memory(GB) | Latency(ms) | Memory(GB) | Latency(ms)
+    | Memory(GB) | Latency(ms) | Memory(GB) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP 16 | 3759.08 | 65.534 | 7540.17 | 65.726 | 15241.36 | 66.11 | 31073.23
+    | 66.878 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W8A16(CUTLASS) | 3032.64 | 32.418 | 6111.43 | 32.642 | 12371.66 | 33.026
+    | 25477.58 | 33.794 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W8A8(SmoothQuant) | 3057.96 | 32.418 | 6155.38 | 32.642 | 12465.96 | 33.026
+    | 25678.66 | 33.794 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A16(CUTLASS) | 1938.2 | 17.178 | 3924.2 | 17.402 | 8011.57 | 17.786 | 16680.64
+    | 18.554 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2A8(ABQ-LLM) | 1730.51 | 9.616 | 3473.66 | 9.84 | 7133.13 | 10.224 | 14845.67
+    | 10.992 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 12: Inference latency and memory usage of the FastTransformer implementation
+    on NVIDIA A800-40GB GPU with a fixed input sequence length of 15, output sequence
+    lengths of 128, 256, 512 and 1024\.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| (1,4096)x(4096,4096) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 5.126408 | 5.003512 | 4.993599 | 5.016534 | 1.844438 | 1.820546
+    | 1.415388 | 1.409558 | 1.167617 | 0.990153 | 0.853578 | 0.760755 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 1.395987 | 1.395987 | 0.671532 | 0.671532 | 1.395987 |
+    0.671532 | 1.395987 | 0.671532 | 0.671532 | 0.671532 | 0.671532 | 0.671532 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX3070 | CUBLAS(TOPS) | - | - | 0.662154 | 0.662154 | - | 0.662154 | - |
+    0.662154 | 0.662154 | 0.662154 | 0.662154 | 0.662154 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (1,1024)x(1024,8192) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 3.959401 | 3.815584 | 3.710145 | 3.636041 | 3.27549 | 3.088989
+    | 2.729302 | 2.493001 | 1.107551 | 0.907098 | 0.774627 | 0.699006 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 2.43737 | 2.43737 | 0.570752 | 0.570752 | 2.43737 | 0.570752
+    | 2.43737 | 0.570752 | 0.570752 | 0.570752 | 0.570752 | 0.570752 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX3070 | CUBLAS(TOPS) | - | - | 0.547283 | 0.547283 | - | 0.547283 | - |
+    0.547283 | 0.547283 | 0.547283 | 0.547283 | 0.547283 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (1,11008)x(11008, 4096) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 2.831276 | 2.845823 | 2.851906 | 2.85108 | 1.893524 | 1.89145
+    | 1.429216 | 1.424223 | 1.063806 | 0.9578 | 0.781478 | 0.688792 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 1.437404 | 1.437404 | 0.702909 | 0.702909 | 1.437404 |
+    0.702909 | 1.437404 | 0.702909 | 0.702909 | 0.702909 | 0.702909 | 0.702909 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX3070 | CUBLAS(TOPS) | - | - | 0.655704 | 0.655704 | - | 0.655704 | - |
+    0.655704 | 0.655704 | 0.655704 | 0.655704 | 0.655704 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (1,5120)x(5120, 5120) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 2.77896 | 2.744274 | 2.769214 | 2.72645 | 1.946023 | 1.925246
+    | 1.485292 | 1.47769 | 1.207433 | 1.019555 | 0.88083 | 0.777159 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 1.456822 | 1.456822 | 0.752888 | 0.752888 | 1.456822 |
+    0.752888 | 1.456822 | 0.752888 | 0.752888 | 0.752888 | 0.752888 | 0.752888 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX3070 | CUBLAS(TOPS) | - | - | 0.655704 | 0.655704 | - | 0.655704 | - |
+    0.655704 | 0.655704 | 0.655704 | 0.655704 | 0.655704 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (1,4096)x(4096, 11008) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 2.93919 | 2.945875 | 2.932437 | 2.928438 | 2.048219 | 2.042158
+    | 1.558931 | 1.556203 | 1.263128 | 1.06387 | 0.915512 | 0.804458 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 1.44785 | 1.44785 | 0.757006 | 0.757006 | 1.44785 | 0.757006
+    | 1.44785 | 0.757006 | 0.757006 | 0.757006 | 0.757006 | 0.757006 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX3070 | CUBLAS(TOPS) | - | - | 0.726139 | 0.726139 | - |  | - | 0.726139
+    | 0.726139 | 0.726139 | 0.726139 | 0.726139 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (4,4096)x(4096,4096) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 19.85037 | 18.573332 | 17.173864 | 15.596383 | 7.165928 |
+    7.040589 | 5.588709 | 5.465432 | 4.427809 | 3.841075 | 3.17604 | 2.952538 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 5.029238 | 5.029238 | 2.600067 | 2.600067 | 5.029238 |
+    2.600067 | 5.029238 | 2.600067 | 2.600067 | 2.600067 | 2.600067 | 2.600067 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX3070 | CUBLAS(TOPS) | - | - | 2.623434 | 2.623434 | - | 2.623434 | - |
+    2.623434 | 2.623434 | 2.623434 | 2.623434 | 2.623434 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (4,1024)x(1024,8192) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 14.911489 | 13.707592 | 12.752676 | 12.651737 | 11.246954
+    | 10.272099 | 8.611968 | 7.994145 | 4.100613 | 3.487998 | 2.770024 | 2.715393
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 7.790775 | 7.790775 | 2.292671 | 2.292671 | 2.292671 |
+    2.292671 | 7.790775 | 2.292671 | 2.292671 | 2.292671 | 2.292671 | 2.292671 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX3070 | CUBLAS(TOPS) | - | - | 2.652782 | 2.652782 | - | 2.652782 | - |
+    2.652782 | 2.652782 | 2.652782 | 2.652782 | 2.652782 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (4,11008)x(11008, 4096) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 11.352832 | 11.176699 | 10.902382 | 10.897325 | 7.418883
+    | 7.308671 | 5.631782 | 5.359304 | 4.201856 | 3.729234 | 2.658403 | 2.734334 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 6.089864 | 6.089864 | 2.852206 | 2.852206 | 6.089864 |
+    2.852206 | 6.089864 | 2.852206 | 2.852206 | 2.852206 | 2.852206 | 2.852206 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX3070 | CUBLAS(TOPS) | - | - | 2.804943 | 2.804943 | - |  | - | 2.804943
+    | 2.804943 | 2.804943 | 2.804943 | 2.804943 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (4,5120)x(5120, 5120) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 11.023197 | 10.805677 | 10.686147 | 10.633989 | 7.62955 |
+    7.509258 | 5.885227 | 5.81653 | 4.70967 | 4.021154 | 3.319287 | 3.049934 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 5.41928 | 5.41928 | 2.892696 | 2.892696 | 5.41928 | 2.892696
+    | 5.41928 | 2.892696 | 2.892696 | 2.892696 | 2.892696 | 2.892696 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX3070 | CUBLAS(TOPS) | - | - | 3.024624 | 3.024624 | - | 3.024624 | - |
+    3.024624 | 3.024624 | 3.024624 | 3.024624 | 3.024624 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (4,4096)x(4096, 11008) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 11.65253 | 11.47451 | 11.370432 | 11.249153 | 8.044027 |
+    7.938343 | 6.158429 | 6.063344 | 4.936044 | 4.181711 | 3.516512 | 3.152066 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 5.755347 | 5.755347 | 2.913199 | 2.913199 | 5.755347 |
+    2.913199 | 5.755347 | 2.913199 | 2.913199 | 2.913199 | 2.913199 | 2.913199 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX3070 | CUBLAS(TOPS) | - | - | 3.150072 | 3.150072 | - | 3.150072 | - |
+    3.150072 | 3.150072 | 3.150072 | 3.150072 | 3.150072 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (8,4096)x(4096,4096) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 34.711864 | 29.218008 | 25.562555 | 23.108412 | 14.124731
+    | 13.319459 | 10.805161 | 10.304756 | 8.570437 | 7.295355 | 6.372617 | 5.418213
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 10.443984 | 10.443984 | 5.328563 | 5.328563 | 10.443984
+    | 5.328563 | 10.443984 | 5.328563 | 5.328563 | 5.328563 | 5.328563 | 5.328563
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX3070 | CUBLAS(TOPS) | - | - | 5.136078 | 5.136078 | - | 5.136078 | - |
+    5.136078 | 5.136078 | 5.136078 | 5.136078 | 5.136078 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (8,1024)x(1024,8192) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 25.143295 | 24.340204 | 22.991055 | 17.975151 | 21.315987
+    | 15.096982 | 14.203727 | 10.091 | 8.056054 | 6.547737 | 5.476622 | 4.921968 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 11.837081 | 11.837081 | 4.52688 | 4.52688 | 11.837081
+    | 4.52688 | 11.837081 | 4.52688 | 4.52688 | 4.52688 | 4.52688 | 4.52688 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX3070 | CUBLAS(TOPS) | - | - | 5.051333 | 5.051333 | - | 5.051333 | - |
+    5.051333 | 5.051333 | 5.051333 | 5.051333 | 5.051333 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (8,11008)x(11008, 4096) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 21.93853 | 21.763004 | 21.38822 | 21.141041 | 14.794146 |
+    14.292913 | 10.0646 | 9.831863 | 8.391643 | 6.331276 | 5.216482 | 5.386425 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 11.559231 | 11.559231 | 5.788068 | 5.788068 | 11.559231
+    | 5.788068 | 11.559231 | 5.788068 | 5.788068 | 5.788068 | 5.788068 | 5.788068
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX3070 | CUBLAS(TOPS) | - | - | 5.433702 | 5.433702 | - | 5.433702 | - |
+    5.433702 | 5.433702 | 5.433702 | 5.433702 | 5.433702 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (8,5120)x(5120, 5120) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 21.438643 | 20.998667 | 20.403486 | 20.144592 | 15.058184
+    | 14.257557 | 11.512318 | 11.014898 | 9.303804 | 7.909779 | 6.563432 | 5.816199
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 11.438784 | 11.438784 | 5.650824 | 5.650824 | 11.438784
+    | 5.650824 | 11.438784 | 5.650824 | 5.650824 | 5.650824 | 5.650824 | 5.650824
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX3070 | CUBLAS(TOPS) | - | - | 5.843657 | 5.843657 | - | 5.843657 | - |
+    5.843657 | 5.843657 | 5.843657 | 5.843657 | 5.843657 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (8,4096)x(4096, 11008) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 22.735727 | 22.486816 | 21.946047 | 21.290138 | 15.927655
+    | 14.94954 | 12.047882 | 11.759899 | 9.831679 | 8.178876 | 6.951003 | 5.942341
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 12.133122 | 12.133122 | 5.794113 | 5.794113 | 12.133122
+    | 5.794113 | 12.133122 | 5.794113 | 5.794113 | 5.794113 | 5.794113 | 5.794113
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX3070 | CUBLAS(TOPS) | - | - | 6.094711 | 6.094711 | - | 6.094711 | - |
+    6.094711 | 6.094711 | 6.094711 | 6.094711 | 6.094711 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 13: The GEMM speed comparison of our ABQKernel, CUTLASS, and cuBLAS in
+    RTX 3070\.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| (1,4096)x(4096,4096) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 5.666263 | 5.596584 | 5.177539 | 5.192204 | 4.932711 | 5.103254
+    | 5.230327 | 3.984436 | 5.089779 | 4.697921 | 2.73454 | 3.997423 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 4.378407 | 4.378407 | 2.483177 | 2.483177 | 4.378407 |
+    2.483177 | 4.378407 | 2.483177 | 2.483177 | 2.483177 | 2.483177 | 2.483177 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX4080 | CUBLAS(TOPS) | - | - | 2.132917 | 2.132917 | - | 2.132917 | - |
+    2.132917 | 2.132917 | 2.132917 | 2.132917 | 2.132917 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (1,1024)x(1024,8192) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 3.544786 | 3.494135 | 3.491157 | 3.335505 | 3.090738 | 3.463115
+    | 3.280737 | 2.427181 | 2.593226 | 2.545285 | 2.018674 | 2.512498 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 1.994158 | 1.994158 | 1.595792 | 1.595792 | 1.994158 |
+    1.595792 | 1.994158 | 1.595792 | 1.595792 | 1.595792 | 1.595792 | 1.595792 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX4080 | CUBLAS(TOPS) | - | - | 1.842555 | 1.842555 | - | 1.842555 | - |
+    1.842555 | 1.842555 | 1.842555 | 1.842555 | 1.842555 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (1,11008)x(11008, 4096) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 11.459206 | 11.172798 | 8.219525 | 8.073364 | 6.89011 | 8.299166
+    | 7.945147 | 5.589236 | 6.926538 | 6.253657 | 3.5678 | 5.010184 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 5.738564 | 5.738564 | 3.577838 | 3.577838 | 5.738564 |
+    3.577838 | 5.738564 | 3.577838 | 3.577838 | 3.577838 | 3.577838 | 3.577838 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX4080 | CUBLAS(TOPS) | - | - | 2.782205 | 2.782205 | - | 2.782205 | - |
+    2.782205 | 2.782205 | 2.782205 | 2.782205 | 2.782205 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (1,5120)x(5120, 5120) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 8.179976 | 8.036415 | 7.981294 | 7.326846 | 7.348096 | 7.640651
+    | 7.2295 | 4.169042 | 6.045578 | 4.925341 | 3.0402 | 4.270938 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 4.469664 | 4.469664 | 2.111863 | 2.111863 | 4.469664 |
+    2.111863 | 4.469664 | 2.111863 | 2.111863 | 2.111863 | 2.111863 | 2.111863 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX4080 | CUBLAS(TOPS) | - | - | 2.338113 | 2.338113 | - |  | - | 2.338113
+    | 2.338113 | 2.338113 | 2.338113 | 2.338113 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (1,4096)x(4096, 11008) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 13.542058 | 13.110614 | 12.246419 | 9.048911 | 7.191247 |
+    10.480065 | 7.804325 | 4.767432 | 6.815571 | 5.946993 | 3.366875 | 5.155972 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 7.373691 | 7.373691 | 3.04093 | 3.04093 | 7.373691 | 3.04093
+    | 7.373691 | 3.04093 | 3.04093 | 3.04093 | 3.04093 | 3.04093 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX4080 | CUBLAS(TOPS) | - | - | 2.862102 | 2.862102 | - | 2.862102 | - |
+    2.862102 | 2.862102 | 2.862102 | 2.862102 | 2.862102 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (4,4096)x(4096,4096) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 24.408194 | 20.693401 | 20.195993 | 20.795177 | 18.665907
+    | 20.496012 | 19.760592 | 12.737339 | 18.525913 | 16.639837 | 8.414879 | 11.580844
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 16.965191 | 16.965191 | 11.346475 | 11.346475 | 16.965191
+    | 11.346475 | 16.965191 | 11.346475 | 11.346475 | 11.346475 | 11.346475 | 11.346475
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX4080 | CUBLAS(TOPS) | - | - | 9.346264 | 9.346264 | - | 9.346264 | - |
+    9.346264 | 9.346264 | 9.346264 | 9.346264 | 9.346264 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (4,1024)x(1024,8192) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 14.124137 | 14.265563 | 14.515171 | 13.744966 | 13.02943
+    | 12.581451 | 11.312963 | 9.696109 | 10.008553 | 10.04691 | 5.635082 | 8.187905
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 10.125006 | 10.125006 | 7.514869 | 7.514869 | 10.125006
+    | 7.514869 | 10.125006 | 7.514869 | 7.514869 | 7.514869 | 7.514869 | 7.514869
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX4080 | CUBLAS(TOPS) | - | - | 5.807355 | 5.807355 | - | 5.807355 | - |
+    5.807355 | 5.807355 | 5.807355 | 5.807355 | 5.807355 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (4,11008)x(11008, 4096) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 44.499241 | 34.592556 | 31.936174 | 30.138264 | 26.151152
+    | 29.124102 | 30.114992 | 20.55409 | 25.744062 | 21.976168 | 11.041816 | 16.608015
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 22.360314 | 22.360314 | 14.27062 | 14.27062 | 22.360314
+    | 14.27062 | 22.360314 | 14.27062 | 14.27062 | 14.27062 | 14.27062 | 14.27062
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX4080 | CUBLAS(TOPS) | - | - | 10.484434 | 10.484434 | - | 10.484434 |
+    - | 10.484434 | 10.484434 | 10.484434 | 10.484434 | 10.484434 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | (4,5120)x(5120, 5120) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 32.262131 | 32.364094 | 31.850698 | 26.226151 | 20.416708
+    | 24.156643 | 26.690235 | 14.489883 | 18.306963 | 18.400719 | 8.766748 | 13.434794
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 15.777285 | 15.777285 | 8.469383 | 8.469383 | 15.777285
+    | 8.469383 | 15.777285 | 8.469383 | 8.469383 | 8.469383 | 8.469383 | 8.469383
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX4080 | CUBLAS(TOPS) | - | - | 6.160892 | 6.160892 | - | 6.160892 | - |
+    6.160892 | 6.160892 | 6.160892 | 6.160892 | 6.160892 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (4,4096)x(4096, 11008) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 52.217018 | 50.157482 | 45.968418 | 31.412338 | 28.61311
+    | 30.551258 | 30.689667 | 17.375622 | 22.56772 | 21.429615 | 10.303197 | 16.78546
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 29.325113 | 29.325113 | 12.020953 | 12.020953 | 29.325113
+    | 12.020953 | 29.325113 | 12.020953 | 12.020953 | 12.020953 | 12.020953 | 12.020953
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX4080 | CUBLAS(TOPS) | - | - | 9.30319 | 9.30319 | - | 9.30319 | - | 9.30319
+    | 9.30319 | 9.30319 | 9.30319 | 9.30319 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (8,4096)x(4096,4096) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 41.439137 | 41.30854 | 41.419498 | 39.114296 | 37.503555
+    | 37.120361 | 40.611 | 24.405922 | 32.121555 | 24.77029 | 16.262033 | 17.331835
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 33.269646 | 33.269646 | 22.390638 | 22.390638 | 33.269646
+    | 22.390638 | 33.269646 | 22.390638 | 22.390638 | 22.390638 | 22.390638 | 22.390638
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX4080 |  | - | - | 18.537868 | 18.537868 | - | 18.537868 | - | 18.537868
+    | 18.537868 | 18.537868 | 18.537868 | 18.537868 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | (8,1024)x(1024,8192) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 28.155737 | 27.346548 | 26.414156 | 20.811686 | 20.343021
+    | 20.249033 | 20.602325 | 18.68187 | 19.067791 | 18.388329 | 11.315893 | 11.722744
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 16.941822 | 16.941822 | 11.685739 | 11.685739 | 16.941822
+    | 11.685739 | 16.941822 | 11.685739 | 11.685739 | 11.685739 | 11.685739 | 11.685739
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX4080 | CUBLAS(TOPS) | - | - | 11.626171 | 11.626171 | - | 11.626171 |
+    - | 11.626171 | 11.626171 | 11.626171 | 11.626171 | 11.626171 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (8,11008)x(11008, 4096) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 70.776772 | 63.515327 | 62.89724 | 53.603973 | 50.18964 |
+    44.507675 | 52.819912 | 35.874935 | 41.623066 | 34.309536 | 20.632343 | 20.644436
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 42.806332 | 42.806332 | 28.412611 | 28.412611 | 42.806332
+    | 28.412611 | 42.806332 | 28.412611 | 28.412611 | 28.412611 | 28.412611 | 28.412611
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX4080 | CUBLAS(TOPS) | - | - | 20.376932 | 20.376932 | - | 20.376932 |
+    - | 20.376932 | 20.376932 | 20.376932 | 20.376932 | 20.376932 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (8,5120)x(5120, 5120) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 62.192532 | 58.058117 | 56.991051 | 38.496239 | 36.794827
+    | 36.71896 | 41.916618 | 27.445724 | 35.866901 | 26.239592 | 16.931917 | 20.035217
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 35.998506 | 35.998506 | 16.818377 | 16.818377 | 35.998506
+    | 16.818377 | 35.998506 | 16.818377 | 16.818377 | 16.818377 | 16.818377 | 16.818377
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX4080 | CUBLAS(TOPS) | - | - | 11.887421 | 11.887421 | - | 11.887421 |
+    - | 11.887421 | 11.887421 | 11.887421 | 11.887421 | 11.887421 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (8,4096)x(4096, 11008) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | w2a2 | w2a4 | w2a6 | w2a8 | w3a3 | w3a8 | w4a4 | w4a8 | w5a5 | w6a6
+    | w7a7 | w8a8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours(TOPS) | 103.437386 | 66.689888 | 63.139633 | 49.792355 | 51.081207
+    | 50.856277 | 52.395653 | 33.181564 | 43.949936 | 34.850956 | 19.520435 | 21.211935
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CUTLASS(TOPS) | 55.537205 | 55.537205 | 24.016449 | 24.016449 | 55.537205
+    | 24.016449 | 55.537205 | 24.016449 | 24.016449 | 24.016449 | 24.016449 | 24.016449
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTX4080 | CUBLAS(TOPS) | - | - | 18.105219 | 18.105219 | - |  | - | 18.105219
+    | 18.105219 | 18.105219 | 18.105219 | 18.105219 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 14: The GEMM speed comparison of our ABQKernel, CUTLASS, and cuBLAS in
+    RTX 4080\.'
+  prefs: []
+  type: TYPE_NORMAL

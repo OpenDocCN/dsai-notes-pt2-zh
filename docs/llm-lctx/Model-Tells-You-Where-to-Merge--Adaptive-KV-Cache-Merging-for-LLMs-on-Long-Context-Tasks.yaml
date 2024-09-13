@@ -1,0 +1,1487 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 19:01:02'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Model Tells You Where to Merge: Adaptive KV Cache Merging for LLMs on Long-Context
+    Tasks'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2407.08454](https://ar5iv.labs.arxiv.org/html/2407.08454)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Zheng Wang¹, Boxiao Jin¹, Zhongzhi Yu¹, Minjia Zhang²
+  prefs: []
+  type: TYPE_NORMAL
+- en: ¹Georgia Institute of Technology, ²University of Illinois Urbana-Champaign
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{zwang3478, bjin60, zyu401}@gatech.edu, {minjiaz}@illinois.edu'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Large Language Models (LLMs) have attracted remarkable attention due to their
+    unprecedented performance across a wide range of tasks. However, how to efficiently
+    serve LLMs has become a pressing issue because of their huge computational cost
+    in their autoregressive generation process. To mitigate computational costs, LLMs
+    often employ the *KV Cache* technique to improve the generation speed. While improving
+    the computational efficiency, the storage requirements of the KV cache are substantial,
+    particularly in long-context scenarios, leading to significant memory consumption.
+    Existing KV cache eviction methods often degrade the performance of LLMs in long-context
+    scenarios due to the information loss introduced by eviction. In this paper, we
+    propose a novel KV cache merging approach, called *KVMerger*, to achieve adaptive
+    KV cache compression for long-context tasks without significant performance degradation
+    under constrained memory budgets. Our approach is inspired by the intriguing observation
+    that key states exhibit high similarity at the token level within a single sequence.
+    To facilitate merging, we develop an effective yet straightforward merging set
+    identification algorithm to identify suitable KV states for merging. Our merging
+    set identification algorithm stimulates the second observation that KV cache sparsity,
+    from similarity perspective, is independent of the dataset and remains persistent
+    at the model level. Subsequently, we propose a Gaussian kernel weighted merging
+    algorithm to selectively merge all states within each merging set. We conduct
+    extensive experiments to demonstrate the effectiveness of *KVMerger* for long-context
+    tasks under constrained memory budgets, applying it to models including Llama2-7B/13B-chat
+    and Mistral-7B-instruct. Using the LongBench and ZeroScroll benchmarks, we compare
+    our method with other KV cache compression techniques, including H2O and CaM,
+    showing that our method achieves superior performance across tasks with both $50\%$
+    KV cache budgets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Large Language Models (LLMs) have demonstrated exceptional performance across
+    a variety of applications, particularly excelling in long-context scenarios that
+    are increasingly relevant in everyday life. Recent state-of-the-art LLMs have
+    been meticulously developed to scale up to handle long-context tasks, such as
+    OpenAI’s ChatGPT (OpenAI, [2023](#bib.bib19)), Anthropic’s Claude (Anthropic,
+    [2023](#bib.bib1)), Meta’s LLaMA-3 (Touvron et al., [2023a](#bib.bib27)) (Touvron
+    et al., [2023b](#bib.bib28)), Mistral (Jiang et al., [2023](#bib.bib11)), and
+    Google’s Gemini-pro-1.5 that supports a staggering 1M token context length (Gemini Team,
+    [2024](#bib.bib7)). However, as LLMs process larger volumes of data over extended
+    contexts, *KV cache* starts to pose a substantial obstacle to LLM’s performance
+    and scalability. KV cache stores the key and value states (KV) derived from the
+    attention calculation of previously processed tokens and reuses those states in
+    the autoregressive generation process. As LLMs continue to grow in size and capabilities,
+    supporting long-context starts to eat up memory. For example, a 175-billion parameter
+    GPT-3 model, with a batch size of 64 and a sequence length of 4,096 tokens (including
+    both prefilled and generated tokens), necessitates approximately 1,208 GB of GPU
+    memory (Liu et al., [2024](#bib.bib16)), which exceeds the memory capacity of
+    most advanced GPUs. Therefore, the need for compressing KV cache while maintaining
+    LLM generation quality, especially for long-context tasks, becomes essential.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Current efforts for KV cache compression can be broadly categorized into three
+    types: quantization, eviction, and merging, as illustrated in Figure 1\. Quantization
+    replaces floating point KV states (e.g., FP16) with low-bit representations to
+    decrease memory usage while striving to maintain the overall performance of LLMs.
+    Recent advancements, such as Coupled Quantization (Zhang et al., [2024b](#bib.bib36))
+    and KIVI (Zirui Liu et al., [2023](#bib.bib40)), have demonstrated that KV cache
+    can be quantized to 1-bit or 2-bit precision while preserving performance. In
+    contrast, KV cache eviction methods selectively remove unimportant tokens from
+    the cache based on certain signals from the model, thereby reducing the memory
+    footprint by limiting the number of key and value states in the KV cache (Xiao
+    et al., [2024](#bib.bib30); Liu et al., [2023b](#bib.bib18); Zhang et al., [2023](#bib.bib38);
+    Ge et al., [2024](#bib.bib6)). For instance, Scissorhands (Liu et al., [2023b](#bib.bib18))
+    keeps a fixed KV size budget and replies on the Persistence of Importance hypothesis
+    to evict key and value states for non-important tokens. Similarly, H2O (Zhang
+    et al., [2023](#bib.bib38)) utilizes aggregated attention scores to determine
+    so called “heavy hitters”, which are a subset of important tokens to keep in the
+    KV cache. While eviction-based methods have demonstrated promising results on
+    short context tasks with simple perplexity metrics, a significant drawback of
+    eviction methods is their potential to accidentally and permanently remove important
+    tokens, leading to context damage and adversely affecting their effectiveness
+    in long-context tasks that heavily rely on context information. On a separate
+    line of research, KV cache merging has been proposed as a complementary method
+    of eviction ([Zhang et al.,](#bib.bib37) ; Wan et al., [2024](#bib.bib29); Liu
+    et al., [2024](#bib.bib16); Yu et al., [2024a](#bib.bib32)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unlike eviction-based methods, the KV cache merging technique does not strictly
+    remove key and value states. Instead, it involves merging states that are otherwise
+    to be dropped by eviction method into single token state. By amalgamating states
+    rather than outright evicting them, this method ensures that essential information
+    not captured by the attention scores is retained, thereby enhancing the model’s
+    ability to maintain performance and accuracy in long-context tasks with compressed
+    KV cache. It is noteworthy that, although token merging is well-established in
+    computer vision (CV) (Zeng et al., [2022](#bib.bib34)) (Bolya et al., [2023](#bib.bib4))
+    (Kim et al., [2023](#bib.bib14)) (Zhang et al., [2024a](#bib.bib35)), the application
+    of key and value states merging in LLMs has not been extensively explored due
+    to several significant challenges. Specifically, *the high dimensionality and
+    sparsity of KV cache make it difficult to accurately identify sets of states that
+    can be merged without losing critical information*. Additionally, *developing
+    appropriate merging algorithm without introducing the loss of essential information
+    in long context presents another major challenge*. Effective merging techniques
+    must strike a delicate balance between reducing memory usage and preserving the
+    semantic integrity of the contexts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/0546765d59f540cd6a0a9d4eea95a861.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Three categories of KV cache compression techniques: KV cache quantization
+    (left), KV cache eviction (middle), and KV cache merging (right). For the illustration
+    of KV cache eviction, we use aggregated attention scores as the eviction signal,
+    and k is set to 3; for KV cache merging, we illustrate many-to-one merging. The
+    key state in red represents the state which incorporates the information of other
+    remaining states. Value states are processed in the same way as key states.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To address the aforementioned challenges associated with KV cache merging,
+    we propose an effective KV cache merging method for accelerating autoregressive
+    LLMs, especially for improving its performance in long-context tasks. We start
+    by introducing an intriguing observation: key states exhibit high cosine similarity
+    at the token level within a single sequence across different attention heads and
+    model layers. We investigate the root cause of why such phenomenon appears, and
+    our observation also opens opportunities for effective merging of key and value
+    states based on their cosine similarity. Subsequently, we formulate the KV cache
+    merging as a constrained clustering problem, and we introduce a strong baseline
+    for this problem, where we use an effective merging set identification method
+    for KV cache merging, which results in a layer-wise KV cache compression together
+    with a simple weighted merging algorithm. Based on the proposed merging set identification
+    method, we define KV cache sparsity from the perspective of states similarity.
+    Our finding indicates that KV cache sparsity is independent of the dataset and
+    remains persistent at the model level. Building on top of this, we propose a Gaussian
+    kernel weighted merging algorithm to merge states within each identified merging
+    set. We compare our proposed method with existing KV cache eviction method H2O
+    and value states merging method CaM. The results demonstrate that our method achieves
+    a better performance on these two benchmarks with both $50\%$ KV cache budgets,
+    surpassing existing KV cache eviction methods. Our contributions can be summarized
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: As one of the pioneering researches concerning KV cache merging for LLMs, we
+    developed *KVMerger*, an effective KV cache merging algorithm especially designed
+    for long-context tasks, including merging set identification and Gaussian kernel
+    weighted merging function.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We introduce an intriguing observation that key states share a high similarity
+    at the token level within a single sequence, as an important complementary to
+    the previous observations concerning high query states similarity (Dai et al.,
+    [2024](#bib.bib5)) and intra-layer KV cache similarity (Liu et al., [2024](#bib.bib16)).
+    We also investigate the root cause of why such phenomenon appears.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Our proposed *KVMerger* outperforms the previous KV Cache eviction algorithms
+    on long-context tasks across various models under both $50\%$ KV cache budgets,
+    introducing a great memory reduction compared to full KV cache.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 2 Related Work and Problem Formulation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 2.1 KV Cache Quantization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Quantization methods involve converting high-precision numerical values of key
+    and value states into lower-precision formats, thereby decreasing the storage
+    requirements within the cache (Hooper et al., [2024](#bib.bib10); Sheng et al.,
+    [2023](#bib.bib23); Liu et al., [2023a](#bib.bib17); Zhang et al., [2024c](#bib.bib39)).
+    Due to the presence of outliers in key and value states, recent works such as
+    KIVI (Zirui Liu et al., [2023](#bib.bib40)) and Gear (Kang et al., [2024](#bib.bib13))
+    employ fine-grained group-wise quantization, which quantize small channel groups
+    within each token. MiKV (Yang et al., [2024](#bib.bib31)) addresses the information
+    loss introduced by KV cache eviction methods by preserving those KVs in lower
+    precision rather than directly dropping them. ZipCache (He et al., [2024](#bib.bib9))
+    proposes an efficient channel-separable quantization scheme, disentangling the
+    channel and token dimensions without excessive memory overhead. Different from
+    quantized KV cache optimizations, this work studies compression of KV cache via
+    token merging, which is complementary to quantization and can lead to better improvements
+    when combined together.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2 KV Cache Eviction
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: KV cache eviction methods focus on retaining those important key-value pairs
+    and discard those unimportant ones permanently. One of the common selection policies
+    of key-value pairs is to exploit signals from the attention mechanism of LLMs
+    to select important tokens. For example, H2O (Zhang et al., [2023](#bib.bib38)),
+    Scissorhands (Liu et al., [2023b](#bib.bib18)), and RoCo (Ren & Zhu, [2024](#bib.bib21))
+    compress KV cache by maintaining a small set of KV states whose corresponding
+    tokens are determined by the ranking of attention scores. StreamingLLM (Xiao et al.,
+    [2024](#bib.bib30)) finds that keeping the initial tokens, called attention sink,
+    together with the recent window tokens is pivotal to maintain LLM’s performance.
+    More recently, Ge et al. ([2024](#bib.bib6)) and Yu et al. ([2024b](#bib.bib33))
+    find that attention sinks also occurs in the middle of the sentences, and Ge et al.
+    ([2024](#bib.bib6)) introduces FastGen which can choose the most appropriate compression
+    strategy for each heads with different attention distribution patterns. While
+    demonstrating promising results, existing eviction methods are often evaluated
+    on simple and widely questioned metrics, e.g., perplexity, which may fail to capture
+    LLM’s capabilities in understanding long contexts. In contrast, we specifically
+    look into KV compression under more challenging long-context understanding tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.3 KV Cache Merging
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Instead of permanently discarding key and value states, KV cache merging offers
+    a promising direction for KV cache compression while maintaining the performance
+    of LLMs, particularly for long-context tasks such as Retrieval-Augmented Generation
+    (RAG). MiniCache (Liu et al., [2024](#bib.bib16)) finds that KV states of some
+    consecutive layers have high similarity and proposes an effective intra-layer
+    KV cache merging and restoration algorithms to reduce memory usage by KV cache.
+    CaM ([Zhang et al.,](#bib.bib37) ) adaptively merges to-be-evicted value states
+    into the remaining conserved value states, resulting in minimal output perturbation
+    due to the merging operation. Similarly, D2O Wan et al. ([2024](#bib.bib29)) selectively
+    merges both value and key states to be evicted with those to be conserved using
+    an Exponential Moving Average (EMA) threshold, and uses weighted merging based
+    on cosine similarity. However, these methods are highly dependent on previous
+    eviction methods, and how to identify effective merging set for KV cache and define
+    effective merging method still remains unclear for KV cache. This paper is the
+    first one to consider KV cache problem independently and propose simple yet effective
+    solutions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.4 Problem Formulation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Formally, we study the performance impact of LLMs after compressing (without
+    fine-tuning) their KV cache. For a decoder only pre-trained LLM $f$ can be formulated
+    as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathcal{O}_{t\ }=\mathcal{A}_{t}\mathcal{V},\ \mathcal{A}_{t}=softmax\left(\frac{Q_{t}\mathcal{K}^{T}}{\sqrt{d_{k}}}\right)$
+    |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: KV Cache Merging Algorithm. Our primary objective is to develop an efficient
+    many-to-one merging algorithm $M$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Definition 2.1 (KV Cache Merging Problem, informal). *Let $\mathcal{O}_{t}$
+    must satisfy the following optimization criterion:*
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $M=\arg\min_{M}\frac{&#124;M(\mathcal{K})&#124;}{&#124;\mathcal{K}&#124;},$
+    |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: '*subject to $|\mathcal{O}_{t}-\mathcal{O}_{t}^{*}|\leq\epsilon$ also has the
+    following properties:*'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: $|M\left(\mathcal{K}\right)|\ /\ |\mathcal{K}|\ \leq 1,|M\left(\mathcal{V}\right)|/\
+    |\mathcal{V}|\ \leq 1$
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: $|M\left(\mathcal{K}\right)|\ /\ |\mathcal{K}|=|M\left(\mathcal{V}\right)|/\
+    |\mathcal{V}|\ $ *(make sure key and value states have the same compression ratio)*
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: In our study, the merging algorithm $M$ (compression tolerance threshold).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'KV Cache Merging Sets Identification Policy. We define the identification policy
+    $I$ as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: $|\mathcal{K}|=|\mathcal{K}_{c}|+|\mathcal{K}_{m}|,|\mathcal{V}|=|\mathcal{V}_{c}|+|\mathcal{V}_{m}|$
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: $|\mathcal{K}_{c}|=|\mathcal{V}_{c}|,|\mathcal{K}_{m}|=|\mathcal{V}_{m}|$ *(make
+    sure key states and value states come in pair)*
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: where $\mathcal{K}_{c}$ are zero, all key and value states are merged, resulting
+    in a full cache without any states eviction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: KV Cache Merging Function. We define the merging function $F$ such that
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: where $s_{i}^{*}$ is the merged new state for each sub merging set.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Observations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we present two key observations illustrating that KV cache
+    sparsity is universal for long-context tasks when viewed from the perspective
+    of state similarity. These observations form the basis for our development of
+    the adaptive KV cache merging algorithm, *KVMerger*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 KV cache similarity
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Previous literature have analyzed the possibility of reducing KV cache size
+    via exploiting attention sparsity, i.e., identifying important tokens via their
+    attention scores(Zhang et al., [2023](#bib.bib38)) (Liu et al., [2023b](#bib.bib18)).
+    However, *attention-score-driven* approaches are biased (He et al., [2024](#bib.bib9))
+    because critical tokens often vary a lot across different queries (Tang et al.,
+    [2024](#bib.bib25)), where relying on attention-score alone can lead to context
+    damage. Instead of relying on attention scores, we investigate whether merging
+    token states can preserve critical context details. Inspired by Dai et al. ([2024](#bib.bib5)),
+    which reveals the phenomenon that query states share significant similarity at
+    the token level in LLMs, we observe for the first time that *key states also exhibit
+    very high similarity at the token level within single sequence*. We will first
+    demonstrate the generalization of this token level similarity in key states and
+    then analyze the potential reasons behind this intriguing observation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d593a14c6cb25d3768782d58f083c687.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Visualization of the cosine similarity map of key states at the token-wise
+    level produced by running the inference process on the Llama2-7b-chat model by
+    randomly sampling data from the SynthWiki dataset. Observations include: (1) Key
+    states share strong similarity within one sequence across different layers and
+    heads; (2) The similarity between key states has the property of locality, i.e.,
+    adjacent tokens exhibit higher similarity.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Observation: key states exhibit high, localized token-level similarity. We
+    conduct the inference process on the Llama2-7b-chat model by randomly sampling
+    data from the SynthWiki dataset (Peysakhovich & Lerer, [2023](#bib.bib20)) with
+    average sequence length being about 4000\. Then, we visualize the cosine similarity
+    of key states at the token-wise level within a sequence using the following equation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $T$ for some tokens as Figure 3(a) shows. Moreover, we also observe from
+    Figure 3(a) that the local similarity between one value states and the other consecutive
+    key states shows different fluctuations for different attention heads. We also
+    examine the cosine similarity of value states but do not observe the local similarity
+    property. One interesting question arises: *why do such localized token similarity
+    exhibit in key states, while value states do not?*'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Analysis. Recent advancements in large language models (LLMs), including Llama2,
+    Mistral, and Llama3, have showcased significant performance improvements by employing
+    Rotary Position Embedding (RoPE) (Su et al., [2023](#bib.bib24)). RoPE integrates
+    positional information into token embeddings through a rotational transformation
+    based on positional indices. This process utilizes sinusoidal functions, specifically
+    cosine and sine components, to encode positions. By rotating the embeddings in
+    a multi-dimensional space, RoPE effectively captures the relative positions and
+    order of tokens within a sequence. If we denote two adjacent input tokens as $x_{m},\
+    x_{n}\in\mathbb{R}^{d}$ are two random integers, then in RoPE, the position information
+    of each token is incorporated via the following equations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $W_{k}$ is called as the rotary base, which is set to 10000 by default
+    (Su et al., [2023](#bib.bib24)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lemma 3.1 (Informal). *Consider two vectors $\mathbf{k}_{m}$-th elements of
+    $\mathbf{k}_{m}$.*
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lemma 3.2 (Informal). *Consider integer $j$ as $\mathbf{k}_{m,j}^{{}^{\prime}}=\mathbf{k}_{m,j}/e^{im\theta_{j}}$,
+    we have:*
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '*where $\langle\mathbf{k}_{m,j}^{{}^{\prime}},\mathbf{k}_{n,j}^{{}^{\prime}}\rangle$,
+    respectively.*'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The formal and complete proof of the above lemma is shown in appendix [A](#A1
+    "Appendix A Appendix ‣ Model Tells You Where to Merge: Adaptive KV Cache Merging
+    for LLMs on Long-Context Tasks"). The conclusions of lemmas 3.1 and 3.2 are the
+    necessary conditions of $\textit{similarity}(\mathbf{k}_{m,j},\mathbf{k}_{n,j})=1$.
+    The analysis above clarifies why value states exhibit low similarity at the token
+    level. Without the RoPE operation, value states are incapable of achieving rotation
+    to comparable angles. Both empirical observations and theoretical analysis indicate
+    that merging highly similar key states is approachable. This scheme is preferable
+    to simply discarding key states, as it helps prevent potential information loss,
+    particularly in long-context scenarios.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7b1136c73f0bd17d1f3f5ddd3b380eb8.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: (a): The cosine similarity changes between the current token and
+    its adjacent tokens across distinct attention heads and layers. We show the above
+    changes for tokens with indices being 2000, 3000, and 4000.(b) The layer-wise
+    compression ratios obtained by our proposed merging set identification algorithm
+    for different samples and different tasks. (c) The comparison of long-context
+    performance between H2O and average weighted merging with our proposed merging
+    set identification algorithm. (d) The illustration of Gaussian kernel function
+    with different values of $\sigma$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Persistent KV cache sparsity
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We have demonstrated that key states within a sequence exhibit significant similarity
+    at the token level in pre-trained LLMs. Based on this, we progressively group
+    consecutive key states of a given key state with similarity values exceeding a
+    certain threshold. By applying this process from the last token to the first token,
+    we obtain a set of groups, each containing consecutive key states with high similarity
+    above the specified threshold. The obtained new key states set is defined as the
+    merging set, meaning that the number of groups in the obtained set equals to the
+    number of key states after merging. The above set identification algorithm is
+    described in detail in Section 4.1.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Observation: The KV cache sparsity for different samples are persistent at
+    the model level. Figure 3(a) shows that the similarity distributions of different
+    tokens vary across distinct attention heads and layers. The size of each subset
+    of key states is governed by the similarity threshold defined. Lowering the threshold
+    results in the inclusion of a larger number of key states within a single merging
+    set, thereby leading to varied compression ratios across all attention heads and
+    layers. To investigate the actual compression ratio achieved by the previous set
+    identification algorithm, we conduct inference processes on the Llama2-7b-chat
+    model. This involves randomly sampling 200 instances from the subset of LongBench
+    (Bai et al., [2024](#bib.bib2)) tasks and calculating the average compression
+    ratio for each layer, as shown in Figure 3(b). We observe that the layer-wise
+    compression ratios were highly consistent across different samples from the same
+    task and even across different tasks. This intriguing finding suggests that the
+    *kv cache sparsity, resulting from the high similarity exhibited by key states,
+    is independent of the dataset and remains persistent at the model level*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Insights The observed static KV cache sparsity suggests that it is possible
+    to determine the layer-wise compression ratios by adjusting the cosine similarity
+    threshold, thereby reducing the KV cache memory consumption. Additionally, Figure
+    3(b) shows that the first two layers and the last few layers have relatively small
+    compression ratios. This observation aligns with previous research indicating
+    that the attention score distributions are more uniform in the first two layers
+    and last one layer of LLMs (Yu et al., [2024b](#bib.bib33)) (Wan et al., [2024](#bib.bib29)),
+    suggesting that most key states are important and should be preserved to avoid
+    introducing significant noise for those layers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/60d4cb1758e70832dab4b67e4f2fe583.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: The whole framework of *KVMerger* is comprised of two major modules.
+    The first module is to identify the merging set through our proposed algorithm
+    in Section 4.1\. Note that those key and value states which are most sensitive
+    to merging are excluded. The toy similarity map is used to illustrate this process
+    in the above Merging Set Identification part, and the threshold for cosine similarity
+    is set to 0.8\. The second module is to merge key and value states within each
+    identified merging set via Gaussian kernel weighted merging as described in Section
+    4.2\. For Gaussian kernel weighted merging illustration, the key state in red
+    color represents the pivotal key state, where all the remaining key states should
+    be weighted merged to that one. Note that values on key states in the above graph
+    represent the aggregated attention scores.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Proposed Adaptive KV Merging Algorithm
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section, we propose *KVMerger*, an adaptive KV merging algorithm, for
+    LLMs based on the above observations. The whole pipeline of *KVMerger* is depicted
+    in Figure 4, from which we can see that the whole algorithm contains two major
+    modules: merging set identification and Gaussian kernel weighted merging process.
+    We first introduce the merging set identification algorithm in Section 4.1, which
+    can be viewed as solving a constrained clustering problem. We propose a transformation
+    of Agglomerative Hierarchical Clustering (AHC) algorithm to solve this. In Section
+    4.2, we delineate our proposed Gaussian kernel weighted merging algorithm, which
+    is a many-to-one states merging method without introducing significant information
+    loss.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Greedy Policy for Merging Set Identification
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'One way to solve the merging set identification problem described in Section [2.4](#S2.SS4
+    "2.4 Problem Formulation ‣ 2 Related Work and Problem Formulation ‣ Model Tells
+    You Where to Merge: Adaptive KV Cache Merging for LLMs on Long-Context Tasks")
+    is to view it as a variant of clustering problem, which we define below:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Definition 4.1 (Constrained Clustering Problem for KV Cache Merging, formal).
+    *Given the original set of key states to be merged $\mathcal{K}_{m}=\{k_{1},k_{2},\ldots,k_{n}\}$
+    such that the intra-cluster similarity is maximized and the inter-cluster similarity
+    is minimized.*
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*Each merging set $\mathcal{S}_{i}$;*'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*$\forall\mathcal{S}_{i}$;*'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*The objective function to be maximized can be expressed as:*'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  |'
+  prefs:
+  - PREF_IND
+  type: TYPE_TB
+- en: The similarity function, $\delta$, we used here is cosine similarity based on
+    the observation in Section 3.1\. In order to conserve the locality similarity
+    property of key states, the merging set identification problem is a constrained
+    clustering problem, meaning that all elements in one cluster should be consecutive
+    in sequence, and we do not merge states with high similarity but far away from
+    each other. Then, we propose a variant of Agglomerative Hierarchical Clustering
+    (AHC) algorithm to find all merging sets shown as Algorithm 1.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 1 Merging Set Identification
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:procedure AHC($\mathcal{K}_{m}=\{k_{1},\ldots,k_{T}\}$8:         i = j9:     end for10:     return
+    The merging sets11:end procedure
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 2 Merging Policy
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:procedure Merge($\mathcal{S}_{k}=\{k_{1},\ldots,k_{n}\},A$10:end procedure
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*KVMerger* also retains the KV states whose corresponding aggregated attention
+    scores fall within the top-k range, including both attention sinks and heavy-hitters,
+    which represent the most important and frequently accessed elements by LLMs. We
+    assume that those key and value states are quite sensitive to merging and cannot
+    participant in merging process to avoid information damage.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Gaussian Kernel Weighted Merging
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Definition 4.2 (Weighted KV cache Merging, formal). *Given identified merging
+    sets of key states and value states as $\mathcal{S}_{k}=\{k_{i},k_{i+1},\ldots,k_{p},\ldots
+    k_{i+n}\}$ denote the pivotal key state and pivotal value state, respectively.
+    Then, the weighted merging key states and value states can be defined as:*
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: '*where $w_{p}$ denote the weight assigned to the pivotal state and the remaining
+    states in the merging set.*'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We define the weighted merging function for KV cache merging in Definition 4.2,
+    which follows the many-to-one merging definitions from Wan et al. ([2024](#bib.bib29)).
+    Note that the merging function is a critical determinant of performance in many-to-one
+    merging scenario. Two principal design factors directly influence merging efficacy.
+    The first factor is the selection of the pivotal state, to which all other states
+    are merged. The second factor involves the assignment of weights to each state,
+    with the pivot state having the largest weight to preserve the information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We start from the most intuitive merging function via average weighted for
+    each merging set. We evaluate the average weighted merging function on four tasks
+    from LongBench: TREC, NarrativeQA, TriviaQA, and LCC. As highlighted in previous
+    research (Xiao et al., [2024](#bib.bib30)) (Zhang et al., [2023](#bib.bib38))
+    (Wan et al., [2024](#bib.bib29)), recent tokens play a crucial role in performance.
+    Therefore, we exclude the most recent tokens from merging to maintain an average
+    compression ratio of $50\%$, as discussed in Section 3.2\. For simplicity, we
+    select the pivotal token as the key state with the maximum index within each merging
+    set. Additionally, we compare the average weighted merging function with the H2O
+    algorithm to gain an initial perspective on the potential and performance differences
+    between the KV cache merging scheme and the eviction scheme. The evaluation results
+    are shown in Figure 3(c). The results demonstrate that the average weighted merging
+    scheme provides a robust baseline, affirming the efficacy of the current method
+    for identifying merging sets. However, the average weighted merging function performs
+    worse compared to H2O, suggesting that the merging process may introduce noise,
+    leading to information distortion.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Gaussian Kernel Weights To eliminate the noise introduced by less informative
+    key states via average weighted merging, we introduce Gaussian kernel weighted
+    merging, which is expressed as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Gaussian kernel is able to assign greater weight to elements that are nearer
+    to the pivotal state. This local weighting characteristic ensures that the merged
+    result is significantly shaped by nearby states, maintaining local structure and
+    minimizing the impact of distant, possibly noisy states. Then, the merging weights
+    for key states and value states can be formalized as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathbf{w}_{i}=\frac{\mathbf{g}_{pi}}{\sum_{j=0}^{&#124;S_{k}&#124;}\mathbf{g}_{pj}},\
+    \ \ \ \ \mathbf{w}_{p}=\frac{1}{\sum_{j=0}^{&#124;S_{k}&#124;}\mathbf{g}_{pj}}.$
+    |  | (7) |'
+  prefs: []
+  type: TYPE_TB
+- en: For merging value states, $\mathbf{w}_{i}$ in the Euclidean space, more weight
+    will be assigned to $\mathbf{k}_{i}$ for all tokens within each merging set to
+    avoid such situation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Selection for Pivotal State As previously discussed, the selection for pivotal
+    state within each merging set is crucial for performance. Here we follow previous
+    token eviction methods that using aggregated attention score to select pivotal
+    token as it indicates the importance of tokens, which can be expressed as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathbf{k}_{p}=\underset{i\in S_{k}}{\text{argmax}}\,(\mathbf{a}_{i}),\
+    \ \ \ \ \mathbf{a}_{i}=\sum_{i=0}^{&#124;S_{k}&#124;}A\left[i,:\right]$ |  | (8)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: Note that the index of pivotal token for value states within each merging set
+    is the same as key states. The complete merging policy is described as Algorithm
+    2.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Experiment
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 5.1 Experimental Settings
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Models and Tasks We evaluate *KVMerger* using three models: Llama2-7B/13B-chat
+    (Touvron et al., [2023b](#bib.bib28)) and Mistral-7B-Instruct-v1.0(Jiang et al.,
+    [2023](#bib.bib11)). Our evaluation focuses primarily on instruction-tuned models,
+    as these are meticulously optimized for dialogue use cases and question-answering
+    scenarios. The above three models are evaluated on two commonly used benchamrks
+    for long-context scenario, that is, LongBench (Bai et al., [2024](#bib.bib2))
+    and ZeroScrolls (Shaham et al., [2023](#bib.bib22)). Both LongBench and ZeroScrolls
+    include a variety of scenarios such as multi-document question answering, summarization,
+    and dialogue generation, providing a comprehensive assessment of a model’s ability
+    to handle long sequences of text while maintaining coherence and accuracy. Specifically,
+    we use nine datasets in LongBench: 2WikiMQA, gov$\_$report, SummScreenFD, QMSum,
+    SQuALITY, Qasper, NarrativeQA, BookSumSort. Additionally, we also individually
+    test our methods on RAG tasks with the Needle-in-a-Haystack test (Guerreiro et al.,
+    [2023](#bib.bib8)). The performance of our method for LLMs on all the above tasks
+    are also compared with existing eviction method H2O and merging method CaM.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementation details We test *KVMerger* in two compression scenarios. The
+    first one is $50\%$. We conducted our experiments on a cluster with A100 40GB
+    GPUs (4XA100 per node, 256GB DRAM, 15TB storage, 200Gbps interconnect), and a
+    cluster with A100 80GB GPUs (2xA100 per node, 256GB DRAM, 100Gb Ethernet interconnect).
+    The evaluation process for LongBench and ZeroScrolls follows THUDM ([2024](#bib.bib26))
+    and Lab ([2024](#bib.bib15)). The implementation of Needle-in-a-Haystack test
+    follows [Kamradt](#bib.bib12) .
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: *KVMerger* for Llama2-7B/13B-chat and Mistral-7B-Instruct on LongBench
+    datasets.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| models | budget | method | 2wikimqa | gov_report | narrativeqa | pr_en |
+    multifieldqa_en | trec | multi_news | triviaqa | qasper | avg. |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 100% | Full Cache | 31.45 | 26.99 | 18.74 | 8.00 | 36.60 | 64.00 | 26.26
+    | 83.09 | 21.83 | 35.22 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | H2O | 29.96 | 24.86 | 17.48 | 7.00 | 33.58 | 63.50 | 26.00 | 82.51
+    | 21.04 | 34.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | CaM | 30.69 | 24.46 | 17.08 | 6.50 | 33.98 | 63.50 | 24.66 | 82.17
+    | 20.00 | 33.67 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 50% | *KVMerger* | 32.99 | 25.31 | 18.50 | 7.33 | 36.89 | 64.00 | 26.29
+    | 83.62 | 20.04 | 35.02 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | H2O | 30.57 | 24.48 | 17.85 | 7.00 | 32.17 | 63.00 | 25.37 | 80.89
+    | 20.04 | 33.49 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | CaM | 31.06 | 23.80 | 18.36 | 6.00 | 33.07 | 62.50 | 25.23 | 81.86
+    | 18.37 | 33.36 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Llama2-7B-chat | 35% | *KVMerger* | 32.29 | 25.24 | 19.12 | 7.00 | 33.82
+    | 63.50 | 25.64 | 82.76 | 21.09 | 34.50 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 100% | Full Cache | 13.21 | 27.59 | 14.42 | 15.25 | 27.44 | 68.50 | 26.69
+    | 87.42 | 17.15 | 33.07 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | H2O | 13.39 | 26.20 | 15.01 | 15.50 | 26.40 | 68.00 | 25.35 | 84.73
+    | 17.10 | 32.40 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | CaM | 13.30 | 25.88 | 13.47 | 15.00 | 26.96 | 67.50 | 26.06 | 84.65
+    | 16.58 | 32.16 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 50% | *KVMerger* | 13.46 | 26.63 | 14.4 | 16.00 | 27.29 | 68.50 | 26.12
+    | 87.48 | 17.22 | 33.01 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | H2O | 12.26 | 25.52 | 13.14 | 14.50 | 25.75 | 67.50 | 25.59 | 83.53
+    | 16.35 | 31.57 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | CaM | 13.43 | 25.37 | 13.58 | 12.50 | 25.70 | 67.50 | 25.04 | 84.95
+    | 16.34 | 31.60 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Llama2-13B-chat | 35% | *KVMerger* | 12.61 | 26.12 | 13.60 | 14.00 | 26.75
+    | 68.00 | 26.32 | 86.76 | 16.24 | 32.27 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 100% | Full Cache | 31.47 | 26.55 | 21.96 | 25.00 | 39.50 | 61.00 | 26.44
+    | 83.89 | 30.12 | 38.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | H2O | 29.21 | 19.91 | 17.65 | 8.00 | 25.50 | 53.00 | 19.95 | 74.55
+    | 21.51 | 29.92 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | CaM | 29.57 | 22.67 | 19.43 | 12.00 | 28.95 | 58.00 | 20.17 | 81.82
+    | 21.87 | 32.72 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 50% | *KVMerger* | 32.44 | 24.05 | 21.85 | 23.00 | 31.23 | 60.00 | 20.87
+    | 84.16 | 24.52 | 35.79 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | H2O | 12.30 | 5.16 | 3.64 | 0.62 | 11.95 | 37.50 | 18.99 | 17.08 |
+    14.05 | 13.48 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | CaM | 28.77 | 18.70 | 17.76 | 8.50 | 25.31 | 45.50 | 19.72 | 72.88
+    | 17.25 | 28.27 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Mistral-7B-Instruct | 35% | *KVMerger* | 30.77 | 20.99 | 23.58 | 23.50 |
+    28.10 | 60.5 | 19.94 | 83.82 | 24.13 | 35.04 |'
+  prefs: []
+  type: TYPE_TB
+- en: 5.2 Experimental Results on Long-context Tasks
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'LongBench Results The evaluation results of nine selected LongBench datasets
+    on Llama2-7B/13B-chat and Mistral-7B-Instruct-v1.0 are shown in Table [1](#S5.T1
+    "Table 1 ‣ 5.1 Experimental Settings ‣ 5 Experiment ‣ Model Tells You Where to
+    Merge: Adaptive KV Cache Merging for LLMs on Long-Context Tasks"). We compare
+    the current KV cache compression methods, including H2O, CaM, with our proposed
+    KV merging method *KVMerger* by preserving both $50\%$ of contexts in the KV cache.
+    Our results demonstrate that *KVMerger* consistently outperforms the other KV
+    cache compression techniques across nearly all selected datasets from LongBench.
+    Notably, the performance gaps between our algorithm and the full KV cache scenario
+    for both Llama2-7B/13B-chat and Mistral-7B-Instruct-v1.0 are significantly smaller
+    than the other KV compression methods. More importantly, our method achieves better
+    evaluation results on several tasks compared to the full cache scenario, highlighting
+    the efficacy and robustness of our approach on long-context tasks. Another interesting
+    finding is that the latest value states merging method, CaM, does not perform
+    well on long-context tasks. This may be attributed to the information loss results
+    from eviction of key states, despite the merging of value states.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mistral-7B-Instruct-v1.0 leverages the Grouped-Query-Attention (GQA) technique
+    to optimize KV cache memory usage. In this approach, each key state corresponds
+    to four query states. When applying the H2O method to each key state, rather than
+    duplicating key and value states, we use a single attention map. This attention
+    map is generated by averaging the values of four attention maps formed by the
+    four query states, which determines the states to be evicted. For the *KVMerger*
+    method, we also utilize this singular attention map to select pivotal states,
+    ensuring a fair comparison. Our results indicate a significant performance drop
+    for Mistral-7B-Instruct-v1.0 when using the H2O method. Conversely, *KVMerger*
+    demonstrates the smallest performance decline under both $35\%$ KV cache budgets,
+    highlighting its efficiency on GQA.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/56f971c3b43faac229c87fd76387bddd.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: The visualization of needle-in-a-haystack test on Llama2-7B-chat
+    with different KV cache compression methods. The x-axis represents the length
+    of contexts, and the y-axis represents the document depth where the needle is
+    inserted.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'ZeroScrolls Results We also evaluate Llama2-7B-chat on ZeroScrolls datasets
+    using different KV cache compression techniques, as shown in Table [2](#S5.T2
+    "Table 2 ‣ 5.2 Experimental Results on Long-context Tasks ‣ 5 Experiment ‣ Model
+    Tells You Where to Merge: Adaptive KV Cache Merging for LLMs on Long-Context Tasks").
+    The ZeroScrolls datasets are characterized by an average sample length of approximately
+    4300 words per topic, closely matching the maximum window size of pre-trained
+    Llama2-7B-chat models. This alignment indicates that the datasets are well-suited
+    for these models, ensuring effective processing and analysis without the risk
+    of truncating important information. Table [2](#S5.T2 "Table 2 ‣ 5.2 Experimental
+    Results on Long-context Tasks ‣ 5 Experiment ‣ Model Tells You Where to Merge:
+    Adaptive KV Cache Merging for LLMs on Long-Context Tasks") demonstrates that our
+    proposed KV cache merging method effectively restores the performance of the Llama2-7B-chat
+    model across all selected ZeroScrolls datasets under both $35\%$ cache budgets.
+    This suggests that *KVMerger* not only mitigates performance degradation but also
+    optimizes the model’s handling of extensive data sequences that approach the model’s
+    maximum context window, contributing to more robust outcomes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 2: *KVMerger* for Llama2-7B-chat on selected ZeroScrolls datasets'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| cache budget | Method | gov_report | SummScreenFD | QMSum | SQuALITY | Qasper
+    | NarrativeQA | BookSumSort | avg. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 100% | Full Cache | 17.40 | 14.10 | 15.20 | 19.50 | 22.50 | 15.40 | 3.00
+    | 15.30 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | H2O | 15.40 | 13.20 | 14.30 | 18.30 | 20.50 | 15.00 | 3.80 | 14.36 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CaM | 15.60 | 13.10 | 13.70 | 18.50 | 20.10 | 15.30 | 3.40 | 14.24 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 50% | *KVMerger* | 17.70 | 13.80 | 15.10 | 19.10 | 22.50 | 15.20 | 3.10 |
+    15.21 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | H2O | 14.80 | 11.60 | 14.20 | 17.80 | 17.70 | 14.70 | 3.60 | 13.49 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | CaM | 15.30 | 11.70 | 13.90 | 18.30 | 17.10 | 14.50 | 3.30 | 13.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 35% | *KVMerger* | 16.60 | 13.80 | 15.40 | 18.60 | 20.40 | 15.40 | 3.70 |
+    14.84 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Needle In A Haystack Results We also conduct a detailed comparison of *KVMerger*
+    with other KV cache compression techniques on retrieval tasks using the needle-in-a-haystack
+    test. This test involves placing a random fact or statement in the middle of a
+    long context window and assessing the model’s ability to retrieve this statement
+    across varying document depths and context lengths to measure performance. Specifically,
+    we test Llama2-7B-chat on document depths ranging from $5\%$ cache budgets. The
+    corresponding results are illustrated as Figure [5](#S5.F5 "Figure 5 ‣ 5.2 Experimental
+    Results on Long-context Tasks ‣ 5 Experiment ‣ Model Tells You Where to Merge:
+    Adaptive KV Cache Merging for LLMs on Long-Context Tasks"). Our findings indicate
+    that both CaM and our merging algorithm outperform the eviction method H2O. However,
+    our proposed method achieves the highest retrieval performance, consistently delivering
+    high scores across various context lengths and depth percentages. Notably, even
+    when the context length exceeds the pre-trained context length of the Llama2-7B-chat
+    model, our method maintains high scores at specific depth percentages.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.3 Ablation Study
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Choice of $\sigma$ as expressed in Equation 4 for each merging set at different
+    layers and found that the average value of computed $\sigma$ for most layers fluctuates
+    around 5, which aligns with the experiment results in Table [3](#S5.T3 "Table
+    3 ‣ 5.3 Ablation Study ‣ 5 Experiment ‣ Model Tells You Where to Merge: Adaptive
+    KV Cache Merging for LLMs on Long-Context Tasks").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 3: *KVMerger* with different $\sigma$ cache budget.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| $\sigma$ | 2wikimqa | gov_report | narrativeqa | pr_en | multifieldqa_en
+    | avg. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 0.5 | 29.45 | 24.11 | 18.82 | 6.00 | 35.56 | 22.79 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | 31.48 | 25.52 | 18.98 | 6.25 | 36.59 | 23.76 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | 28.65 | 25.16 | 18.64 | 4.17 | 36.79 | 22.68 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 3 | 30.84 | 25.19 | 18.51 | 4.67 | 37.48 | 23.34 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 31.59 | 25.65 | 18.09 | 5.83 | 36.25 | 23.48 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 5 | 32.99 | 25.31 | 18.50 | 7.33 | 36.89 | 24.20 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 6 | 31.69 | 25.39 | 18.45 | 7.83 | 35.82 | 23.84 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Choice of Pivotal State in Gaussian Kernel Weighted Merging As mentioned in
+    Section 4.2, the selection of pivotal state for each merging set is directly related
+    to the performance of *KVMerger*. The inappropriate selection of pivotal states
+    will result in the severe information distortion and even much worse information
+    loss than eviction-based compression algorithms. To show the significance of defining
+    the pivotal state as the state with the biggest aggregated attention scores, we
+    compare it with randomly selecting pivotal state within each merging set by using
+    Llama2-7B-chat model with $50\%$ cache budget. The comparison is shown in Table
+    [4](#S5.T4 "Table 4 ‣ 5.3 Ablation Study ‣ 5 Experiment ‣ Model Tells You Where
+    to Merge: Adaptive KV Cache Merging for LLMs on Long-Context Tasks"), from which
+    we can see that randomly selecting pivotal states are detrimental to LLMs’ performance
+    on long-context tasks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4: *KVMerger* with different methods of pivotal states selection.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Pivotal State | 2wikimqa | gov_report | narrativeqa | pr_en | multifieldqa_en
+    | avg. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 32.99 | 25.31 | 18.50 | 7.33 | 36.89 | 24.20 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Random | 30.01 | 24.07 | 17.72 | 6.50 | 33.30 | 22.12 |'
+  prefs: []
+  type: TYPE_TB
+- en: 6 Conclusion and Future Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this paper, we propose *KVMerger*, a dynamic KV cache merging method inspired
+    by the observation that key states exhibit high and persistent similarity within
+    each sequence, allowing for layer-wise KV cache compression. We initially abstract
+    the merging set identification problem as a constrained clustering problem and
+    introduce a variant of the AHC algorithm to identify merging sets based on cosine
+    similarities between key states. Furthermore, we implement a Gaussian Kernel weighted
+    merging method to merge key and value states within each merging set. Compared
+    to other KV cache eviction and merging methods, our approach achieves superior
+    results on the LongBench datasets under the same cache budget. Additionally, our
+    method effectively recovers the model’s long-context retrieval capabilities, as
+    demonstrated by the needle-in-a-haystack tests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Future work can explore several avenues to enhance and extend our proposed method.
+    First, investigating the impact of different clustering algorithms and similarity
+    measurements could provide insights into further optimizing the merging sets.
+    Second, applying our method to other LLMs including long-context fine-tuned models
+    and datasets would help assess its generalizability and robustness. Third, exploring
+    hybrid approaches that combine cache merging with other memory management techniques
+    might yield even more efficient solutions for long-context retrieval tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Acknowledgments
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'This work used Delta system at the National Center for Supercomputing Applications
+    through allocation CIS240055 from the Advanced Cyberinfrastructure Coordination
+    Ecosystem: Services & Support (ACCESS) program. ACCESS (Boerner et al., [2023](#bib.bib3))
+    is an advanced computing and data resource program supported by the U.S. National
+    Science Foundation (NSF) under the Office of Advanced Cyberinfrastructure awards
+    #2138259, #2138286, #2138307, #2137603 and #2138296\. The Delta advanced computing
+    resource is a joint effort of the University of Illinois Urbana-Champaign and
+    the National Center for Supercomputing Applications, and it is supported by the
+    National Science Foundation (award OAC 2005572) and the State of Illinois. The
+    work also used the Illinois Campus Cluster and NCSA NFI Hydro cluster, which are
+    supported by the University of Illinois Urbana-Champaign and the University of
+    Illinois System.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Anthropic (2023) Anthropic. Claude. [https://www.anthropic.com/claude](https://www.anthropic.com/claude),
+    2023. Language model developed by Anthropic.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bai et al. (2024) Yushi Bai, Xin Lv, Jiajie Zhang, Hongchang Lyu, Jiankai Tang,
+    Zhidian Huang, Zhengxiao Du, Xiao Liu, Aohan Zeng, Lei Hou, Yuxiao Dong, Jie Tang,
+    and Juanzi Li. Longbench: A bilingual, multitask benchmark for long context understanding,
+    2024. URL [https://arxiv.org/abs/2308.14508](https://arxiv.org/abs/2308.14508).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Boerner et al. (2023) Timothy J. Boerner, Stephen Deems, Thomas R. Furlani,
+    Shelley L. Knuth, and John Towns. ACCESS: Advancing Innovation: NSF’s Advanced
+    Cyberinfrastructure Coordination Ecosystem: Services & Support. In *Practice and
+    Experience in Advanced Research Computing (PEARC’23)*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bolya et al. (2023) Daniel Bolya, Cheng-Yang Fu, Xiaoliang Dai, Peizhao Zhang,
+    Christoph Feichtenhofer, and Judy Hoffman. Token merging: Your vit but faster,
+    2023. URL [https://arxiv.org/abs/2210.09461](https://arxiv.org/abs/2210.09461).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dai et al. (2024) Jincheng Dai, Zhuowei Huang, Haiyun Jiang, Chen Chen, Deng
+    Cai, Wei Bi, and Shuming Shi. Corm: Cache optimization with recent message for
+    large language model inference, 2024. URL [https://arxiv.org/abs/2404.15949](https://arxiv.org/abs/2404.15949).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ge et al. (2024) Suyu Ge, Yunan Zhang, Liyuan Liu, Minjia Zhang, Jiawei Han,
+    and Jianfeng Gao. Model tells you what to discard: Adaptive kv cache compression
+    for llms, 2024. URL [https://arxiv.org/abs/2310.01801](https://arxiv.org/abs/2310.01801).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Gemini Team (2024) etc. Gemini Team, Petko Georgiev. Gemini 1.5: Unlocking
+    multimodal understanding across millions of tokens of context, 2024. URL [https://arxiv.org/abs/2403.05530](https://arxiv.org/abs/2403.05530).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Guerreiro et al. (2023) Nuno M. Guerreiro, Elena Voita, and André F. T. Martins.
+    Looking for a needle in a haystack: A comprehensive study of hallucinations in
+    neural machine translation, 2023. URL [https://arxiv.org/abs/2208.05309](https://arxiv.org/abs/2208.05309).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'He et al. (2024) Yefei He, Luoming Zhang, Weijia Wu, Jing Liu, Hong Zhou, and
+    Bohan Zhuang. Zipcache: Accurate and efficient kv cache quantization with salient
+    token identification, 2024. URL [https://arxiv.org/abs/2405.14256](https://arxiv.org/abs/2405.14256).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hooper et al. (2024) Coleman Hooper, Sehoon Kim, Hiva Mohammadzadeh, Michael W.
+    Mahoney, Yakun Sophia Shao, Kurt Keutzer, and Amir Gholami. Kvquant: Towards 10
+    million context length LLM inference with KV cache quantization. *CoRR*, abs/2401.18079,
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Jiang et al. (2023) Albert Q. Jiang, Alexandre Sablayrolles, Arthur Mensch,
+    Chris Bamford, Devendra Singh Chaplot, Diego de las Casas, Florian Bressand, Gianna
+    Lengyel, Guillaume Lample, Lucile Saulnier, Lélio Renard Lavaud, Marie-Anne Lachaux,
+    Pierre Stock, Teven Le Scao, Thibaut Lavril, Thomas Wang, Timothée Lacroix, and
+    William El Sayed. Mistral 7b, 2023. URL [https://arxiv.org/abs/2310.06825](https://arxiv.org/abs/2310.06825).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '(12) George Kamradt. Llmtest: Needle in a haystack. [https://github.com/gkamradt/LLMTest_NeedleInAHaystack](https://github.com/gkamradt/LLMTest_NeedleInAHaystack).
+    Accessed: 2024-07-08.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kang et al. (2024) Hao Kang, Qingru Zhang, Souvik Kundu, Geonhwa Jeong, Zaoxing
+    Liu, Tushar Krishna, and Tuo Zhao. Gear: An efficient kv cache compression recipe
+    for near-lossless generative inference of llm, 2024. URL [https://arxiv.org/abs/2403.05527](https://arxiv.org/abs/2403.05527).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kim et al. (2023) Minchul Kim, Shangqian Gao, Yen-Chang Hsu, Yilin Shen, and
+    Hongxia Jin. Token fusion: Bridging the gap between token pruning and token merging,
+    2023. URL [https://arxiv.org/abs/2312.01026](https://arxiv.org/abs/2312.01026).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lab (2024) TAU NLP Lab. Zeroscrolls: Zero-shot summarization and reasoning
+    language system. [https://github.com/tau-nlp/zero_scrolls](https://github.com/tau-nlp/zero_scrolls),
+    2024. Accessed: 2024-07-02.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. (2024) Akide Liu, Jing Liu, Zizheng Pan, Yefei He, Gholamreza Haffari,
+    and Bohan Zhuang. Minicache: Kv cache compression in depth dimension for large
+    language models, 2024. URL [https://arxiv.org/abs/2405.14366](https://arxiv.org/abs/2405.14366).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. (2023a) Zechun Liu, Barlas Oguz, Changsheng Zhao, Ernie Chang, Pierre
+    Stock, Yashar Mehdad, Yangyang Shi, Raghuraman Krishnamoorthi, and Vikas Chandra.
+    LLM-QAT: data-free quantization aware training for large language models. *CoRR*,
+    abs/2305.17888, 2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. (2023b) Zichang Liu, Aditya Desai, Fangshuo Liao, Weitao Wang, Victor
+    Xie, Zhaozhuo Xu, Anastasios Kyrillidis, and Anshumali Shrivastava. Scissorhands:
+    Exploiting the persistence of importance hypothesis for llm kv cache compression
+    at test time, 2023b. URL [https://arxiv.org/abs/2305.17118](https://arxiv.org/abs/2305.17118).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: OpenAI (2023) OpenAI. Gpt-4 technical report. *arXiv preprint arXiv:2303.08774*,
+    2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Peysakhovich & Lerer (2023) Alexander Peysakhovich and Adam Lerer. Attention
+    sorting combats recency bias in long context language models, 2023. URL [https://arxiv.org/abs/2310.01427](https://arxiv.org/abs/2310.01427).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Ren & Zhu (2024) Siyu Ren and Kenny Q. Zhu. On the efficacy of eviction policy
+    for key-value constrained generative language model inference, 2024. URL [https://arxiv.org/abs/2402.06262](https://arxiv.org/abs/2402.06262).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Shaham et al. (2023) Uri Shaham, Maor Ivgi, Avia Efrat, Jonathan Berant, and
+    Omer Levy. Zeroscrolls: A zero-shot benchmark for long text understanding, 2023.
+    URL [https://arxiv.org/abs/2305.14196](https://arxiv.org/abs/2305.14196).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sheng et al. (2023) Ying Sheng, Lianmin Zheng, Binhang Yuan, Zhuohan Li, Max
+    Ryabinin, Beidi Chen, Percy Liang, Christopher Ré, Ion Stoica, and Ce Zhang. Flexgen:
+    High-throughput generative inference of large language models with a single GPU.
+    In *International Conference on Machine Learning, ICML 2023, 23-29 July 2023,
+    Honolulu, Hawaii, USA*, volume 202 of *Proceedings of Machine Learning Research*,
+    pp.  31094–31116\. PMLR, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Su et al. (2023) Jianlin Su, Yu Lu, Shengfeng Pan, Ahmed Murtadha, Bo Wen,
+    and Yunfeng Liu. Roformer: Enhanced transformer with rotary position embedding,
+    2023. URL [https://arxiv.org/abs/2104.09864](https://arxiv.org/abs/2104.09864).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Tang et al. (2024) Jiaming Tang, Yilong Zhao, Kan Zhu, Guangxuan Xiao, Baris
+    Kasikci, and Song Han. Quest: Query-aware sparsity for efficient long-context
+    llm inference, 2024. URL [https://arxiv.org/abs/2406.10774](https://arxiv.org/abs/2406.10774).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'THUDM (2024) THUDM. Longbench. [https://github.com/THUDM/LongBench](https://github.com/THUDM/LongBench),
+    2024. Accessed: 2024-07-02.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023a) Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier
+    Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal,
+    Eric Hambro, Faisal Azhar, et al. Llama: Open and efficient foundation language
+    models. *arXiv preprint arXiv:2302.13971*, 2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023b) Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert,
+    Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava,
+    Shruti Bhosale, et al. Llama 2: Open foundation and fine-tuned chat models. *arXiv
+    preprint arXiv:2307.09288*, 2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wan et al. (2024) Zhongwei Wan, Xinjian Wu, Yu Zhang, Yi Xin, Chaofan Tao,
+    Zhihong Zhu, Xin Wang, Siqi Luo, Jing Xiong, and Mi Zhang. D2o: Dynamic discriminative
+    operations for efficient generative inference of large language models, 2024.
+    URL [https://arxiv.org/abs/2406.13035](https://arxiv.org/abs/2406.13035).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Xiao et al. (2024) Guangxuan Xiao, Yuandong Tian, Beidi Chen, Song Han, and
+    Mike Lewis. Efficient streaming language models with attention sinks, 2024. URL
+    [https://arxiv.org/abs/2309.17453](https://arxiv.org/abs/2309.17453).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yang et al. (2024) June Yong Yang, Byeongwook Kim, Jeongin Bae, Beomseok Kwon,
+    Gunho Park, Eunho Yang, Se Jung Kwon, and Dongsoo Lee. No token left behind: Reliable
+    kv cache compression via importance-aware mixed precision quantization, 2024.
+    URL [https://arxiv.org/abs/2402.18096](https://arxiv.org/abs/2402.18096).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Yu et al. (2024a) Hao Yu, Zelan Yang, Shen Li, Yong Li, and Jianxin Wu. Effectively
+    compress kv heads for llm, 2024a. URL [https://arxiv.org/abs/2406.07056](https://arxiv.org/abs/2406.07056).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yu et al. (2024b) Zhongzhi Yu, Zheng Wang, Yonggan Fu, Huihong Shi, Khalid
+    Shaikh, and Yingyan Celine Lin. Unveiling and harnessing hidden attention sinks:
+    Enhancing large language models without training through attention calibration,
+    2024b. URL [https://arxiv.org/abs/2406.15765](https://arxiv.org/abs/2406.15765).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zeng et al. (2022) Wang Zeng, Sheng Jin, Wentao Liu, Chen Qian, Ping Luo, Wanli
+    Ouyang, and Xiaogang Wang. Not all tokens are equal: Human-centric visual analysis
+    via token clustering transformer, 2022. URL [https://arxiv.org/abs/2204.08680](https://arxiv.org/abs/2204.08680).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. (2024a) Liang Zhang, Anwen Hu, Haiyang Xu, Ming Yan, Yichen Xu,
+    Qin Jin, Ji Zhang, and Fei Huang. Tinychart: Efficient chart understanding with
+    visual token merging and program-of-thoughts learning, 2024a. URL [https://arxiv.org/abs/2404.16635](https://arxiv.org/abs/2404.16635).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. (2024b) Tianyi Zhang, Jonah Yi, Zhaozhuo Xu, and Anshumali Shrivastava.
+    Kv cache is 1 bit per channel: Efficient large language model inference with coupled
+    quantization, 2024b. URL [https://arxiv.org/abs/2405.03917](https://arxiv.org/abs/2405.03917).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '(37) Yuxin Zhang, Yuxuan Du, Gen Luo, Yunshan Zhong, Zhenyu Zhang, Shiwei Liu,
+    and Rongrong Ji. Cam: Cache merging for memory-efficient llms inference. In *Forty-first
+    International Conference on Machine Learning*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. (2023) Zhenyu Zhang, Ying Sheng, Tianyi Zhou, Tianlong Chen, Lianmin
+    Zheng, Ruisi Cai, Zhao Song, Yuandong Tian, Christopher Ré, Clark Barrett, Zhangyang
+    Wang, and Beidi Chen. H[2]o: Heavy-hitter oracle for efficient generative inference
+    of large language models, 2023. URL [https://arxiv.org/abs/2306.14048](https://arxiv.org/abs/2306.14048).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. (2024c) Zhenyu Zhang, Shiwei Liu, Runjin Chen, Bhavya Kailkhura,
+    Beidi Chen, and Atlas Wang. Q-hitter: A better token oracle for efficient llm
+    inference via sparse-quantized kv cache. *Proceedings of Machine Learning and
+    Systems*, 6:381–394, 2024c.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zirui Liu et al. (2023) Zirui Liu, Jiayi Yuan, Hongye Jin, Shaochen Zhong,
+    Zhaozhuo Xu, Vladimir Braverman, Beidi Chen, and Xia Hu. Kivi : Plug-and-play
+    2bit kv cache quantization with streaming asymmetric quantization. 2023. doi:
+    10.13140/RG.2.2.28167.37282. URL [https://rgdoi.net/10.13140/RG.2.2.28167.37282](https://rgdoi.net/10.13140/RG.2.2.28167.37282).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Appendix
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Lemma 3.1 (Formal version of Lemma 3.1). *Consider two vectors $\mathbf{k}_{m}$-th
+    elements of $\mathbf{k}_{m}$.*
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Proof.* Since'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\textit{similarity}\left(\mathbf{k}_{m},\mathbf{k}_{n}\right)=1,$ |  |
+    (9) |'
+  prefs: []
+  type: TYPE_TB
+- en: $\mathbf{k}_{m}$ are collinear. Therefore,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathbf{k}_{m}=\alpha\mathbf{k}_{n},$ |  | (10) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\alpha$ is a scalar. It means
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle k_{m,2j}$ |  | (11) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle k_{m,2j+1}$ |  | (12) |'
+  prefs: []
+  type: TYPE_TB
+- en: So,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\left[k_{m,2j},k_{m,2j+1}\right]^{T}=\alpha\left[k_{n,2j},k_{n,2j+1}\right]^{T}.$
+    |  | (13) |'
+  prefs: []
+  type: TYPE_TB
+- en: As a result,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\textit{similarity}\left(\mathbf{k}_{m,j},\mathbf{k}_{n,j}\right)=1$
+    |  | (14) |'
+  prefs: []
+  type: TYPE_TB
+- en: Lemma 3.2 (Formal version of Lemma 3.2). *Consider integer $j$ as $\mathbf{k}_{m,j}^{{}^{\prime}}=\mathbf{k}_{m,j}/e^{im\theta_{j}}$,
+    we have:*
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\langle\mathbf{k}_{m,j}^{{}^{\prime}},\mathbf{k}_{n,j}^{{}^{\prime}}\rangle$,
+    respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Proof.* Since $j$, so'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $-1<\frac{-2j}{d}\leq 0.$ |  | (15) |'
+  prefs: []
+  type: TYPE_TB
+- en: And $b$ by default Su et al. ([2023](#bib.bib24)). Therefore,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $0<b^{\frac{-2j}{d}}\leq 1,$ |  | (16) |'
+  prefs: []
+  type: TYPE_TB
+- en: which means
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $0<\theta_{j}\leq 1.$ |  | (17) |'
+  prefs: []
+  type: TYPE_TB
+- en: Now, focus on the similarity between $\mathbf{k}_{m,j}$, and
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (18) |'
+  prefs: []
+  type: TYPE_TB
+- en: It is easy to derive that
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\&#124;\mathbf{k}_{m,j}^{{}^{\prime}}e^{im\theta_{j}}\&#124;$
+    |  | (19) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\&#124;\mathbf{k}_{n,j}^{{}^{\prime}}e^{in\theta_{j}}\&#124;$
+    |  | (20) |'
+  prefs: []
+  type: TYPE_TB
+- en: since the exponential terms do not change the vectors’ magnitude.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Then, substitute the complex forms of $\mathbf{k}_{m,j}^{{}^{\prime}}$ and obtain
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (21) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'From Euler equation, Equation [21](#A1.E21 "In Appendix A Appendix ‣ Model
+    Tells You Where to Merge: Adaptive KV Cache Merging for LLMs on Long-Context Tasks")
+    can be further expanded as'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | $\displaystyle\langle\mathbf{k}_{m,j}^{{}^{\prime}}e^{im\theta_{j}},\mathbf{k}_{n,j}^{{}^{\prime}}e^{in\theta_{j}}\rangle$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle=$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle=$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  | (22) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Substitute Equation [22](#A1.E22 "In Appendix A Appendix ‣ Model Tells You
+    Where to Merge: Adaptive KV Cache Merging for LLMs on Long-Context Tasks") back
+    into Equation [18](#A1.E18 "In Appendix A Appendix ‣ Model Tells You Where to
+    Merge: Adaptive KV Cache Merging for LLMs on Long-Context Tasks"), and'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\frac{\langle\mathbf{k}_{m,j},\mathbf{k}_{n,j}\rangle}{\&#124;\mathbf{k}_{m,j}\&#124;\cdot\&#124;\mathbf{k}_{n,j}\&#124;}=$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle=$ |  | (23) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Let $\phi$, then Equation [23](#A1.E23 "In Appendix A Appendix ‣ Model Tells
+    You Where to Merge: Adaptive KV Cache Merging for LLMs on Long-Context Tasks")
+    can be rewrite as'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\frac{\langle\mathbf{k}_{m,j},\mathbf{k}_{n,j}\rangle}{\&#124;\mathbf{k}_{m,j}\&#124;\cdot\&#124;\mathbf{k}_{n,j}\&#124;}=$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle=$ |  | (24) |'
+  prefs: []
+  type: TYPE_TB
+- en: Since the similarity between $\mathbf{k}_{m,j}$ nearly equals 1 as we assumed,
+    it can be obtained that
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\phi=\left(m-n\right)\theta_{j}.$ |  | (25) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'From Equation [17](#A1.E17 "In Appendix A Appendix ‣ Model Tells You Where
+    to Merge: Adaptive KV Cache Merging for LLMs on Long-Context Tasks"),'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle 0<$ |  | (26) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle m-n\leq$ |  | (27) |'
+  prefs: []
+  type: TYPE_TB
+- en: As a result,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (28) |'
+  prefs: []
+  type: TYPE_TB

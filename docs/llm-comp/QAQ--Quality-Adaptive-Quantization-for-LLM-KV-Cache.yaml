@@ -1,0 +1,975 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:49:51'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'QAQ: Quality Adaptive Quantization for LLM KV Cache'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2403.04643](https://ar5iv.labs.arxiv.org/html/2403.04643)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Shichen Dong^(∗1), Wen Cheng^(∗1), Jiayu Qin¹, Wei Wang¹ ¹Nanjing University
+    {scdong, wcheng, jiayuqin}@smail.nju.edu.cn, ww@nju.edu.cn
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The emergence of LLMs has ignited a fresh surge of breakthroughs in NLP applications,
+    particularly in domains such as question-answering systems and text generation.
+    As the need for longer context grows, a significant bottleneck in model deployment
+    emerges due to the linear expansion of the Key-Value (KV) cache with the context
+    length. Existing methods primarily rely on various hypotheses, such as sorting
+    the KV cache based on attention scores for replacement or eviction, to compress
+    the KV cache and improve model throughput. However, heuristics used by these strategies
+    may wrongly evict essential KV cache, which can significantly degrade model performance.
+    In this paper, we propose QAQ, a Quality Adaptive Quantization scheme for the
+    KV cache. We theoretically demonstrate that key cache and value cache exhibit
+    distinct sensitivities to quantization, leading to the formulation of separate
+    quantization strategies for their non-uniform quantization. Through the integration
+    of dedicated outlier handling, as well as an improved attention-aware approach,
+    QAQ achieves up to $10\times$ the compression ratio of the KV cache size with
+    a neglectable impact on model performance. QAQ significantly reduces the practical
+    hurdles of deploying LLMs, opening up new possibilities for longer-context applications.
+    The code is available at github.com/ClubieDong/KVCacheQuantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '^†^†footnotetext: $*$ Co-first author, contributed equally.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Large Language Models (LLMs) demonstrate state-of-the-art performance on various
+    Natural Language Processing (NLP) benchmarks Beeching et al. ([2023](#bib.bib2)).
+    These LLMs showcased exceptional potential across a multitude of practical applications,
+    including but not limited to text generation, conversation processing, and knowledge
+    question answering Chang et al. ([2023](#bib.bib5)). However, deploying these
+    models efficiently poses a challenge due to the sequential nature of the generative
+    inference process. That is, sequentially processing one token at a time requires
+    accessing all previously generated tokens for computation. In practical computations,
+    such as GPT series Brown et al. ([2020](#bib.bib4)), LLaMA series Touvron et al.
+    ([2023](#bib.bib17)), and OPT series Zhang et al. ([2022](#bib.bib20)), the generative
+    inference of these LLMs typically incorporates the KV cache mechanism to improve
+    the efficiency of computation resource utilization. KV cache stores the computed
+    values of the Key-Value vector from previous attention calculations and reuses
+    them when computing the current token to save extra costs associated with redundant
+    calculations. While being a widely used optimization method, as the model size
+    and context length continue to increase, the storage overhead of the KV cache
+    itself also grows dramatically, imposing significant pressure on the on-device,
+    especially the high-cost GPU memory. Reducing the memory footprint of the KV cache
+    has become a highly active research topic Zhu et al. ([2023](#bib.bib22)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Currently, there is a substantial body of research addressing the efficient
+    utilization of GPU memory in memory-constrained scenarios. Offloading is an intuitive
+    solution for handling insufficient GPU memory during model inference. Although
+    offloading can alleviate the pressure on GPU memory, implementing offloading specifically
+    for the KV cache is a non-trivial problem, as it is constrained by various factors
+    such as data transmission bandwidth limitations. Additionally, approaches like
+    sparse transformers Child et al. ([2019](#bib.bib6)) and multi-query attention
+    Pope et al. ([2023](#bib.bib15)) are designed to reduce cache sizes directly;
+    however, applying them directly to optimize the KV cache may result in significant
+    performance degradation Ge et al. ([2023](#bib.bib11)). Recently, pioneering studies
+    have emerged, focusing on the direct optimization of the KV cache to minimize
+    its footprint in GPU memory. However, these methods often rely on attention values
+    to eliminate redundant portions from the KV cache, retaining what is considered
+    essential. Nevertheless, these approaches may lead to erroneously removing crucial
+    KV cache and significantly degrading the performance of the model Zhang et al.
+    ([2023](#bib.bib21)). Naturally, it leads to the question: is there a direct quantization
+    method that can avoid the drawbacks mentioned above, while achieving leading performance?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this paper, we propose QAQ, a quality adaptive quantization scheme for KV
+    cache in LLMs. Quantization is a commonly employed method for compressing model
+    sizes and has been widely utilized for the compression of weights and activations
+    Zhu et al. ([2023](#bib.bib22)). However, compressing the KV cache remains a challenging
+    task. There are three key insights that inspire QAQ.
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: First, key cache and value cache exhibit distinct sensitivities to quantization,
+    a proposition validated through theoretical analyses and empirical experiments.
+    This necessitates the development of separate quantization strategies for key
+    cache and value cache.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Second, the hypothesis of persistence of importance has exceptions. Previous
+    works proposed the hypothesis of the persistence of importance, advocating compression
+    based on importance (attention-aware). We discovered that, despite its validity
+    in the majority of cases, there exist a number of exceptions. This implies the
+    need for careful handling of exceptions when quantizing based on attention.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Third, outliers play a crucial role. While this has been acknowledged in weight
+    and activation quantization, we verified that outliers also exert a significant
+    impact on the KV cache quantization. Consequently, a dedicated treatment for quantizing
+    outliers is required.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: With these considerations, QAQ achieves nearly a $10\times$ compression. We
+    make our code publicly available for replication.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/86ba0047b149852bf14d1228f1c56b70.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Calculation process of quantized key and value vectors, $\frac{1}{\sqrt{D}}$
+    is neglected.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Problem Description and Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we first introduce problem profiling, followed by related work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.1 Problem Description
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The inference process of an auto-regressive generative LLM typically includes
+    two procedures, prompt encoding and token generation. In the prompt encoding procedure,
+    for each token generation, the LLM requires contextual information from previous
+    tokens, *i.e.*, key and value vectors (KV vectors). KV vectors are stored in the
+    KV cache once they are generated to eliminate redundant computations. When a new
+    token is generated in the token generation procedure, its associated KV vectors
+    are appended to the KV cache, which implies that the size of the KV cache linearly
+    increases with the length of the token sequence. However, the KV cache demonstrates
+    a linear growth relationship with sequence length. As the model requires longer
+    contexts, the KV cache becomes a substantial performance bottleneck. Taking OPT-175B
+    as an example, with a total of 96 layers and a hidden size of 12288, its weights
+    occupy 325GB memory, while the KV cache is $3.54\times$ larger, reaching 1152GB
+    under its maximum sequence length.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We formally define the problem of quantization of the KV cache, we focus on
+    the memory footprint of the KV cache in the attention calculation. Denote $\textbf{Q}\in\mathbb{R}^{1\times
+    D}$ represents the product of S and V. All the notions and their shape are illustrated
+    in Figure [1](#S1.F1 "Figure 1 ‣ 1 Introduction ‣ QAQ: Quality Adaptive Quantization
+    for LLM KV Cache").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For a specific quantization method $C$, we choose the method that minimizes
+    the loss of accuracy and at the same time using the least memory, as follows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle C^{*}=\text{argmin}_{C\in\mathcal{C}}\ \text{KVCacheMemory}(C)\quad$
+    | s.t. |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\left\lVert\text{Softmax}\left(\frac{1}{\sqrt{D}}\textbf{Q}\textbf{K}^{T}\right)-\text{Softmax}\left(\frac{1}{\sqrt{D}}\textbf{Q}\hat{\textbf{K}}^{T}\right)\right\rVert^{2}_{2}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\left\lVert\text{Softmax}\left(\frac{1}{\sqrt{D}}\textbf{Q}\textbf{K}^{T}\right)\textbf{V}-\text{Softmax}\left(\frac{1}{\sqrt{D}}\textbf{Q}\hat{\textbf{K}}^{T}\right)\hat{\textbf{V}}\right\rVert^{2}_{2}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\mathcal{C}$ is the constrained quantization loss for S and X, respectively,
+    and are hyper-parameters to control the aim of accuracy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2 Related Work
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'To alleviate the practical deployment challenges associated with the increasing
+    scale of models, numerous methods have been developed in recent years for model
+    compression. The memory footprint of a LLM consists of three components: model
+    weights, activation, and KV cache. Early compression techniques primarily targeted
+    the first two components Zhu et al. ([2023](#bib.bib22)). Among these, the most
+    representative categories include quantization, pruning, distillation, and low-rank
+    approximation. In the field of model compression, quantization is a widely embraced
+    method. Quantization involves converting the floating-point representations within
+    the model into discrete forms, such as integers, which can significantly reduce
+    the storage requirement. Carefully designed quantization methods aim to minimize
+    the accuracy loss to an acceptable range. Quantization can be categorized into
+    two main types: quantization-aware training (QAT) and post-training quantization
+    (PTQ). QAT is less practical due to the substantial re-training costs, while PTQ
+    without careful design may lead to severe accuracy degradation. In the early stage
+    of PTQ, certain approaches focus on quantizing only the weight of LLMs. OPTQ Frantar
+    et al. ([2022b](#bib.bib9)) introduces 3 or 4 bits quantization for weights with
+    improved performance. LLM.int8() Dettmers et al. ([2022](#bib.bib7)) exploits
+    the importance of the outliers and employs vector-wise quantization and mixed-precision
+    decomposition for outliers. AWQ Lin et al. ([2023](#bib.bib13)) finds only $1\%$
+    of overall weights have a great impact on the performance of the model, it proposes
+    attention-aware quantization based on this insight. ZeroQuant Yao et al. ([2022](#bib.bib18))
+    integrates a quantization scheme for both weight and activation in LLMs. As the
+    model demands higher capabilities for handling extremely long contexts, compressing
+    the KV cache becomes pronounced. There is a limited body of recent art directly
+    towards compressing the KV cache in LLM to mitigate the bottleneck. FastGen Ge
+    et al. ([2023](#bib.bib11)) develops an adaptive compression method for the KV
+    cache, leveraging the observation that abundant structures exist in attention
+    modules. H2O Zhang et al. ([2023](#bib.bib21)) exploits the importance of a small
+    set of tokens and proposes an efficient eviction strategy for the KV cache. Scissorhands
+    Liu et al. ([2023](#bib.bib14)) validates the persistence of importance hypothesis
+    for the KV cache and reduces the storage buffer. However, these methods rely on
+    attention values to eliminate redundant parts in the KV cache, retaining the so-called
+    important portions. Nevertheless, any misjudgment of importance leading to the
+    loss of crucial cache can significantly degrade the performance of the model.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/aac032fb460fa829319609ac9eb448b4.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) KV cache exhibits different sensitivity to quantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/82574143a2b930c68a4eb7e56a670b4b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Exceptions in attention matrix.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/72c0ab79ae6dea615f899863a0c835f5.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (c) Distribution of KV cache value and outliers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 2: The experiment demonstration of our key insights.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Insights
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we will introduce the exposition of the three key insights
+    that inspire our design.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Key Cache and Value Cache Exhibit Distinct Sensitivities to Quantization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Given the distinct roles of key vector and value vector in attention computations,
+    the impact of quantization on the key cache and value cache yields disparate outcomes.
+    The theoretical derivation supporting this assertion is as follows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We first investigate the partial derivative of $X_{j}$ as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\frac{\partial X_{j}}{\partial V_{ti}}=\begin{cases}0&amp;i\neq
+    j\\ S_{t}&amp;i=j\end{cases}\text{.}$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Similarly, we investigate the partial derivative of $X_{j}$ as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\frac{\partial X_{j}}{\partial K_{ti}}=$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'From the above two equations, it is evident that changes in $K$. In other words,
+    the key cache is more sensitive to quantization, quantizing key cache results
+    in more severe performance degradation. To validate our theoretical analysis,
+    we utilize a uniform quantization approach to quantize the key cache and value
+    cache individually in LLaMA 2-7B. Subsequently, we assess the model’s accuracy
+    in responding to 1,000 randomly sampled questions from HellaSwag Zellers et al.
+    ([2019](#bib.bib19)). The results are depicted in Figure [2(a)](#S2.F2.sf1 "In
+    Figure 2 ‣ 2.2 Related Work ‣ 2 Problem Description and Related Work ‣ QAQ: Quality
+    Adaptive Quantization for LLM KV Cache"). Notably, the key cache and value cache
+    exhibit distinct sensitivities to the same uniform quantization granularity. Specifically,
+    when uniformly quantizing the value cache to 2 bits only, the model’s performance
+    maintains a relatively high accuracy. However, in the case of only uniformly quantizing
+    the key cache to 2 bits, the model’s performance degrades significantly, aligning
+    with our derived conclusions. This underscores the necessity of employing distinct
+    quantization strategies for the key cache and value cache to acquire the best
+    performance. To the best of our knowledge, we are the first ever to exploit this
+    observation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Persistence of Importance has Exceptions
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The persistence of important tokens, which means the specific tokens that have
+    larger attention value are the only ones significant for now and future steps
+    in the LLM inference process, has been raised in the past works Liu et al. ([2023](#bib.bib14)).
+    Although this finding holds in most cases, there are still some exceptions where
+    tokens that were initially less significant become suddenly crucial in the subsequent
+    process of generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure [2(b)](#S2.F2.sf2 "In Figure 2 ‣ 2.2 Related Work ‣ 2 Problem Description
+    and Related Work ‣ QAQ: Quality Adaptive Quantization for LLM KV Cache") illustrates
+    the attention computations matrix for the $1^{st}$ head of LLaMA 2-7B Touvron
+    et al. ([2023](#bib.bib17)), after the inference process on a randomly selected
+    question from HellaSwag Zellers et al. ([2019](#bib.bib19)). It is evident that
+    the importance of the majority of tokens tends to persist, indicating a relatively
+    stable importance level. However, there are exceptions where the importance of
+    a few tokens deviates. Specifically, as illustrated by exception #1 and exception
+    #2, certain tokens, initially considered less important, undergo a sudden shift
+    in importance during a specific instance of inference. Without additional treatment
+    for these exceptional cases, based on the assumptions of existing methodologies,
+    these exceptional tokens might be evicted or discarded before demonstrating their
+    importance. This could result in the loss of information when their importance
+    changes and they are required for computation, subsequently impacting the model’s
+    performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In our design, we propose the attention window as the solution, which stores
+    the maximum value from the previous $n$ attention scores for each token, addressing
+    the exceptional cases mentioned above.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Outliers in KV Cache Matter
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The handling of outliers is of paramount importance as they can significantly
+    impact model performance when formulating quantization strategies. Existing works
+    have demonstrated a profound understanding of outliers in model weights and activations.
+    For instance, LLM.int8() Dettmers et al. ([2022](#bib.bib7)) employs vector-wise
+    quantization and mixed-precision decomposition to address outliers in the model’s
+    weights. OWQ Lee et al. ([2023](#bib.bib12)) theoretically analyzes how activation
+    outliers amplify errors in weight quantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The outliers in the KV cache also play an important role. After randomly testing
+    1,000 questions from HellaSwag using the LLaMA 2-7B model, the normalized numerical
+    distributions of the key cache and value cache are depicted in Figure [2(c)](#S2.F2.sf3
+    "In Figure 2 ‣ 2.2 Related Work ‣ 2 Problem Description and Related Work ‣ QAQ:
+    Quality Adaptive Quantization for LLM KV Cache"). We have magnified the tail for
+    better visibility. Please note that the jagged distribution in the figure is a
+    result of floating-point precision. The graph reveals a substantial presence of
+    outliers in both the key cache and value cache. Further experiments indicate that
+    neglecting to address these outliers significantly impacts the model’s performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our approach involves the implementation of mixed precision, specifically assigning
+    a separate storage precision for outliers during quantization. This strategy aims
+    to minimize performance degradation attributable to precision loss associated
+    with outlier values.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Quality Adaptive Quantization Method for Key Cache and Value Cache
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we first derive the formulas for KV cache quantization. Next,
+    we show how this quantification approach is employed in the text generation procedure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Quantitative Formula Derivation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The idea behind the derivation of our formula is as follows: We regard the
+    quantized KV cache ($\hat{\textbf{K}}$ are satisfied.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Value cache quantization. We start with the quantization of value cache, which
+    is simpler in comparison. The value at index $d$ in the output of the self-attention
+    module is given by:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\hat{X}_{d}=\sum_{t=1}^{T}S_{t}\cdot\hat{V}_{td}\text{,}$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where the standard deviation of $\hat{V}_{td}$ can be expressed as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\sigma^{2\left(\textbf{X}\right)}_{d}=\sum_{t=1}^{T}S_{t}^{2}\cdot\sigma^{2\left(\textbf{V}\right)}_{t}\text{,}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'which implies that the error of $X_{d}$, the following constraint must be satisfied:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\sigma^{\left(\textbf{V}\right)}_{t}\leq\frac{1}{\sqrt{T}}\cdot\frac{\sigma^{\left(\textbf{X}\right)}_{\text{max}}}{\left\lvert
+    S_{t}\right\rvert}\text{.}$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: This formula suggests that the error of value cache at each token should be
+    inversely proportional to its corresponding attention value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Key cache quantization. Due to the involvement of the Softmax function, the
+    quantization of key cache is inherently more complex. The attention score of token
+    $t$ is given by:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Given that $\hat{A}_{t}$ according to the central limit theorem, where:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'By definition, $e^{\hat{A}_{t}}$ with the mean and variance being:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathbb{E}\left[e^{\hat{A}_{t}}\right]$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\text{Var}\left[e^{\hat{A}_{t}}\right]$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Similarly, we expect the uniformity in error contribution from each token,
+    implying that $e^{\hat{A}_{t}}$ is approximately:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\sigma^{2\left(\textbf{S}\right)}_{t}\approx$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle=$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'To ensure that $\sigma^{2\left(\textbf{S}\right)}_{t}$, we have:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: This inequality suggests that the upper bound of $\sigma^{\left(\textbf{K}\right)}_{t}$),
+    which varies with each inference. To address this variability, we precompute the
+    distribution of the squared norm of query tensors and use the upper 10% quantile
+    of this distribution in the formula. In this way, the inequality holds in 90%
+    of cases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Determining quantization bits. In the final step, we determine the quantization
+    bits of KV cache for each token $t$) calculated above. Owing to the symmetry between
+    the key cache and value cache in this step, we only demonstrate the derivation
+    using key cache K.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To quantize key cache into $B^{\left(\textbf{K}\right)}_{t}$ satisfies:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $2\cdot\Delta^{\left(\textbf{K}\right)}_{t}\cdot 2^{B^{\left(\textbf{K}\right)}_{t}}=K_{t}^{\text{max}}-K_{t}^{\text{min}}\text{.}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Given that the standard deviation of the above uniform distribution $\sigma^{\left(\textbf{K}\right)}_{t}$,
+    we get:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $B^{\left(\textbf{K}\right)}_{t}=\left\lceil\log_{2}\left(\frac{K_{t}^{\text{max}}-K_{t}^{\text{min}}}{2\sqrt{3}\cdot\sigma^{\left(\textbf{K}\right)}_{t}}\right)\right\rceil\text{.}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 4.2 Methods
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Attention score prediction. Our quantization method necessitates the attention
+    scores that quantify the degree to which future tokens attend to preceding tokens.
+    However, these attention scores are not available at the time of quantization.
+    To address this limitation, we invoke the *persistence of importance* theory,
+    which posits that the attention scores (*i.e.*, importance) of each token remain
+    relatively constant (*i.e.*, persistence) throughout the process of token generation.
+    Consequently, we can approximate future attention scores by using the current
+    ones, and use it in the quantization formulas.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Nevertheless, as stated in Section [3.2](#S3.SS2 "3.2 Persistence of Importance
+    has Exceptions ‣ 3 Insights ‣ QAQ: Quality Adaptive Quantization for LLM KV Cache"),
+    certain attention scores exhibit abrupt increments, which poses challenges to
+    the quantization method, since quantization is irreversible, we can only quantize
+    caches from higher to lower bits and not vice versa. To mitigate this issue, we
+    propose *attention window*, a method that keeps track of the attention scores
+    of each token and predicts the future attention scores as the maximum value within
+    a window of the preceding $n$ scores. This strategy ensures that aggressive quantization
+    to lower bits is undertaken only after a sequence of consistently low attention
+    scores has been observed, thereby being confident that future scores will remain
+    low.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Outliers. Outliers of KV cache have a significant impact on the model’s performance,
+    as highlighted in Section [3.3](#S3.SS3 "3.3 Outliers in KV Cache Matter ‣ 3 Insights
+    ‣ QAQ: Quality Adaptive Quantization for LLM KV Cache"). We define outliers as
+    the values in the KV cache that exceed the $\alpha\%$ is a hyperparameter that
+    controls the proportion of values deemed as outliers. To mitigate the impact of
+    outliers, we introduce a mixed-precision quantization approach. Specifically,
+    we keep outliers unquantized and store them in a sparse matrix at full precision.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Compared to quantizing KV cache uniformly, the benefits of this method are
+    twofold: 1) the important outliers themselves are stored accurately without quantization
+    error; 2) the quantization of the remaining values in KV cache can be more granular
+    because the distribution range is significantly reduced without outliers. Our
+    experiments also demonstrate that this method effectively avoids the performance
+    degradation caused by quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Integration in text generation process. Current autoregressive LLMs generate
+    text token-by-token. Within each inference iteration with our quantization method
+    integrated, the model takes in a new token, combined with the quantized KV cache
+    of previous tokens, and outputs the KV cache of the new token. We copy the unquantized
+    new KV cache into CPU memory for future use, and calculate the quantization bits
+    for all existing tokens using the previously derived formula. For tokens whose
+    newly-calculated quantization bits are lower than the current bits, we further
+    quantize them to the lower bits. For those otherwise, we take the unquantized
+    KV cache from CPU memory and re-quantize it to the required bits. Although this
+    method introduces additional transfers between CPU and GPU memory, our attention
+    window technique can effectively reduce this overhead though cautious quantization
+    strategy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Methods | Backbone model | Task | Compression ratio with less than $1\%$
+    acc. drop |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ScissorhandsLiu et al. ([2023](#bib.bib14)) | OPT-6B | HellaSwag-Five shot
+    | 3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PIQA-Five shot | 5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MathQA-Five shot | 5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-13B | HellaSwag-Five shot | 5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PIQA-Five shot | 5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MathQA-Five shot | 5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| H2OZhang et al. ([2023](#bib.bib21)) | OPT-30B | PIQA | 5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MathQA | 5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| QAQ | LLaMA 2-7B | HellaSwag-Zero shot | 7.477 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PIQA-Zero shot | 9.022 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MathQA-Zero shot | 7.477 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA 2-13B | HellaSwag-Zero shot | 8.394 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PIQA-Zero shot | 9.024 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MathQA-Zero shot | 7.888 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 1: The experiment performance of QAQ vs. SOTA methods.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Task | w/o outliers acc. | w/o outliers compression ration | w 1%
+    outliers acc. | w 1% outliers compression ration |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA 2-7B | HellaSwag | 0.572 | 7.981 | 0.722 | 7.629 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PIQA | 0.707 | 7.695 | 0.763 | 7.333 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MathQA | 0.250 | 7.969 | 0.279 | 7.497 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA 2-13B | HellaSwag | 0.660 | 7.938 | 0.766 | 7.583 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PIQA | 0.737 | 7.614 | 0.789 | 7.223 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MathQA | 0.257 | 7.928 | 0.287 | 7.453 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: The ablation result of outliers in QAQ.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Evaluation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we first introduce the experiment setting then we present the
+    results that show QAQ archives up to near $10\times$ compression of KV cache memory
+    footprint with no compromise in accuracy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.1 Experiment Settings
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Our experiments are based on a representative LLM model family, LLaMA 2 with
+    model sizes ranging from 7 billion and 13 billion. The outliers ratio is set as
+    $1\%$. We compare the accuracy of QAQ-LLaMA against the original LLaMA on a number
+    of downstream tasks: HellaSwag Zellers et al. ([2019](#bib.bib19)), MathQA Amini
+    et al. ([2019](#bib.bib1)), PIQA Bisk et al. ([2020](#bib.bib3)). The evaluation
+    uses a similar architecture as lm-eval-harness Gao et al. ([2021](#bib.bib10))
+    with zero shot in every task, all experiments are conducted on a server with 8
+    NVIDIA V100 32GB GPUs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.2 Compression Ratio vs. Accuracy
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We present the experimental evaluation results depicting the variations in
+    accuracy and compression ratio for QAQ in Figure [3](#S5.F3 "Figure 3 ‣ 5.2 Compression
+    Ratio vs. Accuracy ‣ 5 Evaluation ‣ QAQ: Quality Adaptive Quantization for LLM
+    KV Cache"). The compression ratio is defined as the average ratio of the quantized
+    KV cache size to the original KV cache size, where 1$\times$ compressed model’s
+    performance approaches that of the uncompressed model, indicating the robust capability
+    of QAQ to significantly compress the KV cache size without compromising performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/3d784e31352f340aaf0d47f62b0b5e4d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) LLaMA 2-7B Zero shot.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a69ee895e7ff330c5ab516eac581e189.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) LLaMA 2-13B Zero shot.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 3: Experiment performance of QAQ.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.3 Comparison
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We conducted a comparative analysis with existing state-of-the-art compression
+    methodologies. In the realm of model quantization, the widespread practice of
+    uniformly quantizing parameters has exhibited notable compression efficacy Frantar
+    et al. ([2022a](#bib.bib8)). Considering the pivotal role played by outliers during
+    quantization, we retained outliers within the framework of uniform quantization.
+    The performance evaluation of QAQ is juxtaposed with that of the uniform quantization
+    approach, as illustrated in Figure [4](#S5.F4 "Figure 4 ‣ 5.3 Comparison ‣ 5 Evaluation
+    ‣ QAQ: Quality Adaptive Quantization for LLM KV Cache"). The compression ratio
+    in the scatter plot is determined by the ratio of the compressed KV cache size
+    to the original KV cache size. Closer proximity of data points to the upper-right
+    corner of the figure indicates higher compression ratios and better performance
+    guarantees, signifying superior overall performance. It is evident that the envelope
+    formed by the QAQ, which is colored in red, data points encompasses the blue data
+    points across all tasks in both models. This implies that the LLaMA models quantized
+    using QAQ, whether in the 7B or 13B parameter specifications, exhibit significantly
+    superior performance in the four downstream tasks compared to uniform quantization.
+    This underscores the exceptional efficacy of the QAQ quantization strategy.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/cf0aeb870546153a59f7013f8fc98ec1.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) HellaSwag LLaMA 2-7B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d74aedf62657fe52d939a59b8f883d70.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) MathQA LLaMA 2-7B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/3a989b7422bfd280b0a21772c467b8fe.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (c) PIQA LLaMA 2-7B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/4cff47d52e57ebe94d35112d261c0959.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (d) HellaSwag LLaMA 2-13B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/868391e458f4cc4acb2080ff6a6691ab.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (e) MathQA LLaMA 2-13B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/4186bbc3bb4d0a9a55ca142d863494b4.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (f) PIQA LLaMA 2-13B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 4: Experiment result of QAQ v.s. non-attention quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For the existing SOTA techniques in compressing KV cache, we present a comparative
+    analysis of QAQ in Table [1](#S4.T1 "Table 1 ‣ 4.2 Methods ‣ 4 Quality Adaptive
+    Quantization Method for Key Cache and Value Cache ‣ QAQ: Quality Adaptive Quantization
+    for LLM KV Cache"). It is evident that QAQ achieves a notable $1.6-1.8\times$
+    improvement in lossless compression ratio across multiple downstream tasks when
+    compared to the current SOTA methods. The results substantiate the outstanding
+    performance of QAQ.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.4 Ablations
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To verify the crucial role of outliers in quantization, we conducted ablation
+    experiments while keeping the remaining experimental conditions unchanged.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Outliers. To evaluate the outliers’ role in the quantization method, we conduct
+    the ablation experiment on the outliers. The experiments were conducted on the
+    same three downstream tasks, distinguishing between two groups: one where outliers
+    were treated separately and another where no special treatment was applied. The
+    presence of outliers was determined based on the numerical distribution. The experimental
+    results were averaged over 10 trials and are presented in Table [2](#S4.T2 "Table
+    2 ‣ 4.2 Methods ‣ 4 Quality Adaptive Quantization Method for Key Cache and Value
+    Cache ‣ QAQ: Quality Adaptive Quantization for LLM KV Cache"). The experimental
+    results indicate that outliers have a substantial impact on KV cache quantization.
+    In cases where outliers are not handled separately, the model’s performance on
+    downstream tasks experiences a significant decline of $12\%-26\%$ additional overhead
+    on the compression ratio. This demonstrates the efficient and accurate handling
+    of outliers by QAQ.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Attention window size. To verify the importance of handling exceptional cases
+    in quantization, we conducted ablation experiments to investigate the impact of
+    treating such cases differently. The experiments are conducted on the same three
+    downstream tasks, involving two groups: one with a specified window size and the
+    other without, where the absence of a specific setting implies a default window
+    size of $1$ in performance. This further advances the performance of QAQ.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Task | Attention window size | Acc. | Compression ratio |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA 2-7B | HellaSwag | 1 | 0.722 | 7.628 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 5 | 0.730 | 7.377 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PIQA | 1 | 0.755 | 7.820 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 5 | 0.778 | 6.797 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MathQA | 1 | 0.276 | 7.633 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 5 | 0.284 | 7.331 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA 2-13B | HellaSwag | 1 | 0.766 | 7.583 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 5 | 0.772 | 7.340 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PIQA | 1 | 0.788 | 7.692 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 5 | 0.794 | 6.802 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MathQA | 1 | 0.283 | 7.588 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 5 | 0.295 | 7.321 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 3: The ablation result of attention window in QAQ.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Inspired by three key insights, we propose a quality adaptive quantization scheme,
+    QAQ, for the KV cache to reduce its memory footprint. Our method demonstrates
+    memory reduction of $10\times$ in the KV cache with neglectable loss of accuracy.
+    The superior performance achieved by QAQ allows the model to accommodate longer
+    contextual inputs, creating new possibilities for a broader range of applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Amini et al. [2019] Aida Amini, Saadia Gabriel, Peter Lin, Rik Koncel-Kedziorski,
+    Yejin Choi, and Hannaneh Hajishirzi. MathQA: Towards interpretable math word problem
+    solving with operation-based formalisms. arXiv preprint arXiv:1905.13319, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Beeching et al. [2023] Edward Beeching, Clémentine Fourrier, Nathan Habib, Sheon
+    Han, Nathan Lambert, Nazneen Rajani, Omar Sanseviero, Lewis Tunstall, and Thomas
+    Wolf. Open LLM leaderboard. [https://huggingface.co/spaces/HuggingFaceH4/open_llm_leaderboard](https://huggingface.co/spaces/HuggingFaceH4/open_llm_leaderboard),
+    2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bisk et al. [2020] Yonatan Bisk, Rowan Zellers, Jianfeng Gao, Yejin Choi, et al.
+    PIQA: Reasoning about physical commonsense in natural language. In Proceedings
+    of the AAAI conference on artificial intelligence, volume 34, pages 7432–7439,
+    2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Brown et al. [2020] Tom B. Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah,
+    Jared Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry,
+    Amanda Askell, Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan,
+    Rewon Child, Aditya Ramesh, Daniel M. Ziegler, Jeffrey Wu, Clemens Winter, Christopher
+    Hesse, Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack
+    Clark, Christopher Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario
+    Amodei. Language models are few-shot learners, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chang et al. [2023] Yupeng Chang, Xu Wang, Jindong Wang, Yuan Wu, Kaijie Zhu,
+    Hao Chen, Linyi Yang, Xiaoyuan Yi, Cunxiang Wang, Yidong Wang, et al. A survey
+    on evaluation of large language models. arXiv preprint arXiv:2307.03109, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Child et al. [2019] Rewon Child, Scott Gray, Alec Radford, and Ilya Sutskever.
+    Generating long sequences with sparse transformers. arXiv preprint arXiv:1904.10509,
+    2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. [2022] Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer.
+    Llm. int8 (): 8-bit matrix multiplication for transformers at scale. arXiv preprint
+    arXiv:2208.07339, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Frantar et al. [2022a] Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and
+    Dan Alistarh. Gptq: Accurate post-training quantization for generative pre-trained
+    transformers. arXiv preprint arXiv:2210.17323, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Frantar et al. [2022b] Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and
+    Dan Alistarh. Optq: Accurate quantization for generative pre-trained transformers.
+    In The Eleventh International Conference on Learning Representations, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Gao et al. [2021] Leo Gao, Jonathan Tow, Stella Biderman, Sid Black, Anthony
+    DiPofi, Charles Foster, Laurence Golding, Jeffrey Hsu, Kyle McDonell, Niklas Muennighoff,
+    et al. A framework for few-shot language model evaluation. Version v0\. 0.1\.
+    Sept, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ge et al. [2023] Suyu Ge, Yunan Zhang, Liyuan Liu, Minjia Zhang, Jiawei Han,
+    and Jianfeng Gao. Model tells you what to discard: Adaptive kv cache compression
+    for LLMs. arXiv preprint arXiv:2310.01801, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lee et al. [2023] Changhun Lee, Jungyu Jin, Taesu Kim, Hyungjun Kim, and Eunhyeok
+    Park. OWQ: Lessons learned from activation outliers for weight quantization in
+    large language models. arXiv preprint arXiv:2306.02272, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lin et al. [2023] Ji Lin, Jiaming Tang, Haotian Tang, Shang Yang, Xingyu Dang,
+    and Song Han. Awq: Activation-aware weight quantization for llm compression and
+    acceleration. arXiv preprint arXiv:2306.00978, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. [2023] Zichang Liu, Aditya Desai, Fangshuo Liao, Weitao Wang, Victor
+    Xie, Zhaozhuo Xu, Anastasios Kyrillidis, and Anshumali Shrivastava. Scissorhands:
+    Exploiting the persistence of importance hypothesis for LLM KV cache compression
+    at test time. arXiv preprint arXiv:2305.17118, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Pope et al. [2023] Reiner Pope, Sholto Douglas, Aakanksha Chowdhery, Jacob Devlin,
+    James Bradbury, Jonathan Heek, Kefan Xiao, Shivani Agrawal, and Jeff Dean. Efficiently
+    scaling transformer inference. Proceedings of Machine Learning and Systems, 5,
+    2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Seltman [2012] Howard Seltman. Approximations for mean and variance of a ratio.
+    unpublished note, 2012.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. [2023] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier
+    Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal,
+    Eric Hambro, Faisal Azhar, et al. LLaMA: Open and efficient foundation language
+    models. arXiv preprint arXiv:2302.13971, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yao et al. [2022] Zhewei Yao, Reza Yazdani Aminabadi, Minjia Zhang, Xiaoxia
+    Wu, Conglong Li, and Yuxiong He. Zeroquant: Efficient and affordable post-training
+    quantization for large-scale transformers. Advances in Neural Information Processing
+    Systems, 35:27168–27183, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zellers et al. [2019] Rowan Zellers, Ari Holtzman, Yonatan Bisk, Ali Farhadi,
+    and Yejin Choi. Hellaswag: Can a machine really finish your sentence? arXiv preprint
+    arXiv:1905.07830, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. [2022] Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe,
+    Moya Chen, Shuohui Chen, Christopher Dewan, Mona Diab, Xian Li, Xi Victoria Lin,
+    et al. OPT: Open pre-trained transformer language models. arXiv preprint arXiv:2205.01068,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. [2023] Zhenyu Zhang, Ying Sheng, Tianyi Zhou, Tianlong Chen, Lianmin
+    Zheng, Ruisi Cai, Zhao Song, Yuandong Tian, Christopher Ré, Clark Barrett, et al.
+    H[2]O: Heavy-hitter oracle for efficient generative inference of large language
+    models. arXiv preprint arXiv:2306.14048, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Zhu et al. [2023] Xunyu Zhu, Jian Li, Yong Liu, Can Ma, and Weiping Wang. A
+    survey on model compression for large language models. arXiv preprint arXiv:2308.07633,
+    2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

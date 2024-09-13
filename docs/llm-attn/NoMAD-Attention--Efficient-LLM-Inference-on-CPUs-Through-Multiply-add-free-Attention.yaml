@@ -1,0 +1,1120 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 19:02:45'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'NoMAD-Attention: Efficient LLM Inference on CPUs Through Multiply-add-free
+    Attention'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2403.01273](https://ar5iv.labs.arxiv.org/html/2403.01273)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Tianyi Zhang    Jonah Wonkyu Yi    Bowen Yao    Zhaozhuo Xu    Anshumali Shrivastava
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Large language model inference on Central Processing Units (CPU) is challenging
+    due to the vast quantities of expensive Multiply-Add (MAD) matrix operations in
+    the attention computations. In this paper, we argue that there is a rare gem in
+    modern CPUs, Single-Instruction-Multiple-Data (SIMD) registers, which allow for
+    ultra-low-latency lookups in batch. We leverage this unique capability of CPUs
+    to propose NoMAD-Attention, an efficient attention algorithm that replaces MAD
+    operations with in-register lookups. Through hardware-aware algorithmic designs,
+    NoMAD-Attention achieves the computation of attention scores using repeated fast
+    accesses to SIMD registers despite their highly limited sizes. Moreover, NoMAD-Attention
+    works with pre-trained attention-based LLMs without model finetuning. Empirical
+    evaluations demonstrate that NoMAD-Attention maintains the quality of the original
+    LLMs well, and speeds up the 4-bit quantized LLaMA-7B-based model by up to $2\times$
+    at 16k context length. Our results are reproducible at [https://github.com/tonyzhang617/nomad-dist](https://github.com/tonyzhang617/nomad-dist).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Machine Learning, ICML
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Auto-regressive transformer-based Large Language Models (LLM) have demonstrated
+    remarkable abilities across a wide range of natural language processing tasks
+    including reading comprehension, translation, and question answering (Radford
+    et al., [2019](#bib.bib23)). LLMs exhibit emergent abilities (Wei et al., [2022](#bib.bib35))
+    in solving complex tasks without fine-tuning. These capabilities give LLMs immense
+    potential for impactful applications in diverse fields such as medicine (Thirunavukarasu
+    et al., [2023](#bib.bib30)), law (Xiao et al., [2021](#bib.bib37)), and robotics
+    (Kaddour et al., [2023](#bib.bib14)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Need for Deploying LLM on CPUs. Despite the promising potential of LLMs,
+    their deployment is extremely expensive (Lin et al., [2023](#bib.bib17)). Serving
+    LLMs with billion-scale parameters requires specialized hardware such as Nvidia
+    A100 Graphics Processing Units (GPUs) (Zhang et al., [2023a](#bib.bib40)). However,
+    mainstream personal devices, such as laptops, are predominately equipped with
+    Central Processing Units (CPUs) (Sun et al., [2019](#bib.bib28)). As a result,
+    making LLM-related services accessible to everyone remains a major challenge.
+    Reducing the LLM inference latency on CPUs, beyond doubt, has significant implications
+    for its accessibility and adoption.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Expensive Multiply-add Operations for Attention in LLM Inference. LLM inference
+    on CPUs is compute-bound and the primary computational bottleneck is the calculation
+    of attention scores (Han et al., [2023](#bib.bib12)). Attention, a mechanism that
+    models token interactions through all-pair dot products, heavily relies on the
+    multiply-add (MAD) kernel on processors. The MAD operation involves computing
+    the product of two numbers and adding that product to an accumulator (Sung et al.,
+    [2023](#bib.bib29)). Within the attention mechanism, MAD plays a crucial role
+    in determining the attention score between tokens and subsequently blending their
+    embeddings based on these scores. The computational cost of attention grows quadratically
+    with the sequence length due to the cumulative MAD operations. Since CPUs have
+    limited parallel cores, they are inefficient for handling highly repetitive and
+    parallel workloads. The extensive MAD operations required by the attention mechanism
+    thus become the primary bottleneck during inference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Opportunities and Challenges from Modern CPUs: In-Register Lookups. The memory
+    hierarchy of modern CPUs has undergone significant evolution, introducing a new
+    type of registers optimized for Single-Instruction-Multiple-Data (SIMD) operations.
+    The SIMD registers vary in size, ranging from 128 bits to 512 bits (Shin et al.,
+    [2019](#bib.bib26)), and support specialized SIMD instructions for high-throughput
+    parallel processing (Zhang et al., [2019](#bib.bib41)). Nowadays, SIMD registers
+    have become a standard feature in commodity hardware, including laptops and mobile
+    devices (Dasika et al., [2010](#bib.bib9)). In this context, in-register lookup
+    refers to the low-latency retrieval of information stored within SIMD registers.
+    Specifically, storing information such as dot-product lookup tables (LUT) within
+    SIMD registers as opposed to cache memory has the potential of accelerating LLM
+    inference (André et al., [2017](#bib.bib2)). Despite these opportunities, the
+    limited size of SIMD registers poses a great challenge to fitting the computational
+    paradigm of existing models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our Proposal: MAD-Free Attention with In-Register Lookups. In this paper, we
+    demonstrate a new approach for speeding up LLM inference by leveraging the unique
+    hardware capability of CPUs. We show how the vast quantities of MAD operations
+    in attention computation can be replaced with in-register lookups to mitigate
+    the quadratic computational bottleneck of LLM inference on CPUs. NoMAD-Attention
+    significantly speeds up LLM inference without sacrificing model quality and is
+    compatible with pre-trained attention-based transformers without finetuning.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We summarize our contributions as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We identify the extensive MAD operations in attention as the bottleneck of CPU
+    LLM inference and explore the opportunity of mitigating it through replacing MAD
+    in attention with fast in-register lookups.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We introduce NoMAD-Attention, a MAD-free framework of attention computation
+    for pre-trained attention-based LLMs. NoMAD-Attention leverages hardware-aware
+    algorithmic designs to enable accurate and fast in-register lookup-based estimations
+    of query-key dot products despite the limited capacity of SIMD registers. NoMAD-Attention
+    preserves model quality while yielding considerable speedups over MAD-based attention.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '3.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Through extensive experiments, we demonstrate that NoMAD-Attention achieves
+    up to $2\times$ speedup on 4-bit quantized LLaMA-7B-based models at a context
+    length of 16k, while maintaining the predictive performance of the original model.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 2 LLM Inference on CPUs
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we introduce the attention mechanism used in LLMs and the key-value
+    (KV) caching technique for avoiding redundant attention computations. We also
+    discuss the CPU memory hierarchy, which serves as the motivation for performing
+    fast in-register lookups.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.1 LLM Attention
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Most LLMs are decoder-only attention-based models that are pre-trained on a
+    next token prediction objective. LLMs use masked self-attention, in which the
+    attention output of each token is only dependent on previous tokens and itself,
+    and unaffected by future tokens. Masked self-attention allows LLMs to cache key
+    and value embeddings, avoiding future recomputations. However, this comes at the
+    cost of memory overhead. The autoregressive generation of LLMs consists of two
+    phases 1. prompt processing, in which the sequence of token embeddings in the
+    prompt is fed through by the model, and their key-value embeddings are cached
+    by the model, 2. decoding, in which a new token is sampled based on the output
+    embedding of the last token, and the embedding of the new token is fed through
+    the model, the output of which becomes the basis for sampling the next token.
+    The decoding process continues until an end-of-sequence token <EOS> is sampled.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At the decoding step $t$ is transformed into key, query, and value embeddings
+    through distinct transformations,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle k^{t}=f_{K}(e^{t}),q^{t}=f_{Q}(e^{t}),v^{t}=f_{V}(e^{t})$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Then, the key and value embedding of the current token are appended to the key
+    and value cache, respectively. The KV cache $K^{t-1}_{\mathrm{cache}},V^{t-1}_{\mathrm{cache}}$
+    contains the key/value embeddings of all previous tokens, and after appending,
+    the KV cache become
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $$\displaystyle K^{t}_{\mathrm{cache}}=\begin{bmatrix}K^{t-1}_{\mathrm{cache}}\\
+    k^{t}\end{bmatrix}=\begin{bmatrix}k^{1}\\'
+  prefs: []
+  type: TYPE_NORMAL
+- en: k^{2}\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: \dots\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: k^{t}\end{bmatrix},V^{t}_{\mathrm{cache}}=\begin{bmatrix}V^{t-1}_{\mathrm{cache}}\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: v^{t}\end{bmatrix}=\begin{bmatrix}v^{1}\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: v^{2}\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: \dots\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: v^{t}\end{bmatrix}$$ |  |
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, the attention output is computed as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathrm{attention}(e^{t})=\mathrm{softmax}\left(\frac{q^{t}(K_{\mathrm{cache}}^{t})^{\top}}{\sqrt{d}}\right)V_{\mathrm{cache}}^{t}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: where $d$. We will refer to the result of $\mathrm{softmax}(\frac{qK^{\top}}{\sqrt{d}})$
+    as the attention scores since they dictate how much “attention” each token pays
+    to other tokens. Computations in the prompt processing phase are similar to the
+    decoding phase, except all the prompt tokens are computed in batch. LLMs use multi-head
+    attention, which transforms the concatenation of the outputs of multiple single-head
+    attentions to form an output embedding.
+  prefs: []
+  type: TYPE_NORMAL
+- en: MAD-based Attention. The attention mechanism models the interaction between
+    tokens by performing all-pair dot products, where each dot product is computed
+    via $d$ Multiply-Add (MAD) operations. Since attention computes the interaction
+    between all pairs of tokens exhaustively, the amount of MAD operations scales
+    quadratically with the sequence length, quickly overwhelming the computing capability
+    of CPUs. CPUs are designed to handle complex workloads with granular control,
+    while GPUs are optimized for processing simple and repetitive tasks in high throughput.
+    Hence the success of attention has largely been fueled by the development of highly
+    parallel throughput-oriented processors such as GPUs (Dao et al., [2022](#bib.bib8)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 1 Attention Score Computation in LLM
+  prefs: []
+  type: TYPE_NORMAL
+- en: Input:query $q^{t}$, key cache $K_{\mathrm{cache}}^{t-1}$let $$K_{\mathrm{cache}}^{t}\leftarrow\begin{bmatrix}K_{\mathrm{cache}}^{t-1}\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: k^{t}\end{bmatrix}$$Append the current key to key cachereturn $\mathrm{softmax}(\frac{q^{t}(K_{\mathrm{cache}}^{t})^{\top}}{\sqrt{d}})$\State\State\Comment\State
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'MAD-based Attention as Bottleneck of LLM Inference. The computation of attention
+    scores becomes the bottleneck of LLM inference as the sequence length increases.
+    At the $t$ due to $t$. We will focus on optimizing the efficiency of attention
+    score computations in our proposed approach. Algorithm [1](#alg1 "Algorithm 1
+    ‣ 2.1 LLM Attention ‣ 2 LLM Inference on CPUs ‣ NoMAD-Attention: Efficient LLM
+    Inference on CPUs Through Multiply-add-free Attention") presents the pseudocode
+    for attention score computation, including key caching, for a single-head masked
+    self-attention in LLM. This algorithm will serve as a point of comparison in our
+    proposed approach.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2 Memory Hierarchy of Modern CPUs
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Memory of the CPU is organized into a pyramidal hierarchy as shown in Figure
+    [1](#S3.F1 "Figure 1 ‣ 3 Methodology ‣ NoMAD-Attention: Efficient LLM Inference
+    on CPUs Through Multiply-add-free Attention"), with faster memory being significantly
+    smaller than slower memory. The memory unit with the fastest access speed is registers.
+    Each compute core can access its dedicated registers in just 1-2 CPU cycles, but
+    these registers are highly limited in size, usually not exceeding 64 bits. Modern
+    processors have a new type of registers optimized for Single-Instruction-Multiple-Data
+    (SIMD) operations. These SIMD registers range from 128 bits to 512 bits in size
+    and support specialized SIMD instructions for throughput-oriented parallel processing.
+    SIMD registers are common on commodity hardware, including laptops and mobile
+    devices. Using SIMD operations can speed up deep learning models on CPUs by parallelizing
+    matrix multiplications. However, due to the limited number of cores in a CPU,
+    its efficiency in deep learning is still considerably worse than GPU. Prior works
+    (Spring & Shrivastava, [2017](#bib.bib27); Chen et al., [2020](#bib.bib5)) have
+    resorted to sparsity and sampling-based approaches to reduce the number of computations
+    for efficient deep learning on CPU, but they require training models from scratch
+    and may not apply to all architectures. In this work, we exploit the SIMD registers
+    to shift the computation paradigm from MAD to in-register lookups, which demonstrates
+    significant speedup over MAD-based models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When describing our proposed algorithm, we assume SIMD registers are 128 bits
+    wide. There exist systems with wider SIMD registers that support more parallelism,
+    e.g. 256-bit registers in AVX-2 and 512-bit registers in AVX-512\. However, the
+    most universal form of SIMD registers uses 128 bits, which is supported by Arm
+    NEON and AVX-compatible processors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Methodology
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section, we describe our proposed approach NoMAD-Attention, which replaces
+    MAD operations with in-register lookups to enable fast attention computations
+    on CPUs. NoMAD utilizes three techniques to enable lookup-based attention: 1.
+    transforming dot product computations to memory lookups through product quantization,
+    2. compressing lookup tables into SIMD registers for low-latency access, 3. reorganizing
+    the memory layout of key cache for batch parallel dot product lookups.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/9d2b766543dc3aa7dbd4019ae01b0003.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: An illustrative comparison of memory layouts of the key cache of
+    LLM attention and the key-code cache of NoMAD-Attention, and an illustration of
+    how attention scores are computed through in-register lookups in NoMAD.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Transforming Dot-products into Lookups
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Previous works have shown that inexact attention scores in transformers work
+    well for sequence modeling (Zaheer et al., [2020](#bib.bib39)). Based on this
+    insight, NoMAD leverages Product Quantization (PQ) (Jegou et al., [2010](#bib.bib13))
+    to compute high-quality estimations of dot products through register lookups.
+    PQ, originally designed for compressing high-dimensional vectors to enable efficient
+    nearest-neighbor search, quantizes a floating-point vector into discrete codes.
+    It makes use of sub-quantizers; for a $d$ sub-vectors, where each sub-vector has
+    dimension $d_{\mathrm{sub}}=\frac{d}{S}$, where $s\in\{1\dots S\}$-dimensional
+    vector $e$-dimensional sub-vector of the $s$ to denote the $c$-th sub-quantizer.
+    For a given vector $e$, denoted $c_{1},\dots,c_{S}$, are the indexes of the nearest
+    centroid of each sub-quantizer, i.e.,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathrm{PQ}(e)=[c_{1}\dots c_{S}],\text{where }c_{s}=\operatorname*{arg\,min}_{c}\big{\lVert}\pi_{s}(v)-b_{s,c}\big{\rVert}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Once base vectors have been product-quantized to codes, PQ leverages asymmetric
+    distance computation to keep the estimation error low. In the computed distances,
+    the original query vector is used while the quantized base vectors are used, hence
+    the asymmetry. For a given query $q$ and the $c$-th sub-quantizer using $\mathrm{LUT}_{s}[c]=\mathrm{dist}\big{(}\pi_{s}(q),b_{s,c}\big{)}$
+    and a product-quantized base vector $e$, is
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\widetilde{\mathrm{dist}}(q,e)=\sum_{s=1}^{S}\mathrm{LUT}_{s}[c_{s}]$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: We extend PQ, which works for metric distances, to estimate dot products for
+    attention. We propose to product-quantize the key vectors in attention to produce
+    key codes, which will be stored in place of the key cache in LLM attention. The
+    codebooks are learned by performing clustering on a set of key vectors from a
+    training set. The key vectors are quantized to the nearest centroid with respect
+    to L2 distance. For a given query, the query-dependent LUT is computed to hold
+    dot products with respect to centroids. Dot products of sub-vectors are retrieved
+    from the LUT based on key codes and accumulated to produce the final dot product
+    estimates. This procedure allows us to compute attention scores through lookups.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Compressing Lookup Tables into SIMD Registers
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Estimating dot products through PQ mostly eliminates the use of MAD kernels
+    in the computation of attention scores. However, this approach yields limited
+    speedup over dot-product attention since a high proportion of the CPU cycles are
+    wasted due to cache/memory access stalling (Figure [5](#S4.F5 "Figure 5 ‣ 4.4
+    Ablation Study ‣ 4 Experiments ‣ NoMAD-Attention: Efficient LLM Inference on CPUs
+    Through Multiply-add-free Attention") offers a comparison between the speed of
+    PQ and dot product operations). It has been shown that even L1-cache-resident
+    LUT is not enough to offer high-performance PQ (André et al., [2016](#bib.bib1)).
+    The full potential of lookup-based attention can only be unlocked by having the
+    LUT stored in registers, which take only 1-2 CPU cycles to access. However, the
+    highly limited size of registers poses a challenge to fitting the LUT. In PQ,
+    each sub-quantizer commonly uses 256 centroids, which translates to 8-bit codes.
+    Combined with 32-bit floating-point (FP32) dot products, the LUT for each sub-quantizer
+    consumes 8192 bits of memory while the SIMD registers are only 128 bits wide.
+    To circumvent this limitation in register size, we leverage hardware-aware techniques
+    proposed by André et al. ([2017](#bib.bib2)) to enable low-latency retrieval from
+    register-resident LUT.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 8-bit Quantized Dot Products in LUT Due to the mere 128-bit width of SIMD registers,
+    the FP32 representation of dot product is too costly to store. Adopting FP32 dot
+    products in LUT implies that each codebook can only contain up to 4 centroids,
+    which will no doubt lead to significant quantization errors. Therefore, we adopt
+    the 8-bit dynamically quantized representation of dot products. Compressing beyond
+    8-bit is infeasible since many SIMD instruction sets do not support parallel lookups
+    below 8 bits. The quantization is done dynamically for each query to minimize
+    quantization errors. For a given query and sub-quantizer, dot products to centroids
+    are first computed in full FP32 precision. Then the quantization range is determined
+    by the minimum and maximum dot products to the centroids. Finally, the range is
+    evenly divided into $2^{8}$ and $\mathrm{dp}_{\max}=\max_{c}(\pi_{s}(q)\cdot b_{s,c})$
+    to the centroids of the $s$ as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathrm{LUT}_{s}[c]=\Big{\lfloor}\frac{(\pi_{s}(q)\cdot b_{s,c})-\mathrm{dp}_{\min}}{(\mathrm{dp}_{\max}-\mathrm{dp}_{\min})/2^{8}}\Big{\rfloor}$
+    |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: The quantization and de-quantization process can be done efficiently without
+    much computational overhead, and the quantization error is kept low thanks to
+    dynamic query-dependent quantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Constrained Codebook Size By adopting 8-bit quantized dot products in LUT, we
+    can fit 16 dot products on 128-bit SIMD registers. This implies that the codebook
+    size of each sub-quantizer is constrained to 16 centroids. Although the codebook
+    seems limited in size, some evidences suggest it may work well with attention.
+    It has been shown that the output of attention loses rank extremely quickly (Dong
+    et al., [2021](#bib.bib10)), implying that the intermediate embeddings of transformers
+    may exhibit clear clustering structures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 2 NoMAD-Attention Score Computation
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Input: query $q^{t}$, key-code cache $K_{\mathrm{code}}^{t-1}$ for $s=1\dots
+    S$ \Statex\CommentInsert codes of the current key into the key-code cache \Statelet
+    $\mathrm{LUT}_{s}[c]\leftarrow\mathrm{quantize}(\pi_{s}(q^{t})\cdot b_{s,c})$
+    \Statex\CommentStore 8-bit quantized dot products (Equation [1](#S3.E1 "Equation
+    1 ‣ 3.2 Compressing Lookup Tables into SIMD Registers ‣ 3 Methodology ‣ NoMAD-Attention:
+    Efficient LLM Inference on CPUs Through Multiply-add-free Attention")) in LUT
+    \Statelet $\mathrm{accu}[1\dots t]\leftarrow 0$ \CommentPerform in-register lookups
+    in batch of 32 keys \For$s\leftarrow 1\dots S$ \CommentLoad LUT into registers
+    \State$\mathrm{accu}[32i-31\dots 32i]\leftarrow$, \Statex           simd_shuffle$(\mathrm{LUT}_{s},K_{\mathrm{code}}^{32i-31\dots
+    32i,s})$\State'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Reorganizing Key Cache Memory Layout
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Quantized dot products and constrained codebooks enable LUT to be stored in
+    SIMD registers, but the layout format of the key cache needs to be reorganized
+    to take advantage of SIMD instructions. The original key cache in LLM attention
+    stores each key vector contiguously in a row to optimize single vector reads.
+    NoMAD-Attention uses the key-code cache in place of the key cache, which stores
+    the quantized codes of keys. To allow fast lookups of LUT entries based on key
+    codes, we store the key codes in a transposed blocked format. An illustrative
+    comparison between the LLM key cache and the NoMAD key-code cache is given in
+    Figure [1](#S3.F1 "Figure 1 ‣ 3 Methodology ‣ NoMAD-Attention: Efficient LLM Inference
+    on CPUs Through Multiply-add-free Attention").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The storage format of the NoMAD key-code cache is transposed: stored in column-major
+    order instead of row-major, and blocked: with 32 keys as a block. The SIMD instruction
+    shuffle, which we leverage for performing low-latency batch lookups, takes a batch
+    of byte-size integers as input and retrieves the values held in the registers
+    corresponding to the integer indices. The original storage format of the key cache
+    stores all dimensions of a key contiguously, which does not allow efficient use
+    of shuffle. To maximize the usage of the LUT held in registers, we store key codes
+    belonging to the same sub-quantizer contiguously in rows of 32 codes. Since shuffle
+    performs lookups in a batch size of 16, the keys within the same block are stored
+    in alternating order. This is because each quantized code occupies half a byte
+    as there are 16 centroids in a codebook, while the shuffle instruction uses each
+    byte as an input argument. By performing SIMD bit-shifting and bit-masking on
+    a block of alternating keys, we obtain the key codes in the original order, ready
+    for use with shuffle. More details on how shuffle is performed on each block of
+    key-code cache and pseudocode can be found in the appendix.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.4 NoMAD-Attention
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'By combining these three techniques, NoMAD-Attention achieves fast MAD-free
+    attention score computations through SIMD in-register lookups. For a given query,
+    first, LUTs with 8-bit quantized dot products are computed for each sub-quantizer.
+    Then, a LUT is loaded into registers, followed by SIMD shuffle instructions to
+    retrieve dot products in the LUT in batch based on key codes. The loading and
+    lookup are repeated for all sub-quantizers, and the retrieved dot products are
+    accumulated in batch through SIMD add. Finally, the quantized dot products accumulated
+    over all sub-quantizers are de-quantized, scaled, and fed through softmax to produce
+    the attention scores. The pseudocode for NoMAD-Attention score computations is
+    given in Algorithm [2](#alg2 "Algorithm 2 ‣ 3.2 Compressing Lookup Tables into
+    SIMD Registers ‣ 3 Methodology ‣ NoMAD-Attention: Efficient LLM Inference on CPUs
+    Through Multiply-add-free Attention").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/589b29c895df2f366219bffe9bb23f9e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Value distributions of attention key embeddings of the LLaMA-2-7B
+    model on samples of the WikiText-2 dataset. The first 4 attention heads in 4 different
+    layers are shown, and all 128 dimensions of the key embeddings are used. Key embeddings
+    have different distributions in value across different layers and heads, making
+    it necessary for codebooks to be learned independently for each layer and head
+    to minimize quantization error.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/cb0762df2147284846414932929d4cb9.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: NoMAD-Attention-based LLMs maintain model quality with negligible
+    degradation in perplexity compared to the original model at $8\times$. Dimensionality
+    reduction-based PCA-Attention leads to significant model quality degradation even
+    at $2\times$ key cache compression.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.5 Learning Key Compression
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Compressing each segment of the attention key into a 4-bit code requires careful
+    initialization of centroids to avoid high quantization errors, which can lead
+    to degradation in model quality. Ideally, centroids in the codebooks should have
+    low L2 distance to the attention key sub-vectors of the corresponding sub-quantizer.
+    Empirically, we observe that the value distributions in attention key embeddings
+    vary significantly for each attention head and layer. Figure [2](#S3.F2 "Figure
+    2 ‣ 3.4 NoMAD-Attention ‣ 3 Methodology ‣ NoMAD-Attention: Efficient LLM Inference
+    on CPUs Through Multiply-add-free Attention") illustrates the value distributions
+    in attention key embeddings of the LLaMA-2-7B model on samples from the WikiText-2
+    dataset. Distinct attention heads have different value ranges and distributional
+    skew. Hence, we propose learning codebooks for key compression in the following
+    way: we first perform LLM inference with the original attention on a learning
+    set of data and record the attention key embeddings for each layer and head. Subsequently,
+    we learn codebook centroids for key compression by clustering the key embeddings
+    through a K-Means-based algorithm on each attention head independently. These
+    centroids become the codebooks for compressing the key-code cache.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we evaluate the effectiveness of our proposed NoMAD-Attention
+    in maintaining model quality and achieving efficient LLM inference on CPUs. In
+    particular, we aim to evaluate 1. the model quality of NoMAD-Attention-based LLMs
+    compared to the original LLMs, 2. the efficiency of NoMAD-Attention-based LLMs
+    compared to attention-based LLMs. We first introduce the software implementation
+    and testbed hardware, then detail the experiment setup and baseline methods, and
+    finally report experimental results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Software Implementation The software system is built in C and C++, based on
+    the open-source projects llama.cpp ¹¹1[https://github.com/ggerganov/llama.cpp](https://github.com/ggerganov/llama.cpp)
+    and FAISS (Douze et al., [2024](#bib.bib11)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Testbed Hardware Experiments are performed on a server running Linux Ubuntu
+    20.04, equipped with $2\times$ Intel Xeon E5-2695 V3 14-core CPUs, 512GB of DDR4
+    RAM, and 1TB of SSD. The processors used support AVX2 SIMD instructions, which
+    we leverage to perform in-register lookups for NoMAD-Attention.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/90eb62bc24d8c135d79936e435ecb8a7.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: The efficiency of Attention-based and NoMAD-Attention-based CodeLLaMA-7B
+    models on prompt processing and decoding. NoMAD-Attention-based models achieve
+    significant speedup over Attention-based counterparts. At the context length of
+    16k, NoMAD-Attention-based CodeLlama-7B (4-bit weights) achieves $2\times$ speedup
+    over the original CodeLlama-7B (4-bit weights).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Experiment Setup
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 4.1.1 Measuring LLM Quality
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We first perform a set of experiments to measure the model quality of NoMAD-Attention-based
+    LLMs against baselines. Model quality is measured using the perplexity metric
+    (lower the better), which is defined as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathrm{PPL}(x)=\exp\left(-\frac{1}{T}\sum_{i=1}^{T}\log
+    P(x_{i}&#124;x_{<i})\right)$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: where $x=\{x_{i}\}_{1\leq i\leq T}$ is the probability of token $x_{i}$ as context.
+    Perplexity is measured on the test set of two datasets, WikiText-2 (Merity et al.,
+    [2016](#bib.bib20)) and Penn Treebank (PTB) (Marcus et al., [1993](#bib.bib19)),
+    in chunks of length 512\. The LLMs employed in perplexity testing are LLaMA-2-7B
+    (Touvron et al., [2023](#bib.bib31)) (with the original 16-bit and quantized 4-bit
+    weights) and StableLM-3B-4E1T ([Tow et al.,](#bib.bib32) ) (with 8-bit and 4-bit
+    quantized weights).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Baselines We use LLMs with the original dot-product attention as a baseline,
+    and evaluate the model quality of NoMAD-Attention-based LLMs and PCA-Attention-based
+    LLMs. Principal Component Analysis (PCA) (Wold et al., [1987](#bib.bib36)) is
+    a well-used and studied dimensionality reduction technique. By reducing the dimensionality
+    of query and key embeddings via PCA, the efficiency of attention score computation
+    can be improved. NoMAD and PCA require codebook learning and projection learning,
+    respectively, in which we use the key embeddings of the first 100 samples from
+    the training set of WikiText-2 and PTB datasets for learning. This avoids the
+    train-test overlap and ensures that the codebooks learned can generalize to unseen
+    data. For the same model, the codebooks and projection are learned only once and
+    used for different quantization schemes. For the original dot-product attention,
+    we vary the compression of the key cache from FP32 to q4_0 and q8_0 (each float
+    uses 4.5 and 8.5 bits respectively). For StableLM models, q4_0 and q8_0 key cache
+    compression is not supported by the llama.cpp library, hence omitted. For NoMAD
+    and PCA, all attention heads in the LLM are replaced with their attention variant.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1.2 Measuring LLM Efficiency
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: For measuring the model efficiency, we use CodeLlama-7B (Roziere et al., [2023](#bib.bib24))
+    (with 16-bit and 4-bit weights), a variant of the Llama LLM that supports a long
+    context length of 16384\. We sample 10 sequences of varying lengths up to 16K
+    from the stack-overflow-questions dataset (Annamoradnejad et al., [2022](#bib.bib3)),
+    and use them as prompts to generate 4096 tokens. The baseline implementation is
+    based on the llama.cpp implementation. The experiments are run with all available
+    28 CPU cores. For efficiency comparisons, we report the time to the first token
+    (time to finish prompt processing), decoding time for each token, and decoded
+    tokens per second.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 LLM Quality
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The results of the model quality comparison are shown in Figure [3](#S3.F3
+    "Figure 3 ‣ 3.4 NoMAD-Attention ‣ 3 Methodology ‣ NoMAD-Attention: Efficient LLM
+    Inference on CPUs Through Multiply-add-free Attention"). Overall, the NoMAD-Attention-based
+    LLM maintains model quality at $8\times$) with a negligible loss in perplexity
+    (consistently less than a 4% increase). In contrast, the dimensionality-reduction-based
+    method PCA fails to maintain model quality at $2\times$ key cache compression,
+    or $d_{\mathrm{sub}}=1$ key cache compression, NoMAD-Attention-based LLMs drop
+    in quality with increasing compression factor. However, NoMAD-Attention is significantly
+    better than PCA-Attention in maintaining model quality. The quality of attention
+    drops catastrophically when dimensionality reduction is applied. This is likely
+    because dimensionality reduction strategies use symmetric dot-product computations,
+    while NoMAD uses asymmetric dot-product computations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 LLM Efficiency
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The experimental results of the model efficiency comparison are given in Figure
+    [4](#S4.F4 "Figure 4 ‣ 4 Experiments ‣ NoMAD-Attention: Efficient LLM Inference
+    on CPUs Through Multiply-add-free Attention"). Since NoMAD-Attention maintains
+    model quality well at $8\times$, we explore the speedup of NoMAD-Attention-based
+    models at this configuration. We also include results of NoMAD-Attention at $d_{\mathrm{sub}}=2$
+    speedup over the original CodeLlama-7B (4-bit weights) at 16k sequence length.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4 Ablation Study
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We study the efficiency of attention score computation and key caching for
+    single-head attention, NoMAD-Attention, and PQ-Attention to study the effectiveness
+    of our proposed hardware-aware strategies. PQ-Attention quantizes keys into 8-bit
+    codes in each sub-quantizer and performs asymmetric dot product computations.
+    To match the key compression factor, we use PQ-Attention at $d_{\mathrm{sub}}=2$.
+    We perform 16k queries at a context length of 16k and measure the latency of each
+    attention in attention score computation and key caching using a single thread.
+    The results of the ablation study are given in Figure [5](#S4.F5 "Figure 5 ‣ 4.4
+    Ablation Study ‣ 4 Experiments ‣ NoMAD-Attention: Efficient LLM Inference on CPUs
+    Through Multiply-add-free Attention"). Despite replacing MADs with lookups, PQ-Attention
+    yields limited speedup as compared to dot-product attention. NoMAD-Attention achieves
+    $8.3\times$ more than NoMAD-Attention, since finding the code for each sub-quantizer
+    takes 256 distance computations as opposed to 16.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/82e15a79a75c0f92f2eca1328802c6ce.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: The latency per query of Attention, PQ-Attention (8-bit code, $d_{\mathrm{sub}}=2$)
+    in computing attention scores and key caching for 16k queries at 16k context length.
+    PQ-Attention yields limited speedup compared to Attention and incur the most overhead
+    in key caching due to the large size of codebooks. NoMAD-Attention significantly
+    reduces the latency of attention score computations over Attention.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Related Works
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Efficient and Approximate Attention
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: Since the introduction of attention in transformers (Vaswani et al., [2017](#bib.bib33)),
+    there has been a body of work on approximating the attention mechanism for efficient
+    training and inference of transformers. For example, dynamically sparse attention
+    has been achieved using LSH (Kitaev et al., [2020](#bib.bib15)), Nyström method
+    (Xiong et al., [2021](#bib.bib38)), and random sampling (Zaheer et al., [2020](#bib.bib39)).
+    Furthermore, low-rank attention has been extensively explored (Wang et al., [2020](#bib.bib34);
+    Choromanski et al., [2020](#bib.bib7); Chen et al., [2021](#bib.bib6)) and shown
+    to have compute- and memory-efficiency advantages over regular transformers. Attention
+    mechanisms with hardware-aware designs such as FlashAttention (Dao et al., [2022](#bib.bib8))
+    have been proposed to mitigate the IO bottleneck in GPUs. In large language models,
+    multiple approaches (Zhang et al., [2023b](#bib.bib42); Liu et al., [2023](#bib.bib18))
+    have been proposed to reduce the high memory overhead of the KV cache. For CPU-only
+    environments, Shen et al. ([2023](#bib.bib25)) proposes to speed up LLM inference
+    through weight quantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Matrix Multiplication Optimization and Compression
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: Approximate matrix multiplication is applicable in a wide range of computational
+    problems from statistical analysis to image compression, and its optimization
+    has been a topic of interest for years (Pagh, [2013](#bib.bib22)). Using novel
+    compression techniques and specialized hardware, modern researchers have begun
+    optimizing matrix multiplication around the specific limitations of computers
+    including their memory capacity and traffic between the CPU and main memory (Krishna
+    et al., [2021](#bib.bib16)). Compression techniques were developed to multiply
+    billion-scale matrices, fully utilize the DSP, and use learning-based algorithms
+    on computers (Nelson et al., [2019](#bib.bib21); Blalock & Guttag, [2021](#bib.bib4);
+    Krishna et al., [2021](#bib.bib16)). However, many of these algorithms still had
+    limitations ranging from training on a matrix to megabytes of hardware resources
+    and computation that made the matrix multiplication of LLMs nearly impossible
+    to compute without prior training or significant hardware resources (Blalock &
+    Guttag, [2021](#bib.bib4); Krishna et al., [2021](#bib.bib16)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In conclusion, this study aims to address the challenges of large language model
+    inference on Central Processing Units (CPUs), particularly the difficulties associated
+    with the expensive Multiply-Add (MAD) matrix operations in attention mechanisms.
+    The investigation highlighted the untapped potential of Single-Instruction-Multiple-Data
+    (SIMD) registers and their fast in-register lookup capabilities within CPUs. The
+    proposed NoMAD-Attention algorithm was introduced as an efficient alternative
+    to traditional MAD-based approaches, leveraging in-register lookups and optimizing
+    memory access to SIMD registers. Consequently, the implementation of NoMAD-Attention
+    resulted in a significant acceleration of LLaMA-7B-based model inference, achieving
+    up to a $2\times$ speedup on CPUs. This research underscores the importance of
+    exploring novel approaches, such as NoMAD-Attention, to enhance the efficiency
+    of large language model inference on CPU architectures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7 Impact Statement
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This paper aims to democratize large language models (LLMs) by enabling their
+    operation on CPU cores, making them accessible to a broader audience. By successfully
+    demonstrating the implementation of an LLM on CPU, our study contributes to fostering
+    innovation and expansion of cutting-edge LLM technologies to a wider user base.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'André et al. (2016) André, F., Kermarrec, A.-M., and Le Scouarnec, N. Cache
+    locality is not enough: High-performance nearest neighbor search with product
+    quantization fast scan. In *42nd International Conference on Very Large Data Bases*,
+    volume 9, pp.  12, 2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: André et al. (2017) André, F., Kermarrec, A.-M., and Le Scouarnec, N. Accelerated
+    nearest neighbor search with quick adc. In *Proceedings of the 2017 ACM on International
+    Conference on Multimedia Retrieval*, pp.  159–166, 2017.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Annamoradnejad et al. (2022) Annamoradnejad, I., Habibi, J., and Fazli, M.
+    Multi-view approach to suggest moderation actions in community question answering
+    sites. *Information Sciences*, 600:144–154, 2022. ISSN 0020-0255. doi: https://doi.org/10.1016/j.ins.2022.03.085.
+    URL [https://www.sciencedirect.com/science/article/pii/S0020025522003127](https://www.sciencedirect.com/science/article/pii/S0020025522003127).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Blalock & Guttag (2021) Blalock, D. and Guttag, J. Multiplying matrices without
+    multiplying. In Meila, M. and Zhang, T. (eds.), *Proceedings of the 38th International
+    Conference on Machine Learning*, volume 139 of *Proceedings of Machine Learning
+    Research*, pp.  992–1004\. PMLR, 18–24 Jul 2021. URL [https://proceedings.mlr.press/v139/blalock21a.html](https://proceedings.mlr.press/v139/blalock21a.html).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chen et al. (2020) Chen, B., Medini, T., Farwell, J., Tai, C., Shrivastava,
+    A., et al. Slide: In defense of smart algorithms over hardware acceleration for
+    large-scale deep learning systems. *Proceedings of Machine Learning and Systems*,
+    2:291–306, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chen et al. (2021) Chen, B., Dao, T., Winsor, E., Song, Z., Rudra, A., and
+    Ré, C. Scatterbrain: Unifying sparse and low-rank attention. *Advances in Neural
+    Information Processing Systems*, 34:17413–17426, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Choromanski et al. (2020) Choromanski, K., Likhosherstov, V., Dohan, D., Song,
+    X., Gane, A., Sarlos, T., Hawkins, P., Davis, J., Mohiuddin, A., Kaiser, L., et al.
+    Rethinking attention with performers. *arXiv preprint arXiv:2009.14794*, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dao et al. (2022) Dao, T., Fu, D., Ermon, S., Rudra, A., and Ré, C. Flashattention:
+    Fast and memory-efficient exact attention with io-awareness. *Advances in Neural
+    Information Processing Systems*, 35:16344–16359, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Dasika et al. (2010) Dasika, G., Woh, M., Seo, S., Clark, N., Mudge, T., and
+    Mahlke, S. Mighty-morphing power-simd. In *Proceedings of the 2010 international
+    conference on Compilers, architectures and synthesis for embedded systems*, pp. 
+    67–76, 2010.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dong et al. (2021) Dong, Y., Cordonnier, J.-B., and Loukas, A. Attention is
+    not all you need: Pure attention loses rank doubly exponentially with depth. In
+    *International Conference on Machine Learning*, pp.  2793–2803\. PMLR, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Douze et al. (2024) Douze, M., Guzhva, A., Deng, C., Johnson, J., Szilvasy,
+    G., Mazaré, P.-E., Lomeli, M., Hosseini, L., and Jégou, H. The faiss library.
+    2024.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Han et al. (2023) Han, I., Jayaram, R., Karbasi, A., Mirrokni, V., Woodruff,
+    D. P., and Zandieh, A. Hyperattention: Long-context attention in near-linear time.
+    *arXiv preprint arXiv:2310.05869*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Jegou et al. (2010) Jegou, H., Douze, M., and Schmid, C. Product quantization
+    for nearest neighbor search. *IEEE transactions on pattern analysis and machine
+    intelligence*, 33(1):117–128, 2010.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kaddour et al. (2023) Kaddour, J., Harris, J., Mozes, M., Bradley, H., Raileanu,
+    R., and McHardy, R. Challenges and applications of large language models. *arXiv
+    preprint arXiv:2307.10169*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kitaev et al. (2020) Kitaev, N., Kaiser, Ł., and Levskaya, A. Reformer: The
+    efficient transformer. *arXiv preprint arXiv:2001.04451*, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Krishna et al. (2021) Krishna, S. G., Narasimhan, A., Radhakrishnan, S., and
+    Veras, R. On large-scale matrix-matrix multiplication on compressed structures.
+    In *2021 IEEE International Conference on Big Data (Big Data)*, pp.  2976–2985\.
+    IEEE, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lin et al. (2023) Lin, Z., Qu, G., Chen, Q., Chen, X., Chen, Z., and Huang,
+    K. Pushing large language models to the 6g edge: Vision, challenges, and opportunities.
+    *arXiv preprint arXiv:2309.16739*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. (2023) Liu, Z., Desai, A., Liao, F., Wang, W., Xie, V., Xu, Z.,
+    Kyrillidis, A., and Shrivastava, A. Scissorhands: Exploiting the persistence of
+    importance hypothesis for llm kv cache compression at test time. *arXiv preprint
+    arXiv:2305.17118*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Marcus et al. (1993) Marcus, M. P., Santorini, B., and Marcinkiewicz, M. A.
+    Building a large annotated corpus of English: The Penn Treebank. *Computational
+    Linguistics*, 19(2):313–330, 1993. URL [https://www.aclweb.org/anthology/J93-2004](https://www.aclweb.org/anthology/J93-2004).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Merity et al. (2016) Merity, S., Xiong, C., Bradbury, J., and Socher, R. Pointer
+    sentinel mixture models, 2016.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Nelson et al. (2019) Nelson, M., Radhakrishnan, S., and Sekharan, C. N. Billion-scale
+    matrix compression and multiplication with implications in data mining. In *2019
+    IEEE 20th International Conference on Information Reuse and Integration for Data
+    Science (IRI)*, pp.  395–402\. IEEE, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Pagh (2013) Pagh, R. Compressed matrix multiplication. *ACM Transactions on
+    Computation Theory (TOCT)*, 5(3):1–17, 2013.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Radford et al. (2019) Radford, A., Wu, J., Child, R., Luan, D., Amodei, D.,
+    Sutskever, I., et al. Language models are unsupervised multitask learners. *OpenAI
+    blog*, 1(8):9, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Roziere et al. (2023) Roziere, B., Gehring, J., Gloeckle, F., Sootla, S., Gat,
+    I., Tan, X. E., Adi, Y., Liu, J., Remez, T., Rapin, J., et al. Code llama: Open
+    foundation models for code. *arXiv preprint arXiv:2308.12950*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Shen et al. (2023) Shen, H., Chang, H., Dong, B., Luo, Y., and Meng, H. Efficient
+    llm inference on cpus. *arXiv preprint arXiv:2311.00502*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Shin et al. (2019) Shin, S.-R., Choo, S.-Y., and Park, J.-S. Accelerating random
+    network coding using 512-bit simd instructions. In *2019 International Conference
+    on Information and Communication Technology Convergence (ICTC)*, pp.  1099–1103\.
+    IEEE, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Spring & Shrivastava (2017) Spring, R. and Shrivastava, A. Scalable and sustainable
+    deep learning via randomized hashing. In *Proceedings of the 23rd ACM SIGKDD International
+    Conference on Knowledge Discovery and Data Mining*, pp.  445–454, 2017.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sun et al. (2019) Sun, Y., Agostini, N. B., Dong, S., and Kaeli, D. Summarizing
+    cpu and gpu design trends with product data. *arXiv preprint arXiv:1911.11313*,
+    2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sung et al. (2023) Sung, S., Hur, S., Kim, S., Ha, D., Oh, Y., and Ro, W. W.
+    Mad macce: Supporting multiply-add operations for democratizing matrix-multiplication
+    accelerators. In *Proceedings of the 56th Annual IEEE/ACM International Symposium
+    on Microarchitecture*, pp.  367–379, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Thirunavukarasu et al. (2023) Thirunavukarasu, A. J., Ting, D. S. J., Elangovan,
+    K., Gutierrez, L., Tan, T. F., and Ting, D. S. W. Large language models in medicine.
+    *Nature medicine*, 29(8):1930–1940, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023) Touvron, H., Martin, L., Stone, K., Albert, P., Almahairi,
+    A., Babaei, Y., Bashlykov, N., Batra, S., Bhargava, P., Bhosale, S., et al. Llama
+    2: Open foundation and fine-tuned chat models. *arXiv preprint arXiv:2307.09288*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: (32) Tow, J., Bellagente, M., Mahan, D., and Riquelme, C. Stablelm 3b 4e1t.
+    URL [[https://huggingface.co/stabilityai/stablelm-3b-4e1t](https://huggingface.co/stabilityai/stablelm-3b-4e1t)](%5Bhttps://huggingface.co/stabilityai/stablelm-3b-4e1t%5D(https://huggingface.co/stabilityai/stablelm-3b-4e1t)).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Vaswani et al. (2017) Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones,
+    L., Gomez, A. N., Kaiser, Ł., and Polosukhin, I. Attention is all you need. *Advances
+    in neural information processing systems*, 30, 2017.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wang et al. (2020) Wang, S., Li, B. Z., Khabsa, M., Fang, H., and Ma, H. Linformer:
+    Self-attention with linear complexity. *arXiv preprint arXiv:2006.04768*, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wei et al. (2022) Wei, J., Tay, Y., Bommasani, R., Raffel, C., Zoph, B., Borgeaud,
+    S., Yogatama, D., Bosma, M., Zhou, D., Metzler, D., et al. Emergent abilities
+    of large language models. *arXiv preprint arXiv:2206.07682*, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wold et al. (1987) Wold, S., Esbensen, K., and Geladi, P. Principal component
+    analysis. *Chemometrics and intelligent laboratory systems*, 2(1-3):37–52, 1987.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xiao et al. (2021) Xiao, C., Hu, X., Liu, Z., Tu, C., and Sun, M. Lawformer:
+    A pre-trained language model for chinese legal long documents. *AI Open*, 2:79–84,
+    2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xiong et al. (2021) Xiong, Y., Zeng, Z., Chakraborty, R., Tan, M., Fung, G.,
+    Li, Y., and Singh, V. Nyströmformer: A nyström-based algorithm for approximating
+    self-attention. In *Proceedings of the AAAI Conference on Artificial Intelligence*,
+    volume 35, pp.  14138–14148, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zaheer et al. (2020) Zaheer, M., Guruganesh, G., Dubey, K. A., Ainslie, J.,
+    Alberti, C., Ontanon, S., Pham, P., Ravula, A., Wang, Q., Yang, L., et al. Big
+    bird: Transformers for longer sequences. *Advances in neural information processing
+    systems*, 33:17283–17297, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Zhang et al. (2023a) Zhang, H., Ning, A., Prabhakar, R., and Wentzlaff, D. A
+    hardware evaluation framework for large language model inference. *arXiv preprint
+    arXiv:2312.03134*, 2023a.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Zhang et al. (2019) Zhang, W., Yan, Z., Lin, Y., Zhao, C., and Peng, L. A high
+    throughput b+ tree for simd architectures. *IEEE Transactions on Parallel and
+    Distributed Systems*, 31(3):707–720, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. (2023b) Zhang, Z., Sheng, Y., Zhou, T., Chen, T., Zheng, L., Cai,
+    R., Song, Z., Tian, Y., Ré, C., Barrett, C., et al. H $\_2$ o: Heavy-hitter oracle
+    for efficient generative inference of large language models. *arXiv preprint arXiv:2306.14048*,
+    2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Appendix A Details Regarding SIMD Instructions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The SIMD shuffle presented in Algorithm [2](#alg2 "Algorithm 2 ‣ 3.2 Compressing
+    Lookup Tables into SIMD Registers ‣ 3 Methodology ‣ NoMAD-Attention: Efficient
+    LLM Inference on CPUs Through Multiply-add-free Attention") is a simplification
+    of the actual hardware implementation. We give full details of lines 5 to 11 in
+    Algorithm [2](#alg2 "Algorithm 2 ‣ 3.2 Compressing Lookup Tables into SIMD Registers
+    ‣ 3 Methodology ‣ NoMAD-Attention: Efficient LLM Inference on CPUs Through Multiply-add-free
+    Attention") in Algorithm [3](#alg3 "Algorithm 3 ‣ Appendix A Details Regarding
+    SIMD Instructions ‣ NoMAD-Attention: Efficient LLM Inference on CPUs Through Multiply-add-free
+    Attention"). Keys are stored in blocks of 32, in which keys are stored in an alternating
+    order (see Figure [1](#S3.F1 "Figure 1 ‣ 3 Methodology ‣ NoMAD-Attention: Efficient
+    LLM Inference on CPUs Through Multiply-add-free Attention") for an illustration).
+    After a LUT is loaded into registers, the row of key codes in the block corresponding
+    to the sub-quantizer is used to perform shuffle. First, each byte in the row is
+    bit-shifted to the right by 4 bits via a SIMD instruction, which produces the
+    codes of the first 16 keys in the block. The codes are fed to shuffle to retrieve
+    the quantized dot products of the first 16 keys from the LUT. Then, the first
+    4 bits of each byte in the row are masked out via a SIMD instruction, which produces
+    the code of the last 16 keys in the block. They are similarly used to retrieve
+    the quantized dot products from the LUT. The retrieved quantized dot products
+    of 32 keys are accumulated in the accumulator. Since quantized dot products are
+    8 bits wide, accumulating them in 8-bit accumulators easily results in overflows.
+    Therefore, 16-bit accumulators are used to accumulate quantized dot products.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 3 NoMAD Dot-Product Lookup Accumulation Loop
+  prefs: []
+  type: TYPE_NORMAL
+- en: let $\mathrm{accu}[1\dots t]\leftarrow 0$ \For$s\leftarrow 1\dots S$) \CommentLoad
+    LUT into registers \Statelet $K_{\mathrm{cache}}^{32i-31\dots 32i-16,s}\leftarrow$
+    \CommentObtain the first 15 key codes through bit shifting \State$\mathrm{accu}[32i-31\dots
+    32i-16]\leftarrow$, \Statex           simd_shuffle$(\mathrm{LUT}_{s},K_{\mathrm{cache}}^{32i-31\dots
+    32i-16,s})$simd_bitwise_and$(K_{\mathrm{cache}}^{32i-15\dots 32i,s},\texttt{0xf})$
+    simd_add( \Statex           $\mathrm{accu}[32i-15\dots 32i]$) \EndFor\EndFor\State
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/6f85d7c01789744a7fc265abd333ca2f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: Illustration demonstrating the mapping of an input key $k^{t}$-th
+    sub-quantizer using $\pi_{s}(k^{t})$. Subsequently, each sub-quantizer maps to
+    its closest centroid $c_{i}^{t}$, and the results are stored in the key cache
+    $K_{\mathrm{cache}}^{t}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/402fb9e9dbfaa33b75c5eef39548c49f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7: Illustration depicting the mapping of a query vector $q$-th sub-quantizer
+    using $\pi_{s}(q)$. Subsequently, the distance between $\pi_{s}(q)$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B Visual Explanations on $\boldsymbol{K_{\mathrm{cache}}}$ and Lookup
+    Table (LUT) Construction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Figure [6](#A1.F6 "Figure 6 ‣ Appendix A Details Regarding SIMD Instructions
+    ‣ NoMAD-Attention: Efficient LLM Inference on CPUs Through Multiply-add-free Attention")
+    illustrates the process of mapping and compressing key vector $k^{t}$. For an
+    input key vector $k^{t}$, where $s\in{1\dots S}$. Subsequently, each sub-quantizer
+    $\pi_{s}(k^{t})$ by referencing the codebook $b_{s}$, among 16 centroids in the
+    codebook. The resulting values are then stored in the key cache $K_{\mathrm{cache}}^{t}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Similarly, Figure [7](#A1.F7 "Figure 7 ‣ Appendix A Details Regarding SIMD
+    Instructions ‣ NoMAD-Attention: Efficient LLM Inference on CPUs Through Multiply-add-free
+    Attention") illustrates the process of mapping and compressing query vector $q^{t}$,
+    functions $\pi_{s}$, first split the query into sub-queries $q=(\pi_{1}(q^{t}),\pi_{2}(q^{t}),\pi_{S}(q^{t}))$
+    and the 16 centroids from the codebook $b_{s}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/da802b1987d384fe090ef6a753b6567b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8: A speed comparison of NoMAD-Attention-based CodeLlama-7B (4-bit quantized
+    weights) at $d_{\mathrm{sub}}=1$ with the original LLM.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix C Efficiency of NoMAD-Attention at Different Compression Rates
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The results of the model efficiency comparison are depicted in Figure [8](#A2.F8
+    "Figure 8 ‣ Appendix B Visual Explanations on 𝑲_𝐜𝐚𝐜𝐡𝐞 and Lookup Table (LUT) Construction
+    ‣ NoMAD-Attention: Efficient LLM Inference on CPUs Through Multiply-add-free Attention").
+    Concerning the time required to finish prompt processing, the original model with
+    4-bit quantized weights takes $2.8\times 10^{6}$ ms for models with both $d_{\text{sub}}=1$,
+    achieving over a $1.5\times$ increase at a 16k prompt length.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Regarding the decoding time for each token, the original model with 4-bit quantized
+    weights takes $450-600$ and $200$ and $d_{\text{sub}}=2$ increase at a 16k prompt
+    length.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In terms of throughput measured by tokens per second, at a context length of
+    16k, the NoMAD-Attention-based CodeLlama-7B can achieve speeds of $4$ tokens per
+    second on models with 16-bit and 4-bit quantized weights, respectively. In contrast,
+    the original model only manages $2$ tokens per second, demonstrating more than
+    a $2\times$ tokens per second, while the NoMAD-Attention-based CodeLlama-7B can
+    achieve speeds of up to $4$ tokens per second for models with $d_{\text{sub}}=1$
+    respectively, also achieving over a $2\times$ increase at a 16k prompt length.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Overall, the NoMAD-Attention-based CodeLlama-7B (4-bit quantized weights) achieves
+    a $2\times$ speedup over the original CodeLlama-7B (4-bit quantized weights) at
+    long prompt and context lengths (e.g., 16k).
+  prefs: []
+  type: TYPE_NORMAL

@@ -1,0 +1,1757 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 19:01:40'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'LoongTrain: Efficient Training of Long-Sequence LLMs with Head-Context Parallelism'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2406.18485](https://ar5iv.labs.arxiv.org/html/2406.18485)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Diandian Gu School of Computer Science
+  prefs: []
+  type: TYPE_NORMAL
+- en: Peking University ,  Peng Sun Sensetime Research &
+  prefs: []
+  type: TYPE_NORMAL
+- en: Shanghai AI Laboratory ,  Qinghao Hu S-Lab, NTU &
+  prefs: []
+  type: TYPE_NORMAL
+- en: Shanghai AI Laboratory ,  Ting Huang Sensetime Research ,  Xun Chen Sensetime
+    Research ,  Yingtong Xiong Shanghai AI Laboratory ,  Guoteng Wang Shanghai AI
+    Laboratory ,  Qiaoling Chen S-Lab, NTU ,  Shangchun Zhao Tencent ,  Jiarui Fang
+    Tencent ,  Yonggang Wen Nanyang Technological University ,  Tianwei Zhang Nanyang
+    Technological University ,  Xin Jin School of Computer Science
+  prefs: []
+  type: TYPE_NORMAL
+- en: Peking University  and  Xuanzhe Liu School of Computer Science
+  prefs: []
+  type: TYPE_NORMAL
+- en: Peking University
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Efficiently training LLMs with long sequences is important yet challenged by
+    the massive computation and memory requirements. Sequence parallelism has been
+    proposed to tackle these problems, but existing methods suffer from scalability
+    or efficiency issues. We propose LoongTrain, a novel system to efficiently train
+    LLMs with long sequences at scale. The core of LoongTrain is the 2D-Attention
+    mechanism, which combines both head-parallel and context-parallel techniques to
+    break the scalability constraints while maintaining efficiency. We introduce Double-Ring-Attention
+    and analyze the performance of device placement strategies to further speed up
+    training. We implement LoongTrain with the hybrid ZeRO and Selective Checkpoint++
+    techniques. Experiment results show that LoongTrain outperforms state-of-the-art
+    baselines, i.e., DeepSpeed-Ulysses and Megatron Context Parallelism, in both end-to-end
+    training speed and scalability, and improves Model FLOPs Utilization (MFU) by
+    up to 2.88$\times$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Distributed Training, Sequence Parallelism, Distributed Attention
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1\. Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: With the emergence of Large Language Models (LLM) in recent years, researchers
+    have investigated and proposed many advanced training methodologies in a distributed
+    way, such as data parallelism (DP) ([KrizhevskySH12,](#bib.bib23) ; [paszke2019pytorch,](#bib.bib36)
+    ; [li2014scaling,](#bib.bib25) ; [li2014communication,](#bib.bib26) ), tensor
+    parallelism (TP) ([DeanCMCDLMRSTYN12,](#bib.bib15) ), pipeline parallelism (PP) ([GPipe,](#bib.bib20)
+    ; [AthlurSSRK22,](#bib.bib4) ), PyTorch FSDP ([PyTorchFSDP,](#bib.bib52) ), and
+    automatic parallelization frameworks ([Alpa,](#bib.bib53) ). Recently, LLMs with
+    long sequences have driven the development of novel applications that are essential
+    in our daily lives, including generative AI ([ni2023recent,](#bib.bib33) ) and
+    long-context understanding ([beltagy2020longformer,](#bib.bib5) ; [zhou2021document,](#bib.bib54)
+    ; [ding2023longnet,](#bib.bib16) ). With the increased popularity of ChatGPT,
+    long dialogue processing tasks have become more important for chatbot applications
+    than ever ([touvron2023llama,](#bib.bib45) ). In addition to these scenarios for
+    language processing, Transformer-based giant models also achieve impressive performance
+    in computer vision ([zhang2020span,](#bib.bib50) ; [arnab2021vivit,](#bib.bib3)
+    ; [yuan2021tokens,](#bib.bib49) ) and AI for science ([bi2023accurate,](#bib.bib6)
+    ; [ai4science,](#bib.bib30) ), where inputs with long sequences are critical for
+    complex tasks such as video stream processing ([ruan2022survey,](#bib.bib41) )
+    and protein property prediction ([chandra2023transformer,](#bib.bib9) ).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Training LLMs with long sequences requires massive memory resources and computation.
+    To tackle these challenges, sequence parallelism (SP) has been proposed ([DeepspeedUlysses,](#bib.bib21)
+    ; [lightseq,](#bib.bib24) ; [BPT2,](#bib.bib29) ; [megatroncp,](#bib.bib34) ),
+    which can be basically divided into two categories: head parallelism (HP) ([DeepspeedUlysses,](#bib.bib21)
+    ) and context parallelism (CP) ([BPT2,](#bib.bib29) ; [megatroncp,](#bib.bib34)
+    ). In Attention blocks, HP methods keep the whole sequence and compute attention
+    for different heads in parallel, while CP methods split the QKV (Query, Key, and
+    Value) tensors into chunks along the sequence dimension. However, both face limitations
+    when applied to extremely-long-sequence LLMs at a large scale. First, HP meets
+    the scalability issue. In HP, the degree of SP inherently cannot exceed the number
+    of attention heads ([DeepspeedUlysses,](#bib.bib21) ). Therefore, there is an
+    upper bound for the degree that HP can scale out. Second, CP meets the communication
+    inefficiency issue. CP ([BPT2,](#bib.bib29) ; [megatroncp,](#bib.bib34) ) employs
+    a peer-to-peer (P2P) communication primitive. However, P2P encounters issues of
+    low intra-node bandwidth utilization and low inter-node network resource utilization.
+    This bottleneck makes it challenging to overlap communication with computation
+    when scaling out the context-parallel dimension. For example, our experiments
+    show that Ring-Attention can spend 1.8$\times$ time on communication than on computation
+    when running Grouped Query Attention (GQA) on 64 GPUs with a sequence length of
+    128K (Figure [5](#S3.F5 "Figure 5 ‣ 3.2\. Inefficient Performance of Ring-Attention
+    ‣ 3\. Motivation & Observation ‣ LoongTrain: Efficient Training of Long-Sequence
+    LLMs with Head-Context Parallelism")(d)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| $S$ | Sequence Parallel Size |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $H$ | Data Parallel Size |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $H_{kv}$ | Head Parallel Size |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $D$ | Context Parallel Size |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $B$ | Inner Ring Size |'
+  prefs: []
+  type: TYPE_TB
+- en: Table 1\. Notations used in this paper.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To bridge these gaps, we propose LoongTrain, an effective training framework
+    for long-sequence LLMs on large-scale GPU clusters. Our key idea is to address
+    the scalability constraints of HP while mitigating the inefficiencies of CP by
+    introducing a novel 2D-Attention mechanism. This mechanism parallelizes attention
+    across both HP and CP dimensions. Specifically, it distributes the QKV tensors
+    across GPUs based on the head dimension and partitions these tensors into chunks
+    within the CP dimension. By doing so, LoongTrain enhances scalability through
+    the integration of CP and reduces the number of P2P steps by confining the CP
+    dimension size. In addition, this design provides more opportunities for computation-communication
+    overlap.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To further improve the communication efficiency of Attention blocks in certain
+    circumstances, we introduce Double-Ring-Attention, which utilizes all of the inter-node
+    NICs efficiently for higher peer-to-peer communication bandwidth. We also analyze
+    how different placement strategies can boost the communication efficiency in different
+    2D-Attention configurations. Finally, we implement advanced techniques such as
+    applying ZeRO across both DP and PP dimensions and a whitelist-based gradient
+    checkpointing mechanism Selective Checkpoint++ to further improve the end-to-end
+    LLM training performance. Evaluation results on training LLMs with up to 1M sequences
+    show that LoongTrain can bring up to 2.88$\times$ performance improvement compared
+    to existing state-of-the-art solutions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: LoongTrain has been deployed to train multiple long-sequence LLMs within our
+    organization. The system is implemented within our internal training framework,
+    which can be accessed at [https://github.com/InternLM/InternEvo](https://github.com/InternLM/InternEvo).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2\. Background
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 2.1\. LLM Architecture with MHA/GQA
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'LLMs like GPT ([GPT3,](#bib.bib8) ) and LLaMA ([LLaMA,](#bib.bib43) ) utilize
+    the Transformer architecture ([Attention,](#bib.bib46) ), which consists of multiple
+    layers. As shown in Figure [1](#S2.F1 "Figure 1 ‣ 2.1\. LLM Architecture with
+    MHA/GQA ‣ 2\. Background ‣ LoongTrain: Efficient Training of Long-Sequence LLMs
+    with Head-Context Parallelism"), each layer includes an Attention block and a
+    Feed-Forward Network (FFN) block. Within the Attention block, a linear module
+    projects the input tensor into three tensors: Query ($Q$, where $W_{1},W_{2},W_{3}$
+    are all linear modules.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/c1e1c4569e9a55da3e458fd7d93aed7d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 1. A typical Transformer layer contains an Attention block and a Feed-Forward
+    Network (FFN) block.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Multi-Head Attention (MHA) ([MHA,](#bib.bib47) ) splits $Q$ heads. Suppose the
+    original $Q$. They will be reshaped to $(H,S,D/H)$ and $V$ and $H=32$ .
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2\. Distributed LLM Training
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Hybrid parallelism ([Megatron-LM,](#bib.bib31) ) and Zero Redundancy Optimizer
+    (ZeRO) ([ZeRO,](#bib.bib39) ) are commonly employed to train LLMs at scale. Specifically,
+    data parallelism (DP) divides input data into chunks, distributing them across
+    multiple GPUs to parallelize training. Tensor parallelism (TP) distributes model
+    parameters across GPUs along specific dimensions, enabling parallel computation
+    of the model layers ([TP,](#bib.bib32) ). Pipeline parallelism (PP) splits layers
+    of a model into multiple stages, distributing them across GPUs ([GPipe,](#bib.bib20)
+    ; [pipedream,](#bib.bib18) ). Each pipeline stage depends on the outputs of previous
+    stages, leading to computation stalls known as pipeline bubbles. Advanced pipeline
+    schedulers, such as 1F1B ([pipedream,](#bib.bib18) ) and ZeRO-Bubble ([zerobubble,](#bib.bib37)
+    ), have been proposed to reduce the bubble ratio. ZeRO ([ZeRO,](#bib.bib39) )
+    addresses redundant memory usage across DP ranks. ZeRO-1 partitions optimizer
+    states across GPUs, ensuring each GPU stores only a fraction of the optimizer
+    state. ZeRO-2 extends this by also sharding gradients, and ZeRO-3 further distributes
+    model parameters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/515a6ed3985655af0b806ad8b4455e12.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2. Ulyssess-Attention performs head-parallel computation across GPUs
+    with two steps of AlltoAll.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To support long-sequence training, sequence parallelism (SP) has emerged as
+    an effective technique to mitigate activation memory footprints ([DeepspeedUlysses,](#bib.bib21)
+    ; [Nvidia3,](#bib.bib22) ; [lightseq,](#bib.bib24) ). In SP, the input and output
+    tensors of each Transformer layer are partitioned into $d_{sp}$ chunks along the
+    sequence dimension. Megatron-LM integrates SP with TP across different modules
+    ([Nvidia3,](#bib.bib22) ). Specifically, TP is utilized to parallelize the linear
+    modules, while SP is applied to normalization and dropout modules. To ensure consistency
+    in computational results, Megatron-LM incorporates necessary AllGather and ReduceScatter
+    operations to transfer activations during training. However, as the sequence length
+    increases, the communication overhead associated with transferring activations
+    also grows, leading to significant communication challenges ([DeepspeedUlysses,](#bib.bib21)
+    ; [hu2024characterization,](#bib.bib19) ).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To address this problem in the integration of SP and TP, recent approaches
+    implement SP across all linear modules and utilize ZeRO-3 to reduce memory footprints.
+    This eliminates the need for collective communications on activations. They perform
+    AllGather to collect the parameters of linear modules before computation, which
+    do not increase with the sequence length. Following this strategy, two methods
+    have been introduced to facilitate distributed attention computation: Ulysses-Attention
+    ([DeepspeedUlysses,](#bib.bib21) ) and Ring-Attention ([lightseq,](#bib.bib24)
+    ; [BPT2,](#bib.bib29) ), as described below.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.3\. Distributed Attention
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Ulysses-Attention ([DeepspeedUlysses,](#bib.bib21) ) performs head-parallel
+    computation across GPUs ($d_{hp}=d_{sp}$ heads. Each GPU then computes the attention
+    for different heads in parallel. Finally, another AlltoAll operation gathers the
+    results across the head dimension while re-partitioning along the sequence dimension.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/b1c2cd57d96254fff7a60453489bec2d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Without Load Balance
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/09d284f3412563e1ea86d01ba32b3aa9.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) With Load-Balance
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 3. Ring-Attention performs context-parallel computation, and organizes
+    communication in a ring fashion. 1 or 0 represents that whether there is computation
+    between QKV.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Ring-Attention ([lightseq,](#bib.bib24) ; [BPT2,](#bib.bib29) ) leverages blockwise
+    attention ([self-attnnotneedon2memory,](#bib.bib38) ; [BPT1,](#bib.bib27) ; [flashattn1,](#bib.bib14)
+    ) and performs context-parallel computation ($d_{cp}=d_{sp}$), as shown in Figure
+    [3](#S2.F3 "Figure 3 ‣ 2.3\. Distributed Attention ‣ 2\. Background ‣ LoongTrain:
+    Efficient Training of Long-Sequence LLMs with Head-Context Parallelism"). This
+    method partitions QKV tensors into chunks along the sequence dimension, with each
+    GPU initially assigned one chunk. For each query chunk, its corresponding attention
+    output is computed by iterating over all KV chunks. Communication is organized
+    in a ring fashion, where each GPU simultaneously sends and receives KV chunks,
+    allowing communication to be overlapped with computation. FlashAttention ([flashattn1,](#bib.bib14)
+    ) can still be used to maintain the IO-aware benefits of memory-efficient computation.
+    However, the standard Ring-Attention approach is not load-balanced when applying
+    a causal attention mask, since only the lower triangular portion of the matrix
+    needs to be computed. To address this issue, several methods have been proposed,
+    such as DistFlashAttn ([lightseq,](#bib.bib24) ) and Striped-Attention ([StripedAttention,](#bib.bib7)
+    ). As shown in Figure [3](#S2.F3 "Figure 3 ‣ 2.3\. Distributed Attention ‣ 2\.
+    Background ‣ LoongTrain: Efficient Training of Long-Sequence LLMs with Head-Context
+    Parallelism")(b), Megatron-LM reorders the input sequence tokens along the sequence
+    dimension to achieve load balance in its implementation. In this paper, Ring-Attention
+    is assumed to be load-balanced by default.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3\. Motivation & Observation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Given the long computation time of LLM training, especially with long sequences,
+    it is essential to scale long-sequence model training to large-scale clusters.
+    However, current SP approaches face two significant challenges: limited scalability
+    and high communication overhead.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7a89d372b510b44a738bfc5d1bd39220.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Maximum GPU Scalability
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e1419a1c9992b35988381a3f35dd78a9.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Pipeline Bubble Rate
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 4. Limited scalability of Ulysses-Attention constrained by a global batch
+    size of 4M tokens. (a) Maximum GPU scalability without Pipeline Parallelism. (b)
+    Pipeline bubble rate, using $d_{dp}=4,d_{sp}=64,d_{pp}=4$ on 1024 GPUs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1\. Limited Scalability of Ulysses-Attention
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Ulysses-Attention cannot scale long-sequence training to large-scale clusters
+    due to the limitations in the maximum degrees of SP, DP, and PP. First, SP is
+    sensitive to the number of attention heads. When using MHA, the SP degree cannot
+    exceed the number of attention heads; while in the case of GQA, the SP degree
+    is limited by the number of key/value heads. For instance, LLaMA3-8B uses GQA
+    with 8 key/value heads, meaning that the maximum SP degree is 8 when using Ulysses-Attention.
+    Even if we repeat key/value heads, as detailed in Section [4.1](#S4.SS1 "4.1\.
+    2D-Attention Overview ‣ 4\. Distributed 2D-Attention ‣ LoongTrain: Efficient Training
+    of Long-Sequence LLMs with Head-Context Parallelism"), the maximum SP degree remains
+    32.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It is impractical to rely on increasing the degree of DP to scale out the training
+    process due to the constraint of the global batch size. For instance, when training
+    a Transformer model with 32 attention heads and employing a global batch size
+    of 4M tokens—as exemplified in the world model training ([liu2024world,](#bib.bib28)
+    )—and a sequence length of 1M tokens, the maximum attainable degree of DP is 4\.
+    Under these conditions, the training process can only be scaled up to 128 GPUs
+    when utilizing Ulysses-Attention. The maximum number of GPUs that Ulysses-Attention
+    could use within the constraint of a 4M global batch size is illustrated in Figure
+    [4](#S3.F4 "Figure 4 ‣ 3\. Motivation & Observation ‣ LoongTrain: Efficient Training
+    of Long-Sequence LLMs with Head-Context Parallelism") (a).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'While we can scale out long-sequence training to more GPUs by increasing the
+    degree of PP, it can lead to a high bubble rate. Due to the global batch size
+    constraint, we have a limited number of micro-batches, which introduce a significant
+    bubble rate. As shown in Figure [4](#S3.F4 "Figure 4 ‣ 3\. Motivation & Observation
+    ‣ LoongTrain: Efficient Training of Long-Sequence LLMs with Head-Context Parallelism")(b),
+    the bubble rate reaches 2 even under zero-bubble mechanisms, such as the ZB-V
+    and ZB-1P schedulers ([zerobubble,](#bib.bib37) ). This level of inefficiency
+    is unacceptable for effective LLM training.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2\. Inefficient Performance of Ring-Attention
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: While Ring-Attention demonstrates the potential to scale SP to large degrees,
+    its performance is hindered by significant communication overheads. We evaluated
+    the performance of Ring-Attention and Ulysses-Attention with a sequence length
+    of 128K on a testbed comprising 64 GPUs¹¹1To scale training with 1M sequence length
+    to 2048 GPUs, constrained by the global batch size of 4M tokens, $d_{sp}$ more
+    time on communication than on computation when using 64 GPUs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/67ad4c7f12477ae5273e0e74d08f90dd.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Ulyssess-Attention (MHA)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/ac8929c1fefaa780af5040a56ce48ec7.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Ring-Attention (MHA)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/2ef6754fa0365a186df2c679c554e426.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (c) Ulyssess-Attention (GQA)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8f10c44f9891f15df63ef303c4932c3f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (d) Ring-Attention (GQA)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 5. Forward time evaluation of Ulysses-Attention and Ring-Attention on
+    8 physical nodes, each equipped with 8 NVIDIA Ampere GPUs connected by NVLINK.
+    Each node has four 200 HDR NICs. In the test, we set $H=32$ for GQA.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/59219959c439acfd599b8ec5655d9612.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6. Ring-Attention uses one NIC for sending key/value chunks and another
+    NIC for receiving key/value chunks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The performance inefficiency of Ring-Attention primarily stems from three factors.
+    First, due to the small communication size, the intra-node communication via NVLINK
+    is more sensitive to the communication latency rather than the bandwidth. When
+    running GQA with a sequence length of 128K on 8 GPUs, the communication volume
+    is 64MB per step. This size does not fully utilize the high bandwidth of NVLINK,
+    resulting in high communication latency that cannot be overlapped with computation.
+    Second, when scaling Ring-Attention, the computation time per step decreases quadratically,
+    whereas the communication volume per step only decreases linearly. This scaling
+    exacerbates the imbalance between computation and communication, making communication
+    the performance bottleneck. Third, Ring-Attention does not fully utilize network
+    resources due to its ring-based communication design. Despite the widespread use
+    of multi-rail networks in GPU clusters ([railonly,](#bib.bib48) ; [railarch,](#bib.bib35)
+    ), Ring-Attention utilizes one NIC for sending KV chunks and another NIC for receiving
+    KV chunks, as shown in Figure [6](#S3.F6 "Figure 6 ‣ 3.2\. Inefficient Performance
+    of Ring-Attention ‣ 3\. Motivation & Observation ‣ LoongTrain: Efficient Training
+    of Long-Sequence LLMs with Head-Context Parallelism"). So in a single step, all
+    other ranks must wait for the slowest rank using inter-node P2P communication.
+    Thus, it is difficult to overlap communication with computation when scaling Ring-Attention
+    to a large scale.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4\. Distributed 2D-Attention
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We introduce LoongTrain to address the scalability and efficiency challenges
+    in training long-sequence LLMs. In particular, we propose 2D-Attention, which
+    integrates head-parallel and context-parallel attention through a hybrid strategy,
+    leveraging the benefits of both methods. This approach naturally overcomes the
+    scalability limitations of head-parallel attention by incorporating context-parallel
+    attention. To further reduce the communication overhead in Attention blocks, we
+    design a Double-Ring-Attention mechanism and disclose the influence of device
+    placement. Additionally, we briefly analyze the performance of 2D-Attention.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1\. 2D-Attention Overview
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In LoongTrain, attention is parallelized across two dimensions: head parallelism
+    (HP) and context parallelism (CP), which is referred to as 2D-Attention. It organizes
+    $d_{sp}$ and $d_{cp}$. Thus, we have'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $d_{sp}=d_{hp}\times d_{cp}.$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Algorithm [1](#alg1 "Algorithm 1 ‣ 4.1\. 2D-Attention Overview ‣ 4\. Distributed
+    2D-Attention ‣ LoongTrain: Efficient Training of Long-Sequence LLMs with Head-Context
+    Parallelism") and Figure [7](#S4.F7 "Figure 7 ‣ 4.1\. 2D-Attention Overview ‣
+    4\. Distributed 2D-Attention ‣ LoongTrain: Efficient Training of Long-Sequence
+    LLMs with Head-Context Parallelism") illustrate the forward pass of 2D-Attention.
+    In Figure [7](#S4.F7 "Figure 7 ‣ 4.1\. 2D-Attention Overview ‣ 4\. Distributed
+    2D-Attention ‣ LoongTrain: Efficient Training of Long-Sequence LLMs with Head-Context
+    Parallelism")’s configuration, each CP process group contains four GPUs. The input
+    tensors, Q (queries), K (keys), and V (values), are divided along the sequence
+    dimension, with each segment shaped as $(H,S/d_{sp},D/H)$. 2D-Attention handles
+    head parallelism across CP groups, while context parallelism is executed within
+    each CP group.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/10105dcf3fed0ef311981f4728d76062.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7. 2D-Attention design. Different colors represent different attention
+    heads. In this example, $d_{cp}=4$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 1 2D-Attention Mechanism (Forward Phase)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1:Input:  $Q$, $d_{cp}$6:Gather output: $O\leftarrow\textbf{SeqAlltoAll}(O^{\prime})$'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The computation of MHA in 2D-Attention involves three steps. <svg id="S4.SS1.p3.1.pic1"
+    class="ltx_picture" height="14.39" overflow="visible" version="1.1" width="14.39"><g
+    transform="translate(0,14.39) matrix(1 0 0 -1 0 0) translate(7.2,0) translate(0,7.2)"
+    fill="#000000" stroke="#000000" stroke-width="0.4pt"><g transform="matrix(1.0
+    0.0 0.0 1.0 -3.46 -4.46)" fill="#FFFFFF" stroke="#FFFFFF"><foreignobject width="6.92"
+    height="8.92" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible" color="#FFFFFF">1</foreignobject></g></g></svg>
+    The SeqAlltoAll communication operation distributes the QKV tensors based on the
+    head dimension across $d_{hp}$ attention heads, as illustrated in Figure [7](#S4.F7
+    "Figure 7 ‣ 4.1\. 2D-Attention Overview ‣ 4\. Distributed 2D-Attention ‣ LoongTrain:
+    Efficient Training of Long-Sequence LLMs with Head-Context Parallelism"). <svg
+    id="S4.SS1.p3.6.pic2" class="ltx_picture" height="14.39" overflow="visible" version="1.1"
+    width="14.39"><g transform="translate(0,14.39) matrix(1 0 0 -1 0 0) translate(7.2,0)
+    translate(0,7.2)" fill="#000000" stroke="#000000" stroke-width="0.4pt"><g transform="matrix(1.0
+    0.0 0.0 1.0 -3.46 -4.46)" fill="#FFFFFF" stroke="#FFFFFF"><foreignobject width="6.92"
+    height="8.92" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible" color="#FFFFFF">2</foreignobject></g></g></svg>
+    Each CP group independently performs Double-Ring-Attention, as detailed in Section
+    [4.3](#S4.SS3 "4.3\. Double-Ring-Attention ‣ 4\. Distributed 2D-Attention ‣ LoongTrain:
+    Efficient Training of Long-Sequence LLMs with Head-Context Parallelism"), resulting
+    in an output tensor of shape $$(H/d_{hp},S/d_{cp},\\'
+  prefs: []
+  type: TYPE_NORMAL
+- en: D/H)$$. During this stage, each GPU computes attention using the local QKV and
+    exchanges partitioned KV chunks via P2P communication, transferring $2\times(H/d_{hp})\times(S/d_{cp})\times(D/H)=2SD/d_{sp}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the backward pass, a SeqAlltoAll transforms the gradients of the attention
+    output from shape $(H,S/d_{sp},D/H)$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2\. KV Replication for GQA
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In MHA computation, $d_{hp}$. Since $H_{kv}<H$, this constraint limits the search
+    space for the two-dimensional parallel strategy in 2D-Attention, potentially hindering
+    optimal performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7797240b480ec00510e98cceb6f4a042.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8. When $H_{kv}<d_{hp}$, 2D-Attention replicates KV tensors before SeqAlltoAll
+    during forward pass, and aggregates these replicated KV tensors’ gradients during
+    backward pass. Different colors represent different attention heads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '2D-Attention uses KV replication to address the constraint of limited KV heads
+    in GQA (Figure [8](#S4.F8 "Figure 8 ‣ 4.2\. KV Replication for GQA ‣ 4\. Distributed
+    2D-Attention ‣ LoongTrain: Efficient Training of Long-Sequence LLMs with Head-Context
+    Parallelism")). In the forward pass, the input KV tensors are shaped as $(H_{kv},S/d_{sp},D/H)$.
+    KV replication can potentially increase network traffic at this stage. We will
+    analyze this impact on communication in Section [4.5](#S4.SS5 "4.5\. Performance
+    Analysis ‣ 4\. Distributed 2D-Attention ‣ LoongTrain: Efficient Training of Long-Sequence
+    LLMs with Head-Context Parallelism").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3\. Double-Ring-Attention
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '2D-Attention may incur high communication overhead if we directly use Ring-Attention
+    for CP computation if the CP groups are inter-node. As discussed in Section [3.2](#S3.SS2
+    "3.2\. Inefficient Performance of Ring-Attention ‣ 3\. Motivation & Observation
+    ‣ LoongTrain: Efficient Training of Long-Sequence LLMs with Head-Context Parallelism"),
+    Ring-Attention does not fully utilize the network resources because of its ring-based
+    communication design.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To fully utilize available NICs for inter-node communication, we propose Double-Ring-Attention,
+    which partitions the $d_{cp}$ denote the $j$ outer ring steps in total. In the
+    new outer ring step, GPUs within each inner ring use new KV chunks as the initial
+    value, fetched from GPUs of the neighboring outer ring. This P2P communication
+    can be overlapped with computation: $W_{i,j}$ while computing the current inner
+    ring.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/81d0fb8bdaa0adcf27d4412c1a200f18.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 9. An illustration of Double-Ring-Attention. In this example, $d_{cp}=8$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/101fcacfe5fcc8f8b80caac8c522a50c.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 10. Communication in Double-Ring-Attention. In this example, GPUs in
+    the same node create an inner ring with intra-node P2P communications. An outer
+    ring requires inter-node P2P communications, utilizing all available NICs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 2 Double-Ring Attention Mechanism
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1:Input: $Q$, $w$4:     $\hat{K},\hat{V}\leftarrow\text{P2P.async\_recv}(\text{previous\_outer\_rank})$7:         $K^{\prime},V^{\prime}\leftarrow\text{P2P.async\_recv}(\text{previous\_inner\_rank})$
+    $\vartriangleright$update $KV$'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Double-Ring-Attention offers superior communication efficiency compared to
+    the original Ring-Attention. It fully utilizes available network resources to
+    transfer KV chunks across nodes and overlaps these communication processes with
+    computational tasks. For example, in the configuration of Figure [10](#S4.F10
+    "Figure 10 ‣ 4.3\. Double-Ring-Attention ‣ 4\. Distributed 2D-Attention ‣ LoongTrain:
+    Efficient Training of Long-Sequence LLMs with Head-Context Parallelism"), 8 GPUs
+    are arranged into two inner rings, each containing 4 GPUs. During computation
+    within an inner ring, GPUs 0-3 employ distinct NICs to send KV chunks to GPUs
+    4-7.Additionally, P2P within the inner rings can be entirely initiated within
+    a single node, thereby avoiding the need to wait for inter-node P2P communication
+    at every micro-step. We will analyze the communication cost of Double-Ring-Attention
+    and discuss the choice of $w$ in Section [4.5](#S4.SS5 "4.5\. Performance Analysis
+    ‣ 4\. Distributed 2D-Attention ‣ LoongTrain: Efficient Training of Long-Sequence
+    LLMs with Head-Context Parallelism").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4\. Head-First & Context-First Device Placement
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Given $d_{hp}$, there are two device allocation strategies: head-first placement
+    and context-first placement. The selection of an appropriate placement strategy
+    is critical due to the disparity between inter-node and intra-node bandwidths
+    in GPU clusters. For instance, DGX-A100 nodes provide an intra-node bidirectional
+    bandwidth of 600 GB/s per GPU through NVLINK, while the inter-node bidirectional
+    bandwidth is only 400 GB/s per node. The choice of device placement directly influences
+    the distribution of inter-node and intra-node communication for two types of operations
+    in 2D-Attention: SeqAlltoAll and P2P. Figure [11](#S4.F11 "Figure 11 ‣ 4.4\. Head-First
+    & Context-First Device Placement ‣ 4\. Distributed 2D-Attention ‣ LoongTrain:
+    Efficient Training of Long-Sequence LLMs with Head-Context Parallelism") shows
+    examples of head-first and context-first placement.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In head-first placement, GPUs of the same HP group are given high priority
+    for colocation on the same node. As illustrated in Figure [11](#S4.F11 "Figure
+    11 ‣ 4.4\. Head-First & Context-First Device Placement ‣ 4\. Distributed 2D-Attention
+    ‣ LoongTrain: Efficient Training of Long-Sequence LLMs with Head-Context Parallelism")(a),
+    GPUs 0 and 1 are assigned to the same HP group but to different CP groups. This
+    configuration can efficiently leverage NVLINK for SeqAlltoAll, as it only requires
+    a standard NCCL AlltoAll within the HP process group. However, head-first placement
+    leads to higher inter-node traffic during Double-Ring-Attention, because GPUs
+    within the same CP group are more likely to be distributed across different nodes,
+    increasing the inter-node traffic.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In context-first placement, GPUs of the same CP group are prioritized for colocation
+    on the same node. As shown in Figure [11](#S4.F11 "Figure 11 ‣ 4.4\. Head-First
+    & Context-First Device Placement ‣ 4\. Distributed 2D-Attention ‣ LoongTrain:
+    Efficient Training of Long-Sequence LLMs with Head-Context Parallelism")(b), GPUs
+    0-3 are allocated to the same CP group. Thus, in this example, Double-Ring-Attention
+    generates only intra-node traffic, significantly reducing the communication latency
+    per P2P operation. However, when <math id="S4.SS4.p3.1.m1.1" class="ltx_Math"
+    alttext="d_{cp}></math>, P2P necessitates inter-node interconnections. Fortunately,
+    the double-ring approach proposed in Section [4.3](#S4.SS3 "4.3\. Double-Ring-Attention
+    ‣ 4\. Distributed 2D-Attention ‣ LoongTrain: Efficient Training of Long-Sequence
+    LLMs with Head-Context Parallelism") leverages multiple NICs to maintain high
+    efficiency. Maintaining the use of a standard NCCL AlltoAll within an HP group
+    necessitates reordering the input QKV tensors across nodes, which increases network
+    traffic for each Transformer layer. To mitigate this issue, we adopt the approach
+    used in Megatron-LM, implementing a post-processing function within the data loader
+    to adjust input tensor placement at the start of each batch. This obviates the
+    need for on-the-fly data movement for QKV tensors. Even with this optimization,
+    SeqAlltoAll still demands significant inter-node communication traffic.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/844f79f792f6a768e2af1a2687677ea4.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 11. Context-first placement vs. head-first placement. Different colors
+    represent different attention heads. In context-first placement, a post-processing
+    function within the data loader is required to adjust input sequence placement
+    at the start of each batch.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.5\. Performance Analysis
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 4.5.1\. Scalability Analysis
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 2D-Attention enhances the scalability of long-sequence training by integrating
+    head parallelism and context parallelism through a hybrid strategy. It overcomes
+    the limitations of head parallelism by incorporating context-parallel attention,
+    distributing computation across a grid of GPUs organized as $d_{hp}\times d_{cp}$
+    using KV replication, ensuring flexible processing and a large search space for
+    optimal performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.5.2\. Computation Analysis.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Given a sequence $(S,D)$ represents the proportionality constant for the forward
+    computation time. In 2D-Attention, the forward computation time for each micro-step
+    within the inner ring is described as $\alpha\left({S}/{d_{cp}}\right)^{2}{D}/{d_{hp}}.$,
+    we have:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $T_{comp}^{fwd}=\alpha{S^{2}D}/({d_{cp}d_{sp}}).$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'There are $w$ For the backward pass, the computation time for each micro-step
+    is described as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $T_{comp}^{bwd}=3\alpha{S^{2}D}/({d_{cp}d_{sp}}).$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: This is because the backward computation kernel naturally requires additional
+    computations, such as activation recomputing and gradient calculations as in FlashAttention
+    ([flashattn1,](#bib.bib14) ).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.5.3\. P2P Communication Analysis.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'The shape of a KV chunk is defined by: $(\max({H}_{kv},d_{hp})/d_{hp},S/d_{cp},D/H)$.
+    The size of a KV chunk can be calculated as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $Size(kv)=\max({H}_{kv},d_{hp})/H\times 4SD/d_{sp},$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where the factor of 4 accounts for two tensors with data type FP16. When using
+    Double-Ring-Attention, given the inner ring size $w$. GPUs concurrently launch
+    P2P communications for inner rings and outer rings. Each P2P communication time
+    depends on the slowest rank, due to the ring communication fashion. The forward
+    execution time per inner ring, considering the overlap between communication and
+    computation can be formulated as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $T_{inner\_ring}^{fwd}=A\times(w-1)+B,$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $A$ are defined as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: The backward execution time per inner ring can be expressed with similar expressions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The per P2P communication time remains unaffected by $d_{cp}$ is increased.
+    Thus, it becomes more challenging to effectively overlap computation and communication,
+    and Ring-Attention exhibits poor performance in large clusters due to high communication
+    overhead. 2D-Attention outperforms Ring-Attention since it provides more opportunities
+    for computation-communication overlap by limiting $d_{cp}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Selection of Inner Ring Size. When selecting context-first placement, ranks
+    of the same CP group are consolidated to as few nodes as possible. In this case,
+    there are $w$ is larger than that of NICs, GPUs may share the same NIC for P2P,
+    leading to worse performance due to congestion.
+  prefs: []
+  type: TYPE_NORMAL
+- en: GQA vs. MHA. During 2D-Attention of GQA, each P2P transfer involves $\hat{H}_{kv}/H\times
+    2SD/d_{sp}$, because KV replication is not applied in this case. However, if $d_{hp}=H$,
+    GQA and MHA will have the same communication volume due to KV replication.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.5.4\. SeqAlltoAll Communication Analysis.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'The size of a Q chunk and output chunk can be calculated as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $Size(q)=Size(out)={2SD}/{d_{sp}}.$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'SeqAlltoAll performs NCCL AlltoAll on $d_{hp}$ GPUs. The size of the data that
+    each GPU sends out in both the forward and backward phases can be expressed as
+    follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $AlltoAll\_Volume=\textstyle\sum_{i\in\{(q,k,v,out\}}Size(i)\times(d_{hp}-1)/d_{hp}.$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: With a larger $d_{hp}$ increases. With head-first placement, more AlltoAll-related
+    traffic is carried by intra-node NVLINK, and vice versa for context-first placement.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Therefore, there is a trade-off between $d_{cp}$, as well as between the head-first
+    and context-first placement. LoongTrain’s overall goal is to minimize the communication
+    time that cannot be overlapped with computation. The problem can be formulated
+    as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: In the formulation, $T_{SeqAlltoAll}$ inner rings to complete the execution
+    of attention.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.5.5\. Memory Analysis.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'When using 2D-Attention, each GPU should save its input QKV chunks (after SeqAlltoAll)
+    as the activation. Thus, given a fixed sequence length, 2D-Attention can also
+    reduce the activation memory usage by increasing $d_{sp}$ for outer ring P2P communication.
+    Experiment results in Section [6](#S6 "6\. Performance Evaluation ‣ LoongTrain:
+    Efficient Training of Long-Sequence LLMs with Head-Context Parallelism") show
+    that this memory overhead is small and does not hinder scalability.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5\. End-to-end System Implementation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We describe the end-to-end system implementation of LoongTrain for training
+    LLMs on our internal framework with two techniques: Hybrid ZeRO and selective
+    checkpoint++.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.1\. Hybrid ZeRO for Norm and Linear Modules
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In LoongTrain, all modules except for attention (e.g., Linear, LayerNorm, etc.)
+    utilize Zero ([ZeRO,](#bib.bib39) ). ZeRO is originally designed to reduce redundant
+    memory usage across DP ranks. When directly using ZeRO, for instance in Figure [12](#S5.F12
+    "Figure 12 ‣ 5.1\. Hybrid ZeRO for Norm and Linear Modules ‣ 5\. End-to-end System
+    Implementation ‣ LoongTrain: Efficient Training of Long-Sequence LLMs with Head-Context
+    Parallelism"), it works for GPU-0 and GPU-2, as well as GPU-1 and GPU-3, which
+    belong to the same DP group. GPU-0 and GPU-1 would each hold half of the parameters
+    or optimizer states, but these values remain identical, leading to redundant memory
+    usage.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: LoongTrain addresses these redundancies by applying ZeRO not only across the
+    DP dimension but also along the SP dimension. This hybrid approach shards model
+    states across both dimensions, distributing the model states across more GPUs.
+    As a result, only ${1}/(d_{dp}\times{d_{sp}})$ GPUs, effectively balancing the
+    GPU memory usage and communication overhead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/dd8a31c46cf972cd195dec65113d3aaa.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 12. LoongTrain applies ZeRO to Norm and Linear modules across both DP
+    and SP dimensions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | MHA (TGS) | MHA (MFU) | GQA (TGS) | GQA (MFU) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| System | 128K | 256K | 512K | 1M | 128K | 256K | 512K | 1M | 128K | 256K
+    | 512K | 1M | 128K | 256K | 512K | 1M |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DS-Ulysses | 629.9 | 418.3 | 243.1 | 130.6 | 0.305 | 0.341 | 0.359 | 0.365
+    | 629.9 | 418.3 | 243.1 | 130.6 | 0.305 | 0.341 | 0.359 | 0.365 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Megatron-CP | 296.8 | 300.0 | 260.1 | OOM | 0.143 | 0.244 | 0.385 | OOM |
+    706.2 | 476.3 | 279.6 | OOM | 0.342 | 0.388 | 0.413 | OOM |'
+  prefs: []
+  type: TYPE_TB
+- en: '| HP1/CP32 | 285.0 | 287.4 | 250.4 | 121.2 | 0.138 | 0.234 | 0.369 | 0.339
+    | 668.5 | 480.0 | 282.5 | 153.0 | 0.323 | 0.391 | 0.417 | 0.428 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| HP2/CP16 | 311.1 | 314.9 | 267.3 | 151.6 | 0.151 | 0.256 | 0.394 | 0.423
+    | 740.8 | 501.3 | 290.1 | 155.9 | 0.359 | 0.408 | 0.428 | 0.436 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| HP4/CP8 | 548.9 | 469.2 | 283.6 | 154.1 | 0.266 | 0.382 | 0.408 | 0.431 |
+    814.4 | 517.4 | 295.1 | 159.5 | 0.394 | 0.421 | 0.435 | 0.446 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| HP8/CP4 | 752.4 | 498.1 | 286.1 | 154.1 | 0.364 | 0.406 | 0.418 | 0.431 |
+    838.1 | 528.1 | 299.5 | 160.1 | 0.406 | 0.430 | 0.442 | 0.448 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| HP16/CP2 | 714.3 | 472.4 | 278.9 | 150.9 | 0.346 | 0.385 | 0.412 | 0.422
+    | 771.4 | 498.6 | 288.0 | 155.1 | 0.373 | 0.406 | 0.425 | 0.433 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| HP32/CP1 | 700.1 | 459.3 | 268.8 | 146.0 | 0.339 | 0.374 | 0.397 | 0.408
+    | 717.1 | 468.4 | 262.4 | 147.5 | 0.347 | 0.381 | 0.387 | 0.412 |'
+  prefs: []
+  type: TYPE_TB
+- en: Table 2\. Performance comparison of end-to-end training between LoongTrain,
+    DS-Ulysses, and Megatron-CP. HP$n$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.2\. Selective Checkpoint++
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Long sequence training leads to significant memory costs, making gradient checkpointing
+    a common practice. During forward propagation, the gradient checkpointing mechanism
+    stores only the input tensors of the wrapped function by the checkpoint function.
+    If the dropped activation values are needed during backward propagation, they
+    are recomputed. Typically, when we wrap the checkpoint function around an entire
+    Transformer layer, the total memory required for activations of a Transformer
+    layer is $2SD/d_{sp}$ in FP16.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While saving the checkpoints of the entire model significantly reduces the memory
+    footprint, it introduces additional computation overhead ([flashattn1,](#bib.bib14)
+    ). Given that the recomputation time for attention blocks is particularly long,
+    a straightforward approach is to keep the activations of attention blocks and
+    use checkpointing for the other parts of the model selectively with the provided
+    APIs ([Nvidia3,](#bib.bib22) ). However, this solution is not memory-efficient.
+    During backward propagation, each attention block requires extra memory to save
+    the QKV tensors (size $6SD/d_{sp}$ in FP32) ([chen2024internevo,](#bib.bib10)
+    ). To reduce memory usage, DistFlashAttn ([lightseq,](#bib.bib24) ) places the
+    attention module at the end of each Transformer layer. This strategy eliminates
+    the need to recompute the attention module during the backward phase and only
+    requires storing the output of the attention module.
+  prefs: []
+  type: TYPE_NORMAL
+- en: LoongTrain implements the selective checkpoint++ mechanism without modifying
+    the model structure. It adds attention modules to a whitelist. During the forward
+    pass, when encountering a module in the whitelist, the modified checkpoint function
+    saves its outputs. Specifically, for attention, it saves the attention output
+    with the size of $2SD/d_{sp}$ memory size per Transformer layer. Additionally,
+    selective checkpoint++ is compatible with other offload techniques ([ren2021zero,](#bib.bib40)
+    ), which involve offloading attention outputs to memory or NVMe storage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6\. Performance Evaluation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 6.1\. Experiment Setup
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Testbed. We conduct performance evaluation on a cluster with 8 GPU servers unless
+    specified otherwise. Each server is equipped with 8 NVIDIA Ampere GPUs, 128 CPU
+    cores, and 80GB memory per GPU. Within each node, GPUs are interconnected via
+    NVLINK. Inter-node communication is facilitated by 4 NVIDIA Mellanox HDR (200Gb/s)
+    InfiniBand NICs, without SHARP.
+  prefs: []
+  type: TYPE_NORMAL
+- en: System Configurations. We evaluate the training performance of LoongTrain using
+    the configuration of LLaMA2-7B ([LLaMA2,](#bib.bib44) ), where $D=4096$ for GQA.
+    The input sequence length is scaled from 128K to 1M. In all experiments, activation
+    checkpointing is enabled by default. We analyze the performance of LoongTrain
+    with different parallelism settings and device placements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Evaluation Metrics. We focus on key performance metrics, including Model FLOPs
+    Utilization (MFU) ([palm,](#bib.bib12) ) and Tokens per GPU per Second (TGS).
+    We use the formula provided in Megatron-LM ([Megatron-LM,](#bib.bib31) ) for calculating
+    FLOPs and MFU. Notably, the FLOPs for attention are halved in this work to account
+    for the causal mask, which reduces the number of elements in attention that require
+    computation by approximately half. This differs from the FLOPs and MFU calculations
+    used in other works ([chen2024internevo,](#bib.bib10) ; [flashattn1,](#bib.bib14)
+    ; [dao2023flashattention,](#bib.bib13) ), but is essential since attention accounts
+    for the majority of the workload in long sequence training. Without this adjustment,
+    the MFU can exceed 1, misrepresenting the actual system performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Baselines. We compare the performance of LoongTrain against two long sequence
+    training frameworks: DeepSpeed-Ulysses (DS-Ulysses) ([DeepspeedUlysses,](#bib.bib21)
+    ) and Megatron Context Parallelism (Megatron-CP) ([megatroncp,](#bib.bib34) ).
+    DS-Ulysses employs head-parallel attention, while Megatron-CP utilizes Ring-Attention
+    with load balancing. All baseline systems are integrated with FlashAttention-V2
+    ([dao2023flashattention,](#bib.bib13) ). The versions used are as follows: 1)
+    DS-Ulysses: DeepSpeed V0.14.0; 2) Megatron-CP: Nemo v2.0.0rc0, NemoLauncher v24.05,
+    Megatron-Core v0.7.0, TransformerEngine v1.6, Apex commit ID 810ffa.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  |  | 128K | 256K | 512K | 1M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  |  | With SC++ | W/O SC++ | With SC++ | W/O SC++ | With SC++ | W/O SC++
+    | With SC++ | W/O SC++ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $d_{cp}$ | HF | CF | HF | CF | HF | CF | HF | CF | HF | CF | HF | CF |
+    HF | CF | HF | CF |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MHA | 64 | 1 | 0.092 | 0.092 | 0.070 | 0.070 | 0.159 | 0.159 | 0.122 | 0.122
+    | 0.290 | 0.290 | 0.221 | 0.221 | 0.452 | 0.452 | 0.357 | 0.357 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 32 | 2 | 0.099 | 0.158 | 0.077 | 0.126 | 0.173 | 0.278 | 0.133 | 0.219 |
+    0.316 | 0.434 | 0.243 | 0.353 | 0.475 | 0.486 | 0.394 | 0.406 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | 4 | 0.176 | 0.245 | 0.141 | 0.205 | 0.314 | 0.378 | 0.248 | 0.317 |
+    0.470 | 0.472 | 0.384 | 0.388 | 0.520 | 0.509 | 0.418 | 0.413 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 8 | 0.283 | 0.321 | 0.236 | 0.282 | 0.434 | 0.420 | 0.361 | 0.357 | 0.502
+    | 0.478 | 0.409 | 0.394 | 0.527 | 0.521 | 0.424 | 0.420 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 16 | 0.328 | 0.327 | 0.289 | 0.283 | 0.436 | 0.423 | 0.369 | 0.359 |
+    0.487 | 0.476 | 0.399 | 0.394 | 0.519 | 0.520 | 0.418 | 0.412 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | 32 | 0.320 | 0.329 | 0.284 | 0.293 | 0.421 | 0.421 | 0.353 | 0.357 |
+    0.474 | 0.478 | 0.388 | 0.394 | 0.517 | 0.517 | 0.415 | 0.406 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GQA | 64 | 1 | 0.255 | 0.255 | 0.196 | 0.196 | 0.379 | 0.379 | 0.308 | 0.308
+    | 0.470 | 0.470 | 0.378 | 0.378 | 0.508 | 0.508 | 0.406 | 0.406 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 32 | 2 | 0.283 | 0.317 | 0.233 | 0.269 | 0.419 | 0.429 | 0.345 | 0.354 |
+    0.492 | 0.485 | 0.398 | 0.392 | 0.521 | 0.516 | 0.418 | 0.416 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | 4 | 0.354 | 0.338 | 0.309 | 0.294 | 0.466 | 0.437 | 0.385 | 0.373 |
+    0.505 | 0.494 | 0.410 | 0.404 | 0.531 | 0.526 | 0.425 | 0.426 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 8 | 0.377 | 0.354 | 0.327 | 0.310 | 0.480 | 0.452 | 0.392 | 0.380 | 0.516
+    | 0.502 | 0.419 | 0.412 | 0.543 | 0.536 | 0.435 | 0.432 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 16 | 0.354 | 0.341 | 0.310 | 0.308 | 0.457 | 0.437 | 0.377 | 0.373 |
+    0.500 | 0.493 | 0.409 | 0.405 | 0.532 | 0.529 | 0.428 | 0.419 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | 32 | 0.323 | 0.333 | 0.285 | 0.295 | 0.424 | 0.422 | 0.349 | 0.360 |
+    0.476 | 0.481 | 0.389 | 0.394 | 0.518 | 0.518 | 0.415 | 0.406 |'
+  prefs: []
+  type: TYPE_TB
+- en: Table 3\. End-to-end training performance (MFU) of 7B-MHA and 7B-GQA on 64 GPUs
+    with $d_{sp}=64$. SC++ stands for Selective Checkpoint++, HF for head-first, and
+    CF for context-first. The highest MFU value in each column is highlighted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/3b7b5c0b9c91244e479f36646f1ff39c.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) MHA
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d08f8ce3d5911d95585ec4aa023b935f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) GQA
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 13. Performance comparison between Megatron-CP, DeepSpeed-Ulysses and
+    our proposed LoongTrain on 32 GPUs with the sequence length from 128K to 1M.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.2\. Comparison with DS-Ulysses & Megatron-CP
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Theoretically, 2D-Attention when $d_{cp}=1$ is equivalent to Megatron-CP. To
+    validate that our LoongTrain implementation is consistent with this theoretical
+    analysis, we measured the TGS and MFU when training 7B-MHA and 7B-GQA on 32 GPUs
+    using LoongTrain, DS-Ulysses, and Megatron-CP, with different sequence lengths.
+    The comparison was limited to 32 GPUs because DS-Ulysses supports only head-parallelism,
+    which is constrained by the number of attention heads. To ensure a fair comparison,
+    all systems applied ZeRO-1 on Norm and Linear modules across the 32 GPUs, and
+    did not use Selective Checkpoint++. The results are shown in Table [2](#S5.T2
+    "Table 2 ‣ 5.1\. Hybrid ZeRO for Norm and Linear Modules ‣ 5\. End-to-end System
+    Implementation ‣ LoongTrain: Efficient Training of Long-Sequence LLMs with Head-Context
+    Parallelism").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When $d_{cp}=1$, LoongTrain demonstrates slightly lower performance than Megatron-CP
+    in MHA, but exhibits higher performance in GQA. Our analysis indicates both systems
+    perform similarly in attention computation. The main performance disparity arises
+    from the divergent choices in computation and communication operators. Notably,
+    when processing the sequence length of 1M, Megatron-CP encounters out-of-memory
+    errors due to increased pre-allocated GPU memory requirements for parameters and
+    gradients.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For sequence lengths of 128K and 256K, Megatron-CP exhibits poor performance
+    in MHA, as the P2P communication cannot be effectively overlapped with computation.
+    However, with the sequence lengths of 512K and 1M, both Megatron-CP and LoongTrain-HP1/CP32
+    show better performance than DS-Ulysses for MHA. Additionally, in GQA, the communication
+    volume per micro-step is reduced by a factor of 4\. Consequently, Megatron-CP
+    and LoongTrain-HP1/CP32 consistently outperform DS-Ulysses across all evaluated
+    sequence lengths for GQA.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Then, we compare the end-to-end performance of the complete LoongTrain and
+    the baselines. All of the techniques such as hybrid ZeRO and Selective Checkpoint++
+    are used. As shown in Figure [13](#S6.F13 "Figure 13 ‣ 6.1\. Experiment Setup
+    ‣ 6\. Performance Evaluation ‣ LoongTrain: Efficient Training of Long-Sequence
+    LLMs with Head-Context Parallelism"), LoongTrain delivers larger MFU. The configuration
+    of $d_{hp}=8$, respectively. Compared to Megatron-CP, LoongTrain enhances the
+    performance of MHA and GQA by up to $2.88\times$, respectively.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.3\. Analysis of LoongTrain Performance
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'To analyze how much performance improvement can be brought by each design,
+    we evaluated the performance of LoongTrain for training the 7B-MHA and 7B-GQA
+    models on 64 GPUs with various sequence lengths and configurations. The evaluation
+    results are presented in Table [3](#S6.T3 "Table 3 ‣ 6.1\. Experiment Setup ‣
+    6\. Performance Evaluation ‣ LoongTrain: Efficient Training of Long-Sequence LLMs
+    with Head-Context Parallelism"). We do not show the results for $d_{cp}=1$ cannot
+    exceed the number of attention heads, which is 32\. The end-to-end evaluation
+    demonstrates that LoongTrain’s designs (e.g., 2D-Attention) and implementation
+    techniques (e.g., Selective Checkpoint++), significantly enhance the training
+    performance across all cases. Figure [14](#S6.F14 "Figure 14 ‣ 6.3\. Analysis
+    of LoongTrain Performance ‣ 6\. Performance Evaluation ‣ LoongTrain: Efficient
+    Training of Long-Sequence LLMs with Head-Context Parallelism") shows the end-to-end
+    MFU results and the details are listed in Table [3](#S6.T3 "Table 3 ‣ 6.1\. Experiment
+    Setup ‣ 6\. Performance Evaluation ‣ LoongTrain: Efficient Training of Long-Sequence
+    LLMs with Head-Context Parallelism").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/51534da3cf789892643e334c8d1f9b70.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) MHA
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8573a4d6bdaaaee6df146373852d123c.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) GQA
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 14. MFU comparison on 64 GPUs with sequence lengths from 128K to 1M.
+    Ring indicates $d_{hp}=1$ in LoongTrain. 2D-Attn indicates the best-performing
+    configuration.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  |  | MHA (Head-First) | MHA (Context-First) | GQA (Head-First) | GQA
+    (Context-First) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $d_{cp}$ | 128K | 256K | 512K | 1M | 128K | 256K | 512K | 1M | 128K |
+    256K | 512K | 1M | 128K | 256K | 512K | 1M |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Overall | 64 | 1 | 296.4 | 597.8 | 1210 | 2897 | 296.4 | 597.8 | 1210 | 2897
+    | 86.0 | 225.1 | 713.5 | 2681 | 86.0 | 225.1 | 713.5 | 2681 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 32 | 2 | 273.6 | 546.8 | 1106 | 2745 | 162.4 | 328.7 | 782.5 | 2663 | 75.4
+    | 198.5 | 679.5 | 2607 | 64.9 | 187.1 | 683.5 | 2589 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | 4 | 137.0 | 275.8 | 708.1 | 2595 | 87.4 | 213.8 | 691.5 | 2617 | 55.4
+    | 172.1 | 659.4 | 2559 | 59.9 | 179.1 | 668.3 | 2543 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 8 | 72.2 | 187.9 | 658.3 | 2557 | 62.2 | 185.6 | 675.3 | 2539 | 52.1
+    | 166.2 | 644.1 | 2494 | 56.8 | 175.2 | 656.1 | 2495 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 16 | 58.4 | 179.8 | 671.9 | 2575 | 60.1 | 182.6 | 680.6 | 2549 | 55.8
+    | 173.6 | 659.6 | 2530 | 57.3 | 177.2 | 661.7 | 2510 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | 32 | 60.8 | 186.0 | 684.9 | 2573 | 59.4 | 183.0 | 677.1 | 2553 | 60.8
+    | 185.8 | 683.9 | 2579 | 59.3 | 183.1 | 677.5 | 2555 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SeqAlltoAll | 64 | 1 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00
+    | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 32 | 2 | 2.23 | 3.20 | 5.49 | 10.00 | 7.19 | 13.27 | 25.10 | 49.26 | 1.89
+    | 2.51 | 3.92 | 6.58 | 4.92 | 8.65 | 16.29 | 31.59 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | 4 | 2.45 | 3.52 | 5.80 | 10.53 | 10.31 | 19.25 | 37.37 | 73.74 | 2.15
+    | 2.76 | 4.08 | 6.76 | 6.90 | 12.55 | 23.82 | 46.87 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 8 | 3.00 | 4.15 | 6.27 | 11.22 | 12.05 | 22.26 | 42.82 | 83.30 | 2.64
+    | 3.24 | 4.43 | 7.31 | 8.13 | 14.60 | 27.51 | 53.35 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 16 | 9.11 | 15.99 | 29.02 | 55.38 | 12.95 | 23.97 | 45.52 | 90.28 | 7.23
+    | 12.85 | 22.56 | 42.44 | 10.12 | 18.91 | 34.94 | 71.51 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | 32 | 13.42 | 23.43 | 42.73 | 81.47 | 14.56 | 25.41 | 48.25 | 100.0 |
+    13.40 | 23.35 | 42.85 | 81.76 | 14.31 | 25.75 | 48.43 | 106.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: Table 4\. Average overall execution time (ms) and SeqAlltoAll time (ms) of a
+    single 2D-Attention forward and backward operation on 64 GPUs with $d_{sp}=64$.
+    The lowest overall execution time in each column is highlighted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When $d_{hp}=1$ less communication volume compared to MHA, leading to a higher
+    MFU than MHA. Specifically in Ring-Attention, the MFU reaches 19.6% with the sequence
+    length of 128K, and increases to 40.6% when the sequence length is 1M.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With 2D-Attention, LoongTrain significantly improves the training performance
+    for MHA. Compared to Ring-Attention, 2D-Attention enhances the MFU by 4.1$\times$
+    for sequence lengths of 128K, 256K, 512K, and 1M, respectively. With Selective
+    Checkpoint++, LoongTrain further boosts the training performance by 1.15$\times$
+    for the same sequence lengths. Consequently, Figure [14](#S6.F14 "Figure 14 ‣
+    6.3\. Analysis of LoongTrain Performance ‣ 6\. Performance Evaluation ‣ LoongTrain:
+    Efficient Training of Long-Sequence LLMs with Head-Context Parallelism")(a) shows
+    that LoongTrain’s overall training performance is improved by 5.2$\times$, respectively.
+    Additionally, we observe that to achieve higher training performance for MHA,
+    LoongTrain tends to use a higher head parallelism size for sequence lengths of
+    128K and 256K. For sequence lengths of 512K and 1M, LoongTrain tends to use a
+    balanced head and context parallelism size.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '2D-Attention also works effectively for GQA. Compared to the performance of
+    Ring-Attention, LoongTrain enhances the MFU for sequences of 128K, 256K, 512K,
+    and 1M by 1.58$\times$, respectively. Incorporating Selective Checkpoint++, LoongTrain
+    further elevates the training performance by 1.21$\times$ for the same sequence
+    lengths. Consequently, Figure [14](#S6.F14 "Figure 14 ‣ 6.3\. Analysis of LoongTrain
+    Performance ‣ 6\. Performance Evaluation ‣ LoongTrain: Efficient Training of Long-Sequence
+    LLMs with Head-Context Parallelism")(b) shows that the overall training performance
+    is improved by 1.9$\times$, respectively. For GQA, a balanced head and context
+    parallelism size is a more efficient configuration.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.4\. Analysis of 2D-Attention
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We evaluated 2D-Attention by measuring the average overall execution time and
+    SeqAlltoAll communication time for a single 2D-Attention forward operation under
+    various configurations. The results are presented in Table [4](#S6.T4 "Table 4
+    ‣ 6.3\. Analysis of LoongTrain Performance ‣ 6\. Performance Evaluation ‣ LoongTrain:
+    Efficient Training of Long-Sequence LLMs with Head-Context Parallelism").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | MHA (CP=64, HP=1) | MHA (CP=16, HP=4) | GQA (CP=64, HP=1) | GQA (CP=16,
+    HP=4) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Inner Ring Size | 128K | 256K | 512K | 1M | 128K | 256K | 512K | 1M | 128K
+    | 256K | 512K | 1M | 128K | 256K | 512K | 1M |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | 295.9 | 597.7 | 1214 | 2913 | 86.3 | 213.8 | 697.9 | 2621 | 94.2 | 226.7
+    | 713.5 | 2668 | 60.7 | 180.6 | 673.3 | 2567 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | 184.5 | 401.3 | 917.1 | 2823 | 72.6 | 205.7 | 710.7 | 2611 | 83.2 | 218.9
+    | 730.5 | 2650 | 60.8 | 182.6 | 671.2 | 2530 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 140.6 | 316.3 | 842.7 | 2754 | 69.1 | 199.4 | 704.4 | 2610 | 78.4 | 210.3
+    | 719.7 | 2669 | 60.3 | 182.0 | 675.2 | 2535 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 214.9 | 415.1 | 869.9 | 2815 | 77.4 | 198.7 | 705.3 | 2621 | 83.4 | 211.6
+    | 723.1 | 2674 | 61.0 | 183.1 | 677.4 | 2537 |'
+  prefs: []
+  type: TYPE_TB
+- en: Table 5\. Average execution time (ms) of a single 2D-Attention forward and backward
+    operation (with Double-Ring-Attention and context-first device placement) on 64
+    GPUs with $d_{sp}=64$. The lowest execution time in each column is highlighted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Sequence Length Study. As discussed in Section [4.5](#S4.SS5 "4.5\. Performance
+    Analysis ‣ 4\. Distributed 2D-Attention ‣ LoongTrain: Efficient Training of Long-Sequence
+    LLMs with Head-Context Parallelism"), with a fixed sequence parallelism degree,
+    a longer sequence length provides more opportunities for computation-communication
+    overlap. When $d_{hp}=1$. In this configuration, there are no SeqAlltoAll operations,
+    indicating that the primary performance bottleneck lies in P2P operations. In
+    the case of GQA, the overall attention time increases from 86.0ms to 2681ms. Across
+    all sequence lengths, GQA demonstrates a shorter execution time compared to MHA
+    due to the reduced communication volume.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'MHA Study. The execution time of MHA can be reduced significantly under the
+    most appropriate configuration from Table [4](#S6.T4 "Table 4 ‣ 6.3\. Analysis
+    of LoongTrain Performance ‣ 6\. Performance Evaluation ‣ LoongTrain: Efficient
+    Training of Long-Sequence LLMs with Head-Context Parallelism"). Specifically,
+    the execution time decreases from 296.4ms to 58.4ms when LoongTrain increases
+    the head parallelism degree to 16 for 128K sequence length. When processing a
+    sequence length of 1M, the overall execution time decreases from 2681ms to 2555ms
+    when LoongTrain increases the head parallelism degree to 8\. As discussed in Section
+    [4.5](#S4.SS5 "4.5\. Performance Analysis ‣ 4\. Distributed 2D-Attention ‣ LoongTrain:
+    Efficient Training of Long-Sequence LLMs with Head-Context Parallelism"), the
+    communication volume per P2P operation remains unaffected by $d_{hp}$, even though
+    such a configuration introduces more SeqAlltoAll communication time.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: GQA Study. GQA introduces less communication volume and is less sensitive to
+    $d_{cp}$, thereby enhancing the ability to overlap P2P communication with computation.
+    By increasing $d_{hp}$ and $d_{cp}=8$ avoids the large SeqAlltoAll overhead and
+    effectively overlaps the computation with P2P communication.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Device Placement Study. As analyzed in Section [4.5](#S4.SS5 "4.5\. Performance
+    Analysis ‣ 4\. Distributed 2D-Attention ‣ LoongTrain: Efficient Training of Long-Sequence
+    LLMs with Head-Context Parallelism"), there is a trade-off between the SeqAlltoAll
+    time and total execution time when choosing the placement strategy. Table [4](#S6.T4
+    "Table 4 ‣ 6.3\. Analysis of LoongTrain Performance ‣ 6\. Performance Evaluation
+    ‣ LoongTrain: Efficient Training of Long-Sequence LLMs with Head-Context Parallelism")
+    shows that when $d_{cp}$ gets larger, head-first placement performs better. In
+    these cases, the increased large SeqAlltoAll volumes become the bottleneck of
+    the overall execution time. Therefore, only if SeqAlltoAll leverages the intra-node
+    high-bandwidth NVLINK can LoongTrain achieve better overall performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Double-Ring-Attention Study. We compare the execution time of 2D-Attention
+    with different inner ring sizes in Table [5](#S6.T5 "Table 5 ‣ 6.4\. Analysis
+    of 2D-Attention ‣ 6\. Performance Evaluation ‣ LoongTrain: Efficient Training
+    of Long-Sequence LLMs with Head-Context Parallelism"). As expected, with MHA and
+    shorter sequence length, P2P communication cannot be effectively overlapped with
+    the computation. In these cases, Double-Ring-Attention achieves more speedup.
+    For instance, when the sequence length is 128K and $d_{cp}=16$, Double-Ring-Attention
+    further reduces the attention operation time by a factor of 1.2, even if 2D-Attention
+    is already applied. However, with longer sequence lengths, due to the increased
+    computational workload, the P2P communication can be overlapped more, limiting
+    the improvements from Double-Ring-Attention.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As we theoretically analyzed in Section [4.5](#S4.SS5 "4.5\. Performance Analysis
+    ‣ 4\. Distributed 2D-Attention ‣ LoongTrain: Efficient Training of Long-Sequence
+    LLMs with Head-Context Parallelism"), when the inner ring size matches the number
+    of NICs in one node (4 in our case), all NICs can be utilized for outer-ring communication,
+    which is more effective. Table [5](#S6.T5 "Table 5 ‣ 6.4\. Analysis of 2D-Attention
+    ‣ 6\. Performance Evaluation ‣ LoongTrain: Efficient Training of Long-Sequence
+    LLMs with Head-Context Parallelism") also illustrates this trend. As discussed,
+    the global batch size poses a challenge for the computation-communication ratio
+    when scaling $d_{sp}$ to 512 GPUs for a 1M sequence length. In such cases, Double-Ring-Attention
+    is expected to be more useful.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7\. Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We proposed LoongTrain, an efficient training framework for LLMs with long sequences.
+    We designed the 2D-Attention, which combined both head-parallel and context-parallel
+    approaches, to break the scalability constraints while maintaining high efficiency.
+    We introduced the Double-Ring-Attention and device placement strategy to further
+    improve the training efficiency. We implemented the LoongTrain system with hybrid
+    parallelism and advanced gradient checkpoint techniques. Experiment results showed
+    that LoongTrain provides a significant performance improvement over existing systems,
+    such as DeepSpeed-Ulysses and Megatron CP.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 8\. Acknowledgements
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We express our gratitude to Zilin Zhu from Tencent. Our research benefited from
+    his GitHub repository ”ring-flash-attention,” which implements Ring-Attention
+    with FlashAttention. Additionally, we are thankful to Jiarui Fang and Shangchun
+    Zhao from Tencent for their pioneering work in integrating Ulysses and Ring-Attention,
+    as demonstrated in the open-source project Yunchang ([fang2024unified,](#bib.bib17)
+    ). Their guidance was instrumental in shaping this work. We also extend our thanks
+    to Haoyu Yang and Jidong Zhai from Tsinghua University for their assistance in
+    enhancing the performance of our implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[1] AI@Meta. Llama 3 model card. 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[2] Joshua Ainslie, James Lee-Thorp, Michiel de Jong, Yury Zemlyanskiy, Federico
+    Lebrón, and Sumit Sanghai. Gqa: Training generalized multi-query transformer models
+    from multi-head checkpoints. arXiv preprint arXiv:2305.13245, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[3] Anurag Arnab, Mostafa Dehghani, Georg Heigold, Chen Sun, Mario Lučić, and
+    Cordelia Schmid. Vivit: A video vision transformer. In Proceedings of the IEEE/CVF
+    international conference on computer vision, pages 6836–6846, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[4] Sanjith Athlur, Nitika Saran, Muthian Sivathanu, Ramachandran Ramjee, and
+    Nipun Kwatra. Varuna: scalable, low-cost training of massive deep learning models.
+    In Proceedings of 17th European Conference on Computer Systems, EuroSys 2022,
+    pages 472–487, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[5] Iz Beltagy, Matthew E Peters, and Arman Cohan. Longformer: The long-document
+    transformer. arXiv preprint arXiv:2004.05150, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[6] Kaifeng Bi, Lingxi Xie, Hengheng Zhang, Xin Chen, Xiaotao Gu, and Qi Tian.
+    Accurate medium-range global weather forecasting with 3d neural networks. Nature,
+    619(7970):533–538, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[7] William Brandon, Aniruddha Nrusimha, Kevin Qian, Zachary Ankner, Tian Jin,
+    Zhiye Song, and Jonathan Ragan-Kelley. Striped attention: Faster ring attention
+    for causal transformers. arXiv preprint arXiv:2311.09431, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[8] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan,
+    Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell,
+    et al. Language models are few-shot learners. Advances in neural information processing
+    systems, 33:1877–1901, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[9] Abel Chandra, Laura Tünnermann, Tommy Löfstedt, and Regina Gratz. Transformer-based
+    deep learning for predicting protein properties in the life sciences. Elife, 12:e82819,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[10] Qiaoling Chen, Diandian Gu, Guoteng Wang, Xun Chen, YingTong Xiong, Ting
+    Huang, Qinghao Hu, Xin Jin, Yonggang Wen, Tianwei Zhang, et al. Internevo: Efficient
+    long-sequence large language model training via hybrid parallelism and redundant
+    sharding. arXiv preprint arXiv:2401.09149, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[11] Qiaoling Chen, Qinghao Hu, Guoteng Wang, Yingtong Xiong, Ting Huang, Xun
+    Chen, Yang Gao, Hang Yan, Yonggang Wen, Tianwei Zhang, and Peng Sun. Amsp: Reducing
+    communication overhead of zero for efficient llm training, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[12] Aakanksha Chowdhery, Sharan Narang, Jacob Devlin, Maarten Bosma, Gaurav
+    Mishra, Adam Roberts, Paul Barham, Hyung Won Chung, Charles Sutton, Sebastian
+    Gehrmann, et al. Palm: Scaling language modeling with pathways. Journal of Machine
+    Learning Research, 24(240):1–113, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[13] Tri Dao. Flashattention-2: Faster attention with better parallelism and
+    work partitioning. arXiv preprint arXiv:2307.08691, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[14] Tri Dao, Dan Fu, Stefano Ermon, Atri Rudra, and Christopher Ré. Flashattention:
+    Fast and memory-efficient exact attention with io-awareness. Advances in Neural
+    Information Processing Systems, 35:16344–16359, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[15] Jeffrey Dean, Greg Corrado, Rajat Monga, Kai Chen, Matthieu Devin, Quoc V.
+    Le, Mark Z. Mao, Marc’Aurelio Ranzato, Andrew W. Senior, Paul A. Tucker, Ke Yang,
+    and Andrew Y. Ng. Large scale distributed deep networks. In Proceedings of 26th
+    Annual Conference on Neural Information Processing Systems, NeurIPS 2012., pages
+    1232–1240, 2012.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[16] Jiayu Ding, Shuming Ma, Li Dong, Xingxing Zhang, Shaohan Huang, Wenhui
+    Wang, Nanning Zheng, and Furu Wei. Longnet: Scaling transformers to 1,000,000,000
+    tokens. arXiv preprint arXiv:2307.02486, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[17] Jiarui Fang and Shangchun Zhao. A unified sequence parallelism approach
+    for long context generative ai. arXiv preprint arXiv:2405.07719, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[18] Aaron Harlap, Deepak Narayanan, Amar Phanishayee, Vivek Seshadri, Nikhil
+    Devanur, Greg Ganger, and Phil Gibbons. Pipedream: Fast and efficient pipeline
+    parallel dnn training, 2018. URL https://arxiv. org/abs, 1806.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[19] Qinghao Hu, Zhisheng Ye, Zerui Wang, Guoteng Wang, Meng Zhang, Qiaoling
+    Chen, Peng Sun, Dahua Lin, Xiaolin Wang, Yingwei Luo, et al. Characterization
+    of large language model development in the datacenter. In USENIX Symposium on
+    Networked Systems Design and Implementation (NSDI’24), 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[20] Yanping Huang, Youlong Cheng, Ankur Bapna, Orhan Firat, Dehao Chen, Mia
+    Chen, HyoukJoong Lee, Jiquan Ngiam, Quoc V Le, Yonghui Wu, et al. Gpipe: Efficient
+    training of giant neural networks using pipeline parallelism. volume 32, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[21] Sam Ade Jacobs, Masahiro Tanaka, Chengming Zhang, Minjia Zhang, Leon Song,
+    Samyam Rajbhandari, and Yuxiong He. Deepspeed ulysses: System optimizations for
+    enabling training of extreme long sequence transformer models. arXiv preprint
+    arXiv:2309.14509, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[22] Vijay Anand Korthikanti, Jared Casper, Sangkug Lym, Lawrence McAfee, Michael
+    Andersch, Mohammad Shoeybi, and Bryan Catanzaro. Reducing activation recomputation
+    in large transformer models. Proceedings of Machine Learning and Systems, 5, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[23] Alex Krizhevsky, Ilya Sutskever, and Geoffrey E. Hinton. Imagenet classification
+    with deep convolutional neural networks. In Proceedings of 26th Annual Conference
+    on Neural Information Processing Systems, NeurIPS 2012., pages 1106–1114, 2012.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[24] Dacheng Li, Rulin Shao, Anze Xie, Eric P Xing, Joseph E Gonzalez, Ion
+    Stoica, Xuezhe Ma, and Hao Zhang. Lightseq: Sequence level parallelism for distributed
+    training of long context transformers. arXiv preprint arXiv:2310.03294, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[25] Mu Li, David G Andersen, Jun Woo Park, Alexander J Smola, Amr Ahmed, Vanja
+    Josifovski, James Long, Eugene J Shekita, and Bor-Yiing Su. Scaling distributed
+    machine learning with the parameter server. In Proceedings of 11th USENIX Symposium
+    on Operating Systems Design and Implementation, OSDI 2014, pages 583–598, 2014.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[26] Mu Li, David G. Andersen, Alexander J. Smola, and Kai Yu. Communication
+    efficient distributed machine learning with the parameter server. In Proceedings
+    of 28th Annual Conference on Neural Information Processing Systems, NeurIPS 2014.,
+    pages 19–27, 2014.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[27] Hao Liu and Pieter Abbeel. Blockwise parallel transformers for large context
+    models. Advances in Neural Information Processing Systems, 36, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[28] Hao Liu, Wilson Yan, Matei Zaharia, and Pieter Abbeel. World model on
+    million-length video and language with ringattention. arXiv preprint arXiv:2402.08268,
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[29] Hao Liu, Matei Zaharia, and Pieter Abbeel. Ring attention with blockwise
+    transformers for near-infinite context. arXiv preprint arXiv:2310.01889, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[30] Microsoft Azure Quantum Microsoft Research AI4Science. The impact of large
+    language models on scientific discovery: a preliminary study using gpt-4. arXiv
+    preprint arXiv:2311.07361, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[31] Deepak Narayanan, Mohammad Shoeybi, Jared Casper, Patrick LeGresley, Mostofa
+    Patwary, Vijay Korthikanti, Dmitri Vainbrand, Prethvi Kashinkunti, Julie Bernauer,
+    Bryan Catanzaro, et al. Efficient large-scale language model training on gpu clusters
+    using megatron-lm. In Proceedings of the International Conference for High Performance
+    Computing, Networking, Storage and Analysis, pages 1–15, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[32] Deepak Narayanan, Mohammad Shoeybi, Jared Casper, Patrick LeGresley, Mostofa
+    Patwary, Vijay Korthikanti, Dmitri Vainbrand, Prethvi Kashinkunti, Julie Bernauer,
+    Bryan Catanzaro, et al. Efficient large-scale language model training on gpu clusters
+    using megatron-lm. In Proceedings of the International Conference for High Performance
+    Computing, Networking, Storage and Analysis, pages 1–15, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[33] Jinjie Ni, Tom Young, Vlad Pandelea, Fuzhao Xue, and Erik Cambria. Recent
+    advances in deep learning based dialogue systems: A systematic survey. Artificial
+    intelligence review, 56(4):3055–3155, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[34] NVDIA. Megatron context parallelism, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[35] NVIDIA. Nvidia dgx superpod: Next generation scalable infrastructure for
+    ai leadership: Reference architecture. 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[36] Adam Paszke, Sam Gross, Francisco Massa, Adam Lerer, James Bradbury, Gregory
+    Chanan, Trevor Killeen, Zeming Lin, Natalia Gimelshein, Luca Antiga, et al. Pytorch:
+    An imperative style, high-performance deep learning library. arXiv preprint arXiv:1912.01703,
+    2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[37] Penghui Qi, Xinyi Wan, Guangxing Huang, and Min Lin. Zero bubble pipeline
+    parallelism. arXiv preprint arXiv:2401.10241, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[38] Markus N Rabe and Charles Staats. Self-attention does not need $o(n^{2})$
+    memory. arXiv preprint arXiv:2112.05682, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[39] Samyam Rajbhandari, Jeff Rasley, Olatunji Ruwase, and Yuxiong He. Zero:
+    Memory optimizations toward training trillion parameter models. In SC20: International
+    Conference for High Performance Computing, Networking, Storage and Analysis, pages
+    1–16\. IEEE, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[40] Jie Ren, Samyam Rajbhandari, Reza Yazdani Aminabadi, Olatunji Ruwase,
+    Shuangyan Yang, Minjia Zhang, Dong Li, and Yuxiong He. $\{$ model training. In
+    2021 USENIX Annual Technical Conference (USENIX ATC 21), pages 551–564, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[41] Ludan Ruan and Qin Jin. Survey: Transformer based video-language pre-training.
+    AI Open, 3:1–13, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[42] Peng Sun, Yonggang Wen, Ruobing Han, Wansen Feng, and Shengen Yan. Gradientflow:
+    Optimizing network performance for large-scale distributed dnn training. IEEE
+    Transactions on Big Data, 8(2):495–507, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[43] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne
+    Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal, Eric Hambro, Faisal
+    Azhar, et al. Llama: Open and efficient foundation language models. arXiv preprint
+    arXiv:2302.13971, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[44] Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi,
+    Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale,
+    Dan Bikel, Lukas Blecher, Cristian Canton Ferrer, Moya Chen, Guillem Cucurull,
+    David Esiobu, Jude Fernandes, Jeremy Fu, Wenyin Fu, Brian Fuller, Cynthia Gao,
+    Vedanuj Goswami, Naman Goyal, Anthony Hartshorn, Saghar Hosseini, Rui Hou, Hakan
+    Inan, Marcin Kardas, Viktor Kerkez, Madian Khabsa, Isabel Kloumann, Artem Korenev,
+    Punit Singh Koura, Marie-Anne Lachaux, Thibaut Lavril, Jenya Lee, Diana Liskovich,
+    Yinghai Lu, Yuning Mao, Xavier Martinet, Todor Mihaylov, Pushkar Mishra, Igor
+    Molybog, Yixin Nie, Andrew Poulton, Jeremy Reizenstein, Rashi Rungta, Kalyan Saladi,
+    Alan Schelten, Ruan Silva, Eric Michael Smith, Ranjan Subramanian, Xiaoqing Ellen
+    Tan, Binh Tang, Ross Taylor, Adina Williams, Jian Xiang Kuan, Puxin Xu, Zheng
+    Yan, Iliyan Zarov, Yuchen Zhang, Angela Fan, Melanie Kambadur, Sharan Narang,
+    Aurelien Rodriguez, Robert Stojnic, Sergey Edunov, and Thomas Scialom. Llama 2:
+    Open foundation and fine-tuned chat models. CoRR, abs/2307.09288, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[45] Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi,
+    Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale,
+    et al. Llama 2: Open foundation and fine-tuned chat models. arXiv preprint arXiv:2307.09288,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[46] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones,
+    Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. Attention is all you need.
+    volume 30, 2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[47] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones,
+    Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. Attention is all you need.
+    Advances in neural information processing systems, 30, 2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[48] Weiyang Wang, Manya Ghobadi, Kayvon Shakeri, Ying Zhang, and Naader Hasani.
+    Optimized network architectures for large language model training with billions
+    of parameters. arXiv preprint arXiv:2307.12169, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[49] Li Yuan, Yunpeng Chen, Tao Wang, Weihao Yu, Yujun Shi, Zi-Hang Jiang,
+    Francis EH Tay, Jiashi Feng, and Shuicheng Yan. Tokens-to-token vit: Training
+    vision transformers from scratch on imagenet. In Proceedings of the IEEE/CVF international
+    conference on computer vision, pages 558–567, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[50] Hao Zhang, Aixin Sun, Wei Jing, and Joey Tianyi Zhou. Span-based localizing
+    network for natural language video localization. In Proceedings of the 58th Annual
+    Meeting of the Association for Computational Linguistics, pages 6543–6554, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[51] Zhen Zhang, Shuai Zheng, Yida Wang, Justin Chiu, George Karypis, Trishul
+    Chilimbi, Mu Li, and Xin Jin. Mics: near-linear scaling for training gigantic
+    model on public cloud. Proceedings of the VLDB Endowment, 16:37–50, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[52] Yanli Zhao, Andrew Gu, Rohan Varma, Liang Luo, Chien-Chin Huang, Min Xu,
+    Less Wright, Hamid Shojanazeri, Myle Ott, Sam Shleifer, et al. Pytorch fsdp: Experiences
+    on scaling fully sharded data parallel. Proceedings of the VLDB Endowment, 16(12):3848–3860,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[53] Lianmin Zheng, Zhuohan Li, Hao Zhang, Yonghao Zhuang, Zhifeng Chen, Yanping
+    Huang, Yida Wang, Yuanzhong Xu, Danyang Zhuo, Eric P Xing, et al. Alpa: Automating
+    inter-and $\{$ parallelism for distributed deep learning. In 16th USENIX Symposium
+    on Operating Systems Design and Implementation (OSDI 22), pages 559–578, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[54] Wenxuan Zhou, Kevin Huang, Tengyu Ma, and Jing Huang. Document-level relation
+    extraction with adaptive thresholding and localized context pooling. In Proceedings
+    of the AAAI conference on artificial intelligence, volume 35, pages 14612–14620,
+    2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 9\. Appendix
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Table [6](#S9.T6 "Table 6 ‣ 9\. Appendix ‣ LoongTrain: Efficient Training of
+    Long-Sequence LLMs with Head-Context Parallelism") shows training performance
+    (TGS) of 7B-MHA and 7B-GQA on 64 GPUs with $d_{sp}=64$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  |  | 128K | 256K | 512K | 1M |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  |  | With SC++ | W/O SC++ | With SC++ | W/O SC++ | With SC++ | W/O SC++
+    | With SC++ | W/O SC++ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $d_{cp}$ | HF | CF | HF | CF | HF | CF | HF | CF | HF | CF | HF | CF |
+    HF | CF | HF | CF |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MHA | 64 | 1 | 190.2 | 190.2 | 145.3 | 145.3 | 195.4 | 195.4 | 149.4 | 149.4
+    | 196.8 | 196.8 | 149.9 | 149.9 | 161.7 | 161.7 | 127.6 | 127.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 32 | 2 | 203.9 | 327.1 | 158.8 | 260.4 | 212.0 | 340.8 | 163.6 | 269.2 |
+    214.2 | 294.3 | 164.7 | 239.3 | 169.8 | 173.9 | 140.8 | 145.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | 4 | 363.2 | 505.9 | 290.4 | 422.5 | 386.0 | 464.6 | 304.7 | 389.1 |
+    318.7 | 319.7 | 260.0 | 262.7 | 185.7 | 182.1 | 149.3 | 147.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 8 | 585.6 | 662.6 | 486.9 | 582.2 | 533.5 | 515.6 | 443.6 | 437.8 | 340.1
+    | 324.0 | 277.1 | 266.8 | 188.4 | 186.1 | 151.7 | 150.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 16 | 676.9 | 675.9 | 596.3 | 585.0 | 535.2 | 519.5 | 452.4 | 441.1 |
+    329.9 | 323.0 | 270.4 | 266.8 | 185.5 | 185.9 | 149.3 | 147.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | 32 | 661.0 | 679.9 | 586.7 | 605.7 | 516.4 | 517.2 | 433.6 | 438.7 |
+    321.3 | 323.8 | 263.2 | 267.2 | 185.0 | 185.0 | 148.4 | 145.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GQA | 64 | 1 | 526.0 | 526.0 | 404.8 | 404.8 | 465.4 | 465.4 | 377.6 | 377.6
+    | 318.7 | 318.7 | 256.5 | 256.5 | 181.6 | 181.6 | 145.3 | 145.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 32 | 2 | 585.3 | 655.0 | 480.6 | 555.4 | 514.6 | 527.2 | 424.0 | 435.1 |
+    333.5 | 328.5 | 270.0 | 265.9 | 186.4 | 184.6 | 149.5 | 148.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | 4 | 732.1 | 698.8 | 637.6 | 606.6 | 571.6 | 537.0 | 473.1 | 457.6 |
+    342.4 | 334.8 | 277.7 | 273.6 | 189.7 | 187.9 | 152.1 | 152.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 8 | 779.7 | 730.6 | 676.0 | 640.8 | 588.9 | 554.7 | 481.3 | 466.4 | 349.8
+    | 340.6 | 284.3 | 279.2 | 194.0 | 191.6 | 155.6 | 154.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 16 | 731.2 | 705.1 | 641.0 | 636.5 | 561.1 | 536.1 | 463.1 | 458.5 |
+    339.1 | 334.2 | 277.0 | 274.3 | 190.1 | 189.2 | 152.9 | 149.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | 32 | 666.4 | 687.5 | 589.2 | 609.7 | 520.3 | 517.6 | 428.1 | 441.6 |
+    322.8 | 325.9 | 264.0 | 267.3 | 185.1 | 185.1 | 148.3 | 145.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: Table 6. End-to-End Training Performance (TGS) of 7B-MHA and 7B-GQA on 64 GPUs
+    with $d_{sp}=64$. SC++ stands for Selective-Checkpoint++, HF for head-first, and
+    CF for context-first. The highest TGS value in each column is highlighted.
+  prefs: []
+  type: TYPE_NORMAL

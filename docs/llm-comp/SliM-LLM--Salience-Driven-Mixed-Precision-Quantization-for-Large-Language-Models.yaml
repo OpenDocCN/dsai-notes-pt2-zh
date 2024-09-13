@@ -1,0 +1,1876 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:49:22'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'SliM-LLM: Salience-Driven Mixed-Precision Quantization for Large Language Models'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2405.14917](https://ar5iv.labs.arxiv.org/html/2405.14917)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Wei Huang
+  prefs: []
+  type: TYPE_NORMAL
+- en: The University of Hong Kong &Haotong Qin
+  prefs: []
+  type: TYPE_NORMAL
+- en: ETH Zürich &Yangdong Liu
+  prefs: []
+  type: TYPE_NORMAL
+- en: Beihang University &Yawei Li
+  prefs: []
+  type: TYPE_NORMAL
+- en: ETH Zürich &Xianglong Liu
+  prefs: []
+  type: TYPE_NORMAL
+- en: Beihang University &Luca Benini
+  prefs: []
+  type: TYPE_NORMAL
+- en: ETH Zürich &Michele Magno
+  prefs: []
+  type: TYPE_NORMAL
+- en: ETH Zürich &Xiaojuan Qi
+  prefs: []
+  type: TYPE_NORMAL
+- en: The University of Hong Kong Corresponding author
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'Large language models (LLMs) achieve remarkable performance in natural language
+    understanding but require substantial computation resources and memory footprint.
+    Post-training quantization (PTQ) is a powerful compression technique extensively
+    investigated for its effectiveness in reducing memory usage and improving the
+    inference efficiency of LLMs. However, existing PTQ methods are still not ideal
+    in terms of accuracy and efficiency, especially with below 4 bit-widths. Standard
+    PTQ methods using group-wise quantization suffer difficulties in quantizing LLMs
+    accurately to such low-bit, but advanced methods remaining high-precision weights
+    element-wisely are hard to realize its theoretical hardware efficiency. This paper
+    presents a Salience-Driven Mixed-Precision Quantization scheme for LLMs, namely
+    SliM-LLM. The scheme exploits the salience distribution of LLM weights to determine
+    optimal bit-width and quantizers for accurate LLM quantization, while aligning
+    bit-width partition to quantization groups for compact memory usage and fast integer
+    computation on hardware inference. Specifically, the proposed SliM-LLM mainly
+    relies on two novel techniques: (1) Salience-Determined Bit Allocation utilizes
+    the clustering characteristics of salience distribution to allocate the bit-widths
+    of each quantization group. This increases the accuracy of quantized LLMs and
+    maintains the inference efficiency high; (2) Salience-Weighted Quantizer Calibration
+    optimizes the parameters of the quantizer by considering the element-wise salience
+    within the group. This balances the maintenance of salient information and minimization
+    of errors. Comprehensive experiments show that SliM-LLM significantly improves
+    the accuracy of various LLMs at ultra-low 2-3 bits, e.g., 2-bit LLaMA-7B achieves
+    a 5.5-times memory-saving compared to the original model on NVIDIA A800 GPUs,
+    and 48% decrease of perplexity compared to the state-of-the-art gradient-free
+    PTQ method. Moreover, SliM-LLM^+, which is integrated from the extension of SliM-LLM
+    with gradient-based quantizers, further reduces perplexity by 35.1%. We highlight
+    that the structurally quantized features of SliM-LLM exhibit remarkable versatility
+    and promote improvements in the accuracy of quantized LLMs while keeping inference
+    efficiency on hardware. Our code is available at [https://github.com/Aaronhuang-778/SliM-LLM](https://github.com/Aaronhuang-778/SliM-LLM).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Large language models (LLMs) have exhibited exceptional performance across a
+    wide array of natural language benchmarks [[3](#bib.bib3), [48](#bib.bib48), [19](#bib.bib19),
+    [2](#bib.bib2)]. Notably, LLaMA [[41](#bib.bib41)] and GPT [[3](#bib.bib3)] series
+    have significantly contributed to the ongoing evolution of LLMs towards universal
+    language intelligence. The powerful language understanding capabilities of LLMs
+    have been transferred to multi-modal domains [[25](#bib.bib25), [1](#bib.bib1),
+    [40](#bib.bib40), [50](#bib.bib50)], laying the foundation for artificial general
+    intelligence [[4](#bib.bib4)]. Despite these significant achievements, the substantial
+    computational and memory requirements of LLMs pose efficiency challenges for real-world
+    applications and deployments, particularly in resource-constrained environments.
+    For example, the latest LLaMA-3-70B¹¹1 [https://github.com/meta-llama/llama3](https://github.com/meta-llama/llama3)
+    model, with its 70 billion parameters, requires over 150GB of storage and a minimum
+    of two NVIDIA A800 GPUs, each with 80GB of memory, for inference [[21](#bib.bib21)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: To reduce the computation burden, post-training quantization (PTQ), as an efficient
+    and effective compression approach [[11](#bib.bib11)], has also been explored
+    and proven successful in quantizing the weights of pre-trained LLMs [[16](#bib.bib16),
+    [20](#bib.bib20), [26](#bib.bib26), [38](#bib.bib38), [23](#bib.bib23), [6](#bib.bib6)].
+    Faced with the dilemma of scaled-up LLMs and the limited computation resources,
+    there is an urgent need for more aggressive compression [[20](#bib.bib20), [43](#bib.bib43)].
+    However, despite considerable efforts, significant performance degradation still
+    occurs in low bit-width scenarios ($\leqslant$ 3-bit). To maintain the performance,
+    unstructured mixed-precision quantization schemes [[37](#bib.bib37), [20](#bib.bib20),
+    [12](#bib.bib12)] or specialized transformation computations [[6](#bib.bib6),
+    [43](#bib.bib43), [13](#bib.bib13), [7](#bib.bib7)] are necessary. Yet, these
+    approaches impose additional burdens on hardware during the inference of quantized
+    LLMs, suffering memory overhead of element-wise bit-maps and computation overhead
+    of codebook decoding and bit-map addressing (even preventing efficient integer
+    computation). Moreover, even though fine-tuning can improve the accuracy of quantized
+    LLMs, it increases the overfitting risk and requires expensive computation resources
+    and a long time [[26](#bib.bib26), [5](#bib.bib5)]. Consequently, ensuring the
+    accuracy of LLMs while maintaining efficiency during deployment remains a significant
+    challenge for current PTQ approaches.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7ba144f6f03eb929552e5a1b20115e91.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: (a) The perplexity ($\downarrow$) of existing low-bit PTQ methods
+    of LLaMA at 2-bit. Solid-line indicates structured quantization methods. (b) Compare
+    PTQ methods with gradient quantizer at 3-bit. (c) Features of current low-bit
+    quantization methods. C denotes codebook-based, S is statistic-based, and G represents
+    gradient-based quantizers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This paper presents the Salience-Driven Mixed-Precision LLM (SliM-LLM) framework,
+    an accurate and hardware-efficient PTQ method for LLMs ($\leqslant$ 3-bit). SliM-LLM
+    can be seamlessly integrated into existing advanced PTQ pipelines [[16](#bib.bib16),
+    [38](#bib.bib38)], as a plug-and-play approach with mixed-precision computing
+    for improved performance (Fig. [1](#S1.F1 "Figure 1 ‣ 1 Introduction ‣ SliM-LLM:
+    Salience-Driven Mixed-Precision Quantization for Large Language Models")). Our
+    approach builds on the observation that not all parameters are equally important [[12](#bib.bib12),
+    [20](#bib.bib20), [37](#bib.bib37)]. Specifically, a subset of salient weights
+    significantly influences an LLM’s capabilities and tends to be concentrated in
+    specific channels. During structured group-wise quantization, the uneven distribution
+    of these salient channels leads to differential importance across various groups.
+    Based on this finding, we design a structured mixed-precision quantization approach
+    for LLMs. First, we develop a novel Salience-Determined Bit Allocation (SBA) method
+    to allocate the optimal bit-width configuration for each structured group based
+    on the salience distribution, minimizing the weight output relative entropy. By
+    implementing bit-width compensation constraints, SBA maintains the average bit-width,
+    while improving the low-bit performance. Next, we introduce the Salience-Weighted
+    Quantizer Calibration (SQC), which amplifies the awareness of locally salient
+    weights, preventing the degradation of sensitive information within groups. SQC
+    works collaboratively with SBA, exploiting the local and global salience of weights
+    to preserve the performance of LLMs after quantization. Notably, SliM-LLM does
+    not rely on fine-tuning processes, efficiently deploying weight quantization on
+    various LLMs. Moreover, compared to the unstructured mixed-precision methods [[37](#bib.bib37),
+    [12](#bib.bib12), [20](#bib.bib20)], SliM-LLM incurs no additional bits and computation
+    overhead. We also deploy SliM-LLM on the application-level inference tool ²²2 [https://github.com/AutoGPTQ/AutoGPTQ](https://github.com/AutoGPTQ/AutoGPTQ)
+    for LLMs, facilitating mixed-precision inference on graphics processing units
+    (GPUs) with high performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Experiments show that for various LLM families, SliM-LLM surpasses existing
+    PTQ methods on diverse benchmarks as a plug-and-play unit, particularly in low-bit
+    scenarios. Using GPTQ as the backbone, SliM-LLM improves the perplexity scores
+    of 2-bit LLaMA-13B and LLaMA2-13B on WikiText2 [[30](#bib.bib30)] from 20.44 and
+    28.14 to 8.87 and 9.41, denoting performance improvements of over 56%, respectively.
+    SliM-LLM even outperforms other unstructured mixed-precision PTQ methods, such
+    as PB-LLM [[37](#bib.bib37)], APTQ [[18](#bib.bib18)] and LLM-MQ [[24](#bib.bib24)],
+    in a deployment-friendly manner, showcasing its superior low-bit accuracy and
+    efficiency. Moreover, we integrate SliM-LLM into OmniQuant [[38](#bib.bib38)]
+    and obtain SliM-LLM^+ through gradient optimization to further improve quantization
+    quality.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Large Language Models (LLMs) have been significantly developed in diverse natural
+    language processing domains, establishing a prominent paradigm in these fields [[4](#bib.bib4),
+    [5](#bib.bib5), [51](#bib.bib51), [3](#bib.bib3), [41](#bib.bib41)]. Nevertheless,
+    the exceptional success of LLMs depends on massive parameters and computations,
+    posing significant challenges for deployment in resource-constrained environments.
+    Consequently, research into the compression of LLMs has emerged as a promising
+    field. Existing compression techniques for LLMs primarily include low-bit quantization,
+    pruning, distillation, and low-rank decomposition [[46](#bib.bib46), [17](#bib.bib17),
+    [16](#bib.bib16), [44](#bib.bib44), [38](#bib.bib38), [6](#bib.bib6), [52](#bib.bib52),
+    [15](#bib.bib15), [20](#bib.bib20), [33](#bib.bib33), [7](#bib.bib7)]. Among these
+    technologies, low-bit quantization gains remarkable attention, for efficiently
+    reducing the model size without change of network structure[[52](#bib.bib52),
+    [51](#bib.bib51), [5](#bib.bib5)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/45d9676f9b79a3ace7a3ba18cc80d856.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Illustration of our proposed SliM-LLM. The Salience-Determined Bit
+    Allocation (SBA) optimizes activation-aware structured precision, optimizing the
+    global information distribution in quantization. Salience-Weighted Quantizer Calibration
+    (SQC) detects discretely distributed salient weights, enhancing the local important
+    information in LLMs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quantization of LLMs can be generally divided into quantization-aware training
+    (QAT) [[27](#bib.bib27)] and post-training quantization (PTQ) [[44](#bib.bib44),
+    [16](#bib.bib16), [38](#bib.bib38)]. QAT, by employing a retraining strategy based
+    on quantized perception, better preserves the performance of quantized models.
+    LLM-QAT [[27](#bib.bib27)] addresses the data obstacle issue in QAT through data-free
+    distillation. However, for LLMs with huge size of parameters, the cost of retraining
+    is extremely inefficient[[5](#bib.bib5)]. Therefore, PTQ has become a more efficient
+    choice for LLMs. For instance, LLM.int8() [[27](#bib.bib27)] and ZeroQuant [[47](#bib.bib47)]
+    explore the quantization strategies for LLMs in block-wise, which is a low-cost
+    grouping approach that reduces hardware burden. Smoothquant [[44](#bib.bib44)]
+    scales weight and activation to decrease the difficulty of quantization. Subsequently,
+    AWQ [[26](#bib.bib26)] and OWQ [[23](#bib.bib23)] also propose scaling transformations
+    on outlier channels of weight to preserve their information representation capacity.
+    GPTQ [[16](#bib.bib16)] reduces the group quantization error of LLMs through Hessian-based
+    error compensation [[14](#bib.bib14)], achieving commendable quantization performance
+    at 3-bit. OmniQuant [[38](#bib.bib38)] introduces a learnable scaling quantizer
+    to reduce quantization errors in an output-aware manner. To enhance the accuracy
+    of LLMs at 3-bit, APTQ [[18](#bib.bib18)] allocates different bit-width to different
+    transformer blocks based on Hessian-trace, enhancing the accuracy of LLMs 3-bit.
+    To achieve LLM quantization at ultra-low bit-width, recent novel efforts such
+    as QuIP [[6](#bib.bib6)], QuIP# [[43](#bib.bib43)], and AQLM [[13](#bib.bib13)]
+    promote quantization performance at 2-bit through learnable codebooks or additional
+    fine-tuning. Meanwhile, approaches like SpQR[[12](#bib.bib12)], PB-LLM [[37](#bib.bib37)],
+    and BiLLM [[20](#bib.bib20)] employ finer-grained partitioning for grouped quantization
+    with unstructured mixed-precision for weights, further improving the PTQ performance.
+    However, existing low-bit methods still rely on special structures and fine-grained
+    grouping to ensure accuracy, which increases the difficulty of hardware deployment.
+    Additionally, the extra fine-tuning training may pose a risk of domain-specific
+    overfitting and undermine the efficiency of PTQ [[26](#bib.bib26)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 SliM-LLM
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'This section introduces a mixed-precision quantization technique called SliM-LLM,
+    designed to overcome the performance and inference efficiency bottlenecks in mixed-precision
+    frameworks. To address these challenges, we devise two novel strategies for LLMs,
+    including the use of Salience-Determined Bit Allocation (SBA) based on global
+    salience distribution to determine group bit-widths, and Salience-Weighted Quantizer
+    Calibration (SQC) to enhance the perception of locally important weight information.
+    We introduce SBA and SQC in Sec. [3.2](#S3.SS2 "3.2 Salience-Determined Bit Allocation
+    ‣ 3 SliM-LLM ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization for Large
+    Language Models") and Sec. [3.3](#S3.SS3 "3.3 Salience-Weighted Quantizer Calibration
+    ‣ 3 SliM-LLM ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization for Large
+    Language Models"), respectively.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Preliminaries
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Quantization Framework. We first present the general uniform quantization process
+    of LLMs according to common practice [[27](#bib.bib27), [38](#bib.bib38), [1](#bib.bib1)].
+    The quantization process requires mapping float-point weights distributed within
+    the interval $[w_{\mathrm{min}},w_{\mathrm{max}}]$ follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\vspace{-0.8pt}\hat{\boldsymbol{w}}_{q}=\operatorname{clamp}(\lfloor\frac{\boldsymbol{w}_{f}}{\Delta}\rceil+z,0,2^{N}-1),~{}\Delta=\frac{w_{\mathrm{max}}-w_{\mathrm{min}}}{2^{N}-1},~{}z=-\lfloor\frac{w_{\mathrm{min}}}{\Delta}\rceil\vspace{-0.8pt}$
+    |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $\hat{\boldsymbol{w}}_{q}$ is quantization zero point, respectively.
+    When converted to 1-bit quantization, the calculation follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $\hat{\boldsymbol{w}}_{b}$ is the number of elements in weight [[34](#bib.bib34)].
+    We can formalize the per-layer loss in PTQ, following the common practice [[31](#bib.bib31),
+    [16](#bib.bib16)]:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\boldsymbol{x}\in\mathbb{R}^{t\times m}$ is proxy Hessian matrix by Levenberg-Marquardt
+    approximation [[29](#bib.bib29), [14](#bib.bib14)] from a set of input activations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Parameter Salience. In LLMs, the importance of each individual element in weight
+    matrix is various [[12](#bib.bib12), [15](#bib.bib15)]. According to Eq. ([3](#S3.E3
+    "In 3.1 Preliminaries ‣ 3 SliM-LLM ‣ SliM-LLM: Salience-Driven Mixed-Precision
+    Quantization for Large Language Models")), the impact of quantizing a single element
+    on the model’s output loss differs. Elements that significantly influence the
+    loss are termed salient weights. Consequently, we follow the SparseGPT [[15](#bib.bib15)]
+    to define the salience of each element as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Definition 1.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'In the quadratic approximation of the loss as expressed in Eq. ([3](#S3.E3
+    "In 3.1 Preliminaries ‣ 3 SliM-LLM ‣ SliM-LLM: Salience-Driven Mixed-Precision
+    Quantization for Large Language Models")), we give the Hessian matrix $H\in\mathbb{R}^{m\times
+    m}$ to the output matrix for linear projection in LLMs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: where $[\boldsymbol{H}^{-1}]_{jj}$ to the salience measure of each weight element
+    in LLMs, representing the impact of different weights on the output loss and the
+    language capabilities, which also leads the generation of mixed-precision quantization
+    strategies [[12](#bib.bib12), [37](#bib.bib37), [20](#bib.bib20), [24](#bib.bib24)]
+    for LLMs. However, existing mixed-precision solutions require the discrete allocation
+    of bit-widths across the entire weight matrix, which imposes a significant burden
+    on hardware computations, thereby affecting the inference efficiency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Salience-Determined Bit Allocation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8d49a8a732ed1c29256e976084ca6703.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Salience in LLaMA-7B.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the following, we reveal phenomenon of spatial clustering in the distribution
+    of weight salience, which inspires our proposed concept of structured mixed-precision
+    quantization for LLMs, and then present the Salience-Determined Bit Allocation
+    (SBA) technique to optimize bit-width allocation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2.1 Spatial Clustering of Global Salience
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We first conduct an empirical investigation into the weight salience distribution.
+    The results reveal that certain channels exhibit higher salience and show tendencies
+    for spatial clustering. As illustrated in Fig. [3](#S3.F3 "Figure 3 ‣ 3.2 Salience-Determined
+    Bit Allocation ‣ 3 SliM-LLM ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization
+    for Large Language Models"), salient clustering are identified around the $2100^{th}$
+    layer. Also, clustered salience is detected in other layers (as shown in Fig. [3](#S3.F3
+    "Figure 3 ‣ 3.2 Salience-Determined Bit Allocation ‣ 3 SliM-LLM ‣ SliM-LLM: Salience-Driven
+    Mixed-Precision Quantization for Large Language Models")). More examples of spatial
+    clustering of salience are provided in Appendix [F](#A6 "Appendix F Extension
+    on Salience Channel Clustering ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization
+    for Large Language Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Then, we analyze the underlying causes of this phenomenon from a theoretical
+    perspective. According to Definition [1](#Thmdefinition1 "Definition 1\. ‣ 3.1
+    Preliminaries ‣ 3 SliM-LLM ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization
+    for Large Language Models"), the salience of weights in LLMs can be quantified
+    numerically by the weight magnitudes and the diagonal elements of the Hessian
+    matrix, which is further approximated by the product of input activations $\boldsymbol{x}\boldsymbol{x}^{\top}$.
+    In LLMs, activations exhibit more extreme outliers, while the numerical differences
+    in weights are relatively slight [[44](#bib.bib44), [32](#bib.bib32)]. Therefore,
+    we propose an analysis of how outlier values in input activations influence the
+    distribution of weight salience:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Theorem 1.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Given the input calibration activation $\boldsymbol{x}\in\mathbb{R}^{t\times
+    m}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Theorem [1](#ThmTheorem1 "Theorem 1\. ‣ 3.2.1 Spatial Clustering of Global
+    Salience ‣ 3.2 Salience-Determined Bit Allocation ‣ 3 SliM-LLM ‣ SliM-LLM: Salience-Driven
+    Mixed-Precision Quantization for Large Language Models") elucidates the impact
+    of outlier tokens on the channel-wise distribution of weight salience (detailed
+    proof is provided in Appendix [F.1](#A6.SS1 "F.1 Discussion of Theorem 1 ‣ Appendix
+    F Extension on Salience Channel Clustering ‣ SliM-LLM: Salience-Driven Mixed-Precision
+    Quantization for Large Language Models")). Additionally, recent studies [[32](#bib.bib32),
+    [45](#bib.bib45)] indicate that outlier tokens in LLMs activations tend to cluster
+    regionally at specific locations, resulting in sequences of consecutive significant
+    tokens. According to Theorem [1](#ThmTheorem1 "Theorem 1\. ‣ 3.2.1 Spatial Clustering
+    of Global Salience ‣ 3.2 Salience-Determined Bit Allocation ‣ 3 SliM-LLM ‣ SliM-LLM:
+    Salience-Driven Mixed-Precision Quantization for Large Language Models"), these
+    consecutive tokens will lead to channel clustering results of weight salience,
+    as evidenced by the consecutive salient channels shown in Fig. [3](#S3.F3 "Figure
+    3 ‣ 3.2 Salience-Determined Bit Allocation ‣ 3 SliM-LLM ‣ SliM-LLM: Salience-Driven
+    Mixed-Precision Quantization for Large Language Models"). This also means that
+    when we divide the weight into multiple groups with continuous channels, the overall
+    salience of different groups is different.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Due to the unstructured mixed-precision, which involves additional storage requirements
+    and inference operations, the computational format is not deployment-friendly.
+    However, the spatial clustering of weight salience observed in this section strongly
+    inspired the development of structured mixed-precision strategies with flexible
+    bit-widths while maintaining inference efficiency. Therefore, we aim to allocate
+    bit-width structurally based on group-wise salience differences. This approach
+    not only enhances quantization accuracy but also ensures the deployment efficiency
+    of LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2.2 Salience-Determined Bit Allocation for Structured Group
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'To allocate optimal bit-widths to each group, we introduce a Salience-Determined
+    Bit Allocation (SBA) technique for mixed-precision LLMs, as depicted in Fig. [1](#S1.F1
+    "Figure 1 ‣ 1 Introduction ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization
+    for Large Language Models"). This technique, predicated on the differences in
+    group salience, determines the optimal bit-width allocation for different groups
+    by minimizing the distance of information entropy with the original weight output.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Specifically, we first utilize the average salience as the importance indicator
+    for each weight group and rank them accordingly. The proposed SBA optimizes the
+    following formula to determine the optimal number of salient-unsalient quantization
+    groups of LLMs:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\begin{aligned} \text{Objective}:&amp;\mathop{\mathrm{argmin}}\limits_{g_{1},...g_{n}}\mathcal{D}_{kl}~{}(\boldsymbol{x}\boldsymbol{w}_{f}^{\top}&#124;&#124;\boldsymbol{x}\mathcal{Q}(\boldsymbol{w}_{f}&#124;[g_{1},...g_{n}])^{\top}),\\
+    \text{Constrain}:&amp;&#124;\mathcal{G}_{N-1}&#124;=&#124;\mathcal{G}_{N+1}&#124;,~{}\mathcal{G}_{N-1}=\{g_{i}&#124;g_{i}=N-1\},~{}\mathcal{G}_{N+1}=\{g_{j}&#124;g_{j}=N+1\},\end{aligned}$
+    |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\mathcal{D}_{kl}(\cdot||\cdot)$ is a set of groups with the same bit-width.
+    We apply a compensation constraints strategy to maintain a consistent average
+    bit-width for our SBA. For example, in 2-bit quantization, the groups with the
+    highest salience are quantized to 3-bit. To offset the additional bits, we quantize
+    an equal number of groups with the lowest salience to 1-bit, while the remaining
+    groups are set to 2-bit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We utilize an effective double-pointer search (more detailed examples in Appendix [C](#A3
+    "Appendix C Searching Details of Group-Wise Salience-Determined Bit Allocation
+    ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization for Large Language Models"))
+    to optimize our objective in Eq. ([4](#S3.E4 "In 3.2.2 Salience-Determined Bit
+    Allocation for Structured Group ‣ 3.2 Salience-Determined Bit Allocation ‣ 3 SliM-LLM
+    ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization for Large Language Models")).
+    When the weight output channel size is $m$, which is highly efficient with limited
+    searching space, e.g., only 16 iterations are needed in LLaMA-7B. We also provide
+    detailed searching error examples in Appendix [C](#A3 "Appendix C Searching Details
+    of Group-Wise Salience-Determined Bit Allocation ‣ SliM-LLM: Salience-Driven Mixed-Precision
+    Quantization for Large Language Models"). Notably, SBA diverges from traditional
+    quantization with mean squared error (MSE) in Eq. ([3](#S3.E3 "In 3.1 Preliminaries
+    ‣ 3 SliM-LLM ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization for Large
+    Language Models")) by instead utilizing the KL divergence as its measure of loss.
+    Beyond simply reducing numerical quantization errors, SBA leverages relative entropy
+    as a mixed bit-width metric, aiming to maximize the mutual information [[35](#bib.bib35)]
+    between the quantized and original weights of the LLMs. This approach enhances
+    the model’s capacity for information representation under lower bit quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Salience-Weighted Quantizer Calibration
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In addition to the global group-wise distribution of salience, we notice that
+    salience within the group still shows local differences in discrete distribution.
+    Common existing quantizers apply uniform consideration across all weights to minimize
+    the effect (error) of quantization, lacking the capability to perceive differences
+    in local salience. Therefore, in this section, we introduce a Salience-Weighted
+    Quantizer Calibration (SQC) to enhance the information of significant weights
+    within the group by amplifying the quantizer awareness of salient weight.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3.1 Discrete Distribution of Local Salience
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a220f5214e490267f5f9374991b6f709.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: Local salience distribution of the $10^{th}$ MHA output layer in
+    LLaMA-7B.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the aforementioned section, we allocate the bit-width for each group based
+    on the global salience. However, the salience among different elements within
+    the same group still locally exhibits an unstructured difference. Specifically,
+    as depicted in the salience distribution in Fig. [4](#S3.F4 "Figure 4 ‣ 3.3.1
+    Discrete Distribution of Local Salience ‣ 3.3 Salience-Weighted Quantizer Calibration
+    ‣ 3 SliM-LLM ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization for Large
+    Language Models"), within the $10^{th}$ attention output layer of LLaMA-7b, a
+    subset of sparse weights within the comparatively less salient Group-2 still maintains
+    a high level of importance. In LLMs, a small number of weights with outliers may
+    affect the distribution of salience in an unstructured manner, as described in
+    Definition [1](#Thmdefinition1 "Definition 1\. ‣ 3.1 Preliminaries ‣ 3 SliM-LLM
+    ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization for Large Language Models").
+    These discrete weights typically account for only approximately 1% of the total
+    weights within the group but play a crucial role in the modeling capability of
+    LLMs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The existing vanilla quantizers still face the challenge in representing significant
+    weight information, for only considering mean error of all elements within a group.
+    When quantizing weights according to Eq. ([1](#S3.E1 "In 3.1 Preliminaries ‣ 3
+    SliM-LLM ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization for Large Language
+    Models")) in group-wise format, a large number of relatively non-salient weights
+    at the intra-group statistical level tend to dominate the parameters generated
+    by the quantizer. This leads to a degradation of salient information within the
+    group, thereby affecting the model performance of LLMs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3.2 Salience-Weighted Quantizer Calibration for Local Salience Awareness
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'To prevent the degradation of local salient weight information in each group,
+    we propose the Salience-Weighted Quantizer Calibration (SQC), which enhances the
+    expression of salient weights through locally unstructured salience awareness,
+    thereby reducing the quantization error of these significant elements and improving
+    the compressed performance of LLMs. SQC first introduces the calibration parameter
+    $\gamma$ to the quantizer, liberating the perception interval during quantization:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\Delta=\frac{\gamma(w_{\mathrm{max}}-w_{\mathrm{min}})}{2^{N}-1},~{}z=-\lfloor\frac{\gamma
+    w_{\mathrm{min}}}{\Delta}\rceil$ |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $\gamma$ expands the solution space of the quantizer, subsequently minimizes
+    the loss of quantization in the salience-weighted objective:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\mathcal{L}$ at 50 to achieve a balance between efficiency and accuracy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'SQC effectively mitigates the degradation of local salient weights within groups
+    (more evidence is provided in Appendix [D](#A4 "Appendix D Extension Ablation
+    on SQC ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization for Large Language
+    Models")). Additionally, SQC only requires the optimization of $\gamma$ during
+    quantization and without distinguishing unstructured parts in storage and inference
+    stages, thereby avoiding hardware overhead. Combined with SBA, they jointly enhance
+    the awareness of local and global salient weights, capturing significant information
+    in LLMs to improve quantization performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: Quantization results of LLaMA family with statistic quantizer. We
+    report the WikiText2 perplexity in this table, C4 results are shown in Appendix [G](#A7
+    "Appendix G More Comparisons ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization
+    for Large Language Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| #W PPL$\downarrow$ | Method | 1-7B | 1-13B | 1-30B | 1-65B | 2-7B | 2-13B
+    | 2-70B | 3-8B | 3-70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16-bit | - | 5.68 | 5.09 | 4.10 | 3.53 | 5.47 | 4.88 | 3.31 | 5.75 | 2.9
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 3-bit | APTQ | 6.76 | - | - | - | - | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-MQ | - | - | - | - | - | 8.54 | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 7.01 | 5.88 | 4.87 | 4.24 | 6.66 | 5.51 | 3.97 | 27.91 | 11.84 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 6.46 | 5.51 | 4.63 | 3.99 | 6.24 | 5.32 | - | 8.22 | 4.81 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 6.55 | 5.62 | 4.80 | 4.17 | 6.29 | 5.42 | 3.85 | 8.19 | 5.22 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SliM-LLM | 6.40 | 5.48 | 4.61 | 3.99 | 6.24 | 5.26 | 3.67 | 7.16 | 4.08 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2-bit | LLM-MQ | - | - | - | - | - | 12.17 | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 1.9e3 | 781.20 | 68.04 | 15.08 | 4.2e3 | 122.08 | 27.27 | 1.9e3 | 4.6e5
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 2.6e5 | 2.8e5 | 2.4e5 | 7.4e4 | 2.2e5 | 1.2e5 | - | 1.7e6 | 1.7e6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 152.31 | 20.44 | 13.01 | 9.51 | 60.45 | 28.14 | 8.78 | 210.00 | 11.90
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| QuIP | 29.74 | 12.48 | 11.57 | 7.83 | 39.73 | 13.48 | 6.64 | 84.97 | 13.03
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PB-LLM | 24.61 | 17.73 | 12.65 | 7.85 | 25.37 | 49.81 | NAN | 44.12 | 11.68
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SliM-LLM | 14.58 | 8.87 | 7.33 | 5.90 | 16.01 | 9.41 | 6.28 | 39.66 | 9.46
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: 3.4 Implementation Pipeline of SliM-LLM
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We integrate our mixed-precision framework into advanced PTQ methods, such
+    as GPTQ [[16](#bib.bib16)] and OmniQuant [[38](#bib.bib38)], all of which are
+    deployment-friendly with group-wise quantization. We primarily integrate SBA and
+    SQC into GPTQ to get SliM-LLM. For SliM-LLM^+, the SBA is plugged into OmniQuant
+    with a learnable quantizer. The complete pipeline of SliM-LLM is provided in Algorithm [1](#alg1
+    "Algorithm 1 ‣ 3.4 Implementation Pipeline of SliM-LLM ‣ 3 SliM-LLM ‣ SliM-LLM:
+    Salience-Driven Mixed-Precision Quantization for Large Language Models"), and
+    a more detailed implementation is listed in Appendix [B.1](#A2.SS1 "B.1 Detailed
+    Implementation ‣ Appendix B SliM-LLM Implementation ‣ SliM-LLM: Salience-Driven
+    Mixed-Precision Quantization for Large Language Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 1 Main Framework of SliM-LLM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: func $\operatorname{SliM-LLM}$)
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Input: $\boldsymbol{w}\in\mathbb{R}^{n\times m}$ - FP16 weight'
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\boldsymbol{x}_{F}\in\mathbb{R}^{t\times m}$ - calibration data
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\beta$ - group size
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\lambda$ - hessian regularizer
+  prefs: []
+  type: TYPE_NORMAL
+- en: $N$ - average bit-width
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Output: $\hat{\boldsymbol{w}}_{q}$ - quantized weight'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:  $\boldsymbol{H}\coloneqq\frac{1}{P}\sum_{k=1}^{P}\boldsymbol{x}_{F}^{[k]}\boldsymbol{x}_{F}^{[k]T}$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We evaluated SliM-LLM and SliM-LLM^+ under weight-only conditions, focusing
+    on 2/3-bit precisions. Per-channel group quantization is utilized in our framework
+    with 128 set as group size in experiments. Since no back-propagation in SliM-LLM,
+    the quantization is carried out on a single NVIDIA A800 GPU. For SliM-LLM^+, we
+    employ the AdamW optimizer, following OmniQuant [[38](#bib.bib38)], which is also
+    feasible on a single A800\. We randomly select 128 samples from WikiText2 [[30](#bib.bib30)]
+    as calibration data, each with 2048 tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Models and Evaluation. To comprehensively demonstrate the low-bit performance
+    advantages of SliM-LLM and SliM-LLM^+, we conduct experiments across OPT [[49](#bib.bib49)],
+    LLaMA [[41](#bib.bib41)], LLaMA-2 [[42](#bib.bib42)] and LLaMA-3^([1](#footnote1
+    "footnote 1 ‣ 1 Introduction ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization
+    for Large Language Models")). We employ the perplexity as our evaluation metric,
+    which is widely recognized as a stable measure of language generation capabilities [[16](#bib.bib16),
+    [26](#bib.bib26), [20](#bib.bib20), [37](#bib.bib37), [38](#bib.bib38), [6](#bib.bib6),
+    [13](#bib.bib13), [21](#bib.bib21)], particularly in compression scenarios. Experiments
+    are carried out on the WikiText2 [[30](#bib.bib30)] and C4 [[36](#bib.bib36)]datasets.
+    Furthermore, to assess the practical application capabilities of quantized LLMs,
+    we also evaluate their accuracy on zero-shot benchmarks, including PIQA [[2](#bib.bib2)],
+    ARC [[10](#bib.bib10)], BoolQ [[9](#bib.bib9)], and HellaSwag [[10](#bib.bib10)].'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Baseline. Since SliM-LLM and SliM-LLM^+ are efficient PTQ approaches without
+    additional training or fine-tuning, QAT and re-training methods are not within
+    the comparison range of our work. The experiments evaluate existing advanced quantization
+    methods and GPU-friendly computations, including vanilla round-to-nearest (RTN),
+    GPTQ [[16](#bib.bib16)], AWQ [[26](#bib.bib26)]. And mixed-precision quantization
+    techniques, including PB-LLM [[37](#bib.bib37)] ($\frac{1}{7}\times 8$-bit), LLM-MQ [[24](#bib.bib24)],
+    and APTQ [[18](#bib.bib18)], as well as the codebook-based method QuIP [[6](#bib.bib6)]
+    are also compared in this work. We compare SliM-LLM^+ with gradient optimizer-based
+    methods such as OmniQuant [[38](#bib.bib38)] and AffineQuant [[28](#bib.bib28)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Main Results.
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We show experiments within the LLaMA family in this section and detailed results
+    for the OPT models are available in Appendix [G](#A7 "Appendix G More Comparisons
+    ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization for Large Language Models").
+    For language generation tasks, as depicted in Tab. [1](#S3.T1 "Table 1 ‣ 3.3.2
+    Salience-Weighted Quantizer Calibration for Local Salience Awareness ‣ 3.3 Salience-Weighted
+    Quantizer Calibration ‣ 3 SliM-LLM ‣ SliM-LLM: Salience-Driven Mixed-Precision
+    Quantization for Large Language Models"), SliM-LLM markedly outperforms its backbone
+    GPTQ, particularly under the 2-bit. Specifically, on LLaMA-7B, SliM-LLM achieves
+    a 90% decrease in perplexity, while on LLaMA-3-8B, it improves performance by
+    81%. In comparison with the unstructured mixed-precision PB-LLM and the codebook-based
+    QuIP method, SliM-LLM further reduces the perplexity by 41%~51%. As shown in Tab. [1](#S3.T1
+    "Table 1 ‣ 3.3.2 Salience-Weighted Quantizer Calibration for Local Salience Awareness
+    ‣ 3.3 Salience-Weighted Quantizer Calibration ‣ 3 SliM-LLM ‣ SliM-LLM: Salience-Driven
+    Mixed-Precision Quantization for Large Language Models"), the performance of SliM-LLM^+
+    is still ahead compared to OmniQuant and AffineQuant, further proving the effectiveness
+    and of the mixed-precision framework proposed in our work. We also provide dialogue
+    examples of 2-bit instruction fine-tuning Vicuna-13B [[8](#bib.bib8)] and LLaMA-13B
+    in Appeandix [H](#A8 "Appendix H Real Dialog Examples ‣ SliM-LLM: Salience-Driven
+    Mixed-Precision Quantization for Large Language Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Morever, our method exhibits zero-shot advantages at 2-bit, as shown in Tab. [3](#S4.T3
+    "Table 3 ‣ 4.1 Main Results. ‣ 4 Experiments ‣ SliM-LLM: Salience-Driven Mixed-Precision
+    Quantization for Large Language Models"), where SliM-LLM and SliM-LLM^+ still
+    outperforms other methods. For instance, compared with GPTQ and OmniQuant, our
+    approach achieves an average improvement of 4.19% and 1.91% on LLaMA-7B. Meanwhile,
+    for LLaMA-65B, 2-bit SliM-LLM and SliM-LLM^+ is close to FP16 results (less than
+    6% degradaion in accuracy). Overall, our proposed mixed-precision framwork demonstrates
+    superior performance across different model sizes, with its advantages becoming
+    increasingly significant at lower bit-width.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 2: Quantization results of LLaMA-1 and LLaMA-2 models with learnable
+    quantizer. We report the WikiText2 perplexity in this Table, C4 results are shown
+    in Appendix [G](#A7 "Appendix G More Comparisons ‣ SliM-LLM: Salience-Driven Mixed-Precision
+    Quantization for Large Language Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| #W PPL$\downarrow$ | Method | 1-7B | 1-13B | 1-30B | 1-65B | 2-7B | 2-13B
+    | 2-70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16-bit | - | 5.68 | 5.09 | 4.10 | 3.53 | 5.47 | 4.88 | 3.31 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 3-bit | OmniQuant | 6.15 | 5.44 | 4.56 | 3.94 | 6.03 | 5.28 | 3.78 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AffineQuant | 6.14 | 5.45 | 4.59 | - | 6.08 | 5.28 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SliM-LLM^+ | 6.07 | 5.37 | 4.34 | 3.72 | 5.94 | 5.11 | 3.35 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2-bit | OmniQuant | 9.72 | 7.93 | 7.12 | 5.95 | 11.06 | 8.26 | 6.55 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AffineQuant | 13.51 | 7.22 | 6.49 | - | 10.87 | 7.64 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SliM-LLM^+ | 9.68 | 7.17 | 6.41 | 5.74 | 10.87 | 7.59 | 6.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 3: Performance comparisons of different quantization methods for zero-shot
+    tasks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model / Acc$\uparrow$ | #W | Method | PIQA | ARC-e | ARC-c | BoolQ | HellaSwag
+    | Winogrande | Avg. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-7B | 16-bit | - | 77.47 | 52.48 | 41.46 | 73.08 | 73.00 | 67.07 | 64.09
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-10 | 2-bit | GPTQ | 55.49 | 31.02 | 22.17 | 53.49 | 33.84 | 41.91
+    | 39.65 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 2-bit | AWQ | 47.78 | 28.77 | 21.31 | 31.19 | 24.47 | 40.03 | 32.26 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 2-bit | SliM-LLM | 57.83 | 33.46 | 25.09 | 56.05 | 36.70 | 52.64 | 43.84
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-10 | 2-bit | OmniQuant | 63.63 | 43.91 | 27.32 | 58.02 | 48.78
+    | 52.97 | 49.11 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 2-bit | SliM-LLM^+ | 64.96 | 45.66 | 28.67 | 64.59 | 48.86 | 53.35 | 51.02
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-13B | 16-bit | - | 79.10 | 59.89 | 44.45 | 68.01 | 76.21 | 70.31 |
+    66.33 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-10 | 2-bit | GPTQ | 70.37 | 47.74 | 35.88 | 51.57 | 61.39 | 60.84
+    | 54.63 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 2-bit | AWQ | 49.23 | 30.01 | 29.49 | 30.88 | 26.72 | 46.30 | 35.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 2-bit | SliM-LLM | 73.19 | 47.95 | 36.27 | 55.92 | 63.04 | 61.79 | 56.36
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-10 | 2-bit | OmniQuant | 73.14 | 49.38 | 36.93 | 63.34 | 62.19
+    | 61.77 | 57.64 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 2-bit | SliM-LLM^+ | 74.15 | 50.26 | 37.04 | 64.31 | 63.57 | 63.11 | 58.74
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-30B | 16-bit | - | 80.08 | 58.92 | 45.47 | 68.44 | 79.21 | 72.53 |
+    67.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-10 | 2-bit | GPTQ | 71.92 | 48.27 | 36.20 | 61.27 | 65.76 | 63.11
+    | 57.76 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 2-bit | AWQ | 49.17 | 28.56 | 25.97 | 34.73 | 24.97 | 46.99 | 35.07 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 2-bit | SliM-LLM | 75.52 | 51.29 | 39.29 | 62.01 | 66.10 | 64.07 | 59.71
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-10 | 2-bit | OmniQuant | 76.23 | 53.23 | 39.52 | 63.34 | 65.57
+    | 64.82 | 60.22 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 2-bit | SliM-LLM^+ | 76.31 | 54.07 | 39.79 | 63.35 | 67.14 | 64.93 | 60.91
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-65B | 16-bit | - | 80.79 | 58.71 | 46.24 | 82.29 | 80.72 | 77.50 |
+    71.04 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-10 | 2-bit | GPTQ | 76.16 | 52.48 | 40.14 | 77.23 | 71.96 | 70.22
+    | 64.70 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 2-bit | SliM-LLM | 77.09 | 53.72 | 40.25 | 77.51 | 72.05 | 70.91 | 65.26
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-10 | 2-bit | OmniQuant | 77.78 | 53.71 | 40.90 | 78.04 | 74.55
+    | 68.85 | 65.64 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 2-bit | SliM-LLM^+ | 78.06 | 53.90 | 41.18 | 78.33 | 75.59 | 69.99 | 66.18
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: 4.2 Ablation Results.
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We conduct a detailed ablation study to illustrate the benefits of bit-width
+    allocation and the impact of each component. Fig. [5](#S4.F5 "Figure 5 ‣ 4.2 Ablation
+    Results. ‣ 4 Experiments ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization
+    for Large Language Models")(a) compares three strategies for allocating bit-widths
+    across groups, including random allocation, head-tail allocation by spatial order,
+    and our proposed SBA. When the average bit-width remains constant, random and
+    head-tail mixed-precision allocation prove ineffective and even result in performance
+    degradation, as shown in Fig. [5](#S4.F5 "Figure 5 ‣ 4.2 Ablation Results. ‣ 4
+    Experiments ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization for Large
+    Language Models")(a). In contrast, SBA consistently delivers significant improvements
+    in post-quantization performance, validating the efficacy of our mixed-precision
+    approach. Fig. [5](#S4.F5 "Figure 5 ‣ 4.2 Ablation Results. ‣ 4 Experiments ‣
+    SliM-LLM: Salience-Driven Mixed-Precision Quantization for Large Language Models")(b)
+    presents the ablation effects of SBA and SQC, demonstrating that both methods,
+    based on the perception of global and local salience, enhance quantization performance.
+    SBA is particularly effective in smaller models, and combining these two methods
+    can further boost capabilities of LLMs. We also provide the detailed ablation
+    results on group size in Appendix [E](#A5 "Appendix E Extension Ablation on Quantization
+    Group-Size ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization for Large
+    Language Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/22a1729e02131ca9658911ba1ac19333.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: Ablation results on OPT models. Random means randomly selecting the
+    same number of lower/higher-bit groups; head-tail denotes using the head groups
+    as the lower-bit and the same number of tails as the higher-bit on the original
+    sequence of group.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4: Deployment results of GPTQ and Slim-LLM on GPU. Group size is set
+    to 128.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| #W | LLaMA-* | 1-7B | 1-13B | 2-7B |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | WM | RM | PPL$\downarrow$ | Token/s |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | - | 12.6G | 14.4G | 5.68 | 69.2 | 24.3G | 27.1G | 5.09 | 52.5 | 12.7G
+    | 14.6G | 5.47 | 69.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 3-bit | GPTQ | 3.2G | 5.1G | 6.55 | 83.4 | 5.8G | 8.7G | 5.62 | 57.6 | 3.2G
+    | 5.2G | 6.29 | 56.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SliM-LLM | 3.2G | 5.2G | 6.40 | 79.1 | 5.8G | 8.8G | 5.48 | 48.5 | 3.2G |
+    5.4G | 6.26 | 55.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2-bit | GPTQ | 2.2G | 4.1G | 152.31 | 83.9 | 4.0G | 7.5G | 20.44 | 92.6 |
+    2.2G | 4.1G | 60.45 | 83.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SliM-LLM | 2.3G | 4.4G | 14.58 | 61.2 | 4.1G | 7.8G | 8.87 | 73.7 | 2.3G
+    | 4.1G | 16.01 | 64.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: 4.3 Efficient Inference on Device
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We utilize the open-source AutoGPTQ to extend CUDA kernel supporting experimental
+    mixed-precision inference, with detailed process in Appendix [B.2](#A2.SS2 "B.2
+    Mixed Bit Storage and Computing ‣ Appendix B SliM-LLM Implementation ‣ SliM-LLM:
+    Salience-Driven Mixed-Precision Quantization for Large Language Models"). We evaluate
+    the deployment performance of LLaMA-7/13B and LLaMA-2-7B under 2/3-bit settings.
+    The results indicate that our mixed-precision approach maintains a good compression
+    rate on GPUs and significantly enhances model accuracy, only with a slight decrease
+    in inference speed on the A800 (due to the inference alignment of different bit-width).
+    Since current 1-bit operations lack well hardware support, additional consumption
+    of storage and computation is required on device. There remains considerable scope
+    for optimization in mixed-precision computing, and we aim to further improve this
+    in future work.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this work, we introduce SliM-LLM, a structured mixed-precision PTQ framework
+    tailored for LLMs, designed to enhance performance with low-bit weights in a deployment-friendly
+    manner. The essence of SliM-LLM lies in employing the Salience-Determined Bit
+    Allocation to dynamically allocate bit widths, thereby improving the preservation
+    of global salience information. Within groups, the Salience-Weighted Quantizer
+    Calibration is designed to enhance local information perception, further minimizing
+    the loss associated with locally salient weights. Experiments validate the effectiveness
+    of SliM-LLM, showing notable accuracy improvements across various LLMs, and ensuring
+    efficiency in inference. In conclusion, SliM-LLM is versatile and can be seamlessly
+    integrated with different quantization frameworks and successfully improves the
+    performance of LLMs supporting practical deployment in resource-constrained environments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[1] Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ahmad, Ilge Akkaya, Florencia Leoni
+    Aleman, Diogo Almeida, Janko Altenschmidt, Sam Altman, Shyamal Anadkat, et al.
+    GPT-4 technical report. arXiv preprint arXiv:2303.08774, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[2] Yonatan Bisk, Rowan Zellers, Jianfeng Gao, Yejin Choi, et al. Piqa: Reasoning
+    about physical commonsense in natural language. In Proceedings of the AAAI conference
+    on artificial intelligence, volume 34, pages 7432–7439, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[3] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan,
+    Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell,
+    et al. Language models are few-shot learners. Advances in Neural Information Processing
+    Systems, 33:1877–1901, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[4] Sébastien Bubeck, Varun Chandrasekaran, Ronen Eldan, Johannes Gehrke, Eric
+    Horvitz, Ece Kamar, Peter Lee, Yin Tat Lee, Yuanzhi Li, Scott Lundberg, et al.
+    Sparks of artificial general intelligence: Early experiments with GPT-4. arXiv
+    preprint arXiv:2303.12712, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[5] Yupeng Chang, Xu Wang, Jindong Wang, Yuan Wu, Linyi Yang, Kaijie Zhu, Hao
+    Chen, Xiaoyuan Yi, Cunxiang Wang, Yidong Wang, et al. A survey on evaluation of
+    large language models. ACM Transactions on Intelligent Systems and Technology,
+    15(3):1–45, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[6] Jerry Chee, Yaohui Cai, Volodymyr Kuleshov, and Christopher M De Sa. Quip:
+    2-bit quantization of large language models with guarantees. Advances in Neural
+    Information Processing Systems, 36, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[7] Hong Chen, Chengtao Lv, Liang Ding, Haotong Qin, Xiabin Zhou, Yifu Ding,
+    Xuebo Liu, Min Zhang, Jinyang Guo, Xianglong Liu, et al. DB-LLM: Accurate dual-binarization
+    for efficient llms. arXiv preprint arXiv:2402.11960, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[8] Wei-Lin Chiang, Zhuohan Li, Zi Lin, Ying Sheng, Zhanghao Wu, Hao Zhang,
+    Lianmin Zheng, Siyuan Zhuang, Yonghao Zhuang, Joseph E Gonzalez, et al. Vicuna:
+    An open-source chatbot impressing GPT-4 with 90%* chatgpt quality. See https://vicuna.
+    lmsys. org (accessed 14 April 2023), 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[9] Christopher Clark, Kenton Lee, Ming-Wei Chang, Tom Kwiatkowski, Michael
+    Collins, and Kristina Toutanova. BoolQ: Exploring the surprising difficulty of
+    natural yes/no questions. arXiv preprint arXiv:1905.10044, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[10] Peter Clark, Isaac Cowhey, Oren Etzioni, Tushar Khot, Ashish Sabharwal,
+    Carissa Schoenick, and Oyvind Tafjord. Think you have solved question answering?
+    try arc, the ai2 reasoning challenge. arXiv preprint arXiv:1803.05457, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[11] Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer. LLM.int8
+    (): 8-bit matrix multiplication for transformers at scale. arXiv preprint arXiv:2208.07339,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[12] Tim Dettmers, Ruslan Svirschevski, Vage Egiazarian, Denis Kuznedelev,
+    Elias Frantar, Saleh Ashkboos, Alexander Borzunov, Torsten Hoefler, and Dan Alistarh.
+    SpQR: A sparse-quantized representation for near-lossless LLM weight compression.
+    arXiv preprint arXiv:2306.03078, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[13] Vage Egiazarian, Andrei Panferov, Denis Kuznedelev, Elias Frantar, Artem
+    Babenko, and Dan Alistarh. Extreme compression of large language models via additive
+    quantization. arXiv preprint arXiv:2401.06118, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[14] Elias Frantar and Dan Alistarh. Optimal brain compression: A framework
+    for accurate post-training quantization and pruning. Advances in Neural Information
+    Processing Systems, 35:4475–4488, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[15] Elias Frantar and Dan Alistarh. SparseGPT: Massive language models can
+    be accurately pruned in one-shot. In International Conference on Machine Learning,
+    pages 10323–10337\. PMLR, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[16] Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan Alistarh. GPTQ:
+    Accurate post-training quantization for generative pre-trained transformers. arXiv
+    preprint arXiv:2210.17323, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[17] Prakhar Ganesh, Yao Chen, Xin Lou, Mohammad Ali Khan, Yin Yang, Hassan
+    Sajjad, Preslav Nakov, Deming Chen, and Marianne Winslett. Compressing large-scale
+    transformer-based models: A case study on bert. Transactions of the Association
+    for Computational Linguistics, 9:1061–1080, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[18] Ziyi Guan, Hantao Huang, Yupeng Su, Hong Huang, Ngai Wong, and Hao Yu.
+    APTQ: Attention-aware post-training mixed-precision quantization for large language
+    models. arXiv preprint arXiv:2402.14866, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[19] Dan Hendrycks, Collin Burns, Steven Basart, Andy Zou, Mantas Mazeika,
+    Dawn Song, and Jacob Steinhardt. Measuring massive multitask language understanding.
+    arXiv preprint arXiv:2009.03300, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[20] Wei Huang, Yangdong Liu, Haotong Qin, Ying Li, Shiming Zhang, Xianglong
+    Liu, Michele Magno, and Xiaojuan Qi. BiLLM: Pushing the limit of post-training
+    quantization for llms. arXiv preprint arXiv:2402.04291, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[21] Wei Huang, Xudong Ma, Haotong Qin, Xingyu Zheng, Chengtao Lv, Hong Chen,
+    Jie Luo, Xiaojuan Qi, Xianglong Liu, and Michele Magno. How Good Are Low-bit Quantized
+    LLaMA3 Models? An Empirical Study. arXiv preprint arXiv:2404.14047, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[22] Aravindh Krishnamoorthy and Deepak Menon. Matrix inversion using cholesky
+    decomposition. In 2013 signal processing: Algorithms, architectures, arrangements,
+    and applications (SPA), pages 70–72\. IEEE, 2013.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[23] Changhun Lee, Jungyu Jin, Taesu Kim, Hyungjun Kim, and Eunhyeok Park.
+    OWQ: Lessons learned from activation outliers for weight quantization in large
+    language models. arXiv preprint arXiv:2306.02272, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[24] Shiyao Li, Xuefei Ning, Ke Hong, Tengxuan Liu, Luning Wang, Xiuhong Li,
+    Kai Zhong, Guohao Dai, Huazhong Yang, and Yu Wang. LLM-MQ: Mixed-precision quantization
+    for efficient LLM deployment. In Advances in Neural Information Processing Systems
+    (NeurIPS) ENLSP Workshop, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[25] Yanwei Li, Yuechen Zhang, Chengyao Wang, Zhisheng Zhong, Yixin Chen, Ruihang
+    Chu, Shaoteng Liu, and Jiaya Jia. Mini-gemini: Mining the potential of multi-modality
+    vision language models. arXiv preprint arXiv:2403.18814, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[26] Ji Lin, Jiaming Tang, Haotian Tang, Shang Yang, Xingyu Dang, and Song
+    Han. AWQ: Activation-aware weight quantization for LLM compression and acceleration.
+    arXiv preprint arXiv:2306.00978, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[27] Zechun Liu, Barlas Oguz, Changsheng Zhao, Ernie Chang, Pierre Stock, Yashar
+    Mehdad, Yangyang Shi, Raghuraman Krishnamoorthi, and Vikas Chandra. LLM-QAT: Data-Free
+    Quantization Aware Training for Large Language Models. arXiv preprint arXiv:2305.17888,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[28] Yuexiao Ma, Huixia Li, Xiawu Zheng, Feng Ling, Xuefeng Xiao, Rui Wang,
+    Shilei Wen, Fei Chao, and Rongrong Ji. Affinequant: Affine transformation quantization
+    for large language models. arXiv preprint arXiv:2403.12544, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[29] Donald W Marquardt. An algorithm for least-squares estimation of nonlinear
+    parameters. Journal of the society for Industrial and Applied Mathematics, 11(2):431–441,
+    1963.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[30] Stephen Merity, Caiming Xiong, James Bradbury, and Richard Socher. Pointer
+    sentinel mixture models. arXiv preprint arXiv:1609.07843, 2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[31] Markus Nagel, Rana Ali Amjad, Mart Van Baalen, Christos Louizos, and Tijmen
+    Blankevoort. Up or down? adaptive rounding for post-training quantization. In
+    International Conference on Machine Learning, pages 7197–7206\. PMLR, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[32] Aniruddha Nrusimha, Mayank Mishra, Naigang Wang, Dan Alistarh, Rameswar
+    Panda, and Yoon Kim. Mitigating the impact of outlier channels for language model
+    quantization with activation regularization. arXiv preprint arXiv:2404.03605,
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[33] Haotong Qin, Xudong Ma, Xingyu Zheng, Xiaoyang Li, Yang Zhang, Shouda
+    Liu, Jie Luo, Xianglong Liu, and Michele Magno. Accurate LoRA-Finetuning Quantization
+    of LLMs via Information Retention. arXiv preprint arXiv:2402.05445, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[34] Haotong Qin, Mingyuan Zhang, Yifu Ding, Aoyu Li, Zhongang Cai, Ziwei Liu,
+    Fisher Yu, and Xianglong Liu. Bibench: Benchmarking and analyzing network binarization.
+    arXiv preprint arXiv:2301.11233, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[35] Haotong Qin, Xiangguo Zhang, Ruihao Gong, Yifu Ding, Yi Xu, and Xianglong
+    Liu. Distribution-sensitive information retention for accurate binary neural network.
+    International Journal of Computer Vision, 131(1):26–47, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[36] Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang,
+    Michael Matena, Yanqi Zhou, Wei Li, and Peter J Liu. Exploring the limits of transfer
+    learning with a unified text-to-text transformer. The Journal of Machine Learning
+    Research, 21(1):5485–5551, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[37] Yuzhang Shang, Zhihang Yuan, Qiang Wu, and Zhen Dong. PB-LLM: Partially
+    binarized large language models. arXiv preprint arXiv:2310.00034, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[38] Wenqi Shao, Mengzhao Chen, Zhaoyang Zhang, Peng Xu, Lirui Zhao, Zhiqian
+    Li, Kaipeng Zhang, Peng Gao, Yu Qiao, and Ping Luo. Omniquant: Omnidirectionally
+    calibrated quantization for large language models. arXiv preprint arXiv:2308.13137,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[39] Mingjie Sun, Zhuang Liu, Anna Bair, and J Zico Kolter. A simple and effective
+    pruning approach for large language models. arXiv preprint arXiv:2306.11695, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[40] Gemini Team, Rohan Anil, Sebastian Borgeaud, Yonghui Wu, Jean-Baptiste
+    Alayrac, Jiahui Yu, Radu Soricut, Johan Schalkwyk, Andrew M Dai, Anja Hauth, et al.
+    Gemini: a family of highly capable multimodal models. arXiv preprint arXiv:2312.11805,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[41] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne
+    Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal, Eric Hambro, Faisal
+    Azhar, et al. Llama: Open and efficient foundation language models. arXiv preprint
+    arXiv:2302.13971, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[42] Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi,
+    Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale,
+    et al. Llama 2: Open foundation and fine-tuned chat models. arXiv preprint arXiv:2307.09288,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[43] Albert Tseng, Jerry Chee, Qingyao Sun, Volodymyr Kuleshov, and Christopher
+    De Sa. Quip#: Even better LLM quantization with hadamard incoherence and lattice
+    codebooks. arXiv preprint arXiv:2402.04396, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[44] Guangxuan Xiao, Ji Lin, Mickael Seznec, Hao Wu, Julien Demouth, and Song
+    Han. Smoothquant: Accurate and efficient post-training quantization for large
+    language models. In International Conference on Machine Learning, pages 38087–38099\.
+    PMLR, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[45] Guangxuan Xiao, Yuandong Tian, Beidi Chen, Song Han, and Mike Lewis. Efficient
+    streaming language models with attention sinks. arXiv preprint arXiv:2309.17453,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[46] Yuhui Xu, Lingxi Xie, Xiaotao Gu, Xin Chen, Heng Chang, Hengheng Zhang,
+    Zhensu Chen, Xiaopeng Zhang, and Qi Tian. Qa-lora: Quantization-aware low-rank
+    adaptation of large language models. arXiv preprint arXiv:2309.14717, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[47] Z Yao, RY Aminabadi, M Zhang, X Wu, C Li, and Y Zeroquant He. Efficient
+    and affordable post-training quantization for large-scale transformers. URL https://arxiv.
+    org/abs/2206.01861, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[48] Rowan Zellers, Ari Holtzman, Yonatan Bisk, Ali Farhadi, and Yejin Choi.
+    Hellaswag: Can a machine really finish your sentence? arXiv preprint arXiv:1905.07830,
+    2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[49] Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe, Moya Chen, Shuohui
+    Chen, Christopher Dewan, Mona Diab, Xian Li, Xi Victoria Lin, et al. Opt: Open
+    pre-trained transformer language models. arXiv preprint arXiv:2205.01068, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[50] Yiyuan Zhang, Kaixiong Gong, Kaipeng Zhang, Hongsheng Li, Yu Qiao, Wanli
+    Ouyang, and Xiangyu Yue. Meta-transformer: A unified framework for multimodal
+    learning. arXiv preprint arXiv:2307.10802, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[51] Wayne Xin Zhao, Kun Zhou, Junyi Li, Tianyi Tang, Xiaolei Wang, Yupeng
+    Hou, Yingqian Min, Beichen Zhang, Junjie Zhang, Zican Dong, et al. A survey of
+    large language models. arXiv preprint arXiv:2303.18223, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[52] Xunyu Zhu, Jian Li, Yong Liu, Can Ma, and Weiping Wang. A survey on model
+    compression for large language models. arXiv preprint arXiv:2308.07633, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Broader Impacts and Limitations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A.1 Broader Impacts
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This paper introduces a mixed-precision technique to achieve accurate and efficient
+    low-bit weight quantization for large language models (LLMs). This approach makes
+    LLMs more efficient and accessible, potentially extending their pervasive impact.
+    From a positive perspective, quantization makes the use of LLMs easier, benefiting
+    a broader audience, particularly those in lower-income groups. It reduces the
+    cost and hardware barriers to deploying LLMs and promotes edge inference of these
+    models (mitigating the risk of privacy data breaches), contributing to societal
+    productivity. On the downside, LLMs could be exploited by malicious users to generate
+    and spread false information. Quantization does not prevent the inherent negative
+    impacts of LLMs, nor does it exacerbate them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A.2 Limitations
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Though the mixed-precision framework significantly improves the quantization
+    performance of LLMs, the current out-of-the-box deployment tools still cannot
+    well support efficient mixed-precision computing. Meanwhile, the support for 1/2/3-bit
+    inference on GPUs remains limited, which affects the inferencing advantages of
+    low-bit models. We believe there is significant room for improvement in the hardware
+    efficiency of mixed-precision LLMs in the future.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A.3 Experiments Reproducibility
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Our code is included in the supplementary materials. For instructions on how
+    to reproduce various experiments, please refer to the accompanying code scripts
+    and algorithm description in our paper. We also provide the download and use details
+    of the datasets mentioned in the experiment part.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B SliM-LLM Implementation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: B.1 Detailed Implementation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In this section, we present the specific implementation details of SliM-LLM,
+    which utilizes GPTQ [[16](#bib.bib16)] as its backbone for mixed-precision quantization
+    and incorporates both SBA and SQC. SliM-LLM^+ is consistent with SliM-LLM in SBA
+    computations but does not include the SQC component, instead retaining learnable
+    weight clipping (LWC) approach in OmniQuant [[38](#bib.bib38)] for gradient optimization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 2 Detailed functions in SliM-LLM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: func $\operatorname{SBA}(\boldsymbol{w},\boldsymbol{x}_{F},\boldsymbol{H}^{\mathrm{in}},\beta,N)$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:  $\mathcal{G}\{\cdot\}\coloneqq\{0\}$
+  prefs: []
+  type: TYPE_NORMAL
+- en: func $\operatorname{SQC}(\boldsymbol{w}^{b}_{s},\boldsymbol{w}^{b}_{us},g_{b})$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:  $w_{\mathrm{max}}\coloneqq\operatorname{max}(\boldsymbol{w}^{b}_{s}\cup\boldsymbol{w}^{b}_{us})$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Algorithm [2](#alg2 "Algorithm 2 ‣ B.1 Detailed Implementation ‣ Appendix B
+    SliM-LLM Implementation ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization
+    for Large Language Models") primarily encompasses the core details of both SBA
+    and SQC. In SBA, the importance of each group is determined by sorting the average
+    salience of groups, followed by a bi-pointer search that increases the number
+    of ($N-1$ function are omitted, the default values from Eq. ([1](#S3.E1 "In 3.1
+    Preliminaries ‣ 3 SliM-LLM ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization
+    for Large Language Models")) are used.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: B.2 Mixed Bit Storage and Computing
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We developed a framework for storage and inference deployment supporting mixed-precision
+    quantization based on AutoGPTQ. The deployment process is as follows. After completing
+    mixed-precision quantization with SliM-LLM, it outputs scales, zeros, and group-wise
+    bit-width generated during the quantization process to identify the quantization
+    parameters and precision of each group in the Linear Projection weights. AutoGPTQ
+    then packs the weights and zeros into integer-compressed representations (denoted
+    by $\hat{\boldsymbol{w}}_{\mathrm{int}}$ respectively) based on the precision
+    of different groups, significantly reducing storage and operational bit-width.
+    After the quantized weights are packed, AutoGPTQ loads the model onto the GPU,
+    where the mixed precision quantization kernel on the GPU performs dequantization
+    on the weights and zeros of different groups and calculation with input activation,
+    ultimately producing the final output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the mixed-precision deployment of AutoGPTQ, the weight memory layout is
+    organized by group, with each group sharing the same precision, which is shown
+    in Fig. [6](#A2.F6 "Figure 6 ‣ B.2 Mixed Bit Storage and Computing ‣ Appendix
+    B SliM-LLM Implementation ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization
+    for Large Language Models"). Within each group, elements with the same precision
+    are packed as integers, eliminating the need for additional padding, which saves
+    space. Given that the bit-width of integers is a power of 2, this is compatible
+    with group size that is also a power of 2\. For instance, even with the odd-bit
+    such as 3-bit storage, integers can store these numbers without padding, as the
+    commonly used group size is 128, a multiple of almost all definition of integer
+    type. This ensures that elements within a group fully utilize the space provided
+    by integers, without storing numbers of different precision within the same integer.
+    $\hat{\boldsymbol{z}}_{\mathrm{int}}$ follow the original logic of AutoGPTQ but
+    are packed with a uniform precision along the channel direction for ease of use.
+    Other tensors, like scales, remain in the same floating-point format to ensure
+    the correctness of dequantization calculations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To indicate the precision of each group, we also introduce an additional array
+    to store bit-width of each group, where each number is represented as a 2-bit
+    value aggregated into integers, marking the quantization precision of each group
+    for accurate reconstruction. We use cumulative calculations to determine the starting
+    index of each group, ensuring correctness despite changes in $\hat{\boldsymbol{w}}_{\mathrm{int}}$
+    height and starting indices caused by varying precision. Using the above methods
+    to store the quantized weights, zeros, and additional bit arrays effectively reduces
+    memory usage during model storage and loading, thereby lowering the resource overhead
+    required for model deployment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once the weights are packed, we follow the modified AutoGPTQ logic for GPU inference.
+    The GPU processes and dequantizes the weights group by group for computation.
+    During GPU computation, a thread dequantizes a segment of continuous memory data
+    in one column of $\hat{\boldsymbol{w}}_{\mathrm{int}}$ and performs vector dot
+    product calculations with the input activation shared within the block, accumulating
+    the results in the corresponding result matrix. When threads form a logical block,
+    the block handles the computation and reduction of a continuous channel region.
+    We complete the linear layer computation by iterating through all logical blocks.
+    Leveraging AutoGPTQ’s initial logic and CUDA Warp’s 32-thread units, we ensure
+    similar code structure and data access logic for threads within each warp when
+    group size is 128\. This method was primarily conducted to validate feasibility
+    os SliM-LLM, demonstrating that the mixed precision quantization with integer
+    packing does not cause additional computational overhead, indicating the efficiency
+    and accuracy advantage of SliM-LLM. In summary, by dividing weight into several
+    structured precision blocks and employing a reasonable GPU utilization strategy,
+    Slim-LLM balances performance and efficiency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a79ac1fc5d259883f3d547ac88abe0dd.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: The memory layout shown in the figure is modified based on AutoGPTQ.
+    The transposed original weights $\boldsymbol{w}^{\top}\in\mathbb{R}^{m\times n}$
+    is also packed into integers to save memory.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix C Searching Details of Group-Wise Salience-Determined Bit Allocation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We optimize the mixed-precision configuration based on the output information
+    entropy (KL-divergence), searching for the optimal compensation bit-width ratio
+    as shown in Eq. ([4](#S3.E4 "In 3.2.2 Salience-Determined Bit Allocation for Structured
+    Group ‣ 3.2 Salience-Determined Bit Allocation ‣ 3 SliM-LLM ‣ SliM-LLM: Salience-Driven
+    Mixed-Precision Quantization for Large Language Models")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Initially, we rank each group by their average salience, a metric for quantization,
+    and employ a double-pointer that moves simultaneously from both the beginning
+    (lowest salience) and end (highest salience) of the sorted list. This ensures
+    an equal number of groups at low and high bit-widths, effectively balancing the
+    global average bit-width compensation. We then calculate the relative entropy
+    under the corresponding precision ratio and search for the optimal ratio. Fig [7](#A3.F7
+    "Figure 7 ‣ Appendix C Searching Details of Group-Wise Salience-Determined Bit
+    Allocation ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization for Large
+    Language Models") displays the search error curves related to the $2^{nd}$ Transformer
+    layers in the OPT1.3B model, showcasing the search curves for certain self-attention
+    layers (Query, Key, Value, FC2).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Due to the limited range of the search, extreme scenarios involve either a
+    half ($N-1$-bit (uniform precision). Fig [7](#A3.F7 "Figure 7 ‣ Appendix C Searching
+    Details of Group-Wise Salience-Determined Bit Allocation ‣ SliM-LLM: Salience-Driven
+    Mixed-Precision Quantization for Large Language Models") demonstrates that lower
+    quantization errors can be achieved under mixed-precision compared to quantization
+    at the uniform bit-width. We also find that multiple low-error precision combinations
+    are possible within a group of weights, allowing SBA to flexibly select the optimal
+    ratio through its versatile search.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/ef9e1a6f33f8a3e4e0f66fecb06dc514.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7: Error curves of SBA for select weights in the $5^{th}$ layers of
+    OPT-1.3B.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix D Extension Ablation on SQC
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section, we visualize the effectiveness of SQC in mitigating the degradation
+    of information in locally salient weights. We observed the absolute error of weights
+    in a randomly selected channel of the quantized OPT-1.3B model. As shown in Fig. [8](#A4.F8
+    "Figure 8 ‣ Appendix D Extension Ablation on SQC ‣ SliM-LLM: Salience-Driven Mixed-Precision
+    Quantization for Large Language Models"), the overall absolute error of the weights
+    post-quantization with a standard quantizer was 0.0055, while with SQC it was
+    reduced to 0.0039\. This further demonstrates that the search parameter $\gamma$,
+    as applied in Eq. ([5](#S3.E5 "In 3.3.2 Salience-Weighted Quantizer Calibration
+    for Local Salience Awareness ‣ 3.3 Salience-Weighted Quantizer Calibration ‣ 3
+    SliM-LLM ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization for Large Language
+    Models")), effectively optimizes the quantizer parameters, thereby reducing quantization
+    errors.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'More importantly, SQC effectively perceives the information of locally salient
+    weights, as indicated by the red regions in Fig. [8](#A4.F8 "Figure 8 ‣ Appendix
+    D Extension Ablation on SQC ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization
+    for Large Language Models"). Compared to the vanilla quantizer, SQC significantly
+    reduces the error of salient weights. Specifically, the prominent weights at indices
+    375 in Fig. [8](#A4.F8 "Figure 8 ‣ Appendix D Extension Ablation on SQC ‣ SliM-LLM:
+    Salience-Driven Mixed-Precision Quantization for Large Language Models")(a) show
+    higher quantization errors, while in Fig. [8](#A4.F8 "Figure 8 ‣ Appendix D Extension
+    Ablation on SQC ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization for Large
+    Language Models")(b), this error is effectively reduced. This confirms SQC’s ability
+    to perceive locally salient weights, effectively preventing the degradation of
+    critical information.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e729911f2e1fa2b88088091db521bde2.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8: Absolute channel error of the weight of the OPT-1.3B model. The red
+    line represents the quantization error for the locally salient weights, and the
+    gray represents other weights. (a) Vanilla quantizer error on the $794^{th}$ channel
+    of OPT-1.3B'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix E Extension Ablation on Quantization Group-Size
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To investigate the impact of different group sizes on the quantization effectiveness
+    of SliM-LLM, we evaluated performance with 256 and 512 columns at a 3-bit level,
+    observing that larger group sizes enhance GPU efficiency during inference. The
+    findings suggest that increased group granularity does not substantially elevate
+    perplexity across four models, indicating that SliM-LLM is robust and conducive
+    to more efficient deployment methods. In contrast, at 2-bit, we assessed group
+    sizes of 64 and 32 columns. With finer group granularity, the models displayed
+    reduced perplexity. This is attributed to smaller groups providing more detailed
+    data representation and utilizing additional quantization parameters, although
+    they also raise computational and storage demands. A group size of 128 strikes
+    a better balance between efficiency and quantization performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 5: Ablation results on OPT-6.7B, LLaMA-7B, LLaMA-2-7B, LLaMA-3-8B with
+    SliM-LLM under different group size (#g denotes the group size).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Precision / PPL$\downarrow$ | #g | OPT-6.7B | LLaMA-7B | LLaMA-2-7B | LLaMA-3-8B
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 3-bit | 512 | 11.65 | 6.96 | 6.69 | 8.87 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 256 | 11.33 | 6.92 | 6.94 | 8.14 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 128 | 11.27 | 6.40 | 6.24 | 7.62 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2-bit | 128 | 14.41 | 14.58 | 16.01 | 39.66 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 64 | 13.95 | 13.41 | 15.02 | 29.84 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 32 | 12.47 | 11.91 | 11.95 | 16.93 |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix F Extension on Salience Channel Clustering
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: F.1 Discussion of Theorem 1
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Theorem 1.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Given the input calibration activation $\boldsymbol{x}\in\mathbb{R}^{t\times
+    m}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Proof.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'Given $\boldsymbol{x}\in\mathbb{R}^{t\times m}$. We can get the Hessian matrix
+    with Levenberg-Marquardt [[29](#bib.bib29)] approximation in Eq. ([3](#S3.E3 "In
+    3.1 Preliminaries ‣ 3 SliM-LLM ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization
+    for Large Language Models")):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $$\begin{pmatrix}x_{11}&amp;x_{12}&amp;x_{13}&amp;\cdots&amp;x_{1m}\\
+    x_{21}&amp;x_{22}&amp;x_{23}&amp;\cdots&amp;x_{2m}\\'
+  prefs: []
+  type: TYPE_NORMAL
+- en: \vdots&amp;\vdots&amp;\vdots&amp;\ddots&amp;\vdots\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: \vdots&amp;\vdots&amp;\vdots&amp;\boldsymbol{x_{p,q}^{*}}&amp;\vdots\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: \vdots&amp;\vdots&amp;\vdots&amp;\ddots&amp;\vdots\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: x_{t1}&amp;x_{t2}&amp;x_{t3}&amp;\cdots&amp;x_{tm}\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: \end{pmatrix}\cdot\begin{pmatrix}x_{11}&amp;x_{12}&amp;\cdots&amp;x_{1t}\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: x_{21}&amp;x_{22}&amp;\cdots&amp;x_{2t}\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: \vdots&amp;\vdots&amp;\ddots&amp;\vdots\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: \vdots&amp;\vdots&amp;\boldsymbol{x_{p,q}^{*}}&amp;\vdots\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: \vdots&amp;\vdots&amp;\ddots&amp;\vdots\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: x_{m1}&amp;x_{m2}&amp;\cdots&amp;x_{mt}\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: \end{pmatrix}=\begin{pmatrix}x_{11}^{2}..&amp;\cdots&amp;\cdots&amp;\cdots\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: \vdots&amp;\ddots&amp;\cdots&amp;\vdots\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: \vdots&amp;\vdots&amp;\boldsymbol{x_{p,q}^{*}}^{2}..&amp;\vdots\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: \cdots&amp;\cdots&amp;\cdots&amp;\ddots\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: \end{pmatrix}$$ |  | (7) |
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'where ${x_{p,q}^{*}}^{2}$ can be formulated as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\delta_{i,j}=\frac{w_{i,j}^{2}}{[\operatorname{diag}((\boldsymbol{x}\boldsymbol{x}^{\top}+\lambda\boldsymbol{I})^{-1})]^{2}}$
+    |  | (8) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $(\boldsymbol{x}\boldsymbol{x}^{\top}+\lambda\boldsymbol{I})^{-1}$),
+    while the values located at the diagonal of Hessian are large. Therefore, only
+    considering the influence of diagonal elements [[39](#bib.bib39)], we can further
+    approximate salience as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (9) |'
+  prefs: []
+  type: TYPE_TB
+- en: Here the diagonal of $\boldsymbol{x}\boldsymbol{x}^{\top}$ channel of weights
+    will also exhibit salience. ∎
+  prefs: []
+  type: TYPE_NORMAL
+- en: F.2 Distribution of salience, activation and weight magnitude
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Fig. [9](#A6.F9 "Figure 9 ‣ F.2 Distribution of salience, activation and weight
+    magnitude ‣ Appendix F Extension on Salience Channel Clustering ‣ SliM-LLM: Salience-Driven
+    Mixed-Precision Quantization for Large Language Models") illustrates the distribution
+    of salience among certain weights in LLMs. This section provides additional examples
+    to demonstrate how the distribution of weights and input activation characteristics
+    influence the salience of parameters in LLMs. The figure captures seven linear
+    projections in the multi-head self-attention (MHA) and feed-forward block (FFB)
+    layers of the $2^{nd}$ Transformer modules in the LLaMA-7B model.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/4e7761a12d58a354a80b6e1578d50105.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 9: Salience, activation and weight distribution in the $2^{nd}$ layers
+    of LLaMA-7B'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In line with previous findings [[32](#bib.bib32), [44](#bib.bib44)], activations
+    demonstrate particularly marked outlier phenomena on anomalous tokens and channels,
+    with extremes differing by more than two orders of magnitude. Notably, distinct
+    anomalous channels are present in the MHA’s Query, Key, and Value layers, where
+    outliers vary significantly across different tokens. This pattern is consistent
+    in the FFB layers. We observe that disparities in weight magnitudes are less pronounced
+    than those in activation, thus exerting a reduced impact on outlier channels.
+    Moreover, weights exhibit structured distributions along rows or columns [[12](#bib.bib12),
+    [20](#bib.bib20)], affecting the overall distribution of salience from a row-wise
+    perspective (Fig. [9](#A6.F9 "Figure 9 ‣ F.2 Distribution of salience, activation
+    and weight magnitude ‣ Appendix F Extension on Salience Channel Clustering ‣ SliM-LLM:
+    Salience-Driven Mixed-Precision Quantization for Large Language Models")). However,
+    the most prominent salience is predominantly driven by activation across channels
+    (column-wise).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: F.3 Hessian Diagonal Clustering
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Sec. [3.2.1](#S3.SS2.SSS1 "3.2.1 Spatial Clustering of Global Salience ‣ 3.2
+    Salience-Determined Bit Allocation ‣ 3 SliM-LLM ‣ SliM-LLM: Salience-Driven Mixed-Precision
+    Quantization for Large Language Models") demonstrates that outlier tokens in input
+    activations result in significant values at the corresponding positions along
+    the diagonal of the weight Hessian matrix. Additionally, due to the token sink
+    phenomenon [[45](#bib.bib45), [32](#bib.bib32)], areas around significantly activated
+    key tokens exhibit increased salience, creating clusters of salient regions along
+    the Hessian matrix diagonal. To further elucidate this phenomenon, Fig. [10](#A6.F10
+    "Figure 10 ‣ F.3 Hessian Diagonal Clustering ‣ Appendix F Extension on Salience
+    Channel Clustering ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization for
+    Large Language Models") shows the values along the diagonal of the Hessian matrix
+    for selected weights in the $2^{nd}$ layer, the token sink phenomenon results
+    in a pronounced convergence of significant values along the Hessian matrix diagonal,
+    with deep red areas indicating regional clustering. These findings reinforce the
+    influence of input activations on the diagonal of the Hessian matrix, subsequently
+    leading to a clustering phenomenon in the salience distribution of weights across
+    channels.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/057a6c365f6a540c656e2233ab9ebc20.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 10: Hessian diagonal magnitude in attention layers of $2^{nd}$ layers
+    of LLaMA-7B'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix G More Comparisons
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section, we provide supplementary experiments for SliM-LLM. Tab. [6](#A7.T6
+    "Table 6 ‣ Appendix G More Comparisons ‣ SliM-LLM: Salience-Driven Mixed-Precision
+    Quantization for Large Language Models") displays the comparative results of SliM-LLM
+    and SliM-LLM* with other methods on the OPT series models. Tab. [7](#A7.T7 "Table
+    7 ‣ Appendix G More Comparisons ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization
+    for Large Language Models") shows the performance of SliM-LLM when quantizing
+    the LLaMA family models on the C4 dataset, while Tab. [8](#A7.T8 "Table 8 ‣ Appendix
+    G More Comparisons ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization for
+    Large Language Models") also compares the results of SliM-LLM* on the C4 dataset.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 6: Quantization results of OPT Models on WikiText2 (group size is 128).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| #W PPL$\downarrow$ | Method | 1.3B | 2.7B | 6.7B | 13B | 30B | 66B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16-bit | - | 14.63 | 12.47 | 10.86 | 10.12 | 9.56 | 9.34 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 3-bit | RTN | 1.2e2 | 3.0e2 | 23.54 | 46.03 | 18.80 | 1.4e6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 16.47 | 13.69 | 11.65 | 10.35 | 9.73 | 10.96 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 16.32 | 13.58 | 11.41 | 10.68 | 9.85 | 9.60 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| QuIP | 16.21 | 13.79 | 11.51 | 10.50 | 9.75 | 9.59 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SliM-LLM | 15.91 | 13.26 | 11.27 | 10.26 | 9.70 | 9.48 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-8 | OmniQuant | 15.72 | 13.18 | 11.27 | 10.47 | 9.79 | 9.53 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | AffineQuant | 15.61 | 12.98 | 11.18 | 10.51 | 9.81 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | SliM-LLM^+ | 15.58 | 12.84 | 11.18 | 10.44 | 9.67 | 9.51 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2-bit | RTN | 1.3e4 | 5.7e4 | 7.8e3 | 7.6e4 | 1.3e4 | 3.6e5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 1.1e2 | 61.59 | 20.18 | 21.36 | 12.71 | 82.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 47.97 | 28.50 | 16.20 | 14.32 | 12.31 | 14.54 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| QuIP | 41.64 | 28.98 | 18.57 | 16.02 | 11.48 | 10.76 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PB-LLM | 45.92 | 39.71 | 20.37 | 19.11 | 17.01 | 16.36 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SliM-LLM | 30.71 | 24.08 | 14.41 | 13.68 | 11.34 | 10.94 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-8 | OmniQuant | 23.95 | 18.13 | 14.43 | 12.94 | 11.39 | 30.84
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | SliM-LLM^+ | 24.57 | 17.98 | 14.22 | 12.16 | 11.27 | 14.98 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 7: Quantization results of LLaMA Family with statistic quantizer on C4
+    (group size is 128).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| #W PPL$\downarrow$ | Method | 1-7B | 1-13B | 1-30B | 1-65B | 2-7B | 2-13B
+    | 2-70B | 3-8B | 3-70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16-bit | - | 7.08 | 6.61 | 5.98 | 5.62 | 6.97 | 6.46 | 5.52 | 9.22 | 6.85
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 3-bit | APTQ | 6.24 | - | - | - | - | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 8.62 | 7.49 | 6.58 | 6.10 | 8.40 | 7.18 | 6.02 | 1.1e2 | 22.39 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 7.92 | 7.07 | 6.37 | 5.94 | 7.84 | 6.94 | - | 11.62 | 8.03 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 7.85 | 7.10 | 6.47 | 6.00 | 7.89 | 7.00 | 5.85 | 13.67 | 10.52 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | SliM-LLM | 6.14 | 6.05 | 6.33 | 5.94 | 7.74 | 5.26 | 5.09 | 13.10 | 8.64
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2-bit | RTN | 1.0e3 | 4.5e2 | 99.45 | 17.15 | 4.9e3 | 1.4e2 | 42.13 | 2.5e4
+    | 4.6e5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 1.9e5 | 2.3e5 | 2.4e5 | 7.5e4 | 1.7e5 | 9.4e4 | - | 2.1e6 | 1.4e6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 34.63 | 15.29 | 11.93 | 11.99 | 33.70 | 20.97 | NAN | 4.1e4 | 21.82
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| QuIP | 33.74 | 21.94 | 10.95 | 13.99 | 31.94 | 16.16 | 8.17 | 1.3e2 | 22.24
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PB-LLM | 49.73 | 26.93 | 17.93 | 11.85 | 29.84 | 19.82 | 8.95 | 79.21 | 33.91
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SliM-LLM | 32.91 | 13.85 | 11.27 | 10.95 | 16.00 | 9.41 | 7.01 | 1.1e2 |
+    15.92 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 8: Quantization results of LLaMA-1 and LLaMA-2 models with learnable
+    quantizer on C4.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| #W PPL$\downarrow$ | Method | 1-7B | 1-13B | 1-30B | 1-65B | 2-7B | 2-13B
+    | 2-70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16-bit | - | 7.08 | 6.61 | 5.98 | 5.62 | 6.97 | 6.46 | 5.52 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 3-bit | OmniQuant | 7.75 | 7.05 | 6.37 | 5.93 | 7.75 | 6.98 | 5.85 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AffineQuant | 7.75 | 7.04 | 6.40 | - | 7.83 | 6.99 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SliM-LLM^+ | 7.75 | 6.91 | 6.36 | 5.96 | 7.71 | 6.90 | 5.85 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2-bit | OmniQuant | 12.97 | 10.36 | 9.36 | 8.00 | 15.02 | 11.05 | 8.52 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AffineQuant | 14.92 | 12.64 | 9.66 | - | 16.02 | 10.98 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SliM-LLM^+ | 14.99 | 10.22 | 9.33 | 7.52 | 18.18 | 10.24 | 8.40 |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix H Real Dialog Examples
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section, we show some dialogue examples of LLaMA-2-13B and Vicuna-13B
+    with SliM-LLM-2bit and GPTQ-2bit in Fig. [11](#A8.F11 "Figure 11 ‣ Appendix H
+    Real Dialog Examples ‣ SliM-LLM: Salience-Driven Mixed-Precision Quantization
+    for Large Language Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a4fd11e8e21c0b51bc8455338bc0342f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 11: Some examples of conversations. LLaMA-2-13B and Vicuna-13B are chosen
+    to show the case of language supplementary and Q&A ability. And GPTQ-2bit is selected
+    as the comparison. We color the text to show the reasonable or inappropriate responses.'
+  prefs: []
+  type: TYPE_NORMAL

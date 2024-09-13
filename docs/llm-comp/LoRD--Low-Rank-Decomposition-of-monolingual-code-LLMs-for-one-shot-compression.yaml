@@ -1,0 +1,1201 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 19:03:56'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'LoRD: Low Rank Decomposition of monolingual code LLMs for one-shot compression'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2309.14021](https://ar5iv.labs.arxiv.org/html/2309.14021)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Ayush Kaushal
+  prefs: []
+  type: TYPE_NORMAL
+- en: Université de Montréal, Nolano AI
+  prefs: []
+  type: TYPE_NORMAL
+- en: ayush@nolano.ai &Tejas Vaidhya
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mila, Université de Montréal, Nolano AI
+  prefs: []
+  type: TYPE_NORMAL
+- en: tejas@nolano.ai &Irina Rish
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mila, Université de Montréal, Nolano AI
+  prefs: []
+  type: TYPE_NORMAL
+- en: irina@nolano.ai
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Low Rank Decomposition of matrix - splitting a large matrix into a product of
+    two smaller matrix offers a means for compression that reduces the parameters
+    of a model without sparsification, and hence delivering more speedup on modern
+    hardware. Moreover, unlike quantization, the compressed linear layers remain fully
+    differentiable and all the parameters trainable, while being able to leverage
+    the existing highly efficient kernels over floating point matrices. We study the
+    potential to compress Large Language Models (LLMs) for monolingual Code generation
+    via Low Rank Decomposition (LoRD) and observe that ranks for the linear layers
+    in these models can be reduced by upto 39.58% with less than 1% increase in perplexity.
+    We then use LoRD to compress StarCoder 16B to 13.2B parameter with no drop and
+    to 12.3B with minimal drop in HumanEval Pass@1 score, in less than 10 minutes
+    on a single A100\. The compressed models speeds up inference by up to 22.35% with
+    just a single line of change in code over huggingface’s implementation with pytorch
+    backend. LoRD models remain compatible with state of the art near-lossless quantization
+    method such as SpQR, which allows leveraging further compression gains of quantization.
+    Lastly, QLoRA over LoRD model further reduces memory requirements by as much as
+    21.2% over vanilla QLoRA while offering similar gains from parameter efficient
+    fine tuning. Our work shows Low Rank Decomposition (LoRD) as a promising new paradigm
+    for LLM compression. ¹¹1We will release LoRDCoder at https://huggingface.co/nolanoAI
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Code LLMs have become an integral component of Copilots that boost developer
+    productivity (Peng et al., [2023](#bib.bib47)) and in LLM based agents (Wang et al.,
+    [2023a](#bib.bib62)). These Code LLMs are as large as 34 Billion parameters for
+    the publicly available models Rozière et al. ([2023](#bib.bib51)) and more than
+    175 Billion parameter for closed source ones Chen et al. ([2021a](#bib.bib10)).
+    There is not only a pressing need for reducing model size and running models at
+    a lower cost, but also for increasing the inference speed. The latter is especially
+    significant for Copilot based applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Recently, several methods have been proposed to compress and speed up inference
+    of LLMs. Quantization (Frantar et al., [2023](#bib.bib24); Dettmers et al., [2023b](#bib.bib18))
+    reduces the number of bits required per weight parameter of LLM by lowering the
+    precision, and has shown significant model compression as well as speedups in
+    low-batch decoding phases of LLMs Kim et al. ([2023a](#bib.bib32)). Quantization
+    has also been shown to generalize well to quantized models Shen et al. ([2023](#bib.bib56)).
+    Pruning (Sun et al., [2023a](#bib.bib57); Frantar & Alistarh, [2023](#bib.bib23))
+    has offered another means of compression by removing connections from the neural
+    network and hence sparsifying the weight matrices of the neural networks. Distillation
+    Gu et al. ([2023](#bib.bib25)); Agarwal et al. ([2023](#bib.bib1)); Jung et al.
+    ([2023](#bib.bib31)) method enables one to train a smaller model using a larger
+    teacher model for supervision. While quantization and pruning methods that do
+    not require re-training are viable means of compressing the model, distillation
+    involves a significant amount of compute for retraining a smaller LLM, often from
+    scratch. Here, we consider another compression paradigm of Low Rank Decomposition
+    (LoRD) , that does not require expensive retraining as in the case of distillation
+    and covers up several deficiencies of the quantization and pruning compression
+    method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Low Rank Decomposition factorizes a dense matrix of a neural network as a product
+    of two smaller dense matrices. The LoRD model can leverage the highly optimized
+    floating-point dense matrix multiplication kernels (NVIDIA, [2007](#bib.bib43);
+    Blackford et al., [2002](#bib.bib6)) that have been written over modern hardware.
+    In contrast, quantized models require specialized kernels to be written, often
+    different for each hardware backend in order to enable fast inference. Moreover,
+    the neural network remaining fully-differentiable and all the parameters remaining
+    trainable even after compression, unlike quantization. The LoRA Hu et al. ([2022](#bib.bib29))
+    layers of tuned models are also easier to merge back into floating point matrices
+    compared to the quantized ones.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pruned models produce sparse matrix weights in the neural network. Matrix multiplication
+    over sparse matrices is much slower than the resulting dense matrices in LoRD
+    on most GPUs. Dense matrices, in addition avoid representation format overhead
+    that sparse matrices incur from parameter reduction ²²2This overhead in sparse
+    matrix occurs from having to store indices/bitmasks to indicate which values are
+    present and not. This can be very significant at low levels of sparsity. PyTorch’s
+    sparse formats (CSR, CSC, COO) all store indices at int64 format, and for moderate
+    levels of sparsity ($<$50%), the sparse matrix takes up more space than a dense
+    matrix with zero-ed out values. and often requires specialized kernels for reducing
+    this overhead Dettmers et al. ([2023b](#bib.bib18)). Dense matrix multiplication
+    is also easier to implement than sparse matrix multiplication, especially over
+    quantized models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Several previous works have attempted to apply matrix decomposition methods
+    like SVD, Tucker or Kronecker decomposition for compression (Ben Noach & Goldberg,
+    [2020](#bib.bib4); Tahaei et al., [2022](#bib.bib59); Edalati et al., [2022](#bib.bib21)).
+    However, these have been limited to small language models like Bert (Devlin et al.,
+    [2019](#bib.bib20)) and GPT2 (Radford et al., [2019](#bib.bib49)), and have shown
+    success only on narrow task-specific use cases or after retraining, often only
+    with teacher-guided distillation supervision. These works have observed that weight
+    matrices are not low rank and adapt methods like Singular Value Decomposition
+    for data-aware decomposition of weights (Chen et al., [2021b](#bib.bib11); Hsu
+    et al., [2022](#bib.bib28); Yu & Wu, [2023](#bib.bib69)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We, adapt these approaches for Large Language Models (Billion+ Parameters)
+    over python code, and show that these models can be low-rank decomposed to compress
+    and speed up inference without the need for retraining with little to no performance
+    degradation. We study low-rank decomposition across two families of code LLMs
+    - StarCoder and CodeGen (§[2](#S2 "2 Code LLMs are Low Rank Decomposable ‣ LoRD:
+    Low Rank Decomposition of monolingual code LLMs for one-shot compression")) for
+    varying parameter sizes and establish the potential for reducing rank of models
+    through decomposition. We then study these trends across different kinds of linear
+    layers in a transformer block and observe the potential for upto 39.58% rank reduction
+    with less than 1% change in perplexity.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We propose various considerations for compressing the models and to achieve
+    inference speedup on GPUs (§[3.1](#S3.SS1 "3.1 Achieving compression and inference
+    speedup ‣ 3 Compression and speedup through Decomposition ‣ LoRD: Low Rank Decomposition
+    of monolingual code LLMs for one-shot compression")). Using these, we achieve
+    compression of the StarCoder 16B model offering 31.67 HumanEval Chen et al. ([2021a](#bib.bib10))
+    Pass@1 score down to 13.2B parameter with similar performance of 31.57 HumanEval
+    and down to 12.3B parameter with 29.22 HumanEval score (§[3.2](#S3.SS2 "3.2 Performance
+    of compressed models ‣ 3 Compression and speedup through Decomposition ‣ LoRD:
+    Low Rank Decomposition of monolingual code LLMs for one-shot compression")). LoRD
+    models, offer an inference speedup of as high as 22.35% with just one line of
+    change in huggingface’s (§[3.3](#S3.SS3 "3.3 Speedup from LoRD ‣ 3 Compression
+    and speedup through Decomposition ‣ LoRD: Low Rank Decomposition of monolingual
+    code LLMs for one-shot compression")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'These LoRD models can be further compressed via the near-lossless quantization
+    method of SpQR Dettmers et al. ([2023b](#bib.bib18)) to reduce it’s precision
+    to 8 and 4 bits without any further reduction in HumanEval performance (§[4.1](#S4.SS1
+    "4.1 Quantization ‣ 4 Combining LoRD with Quantization and LoRA ‣ LoRD: Low Rank
+    Decomposition of monolingual code LLMs for one-shot compression")). Finally, these
+    decomposed models also reduce the memory requirements of adapter finetuning by
+    21.2% over QLoRA (§[4.2](#S4.SS2 "4.2 Parameter Efficient tuning of LoRD models
+    ‣ 4 Combining LoRD with Quantization and LoRA ‣ LoRD: Low Rank Decomposition of
+    monolingual code LLMs for one-shot compression")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Code LLMs are Low Rank Decomposable
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 2.1 Background
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Let an linear layer $L$
+  prefs: []
+  type: TYPE_NORMAL
+- en: A Low Rank Decomposition or Low Rank Factorization of a layer $L$ is,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $Y=\tilde{L}(X)=BAX+\tilde{b}\approx L(X)=WX+b$ |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: Singular Value Decomposition (SVD) offers the best $r$ as follows
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: where [:a,:b] denotes a slice operation over a matrix that gives its first $a$
+    columns.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Eigendecomposition is another decomposition method applicable to symmetric
+    matrices. We can represent the eigendecomposition of a symmetric matrix $W\in\mathbb{R}^{d_{1}\times
+    d_{1}}$ eigenvalues (and corresponding eigenvectors) as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: Since $Q$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While SVD gives the optimal low-rank decomposition of matrix, in terms of Frobenius
+    norm, but does not take input and output data distribution into account. Approaches
+    like weighted SVD (Hsu et al., [2022](#bib.bib28)) and SVD over both weight and
+    data (Chen et al., [2021b](#bib.bib11)) have been proposed but are prohibitively
+    expensive to scale to larger models for their requirement of backpropagation over
+    calibration dataset. SVD over very large weight matrices is also very computationally
+    expensive. So, we instead leverage the observation that activations in transformers
+    are low-ranked (Feng et al., [2022](#bib.bib22)) and adapt the more heuristically
+    driven approach of Atomic Feature Mimicking (AFM) (Yu & Wu, [2023](#bib.bib69))
+    that creates low rank matrices conditioned on a small amount of calibration data.
+    Specifically, consider the eigen-decomposition of Covariance over $Y$ as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathbb{E}[yy^{T}]-\mathbb{E}[y]\mathbb{E}[y]^{T}=\hat{Q}\hat{\Lambda}\hat{Q}^{T}$
+    |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Here $\hat{Q}$ from Equation [1](#S2.E1 "In 2.1 Background ‣ 2 Code LLMs are
+    Low Rank Decomposable ‣ LoRD: Low Rank Decomposition of monolingual code LLMs
+    for one-shot compression"), we have:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $Y\approx\hat{Q}_{:,:r}\hat{Q}_{:,:r}^{T}WX+\hat{Q}_{:,:r}\hat{Q}_{:,:r}^{T}b$
+    |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Comparing to Equation [1](#S2.E1 "In 2.1 Background ‣ 2 Code LLMs are Low Rank
+    Decomposable ‣ LoRD: Low Rank Decomposition of monolingual code LLMs for one-shot
+    compression"), this gives us $B=\hat{Q}_{:,:r}\in\mathbb{R}^{d_{1}\times r}$ to
+    zero vector.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2 Experimental Settings
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We take our python calibration dataset from the stack (Kocetkov et al., [2022](#bib.bib34))
+    and consider the corresponding subset of the stack smol (Bigcode, [2022](#bib.bib5))
+    as validation data. We filter out those sequences which are less than 1024 tokens
+    or 10240 characters in length. We consider CodeGen and StarCoder model family
+    of models. CodeGen mono models are present across 350M, 2B, 6B and 16B parameters
+    and are CodeGen models that were further trained on only python code. StarCoder
+    16B is the StarCoderBase 16B model further trained on only python code from the
+    stack dataset’s train split. We also consider StarCoderBase at 3B and 7B parameter
+    sizes in StarCoder family due to the lack of their monolingual counterparts. All
+    our experiments were performed on a single A100 GPU in under an hour for each
+    run.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For studying the trends of increase in perplexity for a reduction in rank across
+    difference model sizes, we set a fixed low-rank $r$ for all the layers. Later
+    we discuss how to achieve compression and inference speedup via low-rank decomposition
+    in §[3](#S3 "3 Compression and speedup through Decomposition ‣ LoRD: Low Rank
+    Decomposition of monolingual code LLMs for one-shot compression")'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.3 Change in Perplexity across Reduction in Rank
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Figure [1(a)](#S2.F1.sf1 "In Figure 1 ‣ 2.3 Change in Perplexity across Reduction
+    in Rank ‣ 2 Code LLMs are Low Rank Decomposable ‣ LoRD: Low Rank Decomposition
+    of monolingual code LLMs for one-shot compression") and [1(b)](#S2.F1.sf2 "In
+    Figure 1 ‣ 2.3 Change in Perplexity across Reduction in Rank ‣ 2 Code LLMs are
+    Low Rank Decomposable ‣ LoRD: Low Rank Decomposition of monolingual code LLMs
+    for one-shot compression") show the trends of increase in perplexity across reduction
+    in rank of the weight matrix of CodeGen and StarCoder models. For the largest
+    models in both families, we observe only about a 1% increase in perplexity for
+    10% reduction in rank, and upto 35% reduction in rank for less than 10% increase
+    in perplexity. The smallest model, CodeGen Mono 350M, however, can only be decomposed
+    to 35% rank reduction for a similar drop in perplexity. We observe that the perplexity
+    changes much slower for larger models as the % rank reduces, and hence can be
+    compressed mode, similar to observations in quantization and pruning (Li et al.,
+    [2020](#bib.bib39)). It should be noted that for most models, more than 50% leads
+    to significant output quality degradation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/bd9c2529ae30ed569d285bb044674680.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Perplexity vs % Rank Reduction for CodeGen Models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/4ae5b32fb73829eb978e938cab5f61d2.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Perplexity vs % Rank Reduction for StarCoder Models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 1: Perplexity vs %Reduction in Rank for Different Models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Compression and speedup through Decomposition
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we discuss how we adapt the Low Rank Decomposition (LoRD) for
+    reducing the size of model and achieving inference speedup without a significant
+    reduction in the output quality of the model. Following (Kim et al., [2023a](#bib.bib32)),
+    we assume memory bandwidth is the bottleneck for inference, and thus speedups
+    for decoding are directly proportional to the size of the transformer model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Achieving compression and inference speedup
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Threshold for size reduction across rank reduction: Consider a weight matrix
+    $W\in\mathbb{R}^{d_{1}\times d_{2}}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Matrix Aspect Ratio and Compression: Let the ratio of the smaller dimension
+    to the larger dimension of the matrix (i.e. the aspect ratio) be $\alpha=\frac{d_{min}}{d_{max}}$
+    and aspect ratio as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: It should be noted that change in parameters from decomposition can either be
+    positive (the number of parameters increased after decomposition), or negative
+    (the number of parameters decreased after decomposition). In order to achieve
+    model compression and consequently inference speedups, one would want a very high
+    negative percentage change in parameters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/2c9af56480f21a451c1f2fb1ec5c576a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Parity Point across various aspect ratios ($\alpha$) of the different
+    linear layers in transformers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Parity Point for Compression across Rank Reduction: Using Eq. [6](#S3.E6 "In
+    3.1 Achieving compression and inference speedup ‣ 3 Compression and speedup through
+    Decomposition ‣ LoRD: Low Rank Decomposition of monolingual code LLMs for one-shot
+    compression"), one can observe that little reduction in rank, may lead to increase
+    in model parameters instead of decreasing. For instance, square matrices ($\alpha=1$),
+    can be achieved with a very small percent reduction in rank and can start giving
+    a reduction in model size. For compression to be achieved, we would want to reduce
+    the rank by an amount to cross this parity point threshold. However, reducing
+    the rank by a lot can degrade performance significantly. So we must take the aspect
+    ratio into account, in order to achieve compression without much reduction in
+    rank (and hence no significant degradation in output quality)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A transformer model had different aspect ratios across its various linear layers,
+    $\alpha=1.00$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/181d46139420d85ad17a1fa4b7b6c683.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) CodeGen 16B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/fb11531efbd751fa1de8aba86746af7f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) StarCoder 16B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 3: Parameter Reduction vs perplexity for decomposition across various
+    layers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Trends across different layers in a transformer block:'
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'In addition to considering the parity point into account for deciding which
+    layers to decompose, we also additionally study the sensitivity of each of these
+    layers to low rank decomposition across the large model in the two model families.
+    Figure [3](#S3.F3 "Figure 3 ‣ 3.1 Achieving compression and inference speedup
+    ‣ 3 Compression and speedup through Decomposition ‣ LoRD: Low Rank Decomposition
+    of monolingual code LLMs for one-shot compression") shows the increase in perplexity
+    vs reduction in model parameters for the two models. For both models, decomposing
+    all the linear layers achieves the parity point much later than any one of these
+    linear layers with low aspect ratio. For CodeGen, the attention weight matrix
+    (query, key and values projection) offers least increase in perplexity for the
+    biggest drop in parameter count, make this layer the most suitable candidate to
+    be decomposed. It shows less than 1% increase in perplexity even after 39.58%
+    rank reduction. We observe the mlp 2 (downscaling mlp) to be a better candidate
+    for decomposition than mlp 1 (upscaling mlp) across both models. This makes mlp
+    2 to be a good candidate for low-rank decomposition over the StarCoder model.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Hardware Considerations: On modern hardware accelerators like GPU and their
+    corresponding software stack, matrix multiplication kernels are faster if their
+    dimensions are divisible by a high factor of 2\. So, we consider ranks at a reduction
+    of approximately every 10%, rounded off to the nearest multiple of 128 in our
+    experiments.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Performance of compressed models
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We consider the largest models of StarCoder and CodeGen family (16B) and perform
+    low-rank decomposition on both with varying ranks. We consider decomposing layers
+    that offers most parameter reduction (§[3.1](#S3.SS1 "3.1 Achieving compression
+    and inference speedup ‣ 3 Compression and speedup through Decomposition ‣ LoRD:
+    Low Rank Decomposition of monolingual code LLMs for one-shot compression")) with
+    least increase in perplexity - mlp 2 for StarCoder and attention for CodeGen.
+    We report the Pass@1 and Pass@10 scores over the Human Eval dataset (Chen et al.,
+    [2021a](#bib.bib10)) using the code-eval GitHub repo (Bacaj, [2023](#bib.bib2))
+    in Table [1](#S3.T1 "Table 1 ‣ 3.3 Speedup from LoRD ‣ 3 Compression and speedup
+    through Decomposition ‣ LoRD: Low Rank Decomposition of monolingual code LLMs
+    for one-shot compression"). We observe that StarCoder models can be low rank decomposed
+    to 13.2B parameters (50% rank reduction) with no drop in Pass@1 performance and
+    upto 12.3B parameters (62.5% rank reduction) with very little drop. CodeGen models
+    shows similar trend in drop in Human Eval performance when measured in terms of
+    rank reduction. However, in terms of parameter reduction count, while showing
+    very little perplexity change with large reduction in rank (Fig. [3(a)](#S3.F3.sf1
+    "In Figure 3 ‣ 3.1 Achieving compression and inference speedup ‣ 3 Compression
+    and speedup through Decomposition ‣ LoRD: Low Rank Decomposition of monolingual
+    code LLMs for one-shot compression")), shows much more drop in its HumanEval score
+    when measured in terms of parameter count reduction due to a higher aspect ratio
+    of the matrix being decomposed. It should be noted that for certain compressed
+    models, the Pass@1 even slightly improves over the base model. Similar trend of
+    slight improvements from compression across various metrics and benchmarks has
+    been observed in the case of other compression attempts (Frantar & Alistarh, [2023](#bib.bib23);
+    Cerebras, [2022](#bib.bib7)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Speedup from LoRD
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We next consider accessing the inference speedup (forward pass) of the models
+    over the standard cuBLAS floating point kernels. We consider the standard Huggingface
+    implementation (Wolf et al., [2020](#bib.bib65)) of Starcoder with pytorch backend
+    (Paszke et al., [2019](#bib.bib45)) utilizing standard cuBLAS kernels on A100
+    GPUs. LoRD decomposed models were implemented by modifying just one line of code
+    to replace an MLP with an extra linear layer ³³3nn.Linear(in, out) -> nn.Sequential(nn.Linear(in,
+    rank), nn.Linear(rank, out)). We benchmark over 1024 tokens and 512 tokens sequence,
+    averaged across 10 runs with warm up of 3 runs. We plot relative time taken and
+    model size across reduction in rank in Figure
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8610068d53e1dfd108bec771b1f30fa5.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: Time and Model size of StarCoder 16B across ranks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[4](#S3.F4 "Figure 4 ‣ 3.3 Speedup from LoRD ‣ 3 Compression and speedup through
+    Decomposition ‣ LoRD: Low Rank Decomposition of monolingual code LLMs for one-shot
+    compression").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Inference speedups as high as 22.35% are observed for decomposed models. The
+    lines in the graph are generally downward sloping, Therefore reduction in rank
+    beyond 25% generally implies less inference time and reduction in model size.
+    However, the underlying hardware (and pertaining software kernels) also significantly
+    affect the speedup gains. We notice huge gains, whenever the rank is rounded off
+    to a multiple of a very high power of 2 (like 4096 and 2560 at 33% and 58% rank
+    reduction), despite very little reduction in model size. In contrast, for certain
+    ranks which are multiples of a lesser power of 2 (like 3584 and 2304 at 41% and
+    62% rank reduction) are slower than those at slightly higher ranks. It is worth
+    noting that affect of hardware inefficient matrix shape is less significant for
+    longer tokens sequence of 1024 because the $O(n^{2})$ attention overhead starts
+    becoming more significant, especially in the absence of SoTA attention implementation
+    techniques (Rabe & Staats, [2021](#bib.bib48); Dao et al., [2022](#bib.bib14);
+    Dao, [2023](#bib.bib13)) as in the case of Huggingface’s implementations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Starcoder 16B | CodeGen 16B Mono |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Model Type | Rank | HumanEval Score | Model Type | Rank | HumanEval Score
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Pass @ 1 | Pass @ 10 |  | Pass @ 1 | Pass @ 10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Base Model | 6144 | 31.67 | 48.28 | Base Model | 6144 | 29.02 | 46.34 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LoRDCoder 14.9B | 4480 | 33.18 | 48.41 | LoRDCoder 15.9B | 4480 | 29.08 |
+    46.95 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LoRDCoder 14.5B | 4096 | 31.69 | 45.12 | LoRDCoder 15.6B | 4096 | 28.90 |
+    46.24 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LoRDCoder 13.8B | 3584 | 30.90 | 47.56 | LoRDCoder 15.1B | 3584 | 28.54 |
+    45.73 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LoRDCoder 13.2B | 3072 | 31.57 | 45.36 | LoRDCoder 14.7B | 3072 | 27.99 |
+    43.29 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LoRDCoder 12.6B | 2560 | 29.84 | 42.31 | LoRDCoder 14.3B | 2560 | 27.32 |
+    45.12 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LoRDCoder 12.3B | 2304 | 29.22 | 40.12 | LoRDCoder 14.1B | 2304 | 27.07 |
+    41.46 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 1: Human Eval Score of LoRD across StarCoder and CodeGen.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Combining LoRD with Quantization and LoRA
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 4.1 Quantization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'While LoRD enables compression at same precision level, we study whether the
+    decomposed models can be further compressing through quantization. Table [2](#S4.T2
+    "Table 2 ‣ 4.1 Quantization ‣ 4 Combining LoRD with Quantization and LoRA ‣ LoRD:
+    Low Rank Decomposition of monolingual code LLMs for one-shot compression") shows
+    the HumanEval pass@1 results for the different LoRDCoder across 8 and 4 bit quantization
+    levels, using the near lossless quantization technique of SpQR (Dettmers et al.,
+    [2023b](#bib.bib18)). We observe that the LoRD models can be combined with quantization
+    for further compression, showing no performance drop for 8-bit and very little
+    performance drop on 4-bit quantization for most models. Slight increase in HumanEval
+    after quantization is also observed, similar to Pangu-Coder2 (Shen et al., [2023](#bib.bib56)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Pass@1@FP16 | Pass@1@8-bit | Pass@1@4-bit |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LoRDCoder 14.9B | 33.18 | 33.17 | 32.01 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LoRDCoder 14.5B | 31.69 | 31.58 | 32.74 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LoRDCoder 13.8B | 30.90 | 31.10 | 30.73 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LoRDCoder 13.2B | 31.57 | 31.52 | 32.01 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LoRDCoder 12.6B | 29.84 | 29.87 | 30.22 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LoRDCoder 12.3B | 29.22 | 29.14 | 29.45 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: Human Eval score of quantized LoRDCoder models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Parameter Efficient tuning of LoRD models
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/203ddbd25d81fdb7bde040bd7f5740ed.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: LoRA vs LoRD + LoRA.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We next test the potential for using LoRD to further reduce the memory usage
+    over existing parameter-efficient techniques. We consider the code instruction
+    dataset (Chaudhary, [2023](#bib.bib8)) and filter those examples that pertains
+    to python programming language. We use QLoRA (Dettmers et al., [2023a](#bib.bib17)),
+    which is an even more memory efficient version of LoRA (Hu et al., [2022](#bib.bib29))
+    storing the weights in quantized format, for fine-tuning for 1 epoch. We compare
+    results from fine-tuning two of the decomposed models LoRDCoder 13.2B and LoRDCoder
+    12.3B model to the StarCoder model. We observe a HumanEval pass@1 of 37.80 and
+    37.62 across LoRDCoder 13.2B and LoRDCoder 12.3B fine-tuning, competitive to the
+    performance of 37.74 offered by StarCoder model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: There is a growing interest in compressing pretrained Large Language Models.
+    Several recent attempts have been dedicated to the quantization of weights of
+    LLMs (Frantar et al., [2023](#bib.bib24); Lin et al., [2023](#bib.bib41); Yuan
+    et al., [2023](#bib.bib70); Park et al., [2022](#bib.bib44); Kim et al., [2023b](#bib.bib33);
+    Chee et al., [2023](#bib.bib9); Li et al., [2023a](#bib.bib37)) with tricks such
+    as outlier separation (Dettmers et al., [2022](#bib.bib16); Dettmers & Zettlemoyer,
+    [2022](#bib.bib15); Dettmers et al., [2023c](#bib.bib19); Wei et al., [2022](#bib.bib64);
+    Kim et al., [2023a](#bib.bib32); Lee et al., [2023](#bib.bib36)). Some attempts
+    also quantize the activations (intermediate representations) in addition to weights
+    to speed up computation time (Shao et al., [2023](#bib.bib53); Xiao et al., [2023](#bib.bib67)).
+    The works in quantization that are closest to us is the Low-Rank Compensation
+    (LoRC) Strategy (Yao et al., [2023](#bib.bib68); Wu et al., [2023](#bib.bib66)),
+    where the difference of the quantized matrix to the original matrix is approximated
+    by a product of low-rank matrices. Our work decomposes the entire matrix for compression.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pruning neural networks Liang et al. ([2021](#bib.bib40)), unlike quantization,
+    reduces the number of parameters in a model by removing unimportant weights or
+    connections. Several techniques have been proposed to scale pruning methods for
+    LLMs (Sun et al., [2023a](#bib.bib57); Frantar & Alistarh, [2023](#bib.bib23);
+    Ma et al., [2023](#bib.bib42)). However, pruning as a means of compression is
+    yet to become viable due to no speedups over sparse matrices without significant
+    performance drop at extreme levels of sparsity or structured sparsity (Zhu et al.,
+    [2023](#bib.bib72)). With low-rank decomposition, we propose an alternate method
+    for reducing model parameters that offer speedup even at a little reduction in
+    parameter count. Certain works have also attempted to (Ren & Zhu, [2023](#bib.bib50);
+    Li et al., [2023b](#bib.bib38)) to split a dense matrix as a sum of low-rank matrices
+    and a sparse matrix. However, these methods require retraining and have been shown
+    to work only for Language Models of less than a billion parameters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Low rank decomposition has been proposed for smaller language models like Bert
+    or GPT2 before using SVD decomposition (Ben Noach & Goldberg, [2020](#bib.bib4))
+    and Kronecker decompositions (Tahaei et al., [2022](#bib.bib59); Edalati et al.,
+    [2022](#bib.bib21)). Hsu et al. ([2022](#bib.bib28)) modified SVD to be data aware
+    based on approximate second-order gradient information. A better weighted SVD
+    was proposed by (Hua et al., [2022](#bib.bib30)). Chen et al. ([2021b](#bib.bib11))
+    proposed a data aware decomposition method with a provably optimal closed-form
+    solution, utilizing a large amount of data points over specific tasks to decompose.
+    Several recent works (Yu & Wu, [2023](#bib.bib69); Feng et al., [2022](#bib.bib22))
+    have shown that while the weight matrix of neural networks is not inherently low-rank,
+    the intermediate representations are, thus propose to decompose based on representations.
+    All these works have focused on small language models and require re-training.
+    We proposed low-rank decomposition for compressing neural networks without the
+    need for retraining. The factorization has also been used just for the embedding
+    layers (Baevski & Auli, [2019](#bib.bib3); Lan et al., [2020](#bib.bib35)), as
+    they are good candidates due to their very low aspect ratio of 0.015, where a
+    reduction of rank by even 5% would lead to reduction in number of parameters after
+    decomposition.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is also a growing interest in fine-tuning large language models Taori
+    et al. ([2023](#bib.bib60)); Chiang et al. ([2023](#bib.bib12)); Wang et al. ([2023b](#bib.bib63));
+    Sun et al. ([2023b](#bib.bib58)). With the large memory requirements for fine-tuning
+    full parameters of the LLM, the more parameter-efficient fine-tuning methods like
+    LoRA (Hu et al., [2022](#bib.bib29)) are getting widely adopted. These methods
+    freeze the original LLM weights, and attach two low-rank matrices or adapters,
+    in a skip-connection (He et al., [2016](#bib.bib26)) to the linear layers of the
+    model. These parameter-efficient fine-tuning approaches have seen improvements
+    in lower activation memory (Zhang et al., [2023](#bib.bib71)) or by keeping non-trainable
+    model weights at 4-bit precision (Dettmers et al., [2023a](#bib.bib17)). Our work,
+    while focused on compression through low-rank decomposition, can also enable more
+    efficient fine-tuning, especially in conjunction with existing methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We studied the compression of monolingual code generation models through a novel
+    one-shot compression paradigm of low-rank decomposition. We analyse the change
+    in perplexity with change in rank across the model families of StarCoder and CodeGen
+    as well as their individual layers and observe that the rank of these models can
+    be reduced by upto 39.58% with less than 1% change in perplexity. We then proposed
+    considerations for one-shot compressing these models through Low Rank Decomposition
+    (LoRD) in under 10 minutes. Consequently, we compress StarCoder 16B to 13.2B with
+    no drop in HumanEval pass@1 and very little drop in HumanEval pass@1 to 12.3B
+    parameters. With a minimal change in code over huggingface’s default inference
+    code of just one line, we gain speedups of up to 22.35%. The LoRD models are also
+    compatible with near lossless quantization techniques of SpQR, which offers gains
+    of quantization based compression in addition to ones from decomposition. The
+    LoRD models also reduce memory requirements by as much as 21.2% over vanilla QLoRA
+    fine-tuning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7 Broader Impact and Future Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Our work on LoRD, compresses code LLMs which enables them to run on smaller
+    GPUs including as consumer grade GPUs. This is especially of pressing importance
+    for the next few years when the shortage of GPU supply is relative to the increasing
+    demand in today’s market. Moreover, faster inference helps reduce the GPU cycles,
+    enabling lower running costs and lower power consumption for LLM inference. Our
+    work helps reduce the carbon emissions incurred and moves towards a greener NLP.
+    Through compression, our work also promotes inference at the edge, and therefore
+    opening room for applications involving strict privacy requirements. Lower latency
+    will also help improve the User Experience in applications like CoPilots where
+    lag between suggestions can impact developer’s productivity. Several of these
+    benefits of LoRD such as lower cost and energy consumption are also applicable
+    for fine-tuning use cases of LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our work opens up a new paradigm for compression via Low Rank Decomposition
+    over Large Language Models in a single shot without the need for retraining. Since,
+    LoRD models can leverage existing floating point kernels across BLAS and cuBLAS,
+    in contrast to quantization, these are much easier to implement and reap inference
+    benefits. Our study on hardware considerations for speedup also opens up the potential
+    for tuning the rank of decomposed models to fit best on the target hardware and
+    the accompanying GEMM kernels. While our study is limited to monolingual code
+    LLMs, the low rank decomposition technique is general and not specific to code
+    domain. Thus exploring its applicability to more general purpose models like LLaMa
+    is a promising direction for the compression of transformer LLMs beyond quantization.
+    Another interesting unexplored question is whether the LoRA or QLoRA modules fine-tuned
+    on original models, can be plugged in as-is for the LoRD models without any performance
+    drop.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Agarwal et al. (2023) Rishabh Agarwal, Nino Vieillard, Piotr Stanczyk, Sabela
+    Ramos, Matthieu Geist, and Olivier Bachem. Gkd: Generalized knowledge distillation
+    for auto-regressive sequence models, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Bacaj (2023) Anton Bacaj. code-eval. [https://github.com/abacaj/code-eval](https://github.com/abacaj/code-eval),
+    July 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Baevski & Auli (2019) Alexei Baevski and Michael Auli. Adaptive input representations
+    for neural language modeling. In *International Conference on Learning Representations*,
+    2019. URL [https://openreview.net/forum?id=ByxZX20qFQ](https://openreview.net/forum?id=ByxZX20qFQ).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Ben Noach & Goldberg (2020) Matan Ben Noach and Yoav Goldberg. Compressing pre-trained
+    language models by matrix decomposition. In *Proceedings of the 1st Conference
+    of the Asia-Pacific Chapter of the Association for Computational Linguistics and
+    the 10th International Joint Conference on Natural Language Processing*, pp. 884–889,
+    Suzhou, China, December 2020\. Association for Computational Linguistics. URL
+    [https://aclanthology.org/2020.aacl-main.88](https://aclanthology.org/2020.aacl-main.88).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Bigcode (2022) Project Bigcode. The stack smol, 2022. URL [https://huggingface.co/datasets/bigcode/the-stack-smol](https://huggingface.co/datasets/bigcode/the-stack-smol).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Blackford et al. (2002) L Susan Blackford, Antoine Petitet, Roldan Pozo, Karin
+    Remington, R Clint Whaley, James Demmel, Jack Dongarra, Iain Duff, Sven Hammarling,
+    Greg Henry, et al. An updated set of basic linear algebra subprograms (blas).
+    *ACM Transactions on Mathematical Software*, 28(2):135–151, 2002.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Cerebras (2022) Team Cerebras. Creating sparse gpt-3 models with iterative pruning,
+    11 2022. URL [https://www.cerebras.net/blog/creating-sparse-gpt-3-models-with-iterative-pruning](https://www.cerebras.net/blog/creating-sparse-gpt-3-models-with-iterative-pruning).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chaudhary (2023) Sahil Chaudhary. Code instructions dataset. [https://huggingface.co/datasets/sahil2801/code_instructions_120k](https://huggingface.co/datasets/sahil2801/code_instructions_120k),
+    Jun 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chee et al. (2023) Jerry Chee, Yaohui Cai, Volodymyr Kuleshov, and Christopher De
+    Sa. Quip: 2-bit quantization of large language models with guarantees, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chen et al. (2021a) Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde
+    de Oliveira Pinto, Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, Greg
+    Brockman, Alex Ray, Raul Puri, Gretchen Krueger, Michael Petrov, Heidy Khlaaf,
+    Girish Sastry, Pamela Mishkin, Brooke Chan, Scott Gray, Nick Ryder, Mikhail Pavlov,
+    Alethea Power, Lukasz Kaiser, Mohammad Bavarian, Clemens Winter, Philippe Tillet,
+    Felipe Petroski Such, Dave Cummings, Matthias Plappert, Fotios Chantzis, Elizabeth
+    Barnes, Ariel Herbert-Voss, William Hebgen Guss, Alex Nichol, Alex Paino, Nikolas
+    Tezak, Jie Tang, Igor Babuschkin, Suchir Balaji, Shantanu Jain, William Saunders,
+    Christopher Hesse, Andrew N. Carr, Jan Leike, Josh Achiam, Vedant Misra, Evan
+    Morikawa, Alec Radford, Matthew Knight, Miles Brundage, Mira Murati, Katie Mayer,
+    Peter Welinder, Bob McGrew, Dario Amodei, Sam McCandlish, Ilya Sutskever, and
+    Wojciech Zaremba. Evaluating large language models trained on code, 2021a.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chen et al. (2021b) Patrick Chen, Hsiang-Fu Yu, Inderjit Dhillon, and Cho-Jui
+    Hsieh. Drone: Data-aware low-rank compression for large nlp models. In M. Ranzato,
+    A. Beygelzimer, Y. Dauphin, P.S. Liang, and J. Wortman Vaughan (eds.), *Advances
+    in Neural Information Processing Systems*, volume 34, pp.  29321–29334\. Curran
+    Associates, Inc., 2021b. URL [https://proceedings.neurips.cc/paper_files/paper/2021/file/f56de5ef149cf0aedcc8f4797031e229-Paper.pdf](https://proceedings.neurips.cc/paper_files/paper/2021/file/f56de5ef149cf0aedcc8f4797031e229-Paper.pdf).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chiang et al. (2023) Wei-Lin Chiang, Zhuohan Li, Zi Lin, Ying Sheng, Zhanghao
+    Wu, Hao Zhang, Lianmin Zheng, Siyuan Zhuang, Yonghao Zhuang, Joseph E. Gonzalez,
+    Ion Stoica, and Eric P. Xing. Vicuna: An open-source chatbot impressing gpt-4
+    with 90%* chatgpt quality, March 2023. URL [https://lmsys.org/blog/2023-03-30-vicuna/](https://lmsys.org/blog/2023-03-30-vicuna/).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dao (2023) Tri Dao. Flashattention-2: Faster attention with better parallelism
+    and work partitioning, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dao et al. (2022) Tri Dao, Daniel Y Fu, Stefano Ermon, Atri Rudra, and Christopher
+    Re. Flashattention: Fast and memory-efficient exact attention with IO-awareness.
+    In Alice H. Oh, Alekh Agarwal, Danielle Belgrave, and Kyunghyun Cho (eds.), *Advances
+    in Neural Information Processing Systems*, 2022. URL [https://openreview.net/forum?id=H4DqfPSibmx](https://openreview.net/forum?id=H4DqfPSibmx).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers & Zettlemoyer (2022) Tim Dettmers and Luke Zettlemoyer. The case for
+    4-bit precision: k-bit inference scaling laws, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. (2022) Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer.
+    GPT3.int8(): 8-bit matrix multiplication for transformers at scale. In Alice H.
+    Oh, Alekh Agarwal, Danielle Belgrave, and Kyunghyun Cho (eds.), *Advances in Neural
+    Information Processing Systems*, 2022. URL [https://openreview.net/forum?id=dXiGWqBoxaD](https://openreview.net/forum?id=dXiGWqBoxaD).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. (2023a) Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, and Luke
+    Zettlemoyer. Qlora: Efficient finetuning of quantized llms, 2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. (2023b) Tim Dettmers, Ruslan Svirschevski, Vage Egiazarian,
+    Denis Kuznedelev, Elias Frantar, Saleh Ashkboos, Alexander Borzunov, Torsten Hoefler,
+    and Dan Alistarh. Spqr: A sparse-quantized representation for near-lossless llm
+    weight compression, 2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. (2023c) Tim Dettmers, Ruslan Svirschevski, Vage Egiazarian,
+    Denis Kuznedelev, Elias Frantar, Saleh Ashkboos, Alexander Borzunov, Torsten Hoefler,
+    and Dan Alistarh. Spqr: A sparse-quantized representation for near-lossless llm
+    weight compression, 2023c.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Devlin et al. (2019) Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina
+    Toutanova. BERT: Pre-training of deep bidirectional transformers for language
+    understanding. In *Proceedings of the 2019 Conference of the North American Chapter
+    of the Association for Computational Linguistics: Human Language Technologies,
+    Volume 1 (Long and Short Papers)*, pp.  4171–4186, Minneapolis, Minnesota, June
+    2019\. Association for Computational Linguistics. doi: 10.18653/v1/N19-1423. URL
+    [https://aclanthology.org/N19-1423](https://aclanthology.org/N19-1423).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Edalati et al. (2022) Ali Edalati, Marzieh Tahaei, Ahmad Rashid, Vahid Nia,
+    James Clark, and Mehdi Rezagholizadeh. Kronecker decomposition for GPT compression.
+    In *Proceedings of the 60th Annual Meeting of the Association for Computational
+    Linguistics (Volume 2: Short Papers)*, pp.  219–226, Dublin, Ireland, May 2022\.
+    Association for Computational Linguistics. doi: 10.18653/v1/2022.acl-short.24.
+    URL [https://aclanthology.org/2022.acl-short.24](https://aclanthology.org/2022.acl-short.24).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Feng et al. (2022) Ruili Feng, Kecheng Zheng, Yukun Huang, Deli Zhao, Michael
+    Jordan, and Zheng-Jun Zha. Rank diminishing in deep neural networks. In Alice H.
+    Oh, Alekh Agarwal, Danielle Belgrave, and Kyunghyun Cho (eds.), *Advances in Neural
+    Information Processing Systems*, 2022. URL [https://openreview.net/forum?id=tIqzLFf3kk](https://openreview.net/forum?id=tIqzLFf3kk).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Frantar & Alistarh (2023) Elias Frantar and Dan Alistarh. Sparsegpt: Massive
+    language models can be accurately pruned in one-shot, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Frantar et al. (2023) Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan
+    Alistarh. OPTQ: Accurate quantization for generative pre-trained transformers.
+    In *The Eleventh International Conference on Learning Representations*, 2023.
+    URL [https://openreview.net/forum?id=tcbBPnfwxS](https://openreview.net/forum?id=tcbBPnfwxS).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Gu et al. (2023) Yuxian Gu, Li Dong, Furu Wei, and Minlie Huang. Knowledge distillation
+    of large language models, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'He et al. (2016) Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Deep
+    residual learning for image recognition. In *2016 IEEE Conference on Computer
+    Vision and Pattern Recognition (CVPR)*, pp.  770–778, 2016. doi: 10.1109/CVPR.2016.90.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hinton et al. (2015) Geoffrey Hinton, Oriol Vinyals, and Jeff Dean. Distilling
+    the knowledge in a neural network, 2015.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hsu et al. (2022) Yen-Chang Hsu, Ting Hua, Sungen Chang, Qian Lou, Yilin Shen,
+    and Hongxia Jin. Language model compression with weighted low-rank factorization.
+    In *International Conference on Learning Representations*, 2022. URL [https://openreview.net/forum?id=uPv9Y3gmAI5](https://openreview.net/forum?id=uPv9Y3gmAI5).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hu et al. (2022) Edward J Hu, yelong shen, Phillip Wallis, Zeyuan Allen-Zhu,
+    Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. LoRA: Low-rank adaptation of
+    large language models. In *International Conference on Learning Representations*,
+    2022. URL [https://openreview.net/forum?id=nZeVKeeFYf9](https://openreview.net/forum?id=nZeVKeeFYf9).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hua et al. (2022) Ting Hua, Yen-Chang Hsu, Felicity Wang, Qian Lou, Yilin Shen,
+    and Hongxia Jin. Numerical optimizations for weighted low-rank estimation on language
+    models. In *Proceedings of the 2022 Conference on Empirical Methods in Natural
+    Language Processing*, pp.  1404–1416, Abu Dhabi, United Arab Emirates, December
+    2022\. Association for Computational Linguistics. doi: 10.18653/v1/2022.emnlp-main.91.
+    URL [https://aclanthology.org/2022.emnlp-main.91](https://aclanthology.org/2022.emnlp-main.91).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Jung et al. (2023) Jaehun Jung, Peter West, Liwei Jiang, Faeze Brahman, Ximing
+    Lu, Jillian Fisher, Taylor Sorensen, and Yejin Choi. Impossible distillation:
+    from low-quality model to high-quality dataset & model for summarization and paraphrasing,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kim et al. (2023a) Sehoon Kim, Coleman Hooper, Amir Gholami, Zhen Dong, Xiuyu
+    Li, Sheng Shen, Michael W. Mahoney, and Kurt Keutzer. Squeezellm: Dense-and-sparse
+    quantization, 2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kim et al. (2023b) Young Jin Kim, Rawn Henry, Raffy Fahim, and Hany Hassan
+    Awadalla. Finequant: Unlocking efficiency with fine-grained weight-only quantization
+    for llms, 2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kocetkov et al. (2022) Denis Kocetkov, Raymond Li, Loubna Ben Allal, Jia Li,
+    Chenghao Mou, Carlos Muñoz Ferrandis, Yacine Jernite, Margaret Mitchell, Sean
+    Hughes, Thomas Wolf, Dzmitry Bahdanau, Leandro von Werra, and Harm de Vries. The
+    stack: 3 tb of permissively licensed source code, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lan et al. (2020) Zhenzhong Lan, Mingda Chen, Sebastian Goodman, Kevin Gimpel,
+    Piyush Sharma, and Radu Soricut. Albert: A lite bert for self-supervised learning
+    of language representations. In *International Conference on Learning Representations*,
+    2020. URL [https://openreview.net/forum?id=H1eA7AEtvS](https://openreview.net/forum?id=H1eA7AEtvS).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lee et al. (2023) Changhun Lee, Jungyu Jin, Taesu Kim, Hyungjun Kim, and Eunhyeok
+    Park. Owq: Lessons learned from activation outliers for weight quantization in
+    large language models, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. (2023a) Liang Li, Qingyuan Li, Bo Zhang, and Xiangxiang Chu. Norm
+    tweaking: High-performance low-bit quantization of large language models, 2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. (2023b) Yixiao Li, Yifan Yu, Qingru Zhang, Chen Liang, Pengcheng
+    He, Weizhu Chen, and Tuo Zhao. Losparse: Structured compression of large language
+    models based on low-rank and sparse approximation, 2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. (2020) Zhuohan Li, Eric Wallace, Sheng Shen, Kevin Lin, Kurt Keutzer,
+    Dan Klein, and Joseph E. Gonzalez. Train large, then compress: Rethinking model
+    size for efficient training and inference of transformers. In *Proceedings of
+    the 37th International Conference on Machine Learning*, ICML’20\. JMLR.org, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liang et al. (2021) Tailin Liang, John Glossner, Lei Wang, Shaobo Shi, and
+    Xiaotong Zhang. Pruning and quantization for deep neural network acceleration:
+    A survey. *Neurocomputing*, 461:370–403, 2021. ISSN 0925-2312. doi: https://doi.org/10.1016/j.neucom.2021.07.045.
+    URL [https://www.sciencedirect.com/science/article/pii/S0925231221010894](https://www.sciencedirect.com/science/article/pii/S0925231221010894).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lin et al. (2023) Ji Lin, Jiaming Tang, Haotian Tang, Shang Yang, Xingyu Dang,
+    and Song Han. Awq: Activation-aware weight quantization for llm compression and
+    acceleration, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ma et al. (2023) Xinyin Ma, Gongfan Fang, and Xinchao Wang. Llm-pruner: On
+    the structural pruning of large language models, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'NVIDIA (2007) Corporation NVIDIA. Compute unified device architecture (cuda).
+    Website, 2007. URL [https://developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit).
+    Accessed: 2023-09-17.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Park et al. (2022) Gunho Park, Baeseong Park, Minsub Kim, Sungjae Lee, Jeonghoon
+    Kim, Beomseok Kwon, Se Jung Kwon, Byeongwook Kim, Youngjoo Lee, and Dongsoo Lee.
+    Lut-gemm: Quantized matrix multiplication based on luts for efficient inference
+    in large-scale generative language models, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Paszke et al. (2019) Adam Paszke, Sam Gross, Francisco Massa, Adam Lerer, James
+    Bradbury, Gregory Chanan, Trevor Killeen, Zeming Lin, Natalia Gimelshein, Luca
+    Antiga, Alban Desmaison, Andreas Köpf, Edward Yang, Zach DeVito, Martin Raison,
+    Alykhan Tejani, Sasank Chilamkurthy, Benoit Steiner, Lu Fang, Junjie Bai, and
+    Soumith Chintala. *PyTorch: An Imperative Style, High-Performance Deep Learning
+    Library*, chapter ., pp.  . Curran Associates Inc., Red Hook, NY, USA, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Penedo et al. (2023) Guilherme Penedo, Quentin Malartic, Daniel Hesslow, Ruxandra
+    Cojocaru, Alessandro Cappelli, Hamza Alobeidli, Baptiste Pannier, Ebtesam Almazrouei,
+    and Julien Launay. The refinedweb dataset for falcon llm: Outperforming curated
+    corpora with web data, and web data only, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Peng et al. (2023) Sida Peng, Eirini Kalliamvakou, Peter Cihon, and Mert Demirer.
+    The impact of ai on developer productivity: Evidence from github copilot, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Rabe & Staats (2021) Markus N. Rabe and Charles Staats. Self-attention does
+    not need $o(n^{2})$ memory, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Radford et al. (2019) Alec Radford, Jeff Wu, Rewon Child, David Luan, Dario
+    Amodei, and Ilya Sutskever. Language models are unsupervised multitask learners.
+    *OpenAI Blog*, 1(8), 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Ren & Zhu (2023) Siyu Ren and Kenny Q. Zhu. Low-rank prune-and-factorize for
+    language model compression, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Rozière et al. (2023) Baptiste Rozière, Jonas Gehring, Fabian Gloeckle, Sten
+    Sootla, Itai Gat, Xiaoqing Ellen Tan, Yossi Adi, Jingyu Liu, Tal Remez, Jérémy
+    Rapin, Artyom Kozhevnikov, Ivan Evtimov, Joanna Bitton, Manish Bhatt, Cristian Canton
+    Ferrer, Aaron Grattafiori, Wenhan Xiong, Alexandre Défossez, Jade Copet, Faisal
+    Azhar, Hugo Touvron, Louis Martin, Nicolas Usunier, Thomas Scialom, and Gabriel
+    Synnaeve. Code llama: Open foundation models for code, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sanh et al. (2019) Victor Sanh, Lysandre Debut, Julien Chaumond, and Thomas
+    Wolf. Distilbert, a distilled version of bert: smaller, faster, cheaper and lighter,
+    2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Shao et al. (2023) Wenqi Shao, Mengzhao Chen, Zhaoyang Zhang, Peng Xu, Lirui
+    Zhao, Zhiqian Li, Kaipeng Zhang, Peng Gao, Yu Qiao, and Ping Luo. Omniquant: Omnidirectionally
+    calibrated quantization for large language models, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Shazeer (2019) Noam Shazeer. Fast transformer decoding: One write-head is all
+    you need, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Shazeer (2020) Noam Shazeer. Glu variants improve transformer, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Shen et al. (2023) Bo Shen, Jiaxin Zhang, Taihong Chen, Daoguang Zan, Bing
+    Geng, An Fu, Muhan Zeng, Ailun Yu, Jichuan Ji, Jingyang Zhao, Yuenan Guo, and
+    Qianxiang Wang. Pangu-coder2: Boosting large language models for code with ranking
+    feedback, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sun et al. (2023a) Mingjie Sun, Zhuang Liu, Anna Bair, and J. Zico Kolter. A
+    simple and effective pruning approach for large language models, 2023a.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sun et al. (2023b) Zhiqing Sun, Yikang Shen, Qinhong Zhou, Hongxin Zhang, Zhenfang
+    Chen, David Cox, Yiming Yang, and Chuang Gan. Principle-driven self-alignment
+    of language models from scratch with minimal human supervision, 2023b.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Tahaei et al. (2022) Marzieh Tahaei, Ella Charlaix, Vahid Nia, Ali Ghodsi,
+    and Mehdi Rezagholizadeh. KroneckerBERT: Significant compression of pre-trained
+    language models through kronecker decomposition and knowledge distillation. In
+    *Proceedings of the 2022 Conference of the North American Chapter of the Association
+    for Computational Linguistics: Human Language Technologies*, pp.  2116–2127, Seattle,
+    United States, July 2022. Association for Computational Linguistics. doi: 10.18653/v1/2022.naacl-main.154.
+    URL [https://aclanthology.org/2022.naacl-main.154](https://aclanthology.org/2022.naacl-main.154).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Taori et al. (2023) Rohan Taori, Ishaan Gulrajani, Tianyi Zhang, Yann Dubois,
+    Xuechen Li, Carlos Guestrin, Percy Liang, and Tatsunori B. Hashimoto. Alpaca:
+    A strong, replicable instruction-following model. *CRFM Stanford*, March 2023.
+    URL [https://crfm.stanford.edu/2023/03/13/alpaca.html](https://crfm.stanford.edu/2023/03/13/alpaca.html).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023) Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier
+    Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal,
+    Eric Hambro, Faisal Azhar, Aurelien Rodriguez, Armand Joulin, Edouard Grave, and
+    Guillaume Lample. Llama: Open and efficient foundation language models, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wang et al. (2023a) Lei Wang, Chen Ma, Xueyang Feng, Zeyu Zhang, Hao Yang, Jingsen
+    Zhang, Zhiyuan Chen, Jiakai Tang, Xu Chen, Yankai Lin, Wayne Xin Zhao, Zhewei
+    Wei, and Ji-Rong Wen. A survey on large language model based autonomous agents,
+    2023a.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wang et al. (2023b) Yizhong Wang, Hamish Ivison, Pradeep Dasigi, Jack Hessel,
+    Tushar Khot, Khyathi Raghavi Chandu, David Wadden, Kelsey MacMillan, Noah A. Smith,
+    Iz Beltagy, and Hannaneh Hajishirzi. How far can camels go? exploring the state
+    of instruction tuning on open resources, 2023b.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wei et al. (2022) Xiuying Wei, Yunchen Zhang, Xiangguo Zhang, Ruihao Gong,
+    Shanghang Zhang, Qi Zhang, Fengwei Yu, and Xianglong Liu. Outlier suppression:
+    Pushing the limit of low-bit transformer language models. In Alice H. Oh, Alekh
+    Agarwal, Danielle Belgrave, and Kyunghyun Cho (eds.), *Advances in Neural Information
+    Processing Systems*, 2022. URL [https://openreview.net/forum?id=yW5zeRSFdZ](https://openreview.net/forum?id=yW5zeRSFdZ).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wolf et al. (2020) Thomas Wolf, Lysandre Debut, Victor Sanh, Julien Chaumond,
+    Clement Delangue, Anthony Moi, Pierric Cistac, Tim Rault, Remi Louf, Morgan Funtowicz,
+    Joe Davison, Sam Shleifer, Patrick von Platen, Clara Ma, Yacine Jernite, Julien
+    Plu, Canwen Xu, Teven Le Scao, Sylvain Gugger, Mariama Drame, Quentin Lhoest,
+    and Alexander Rush. Transformers: State-of-the-art natural language processing.
+    In *Proceedings of the 2020 Conference on Empirical Methods in Natural Language
+    Processing: System Demonstrations*, pp.  38–45, Online, October 2020\. Association
+    for Computational Linguistics. doi: 10.18653/v1/2020.emnlp-demos.6. URL [https://aclanthology.org/2020.emnlp-demos.6](https://aclanthology.org/2020.emnlp-demos.6).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wu et al. (2023) Xiaoxia Wu, Zhewei Yao, and Yuxiong He. Zeroquant-fp: A leap
+    forward in llms post-training w4a8 quantization using floating-point formats,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xiao et al. (2023) Guangxuan Xiao, Ji Lin, Mickael Seznec, Hao Wu, Julien Demouth,
+    and Song Han. SmoothQuant: Accurate and efficient post-training quantization for
+    large language models. In Andreas Krause, Emma Brunskill, Kyunghyun Cho, Barbara
+    Engelhardt, Sivan Sabato, and Jonathan Scarlett (eds.), *Proceedings of the 40th
+    International Conference on Machine Learning*, volume 202 of *Proceedings of Machine
+    Learning Research*, pp.  38087–38099\. PMLR, 23–29 Jul 2023. URL [https://proceedings.mlr.press/v202/xiao23c.html](https://proceedings.mlr.press/v202/xiao23c.html).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yao et al. (2023) Zhewei Yao, Xiaoxia Wu, Cheng Li, Stephen Youn, and Yuxiong
+    He. Zeroquant-v2: Exploring post-training quantization in llms from comprehensive
+    study to low rank compensation, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yu & Wu (2023) Hao Yu and Jianxin Wu. Compressing transformers: Features are
+    low-rank, but weights are not! *Proceedings of the AAAI Conference on Artificial
+    Intelligence*, 37(9):11007–11015, Jun. 2023. doi: 10.1609/aaai.v37i9.26304. URL
+    [https://ojs.aaai.org/index.php/AAAI/article/view/26304](https://ojs.aaai.org/index.php/AAAI/article/view/26304).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yuan et al. (2023) Zhihang Yuan, Lin Niu, Jiawei Liu, Wenyu Liu, Xinggang Wang,
+    Yuzhang Shang, Guangyu Sun, Qiang Wu, Jiaxiang Wu, and Bingzhe Wu. Rptq: Reorder-based
+    post-training quantization for large language models, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. (2023) Longteng Zhang, Lin Zhang, Shaohuai Shi, Xiaowen Chu, and
+    Bo Li. Lora-fa: Memory-efficient low-rank adaptation for large language models
+    fine-tuning, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Zhu et al. (2023) Xunyu Zhu, Jian Li, Yong Liu, Can Ma, and Weiping Wang. A
+    survey on model compression for large language models, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

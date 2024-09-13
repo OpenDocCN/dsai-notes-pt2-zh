@@ -1,0 +1,1316 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:53:24'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'GEAR: An Efficient KV Cache Compression Recipe for Near-Lossless Generative
+    Inference of LLM'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2403.05527](https://ar5iv.labs.arxiv.org/html/2403.05527)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Hao Kang^∗, Qingru Zhang^∗, Souvik Kundu, Geonhwa Jeong,
+  prefs: []
+  type: TYPE_NORMAL
+- en: Zaoxing Liu, Tushar Krishna, Tuo Zhao^†
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Key-value (KV) caching has become the de-facto to accelerate generation speed
+    for large language models (LLMs) inference. However, the growing cache demand
+    with increasing sequence length has transformed LLM inference to be a memory bound
+    problem, significantly constraining the system throughput. Existing methods rely
+    on dropping unimportant tokens or quantizing all entries uniformly. Such methods,
+    however, often incur high approximation errors to represent the compressed matrices.
+    The autoregressive decoding process further compounds the error of each step,
+    resulting in critical deviation in model generation and deterioration of performance.
+    To tackle this challenge, we propose GEAR, an efficient KV cache compression framework
+    that achieves near-lossless high-ratio compression. GEAR first applies quantization
+    to majority of entries of similar magnitudes to ultra-low precision. It then employs
+    a low-rank matrix to approximate the quantization error, and a sparse matrix to
+    remedy individual errors from outlier entries. By adeptly integrating three techniques,
+    GEAR is able to fully exploit their synergistic potentials. Our experiments demonstrate
+    that compared to alternatives, GEAR achieves near-lossless 4-bit KV cache compression
+    with up to $2.38\times$. Our code is publicly available at [https://github.com/HaoKang-Timmy/GEAR](https://github.com/HaoKang-Timmy/GEAR).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '^($\dagger$)^($\dagger$)footnotetext: Hao Kang, Qingru Zhang, Geonhwa Jeong,
+    Tushar Krishna, and Tuo Zhao are affiliated with Georgia Tech. Souvik Kundu is
+    affiliated with Intel. Zaoxing Liu is affiliated with the University of Maryland.
+    Correspondence to [hkang342@gatech.edu](hkang342@gatech.edu), [qingru.zhang@gatech.edu](qingru.zhang@gatech.edu),
+    [souvikk.kundu@intel.com](souvikk.kundu@intel.com), and [tourzhao@gatech.edu](tourzhao@gatech.edu).^*^*footnotetext:
+    Equal contributions'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The advances in large language models (LLMs) have marked a significant milestone
+    in natural language processing (NLP) and artificial intelligence (AI) (Vaswani
+    et al., [2017](#bib.bib28); Brown et al., [2020a](#bib.bib2); OpenAI, [2023](#bib.bib19)).
+    Among these, autoregressive language models have attracted extensive attention
+    (Brown et al., [2020b](#bib.bib3); Zhang et al., [2022](#bib.bib37); Touvron et al.,
+    [2023a](#bib.bib26), [b](#bib.bib27)), showcasing exceptional performances across
+    a wide range of applications, such as content creation and dialogue system (Yuan
+    et al., [2022](#bib.bib35); Thoppilan et al., [2022](#bib.bib25); Wei et al.,
+    [2022](#bib.bib30)). When serving these LLMs for generative inference, KV cache-ing
+    has become a routine practice, which stores previously computed Key/Value vectors
+    from attention calculation and reuses them for generating current tokens (Pope
+    et al., [2022](#bib.bib21)). As such, it avoids intensive recalculations of previous
+    tokens when generating each token, significantly improving generation speed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Despite its prominence, the memory consumption of the KV cache grows rapidly
+    as the model size and sequence length increase, imposing significant constraints
+    on system throughput. For instance, in the case of a 30 billion-parameter model
+    with an input length of 1024 and batch size of 128, the resulting KV cache can
+    occupy as much as 180GB of memory (Zhang et al., [2023](#bib.bib38)). To alleviate
+    this pressure on the limited GPU memory, the inference system resorts to offloading
+    (Aminabadi et al., [2022](#bib.bib1); Sheng et al., [2023](#bib.bib23)) – transferring
+    the KV cache to CPU memory or NVMe storage. This process, however, can still introduce
+    non-trivial overhead due to the limited PCIe bandwidth between GPUs and CPUs on
+    many devices. Therefore, it is crucial to reduce the intensive memory footprint
+    of the emerging bottleneck of KV cache in generative inference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/65fe856eb6f813303e3e3e3ee067fafb.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Approximation error (GSM8k)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/96af96195c6e2a65d7161a4cea3bcd1f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) The difference in prediction logits
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/14215bf6d09a6afc1fedf2bfe4991243.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (c) GSM8k Acc of LLaMA2-7B
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 1: ([1(a)](#S1.F1.sf1 "In Figure 1 ‣ 1 Introduction ‣ GEAR: An Efficient
+    KV Cache Compression Recipe for Near-Lossless Generative Inference of LLM")) compares
+    the approximation error when dropping 50% tokens (token dropping) and compressing
+    KV caches to 4-bit (other methods) for LLaMA2-7B on GSM8k. ([1(b)](#S1.F1.sf2
+    "In Figure 1 ‣ 1 Introduction ‣ GEAR: An Efficient KV Cache Compression Recipe
+    for Near-Lossless Generative Inference of LLM")) presents the differnce in prediction
+    logits from FP16 baseline after compressing KV caches of an example from GSM8k,
+    which indicates the approximation error can be severely compounded along generation
+    steps and significantly divert model generations. ([1(c)](#S1.F1.sf3 "In Figure
+    1 ‣ 1 Introduction ‣ GEAR: An Efficient KV Cache Compression Recipe for Near-Lossless
+    Generative Inference of LLM")) shows reducing approximation error can substantially
+    improve performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To address this issue, token dropping methods have been proposed to compress
+    the cache size while maintaining the generative performance (Zhang et al., [2023](#bib.bib38);
+    Liu et al., [2023](#bib.bib15); Ge et al., [2023](#bib.bib9)). These approaches
+    harness the sparsity observed in attention patterns to evict embeddings of less
+    important tokens from the KV cache while retaining frequently attended ones. For
+    example, H[2]O (Zhang et al., [2023](#bib.bib38)) utilizes accumulated attention
+    scores as criteria for token importance and effectively reduces the cache size
+    by dropping tokens with lower scores. In addition to token dropping, quantization
+    is another widely-adopted compression scheme that maps full-precision tensor values
+    into discrete levels and store them at lower precision, typically 8 or 4-bits
+    (Zafrir et al., [2019](#bib.bib36); Dettmers et al., [2022](#bib.bib6); Sheng
+    et al., [2023](#bib.bib23)). For example, FlexGen (Sheng et al., [2023](#bib.bib23))
+    employs straightforward uniform and group-wise quantization approachs to compress
+    both model weights and KV caches to 4-bit, resulting in a substantial improvement
+    in system throughput. However, the full potential of quantization to compress
+    the online KV caches with high efficiency and negligible performance loss remains
+    largely unexplored.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The methods mentioned above can effectively compress the cache size while achieving
+    lossless performance on natural language understanding tasks like multiple-choice
+    QA and text classification or simple summarization task, (e.g., XSum) (Zhang et al.,
+    [2023](#bib.bib38)). However, a stark contrast emerges when applying these methods
+    to complex generative tasks that require models to generate longer responses or
+    involve reasoning, such as mathematical problem-solving (Cobbe et al., [2021](#bib.bib4))
+    and chain-of-thought (CoT) reasoning (Wei et al., [2023](#bib.bib31)). Their performance
+    dramatically deteriorates under a high compression ratio^*^**We define the compression
+    ratio as $\frac{\text{FP16 tensor size}}{\text{Tensor size in compressed format}}$.
+    (e.g., 4-bit quantization or dropping 50% tokens, Ge et al. ([2023](#bib.bib9))),
+    which is noticeable in both types of methods^*^**Please refer to Section [4](#S4
+    "4 Experiments ‣ GEAR: An Efficient KV Cache Compression Recipe for Near-Lossless
+    Generative Inference of LLM") for our empirical evidence.. This phenomenon can
+    be attributed to the non-trivial approximation error induced by them, i.e., difference
+    between original KV values and compressed ones. For simple tasks, models are required
+    to generate only few tokens where necessary information for correct prediction
+    can often be derived from a small set of important contextual tokens. Consequently,
+    a relatively large approximation error does not significantly hinder the generation
+    of target tokens. In contrast, the complex tasks require models to generate longer
+    sequences. The autoregressive decoding process can compound the approximation
+    error at every step. Consequently, the negative effect of even a relatively small
+    error can be magnified along the generation steps, adversely affecting subsequent
+    generation. As an example, Figure [1](#S1.F1 "Figure 1 ‣ 1 Introduction ‣ GEAR:
+    An Efficient KV Cache Compression Recipe for Near-Lossless Generative Inference
+    of LLM") presents the approximation error of various methods on GSM8k and illustrates
+    the deviation in token generations due to the accumulated error, which degenerate
+    the accuracy a lot. Moreover, the complex tasks such as CoT reasoning often involve
+    densely distributed crucial information within prompts. Models must closely attend
+    to most contextual details to generate correct answers. However, a high approximation
+    error can often cause models to neglect some crucial details. Similarly, dropping
+    a high ratio of tokens renders these information directly invisible, significantly
+    impacting the performance. Therefore, the crux of the issue lies in high approximation
+    errors of these methods, especially under high compression ratios.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To address this challenge, we propose GEAR (GEnerative Inference with Approximation
+    Error Reduction), an efficient KV cache compression framework that leverages three
+    complementary techniques to decompose KV matrices and adeptly integrate them to
+    exploit their full potentials. Generally speaking, our framework consists of three
+    compression components: (i) First, we apply the uniform quantization to efficiently
+    compress the majority (e.g., 98%) of entries of similar magnitudes to as low as
+    4-bit precision. (ii) Then, we employ a low-rank matrix to efficiently approximate
+    the quantization residuals. (iii) Finally, we introduce a sparse matrix consisting
+    of a negligible ratio of entries with large magnitudes to remedy the individual
+    errors caused by these outliers. Such a composite approximation decouples the
+    coherent parts from incoherent parts of the approximation error: the low-rank
+    matrix captures the majority of coherent basis of quantization error while the
+    sparse matrix rectifies the incoherency existing in individual outliers. As such,
+    GEAR can effectively reduce the approximation error in a highly efficient manner,
+    and hence achieve near-lossless performance on both complex and simple tasks especially
+    under high compression ratios. Importantly, we find that using all three components
+    is necessary for GEAR to achieve good performance. This suggests that three components
+    are complementary with each other and each of them is indispensable for GEAR to
+    achieve the near-lossless performance. Our method also relates to studies on weight
+    quantization, which we further discuss in Section [5](#S5 "5 Related Work ‣ GEAR:
+    An Efficient KV Cache Compression Recipe for Near-Lossless Generative Inference
+    of LLM").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Additionally, as calculations of sparse and low-rank matrices incur extra latency,
+    we incorporate a streaming strategy for GEAR to improve its generative inference.
+    Specifically, when generating long sequences, we store KV vectors of newly generated
+    tokens to a small buffer (e.g., buffer size $n_{b}=20$ additional memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We conduct experiments on diverse tasks and models to demonstrate the effectiveness
+    of GEAR. Specifically, we evaluate both CoT and zero-shot performance using LLaMA2-7B,
+    LLaMA2-13B (Touvron et al., [2023b](#bib.bib27)), and Mistral-7B (Jiang et al.,
+    [2023](#bib.bib12)) on generative tasks including mathematical reasoning (GSM8k, Cobbe
+    et al. ([2021](#bib.bib4))), multitask language understanding (MMLU, Hendrycks
+    et al. ([2021](#bib.bib10))), and symbolic reasoning (BigBench Hard, Suzgun et al.
+    ([2022](#bib.bib24))). We show that GEAR consistently outperforms the baseline
+    methods, especially under high compression ratios. For example, when compressing
+    the KV cache to 28% of its FP16 size for LLaMA2-7B on GSM8k datasets with CoT
+    prompts, GEAR achieves a remarkable 4.5% improvement in accuracy over the best-performing
+    baseline. Notably, we are the first to achieve 4-bit KV cache compression with
+    near-lossless performance on both complex and simple generative tasks. Regarding
+    the inference efficiency, GEAR improve the system throughput up to 2.38$\times$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Background
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Multi-head attention. A typical transformer model consists of $L$ heads:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | $1$2 |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\bm{Q}^{(i)}=\bm{X}\bm{W}_{q_{i}},\bm{K}^{(i)}=\bm{X}\bm{W}_{k_{i}},\bm{V}^{(i)}=\bm{X}\bm{W}_{v_{i}}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Autoregressive decoding and KV cache. Suppose the model is required to generate
+    $n_{g}$ only, avoiding the recalculations of previous tokens and significantly
+    enhancing generation speed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Uniform quantization. Quantization maps a full-precision (FP16/FP32) tensor
+    values into discrete levels. Specifically, uniform asymmetric quantization (INT8
+    or INT4, Jacob et al. ([2018](#bib.bib11))) is an efficient quantization method
+    with friendly hardware support. Given a tensor $\bm{X}\in\mathbb{R}^{n\times d}$
+    with:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\begin{aligned} &amp;\textrm{Quant}_{b}(\bm{X})_{ij}=\left\lceil{(\bm{X}_{ij}-\min\bm{X})}/{\Delta}\right\rfloor,\quad\
+    \Delta={(\max{\bm{X}}-\min\bm{X})}/{(2^{b}-1)}\end{aligned}$ |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $b$, which can lead to non-trivial quantization error (Dettmers et al.,
+    [2022](#bib.bib6)) under high compression ratios.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Method
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Our method consists of three important components to decompose and compress
+    a KV cache matrix: (i) a quantized matrix $\widehat{\bm{D}}$ to capture the individual
+    outliers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d0e38c4d0cc1b883aa9875769d87890a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Error of single component
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/144fac3c4dff07ccd026c4fc95787e7b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Distribution of entries
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/952a4b9dcaeb5d92fefafefd9c9c3b23.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (c) Spectrum of the residual
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/1d0f1e6e46b5bc58c0d420a57c9ba68e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (d) GEAR v.s. Outlier-R. Q.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 2: We randomly sample a GSM8k example and analyze its KV caches by LLaMA2-7B.
+    ([2(a)](#S3.F2.sf1 "In Figure 2 ‣ 3 Method ‣ GEAR: An Efficient KV Cache Compression
+    Recipe for Near-Lossless Generative Inference of LLM")): the minimal approximation
+    error of each individual technique when approximating the Value cache of the first
+    layer. ([2(b)](#S3.F2.sf2 "In Figure 2 ‣ 3 Method ‣ GEAR: An Efficient KV Cache
+    Compression Recipe for Near-Lossless Generative Inference of LLM")): the entry
+    distribution of weights and its KV caches at different layers. ([2(c)](#S3.F2.sf3
+    "In Figure 2 ‣ 3 Method ‣ GEAR: An Efficient KV Cache Compression Recipe for Near-Lossless
+    Generative Inference of LLM")): spectrum of the residual $\bm{R}$ decays rapidly.
+    ([2(d)](#S3.F2.sf4 "In Figure 2 ‣ 3 Method ‣ GEAR: An Efficient KV Cache Compression
+    Recipe for Near-Lossless Generative Inference of LLM")): low-rank approximation
+    enables GEAR to achieves lower error.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As discussed in Section [1](#S1 "1 Introduction ‣ GEAR: An Efficient KV Cache
+    Compression Recipe for Near-Lossless Generative Inference of LLM"), the approximation
+    error plays a pivotal role in determining the model performance. Therefore, given
+    a tensor $\bm{X}\in\{\bm{K}_{t},\bm{V}_{t}\}$. These motivations encourage us
+    to explore the integration of three techniques to leverage their individual advantages
+    while exploiting their synergistic potential. To achieve this, our goal becomes
+    minimizing the following approximation error:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\min_{\widehat{\bm{D}},\bm{L},\bm{S}}\left\lVert{\bm{X}-\widehat{\bm{D}}-\bm{L}-\bm{S}}\right\rVert_{\rm
+    F}.$ |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'One interesting idea to minimize ([3](#S3.E3 "In 3 Method ‣ GEAR: An Efficient
+    KV Cache Compression Recipe for Near-Lossless Generative Inference of LLM")) is
+    alternating among quantization, singular-value decomposition (SVD) and outlier
+    extraction, and iteratively updating three matrices $\widehat{\bm{D}},\bm{L},\bm{S}$
+    until achieving minimal error. This idea has been introduced by Li et al. ([2023](#bib.bib14))
+    to optimize a similar objective for an accurate initialization of weight quantization.
+    However, the inference system has demanding speed requirements. The significant
+    latency caused by these iterative updates is unacceptable for generative inference.
+    Therefore, we propose an efficient approximation solution to approach ([3](#S3.E3
+    "In 3 Method ‣ GEAR: An Efficient KV Cache Compression Recipe for Near-Lossless
+    Generative Inference of LLM")) and compress online KV caches as follows.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Outlier-reduced quantization. Inspired by the recent study on weight quantization
+    (Kim et al., [2023](#bib.bib13)), we observe that the quantized backbone $\widehat{\bm{D}}$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\begin{aligned} \textrm{Filter}_{s}(\bm{X})_{ij}=\left\{\begin{array}[]{lc}\bm{X}_{ij}&amp;\textrm{if}~{}\bm{X}_{ij}~{}\textrm{in
+    top or bottom $\frac{s}{2}$\%},\\ 0&amp;\textrm{otherwise}.\end{array}\right.\end{aligned}$
+    |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Then, we perform the uniform quantization for the extracted matrix and obtain
+    the quantized backbone:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\widehat{\bm{D}}=\textrm{Quant}_{b}(\bm{X}-\bm{S}).$ |  |
+    (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'The outlier-reduced quantization ([5](#S3.E5 "In 3 Method ‣ GEAR: An Efficient
+    KV Cache Compression Recipe for Near-Lossless Generative Inference of LLM")) has
+    been introduced for weight quantization by Kim et al. ([2023](#bib.bib13)) and
+    achieve excellent performance at low precision of up to 3-bit. However, it is
+    important to note that the KV cache compression can be fundamentally different
+    from weight quantization. The KV caches tend to contain more outliers, making
+    its accurate quantization more challenging than weights (Xiao et al., [2023](#bib.bib33)).
+    Figure [2(b)](#S3.F2.sf2 "In Figure 2 ‣ 3 Method ‣ GEAR: An Efficient KV Cache
+    Compression Recipe for Near-Lossless Generative Inference of LLM") shows the distribution
+    of entries in KV caches and weights, which clearly illustrates that the KV values
+    still span a broader range even after filtering out 10% outliers. Consequently,
+    to achieve near-lossless performance at ultra-low precision such as 4-bit, we
+    often need to extract a large portion of outliers (e.g., 10% as shown by our results
+    in Section [4](#S4 "4 Experiments ‣ GEAR: An Efficient KV Cache Compression Recipe
+    for Near-Lossless Generative Inference of LLM")) and store them as a sparse matrix.
+    However, such a sparse matrix results in the remaining cache size equivalent to
+    that of 8-bit quantization because of its two index vectors and one value vector
+    in full precision. Therefore, outlier-reduced quantization by ([5](#S3.E5 "In
+    3 Method ‣ GEAR: An Efficient KV Cache Compression Recipe for Near-Lossless Generative
+    Inference of LLM")) still cannot achieve near-lossless high-ratio compression.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Low-rank approximation. To reduce the approximation error more efficiently,
+    we resort to low-rank approximation. Specifically, suppose the residual $\bm{R}=\bm{X}-(\widehat{\bm{D}}+\bm{S})$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\bm{L}=\bm{A}\bm{B}^{\top}=\textrm{SVDSolver}_{r}(\bm{R})$
+    |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $\bm{A}\in\mathbb{R}^{n\times r},\bm{B}\in\mathbb{R}^{d\times r}$ (please
+    see Appendix [A](#A1 "Appendix A Power Iteration Algorithm ‣ GEAR: An Efficient
+    KV Cache Compression Recipe for Near-Lossless Generative Inference of LLM") for
+    the algorithm details).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In summary, GEAR integrates three compression techniques to provide an efficient
+    solution for minimizing the approximation error in ([3](#S3.E3 "In 3 Method ‣
+    GEAR: An Efficient KV Cache Compression Recipe for Near-Lossless Generative Inference
+    of LLM")). Specifically, the quantized backbone $\widehat{\bm{D}}$ compensates
+    for the extraction of sparse information existing in individual outliers and compliments
+    the quantization process tightly. As such, GEAR effectively reduces the approximation
+    error, achieving near-lossless high-ratio compression for KV caches.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Additionally, GEAR introduces a streaming strategy to significantly improve
+    its inference throughput by up to $2.88\times$ along with previous caches. We
+    summarize the detailed algorithm of GEAR in Algorithm [1](#alg1 "Algorithm 1 ‣
+    3 Method ‣ GEAR: An Efficient KV Cache Compression Recipe for Near-Lossless Generative
+    Inference of LLM").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 1 GEAR
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1:  Input: The initial $\{\bm{K}_{0},\bm{V}_{0}\}$.13:     end if14:  end for'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We use GEAR as a plug-and-play KV cache compression for generative inference
+    with various LLM models on a wide variety of generative tasks including mathematical
+    reasoning (GSM8k, Cobbe et al. ([2021](#bib.bib4))), multitask language understanding
+    (MMLU, Hendrycks et al. ([2021](#bib.bib10))), and symbolic reasoning (BigBench
+    Hard (BBH), Suzgun et al. ([2022](#bib.bib24))) both with and without CoT prompting
+    (Wei et al., [2023](#bib.bib31)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementation details. We use the open-source pre-trained LLM models available
+    at Huggingface Transformers^*^**https://github.com/huggingface/transformers (Wolf
+    et al., [2019](#bib.bib32)) and apply GEAR and other alternative compression methods
+    to our LLM inference framework written in PyTorch (Paszke et al., [2019](#bib.bib20)).
+    In this work we focus on the compression of the KV cache, thus to understand its
+    impact on the generation performance, we kept all other tensors to FP16, unless
+    otherwise mentioned.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We focus on the compression to ultra-low precision. The implementation of 8-bit
+    is friendly supported by hardware and 4-bit can be easily extended based on it.
+    Hence we primarily report the results of 4-bit KV cache compression. For GEAR,
+    we apply it (Algorithm [1](#alg1 "Algorithm 1 ‣ 3 Method ‣ GEAR: An Efficient
+    KV Cache Compression Recipe for Near-Lossless Generative Inference of LLM")) to
+    compress KV caches batch-wise, and fix the sparsity ratio $s$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Baselines. As far as we know, there is limited work that exhaustively demonstrate
+    the generative performance with KV cache compression via quantization. Therefore,
+    we implement three popular quantization methods from the literature of weight
+    quantization and compare with GEAR.
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\bullet$ Uniform quantization (Jacob et al., [2018](#bib.bib11)) is the most
+    common approach that uniformly quantize all entries. In specific, here we use
+    uniform asymmetric quantization for better accuracy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\bullet$ Group-wise quantization (Yao et al., [2022](#bib.bib34)) is an effective
+    approach that quantizes an input tensor channel-wise so as to decrease the quantization
+    error. For group-quantization, unless otherwise mentioned, we use channel-wise
+    grouping over the batch dimension.
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\bullet$ Outlier-reduced quantization has been introduced by (Kim et al., [2023](#bib.bib13))
+    for weight quantization, which extracts outliers before the quantization and achieves
+    excellent performance. Inspired by this work, we implement an outlier-reduced
+    quantization for the KV cache tensor with uniform asymmetric quantization of the
+    non-outlier components.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '$\bullet$ H[2]O (Zhang et al., [2023](#bib.bib38)) is a recent token dropping
+    method evicting unimportant tokens with lower accumulated attention scores, which
+    we compare with in Section [4.4](#S4.SS4 "4.4 Analysis and Discussions ‣ 4 Experiments
+    ‣ GEAR: An Efficient KV Cache Compression Recipe for Near-Lossless Generative
+    Inference of LLM").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Generative Performance with CoT Prompting
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Models and datasets. We compare different compression methods with LLaMA2-7B,
+    LLaMA2-13B (Touvron et al., [2023b](#bib.bib27)) and Mistral-7B (Jiang et al.,
+    [2023](#bib.bib12)) on three challenging generative tasks: GSM8k, MMLU and BBH.
+    GSM8k (Cobbe et al., [2021](#bib.bib4)) is a widely used math reasoning datasets
+    of 8k problmes that test models’ ability of arithmetic reasoning. MMLU (Hendrycks
+    et al., [2021](#bib.bib10)) is a evaluation suite of 15k problems with 57 subjects
+    assessing models’ knowledge and reasoning at high-school and college levels. BBH
+    (Suzgun et al., [2022](#bib.bib24)) is a suite of language and symbolic reasoning
+    problems consisting of 6.5k problems within 23 subsets. Given the complexity of
+    these tasks, we use the chain-of-thought prompting to enhance the model performance.
+    Specifically, we follow the evaluation approach from Fu et al. ([2023](#bib.bib8))
+    and use the prompts created by them, which consist of multiple examples, each
+    involving multi-step reasoning. Notably, improving the performance by CoT requires
+    accurate KV cache compression as models need focus on most reasoning steps to
+    generate correct answers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: Main results of CoT performance. Here Ratio is the compression ratio
+    (i.e., the FP16 cache size divided by the remaining cache size). The best results
+    on each dataset are shown in bold.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | LLaMA2-7B | Mistral-7B | LLaMA2-13B | All |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Method | Bit $b$ | Ratio | GSM8k | MMLU | BBH | GSM8k | MMLU | BBH | GSM8k
+    | BBH | Avg. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Acc | Acc | Acc | Acc | Acc | Acc | Acc | Acc | Acc |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 Baseline | 16 | 1$\times$ | 16.30 | 44.80 | 33.58 | 42.84 | 59.70 |
+    47.92 | 30.34 | 40.79 | 39.53 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Uniform Quant | 4 | 4$\times$ | 0 | 0 | 0 | 1.17 | 7.78 | 3.60 | 0.03 | 0
+    | 1.57 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Group Quant | 4 | 4$\times$ | 1.36 | 11.90 | 2.43 | 3.72 | 43.88 | 37.94
+    | 2.12 | 7.54 | 13.86 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Outlier-R. Quant ($s=10\%$ | 11.22 | 40.67 | 31.50 | 41.39 | 58.25 | 47.53
+    | 21.25 | 36.69 | 36.06 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Outlier-R. Quant ($s=5\%$ | 9.47 | 34.17 | 28.26 | 37.67 | 57.41 | 46.43
+    | 13.64 | 32.46 | 32.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GEAR ($s=2\%,\rho=2\%$ | 14.17 | 44.42 | 31.53 | 41.39 | 58.32 | 46.80 |
+    25.92 | 37.51 | 37.51 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GEAR ($s=2\%,\rho=5\%$ | 15.70 | 44.45 | 33.01 | 41.69 | 58.64 | 47.12 |
+    27.97 | 37.38 | 38.25 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: Main results of zeroshot performance. Here Raio is the compression
+    ratio. The best results on each dataset are shown in bold.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | LLaMA2-7B-chat | LLaMA2-7B | Mistral-7B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Method | Bit $b$ | Ratio | GSM8k | MMLU | WikiText-2 | GSM8k | MMLU | WikiText-2
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Acc $\uparrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 Baseline | 16 | 1$\times$ | 19.8 | 29.32 | 5.14 | 21.46 | 58.45 | 5.25
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Uniform Quant | 4 | 4$\times$ | 0.10 | 1.62 | 2536.84 | 0.42 | 0.48 | 100.32
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Group Quant | 4 | 4$\times$ | 2.71 | 3.33 | 53.21 | 4.70 | 38.76 | 6.56 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Outlier-R. Quant ($s=10\%$ | 17.61 | 23.66 | 5.33 | 7.96 | 57.95 | 5.32 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Outlier-R. Quant ($s=5\%$ | 14.52 | 18.88 | 5.43 | 5.00 | 58.67 | 5.39 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GEAR ($s=2\%,\rho=2\%$ | 19.13 | 28.54 | 5.69 | 19.03 | 58.29 | 5.33 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GEAR ($s=2\%,\rho=5\%$ | 19.40 | 28.54 | 5.61 | 19.11 | 58.34 | 5.32 |'
+  prefs: []
+  type: TYPE_TB
+- en: Implementation details. For the outlier-reduced quantization, we find that a
+    high sparsity ratio is required to achieve good performance, and hence select
+    $s$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Main results. Table [1](#S4.T1 "Table 1 ‣ 4.1 Generative Performance with CoT
+    Prompting ‣ 4 Experiments ‣ GEAR: An Efficient KV Cache Compression Recipe for
+    Near-Lossless Generative Inference of LLM") shows experimental results about CoT
+    performance of three models. We see that GEAR achieves better or on par performance
+    than baseline approaches on all datasets for all models. For example, under the
+    compression ratio of 2.63$\times$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Zero-shot Generative Performance
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Models and datasets. We perform the zeroshot evaluation on GSM8k and MMLU using
+    LLaMA2-7B, LLaMA2-7B-chat, and Mistral-7B. Particularly, LLaMA2-7B-chat, a instruction-tuned
+    model, exhibits significantly higher accuracy than LLaMA2-7B. Hence, we choose
+    to assess its performance on GSM8k. Additionally, we include a comparison on Wikitext-2
+    Merity et al. ([2016](#bib.bib17)) to evaluate the language modeling ability after
+    applying KV compression.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Main results. We summarize the experimental results in Table [2](#S4.T2 "Table
+    2 ‣ 4.1 Generative Performance with CoT Prompting ‣ 4 Experiments ‣ GEAR: An Efficient
+    KV Cache Compression Recipe for Near-Lossless Generative Inference of LLM"), where
+    we compare the 4-bit compression performance. The hyperparameter configuration
+    are the same as Section [4.1](#S4.SS1 "4.1 Generative Performance with CoT Prompting
+    ‣ 4 Experiments ‣ GEAR: An Efficient KV Cache Compression Recipe for Near-Lossless
+    Generative Inference of LLM"). We see that GEAR achieves the best or on-par performance
+    compared with other compression methods on all datasets and all models. For example,
+    under the compression ratio of 2.6$\times$, GEAR achieves near-lossless performance
+    compared to FP16 baseline on GSM8k and MMLU for the LLaMA models, and exhibits
+    the improvement of 4.88% and 9.66% respectively over the baseline.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Remark. In both CoT and zeroshot evaluations, GEAR performs close to FP16 baseline
+    and achieves high compression ratios up to 3$\times$. Other alternative compression
+    methods suffer from a noticeable drop in performance as the compression ratio
+    increases. This decline in performance is particularly evident in tasks that involve
+    reasoning (such as CoT) and long-sequence generations (e.g., GSM8k). Both types
+    of tasks demand minimal approximation error. The reasoning-related tasks often
+    require models to closely attend to most contextual information to generate correct
+    answers. The long sequence generation can accumulate the error throughout the
+    autoregressive decoding process, making it sensitive to approximation error. Remarkably,
+    as effectively reducing the error, GEAR yields near-lossless and high-ratio compression
+    on these complex tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 System Performance Analysis
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/dca1042ab992acc80bf03ec3acb5a496.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Weights and KV cache size
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/765998c73f676b35f4846974f3692816.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Peak memory comparison
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7615702db60e23da94e16423433ab276.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (c) Zig-zag system throughput
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 3: ([3(a)](#S4.F3.sf1 "In Figure 3 ‣ 4.3 System Performance Analysis
+    ‣ 4 Experiments ‣ GEAR: An Efficient KV Cache Compression Recipe for Near-Lossless
+    Generative Inference of LLM")): Comparison of the memory size of model weights
+    and the KV cache. ([3(b)](#S4.F3.sf2 "In Figure 3 ‣ 4.3 System Performance Analysis
+    ‣ 4 Experiments ‣ GEAR: An Efficient KV Cache Compression Recipe for Near-Lossless
+    Generative Inference of LLM")): Peak memory (PM) usage in practical inference
+    system. GEAR can reduce peak memory up to 2.29$\times$. ([3(c)](#S4.F3.sf3 "In
+    Figure 3 ‣ 4.3 System Performance Analysis ‣ 4 Experiments ‣ GEAR: An Efficient
+    KV Cache Compression Recipe for Near-Lossless Generative Inference of LLM")):
+    GEAR significantly increases the throughputs of the zig-zag system.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this section, we analyze the memory footprint and system throughput (i.e., the
+    number of processed batches per second) to demonstrate the practical benefits
+    of GEAR on the inference system from two perspectives: (i) for the system with
+    adequate memory resource, compressing KV cache can reduce the peak memory usage,
+    allowing for larger batch size and longer generation length; (ii) for the system
+    with limited GPU memory that needs to offload large KV cache, GEAR can enhance
+    the system throughput by up to 2.29$\times$ due to its high compression ratio
+    and inference speedup.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure [3(a)](#S4.F3.sf1 "In Figure 3 ‣ 4.3 System Performance Analysis ‣ 4
+    Experiments ‣ GEAR: An Efficient KV Cache Compression Recipe for Near-Lossless
+    Generative Inference of LLM") presents the memory footprint of model weights and
+    KV cache for LLaMA2-7B/13B with a batch size of 30 and an input sequence length
+    $n$ increase of the maximum generation length, offering the capabilities for extended
+    context generation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the context of the limited GPU memory resource, the inference system has
+    to resorts to offloading. The start-of-the-art option is the zig-zag scheduling
+    Sheng et al. ([2023](#bib.bib23)), which crafts the frequent loading and offloading
+    of model weights and KV cache to optimize the throughput. Remarkably, the adoption
+    of GEAR to this system significantly diminishes memory bandwidth usage. This leads
+    to an improvement in system throughput, demonstrating the efficacy of the GEAR
+    compression method in enhancing the operational performance of LLM deployment.
+    Figure [3(c)](#S4.F3.sf3 "In Figure 3 ‣ 4.3 System Performance Analysis ‣ 4 Experiments
+    ‣ GEAR: An Efficient KV Cache Compression Recipe for Near-Lossless Generative
+    Inference of LLM") shows throughput of four KV cache compression schemes on the
+    zig-zag scheduler system, that achieve the similar accuracy. In specific, we use
+    one single RTX Titan with 24GB GPU, 125 GB CPU memory respectively. As shown in
+    the figure, GEAR can improve the system throughput by up to 2.38$\times$, respectively.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4 Analysis and Discussions
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/46b6363bed7faaddb9075065b50db0a0.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) GSM8k with CoT prompts
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/22f03114b4b7573e1bb84fced70c2215.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) MMLU without CoT prompts
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 4: Results of compressing KV caches of LLaMA2-13B to different compression
+    ratios.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Different compression ratios. Figuer [4](#S4.F4 "Figure 4 ‣ 4.4 Analysis and
+    Discussions ‣ 4 Experiments ‣ GEAR: An Efficient KV Cache Compression Recipe for
+    Near-Lossless Generative Inference of LLM") illustrates the experimental results
+    of compressing KV caches of LLaMA2-13B to various compression ratios. We see that
+    on both GSM8k and MMLU, GEAR achieves consistent performance improvement over
+    all baseline methods across different compression ratios. Notably, under high
+    compression ratio, GEAR still can yields near-lossless performance while other
+    methods suffer from a critical drop in performance. For example, GEAR yield 43.46%
+    accuracy on MMLU while compressing to a ratio of 3.43$\times$, indicating the
+    effectiveness of GEAR for near-lossless high-ratio compression.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Comparison with token dropping. We evaluate the performance of H[2]O (Zhang
+    et al., [2023](#bib.bib38)) for reducing KV cache size on GSM8k with LLaMA2-7B.
+    Table [3](#S4.T3 "Table 3 ‣ 4.4 Analysis and Discussions ‣ 4 Experiments ‣ GEAR:
+    An Efficient KV Cache Compression Recipe for Near-Lossless Generative Inference
+    of LLM") presents its accuracy when dropping 50% tokens, which suggests H[2]0
+    cannot effectively preserve the performance nor achieve high compression ratio.
+    For complex tasks involving reasoning or long-sequence generation (such as GSM8k),
+    models need to closely attend to most contextual information to generate correct
+    answers. Token dropping methods, however, can make some information directly invisible,
+    resulting in deviation in generation and degradation of performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 3: Accuracy of H[2]O on GSM8k with LLaMA2-7B.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Ratio | CoT Acc. | Zero-shot Acc. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| H[2]O | $2\times$ | 6.82 | 5.96 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GEAR | $3\times$ | 14.17 | 19.13 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Comparison on fine-tuned models. To further evaluate the effectiveness of GEAR
+    on fine-tuned models, we fine-tune a LLaMA2-7B models on GSM8k for 6 epoches with
+    batch size as 16\. Table [4](#S4.T4 "Table 4 ‣ 4.4 Analysis and Discussions ‣
+    4 Experiments ‣ GEAR: An Efficient KV Cache Compression Recipe for Near-Lossless
+    Generative Inference of LLM") presents the accuracy of this fine-tuned model after
+    applying KV cache compression methods. The hyperparameters are set as the same
+    as Section [4.1](#S4.SS1 "4.1 Generative Performance with CoT Prompting ‣ 4 Experiments
+    ‣ GEAR: An Efficient KV Cache Compression Recipe for Near-Lossless Generative
+    Inference of LLM"). We can see that GEAR still outperforms all of baseline methods,
+    yielding an manifest accuracy improvement.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4: Evaluation with a fine-tuned LLaMA2-7B on GSM8k when compressing the
+    KV caches to 4-bit.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Bit $b$ | Ratio | Acc. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 Bseline | 16 | 1$\times$ | 38.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Uniform Quant | 4 | 4$\times$ | 4.20 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Group Quant | 4 | 4$\times$ | 11.30 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ourlier-R. Quant ($s=5\%$ | 24.50 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GEAR ($s=2\%,\rho=2\%$ | 27.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GEAR ($s=2\%,\rho=10\%$ | 37.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Ablation study on $s$. We see that GEAR does not require abundant sparse either
+    low-rank components - a small ratio (2% or 5%) of sparse/low-rank matrix is adequate
+    for GEAR to yield near-lossless accuracy. Further increasing the ratio may improve
+    the performance but not significantly, which however results in additional memory
+    consumption. More importantly, discarding either sparse or low-rank component
+    can significantly degenerate the performance of GEAR (last line of Table [5](#S4.T5
+    "Table 5 ‣ 4.4 Analysis and Discussions ‣ 4 Experiments ‣ GEAR: An Efficient KV
+    Cache Compression Recipe for Near-Lossless Generative Inference of LLM")), which
+    validates our claim in Section [1](#S1 "1 Introduction ‣ GEAR: An Efficient KV
+    Cache Compression Recipe for Near-Lossless Generative Inference of LLM"). That
+    is, the three components in GEAR are complementary with each other and each is
+    indispensable for GEAR to achieve the near-lossless performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 5: GEAR performance with different $s$ using LLaMA2-7B on GSM8k with
+    CoT. Here we change one hyperparameter while fixing another one.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Hyperparameter | Acc. | Hyperparameter | Acc. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $s=2\%,\rho=10\%$ | 15.09 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $s=2\%,\rho=5\%$ | 15.77 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $s=2\%,\rho=2\%$ | 15.09 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $s=2\%,\rho=1\%$ | 13.65 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $s=2\%,\rho=0\%$ | 2.12 |'
+  prefs: []
+  type: TYPE_TB
+- en: 5 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: LLM weights compression. LLM weight compression can significantly reduce the
+    memory footprint and data transfer cost. GPTQ (Frantar et al., [2023](#bib.bib7))
+    accelerated the optimal brain quantization for LLM weights by orders of magnitude.
+    SqueezeLLM (Kim et al., [2023](#bib.bib13)) successfully compressed the model
+    weights to 3 bits by extracting the outlier values and quantize the remaining
+    values according to hessian matrix within 10% perplexity increases. These algorithms
+    are effective and could compress weights to 2 or 3 bits with acceptable loss of
+    accuracy. However, these methods often require significant latency overhead and
+    gradient information to work. Thus their are not fit for KV cache compression
+    since KV cache does not have any trainable parameter and changes every generation
+    stage, requiring efficient light-weight method for online compression.
+  prefs: []
+  type: TYPE_NORMAL
+- en: LLM KV cache compression. Activation and KV cache compression are harder than
+    weight compression since they are more sensitive and related to model inputs.
+    SmoothQuant (Xiao et al., [2023](#bib.bib33)) achieved 8-bit compression both
+    for activation (KV caches included) and weights by adjusting the scaling factors
+    to reduce outlier error and demonstrates near lossless performance on simple generative
+    tasks. Atom (Zhao et al., [2023](#bib.bib39)) successfully compressed KV Cache
+    to 4 bits on simple generative tasks within 5% performance degradation by combining
+    4-bit and 8-bit channel-wise quantization. Another line of work explored KV pruning
+    via token dropping based on attention score analysis. In specific, H[2]O (Zhang
+    et al., [2023](#bib.bib38)) and FastGen (Ge et al., [2023](#bib.bib9)) proposed
+    to prune KV via dropping tokens based on attention score to decrease the KV cache
+    size. SparQ (Ribar et al., [2023](#bib.bib22)) not only dropped tokens according
+    to attention score sparsity but also incorporated the error of the pruned value
+    cache. These pruning and quantization algorithms often work well on summarizing
+    tasks and zero-shot inference. However, for fine-tuned models, CoT inference,
+    and generative reasoning datasets, attention scores are denser and each token
+    contains important information that can not be ignored. Moreover, token dropping
+    needs to weigh each token based on attention score, which makes these methods
+    hard to deploy with FlashAttention (Dao et al., [2022](#bib.bib5)). Additionally,
+    recent works shows the attention sparsity to be a function of the non-linearity
+    choice of the model (Mirzadeh et al., [2023](#bib.bib18)), suggesting its vulnerability
+    as a metric for KV compression.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Conclusions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this paper we present GEAR, a near loss-less KV cache compression framework
+    for LLM inference that achieves KV compression in ultra-low precision with minimal
+    accuracy drop. Compared to the existing alternatives, GEAR demonstrates SOTA performance
+    on complex generative tasks involving reasoning, while resulting much lower memory
+    footprint. The substantially low peak memory demand of GEAR, enables catering
+    to more inference requests compared to FP16 baseline. Additionally, GEAR can facilitate
+    a throughput boost of up to $2.38\times$. We hope our method can open a new avenue
+    of memory-efficient LLM inference for near-lossless complex generation serving.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Aminabadi et al. (2022) Aminabadi, R. Y., Rajbhandari, S., Zhang, M., Awan,
+    A. A., Li, C., Li, D., Zheng, E., Rasley, J., Smith, S., Ruwase, O. and He, Y.
+    (2022). Deepspeed inference: Enabling efficient inference of transformer models
+    at unprecedented scale.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Brown et al. (2020a) Brown, T., Mann, B., Ryder, N., Subbiah, M., Kaplan, J. D.,
+    Dhariwal, P., Neelakantan, A., Shyam, P., Sastry, G., Askell, A. et al. (2020a).
+    Language models are few-shot learners. Advances in neural information processing
+    systems, 33 1877–1901.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Brown et al. (2020b) Brown, T. B., Mann, B., Ryder, N., Subbiah, M., Kaplan,
+    J., Dhariwal, P., Neelakantan, A., Shyam, P., Sastry, G., Askell, A., Agarwal,
+    S., Herbert-Voss, A., Krueger, G., Henighan, T., Child, R., Ramesh, A., Ziegler,
+    D. M., Wu, J., Winter, C., Hesse, C., Chen, M., Sigler, E., Litwin, M., Gray,
+    S., Chess, B., Clark, J., Berner, C., McCandlish, S., Radford, A., Sutskever,
+    I. and Amodei, D. (2020b). Language models are few-shot learners. CoRR, abs/2005.14165.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[https://arxiv.org/abs/2005.14165](https://arxiv.org/abs/2005.14165)'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Cobbe et al. (2021) Cobbe, K., Kosaraju, V., Bavarian, M., Chen, M., Jun, H.,
+    Kaiser, L., Plappert, M., Tworek, J., Hilton, J., Nakano, R., Hesse, C. and Schulman,
+    J. (2021). Training verifiers to solve math word problems.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dao et al. (2022) Dao, T., Fu, D. Y., Ermon, S., Rudra, A. and Ré, C. (2022).
+    Flashattention: Fast and memory-efficient exact attention with io-awareness.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. (2022) Dettmers, T., Lewis, M., Belkada, Y. and Zettlemoyer,
+    L. (2022). Llm. int8 (): 8-bit matrix multiplication for transformers at scale.
+    arXiv preprint arXiv:2208.07339.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Frantar et al. (2023) Frantar, E., Ashkboos, S., Hoefler, T. and Alistarh,
+    D. (2023). Gptq: Accurate post-training quantization for generative pre-trained
+    transformers.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Fu et al. (2023) Fu, Y., Ou, L., Chen, M., Wan, Y., Peng, H. and Khot, T. (2023).
+    Chain-of-thought hub: A continuous effort to measure large language models’ reasoning
+    performance.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ge et al. (2023) Ge, S., Zhang, Y., Liu, L., Zhang, M., Han, J. and Gao, J.
+    (2023). Model tells you what to discard: Adaptive kv cache compression for llms.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hendrycks et al. (2021) Hendrycks, D., Burns, C., Basart, S., Zou, A., Mazeika,
+    M., Song, D. and Steinhardt, J. (2021). Measuring massive multitask language understanding.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Jacob et al. (2018) Jacob, B., Kligys, S., Chen, B., Zhu, M., Tang, M., Howard,
+    A., Adam, H. and Kalenichenko, D. (2018). Quantization and training of neural
+    networks for efficient integer-arithmetic-only inference. In Proceedings of the
+    IEEE conference on computer vision and pattern recognition.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Jiang et al. (2023) Jiang, A. Q., Sablayrolles, A., Mensch, A., Bamford, C.,
+    Chaplot, D. S., de las Casas, D., Bressand, F., Lengyel, G., Lample, G., Saulnier,
+    L., Lavaud, L. R., Lachaux, M.-A., Stock, P., Scao, T. L., Lavril, T., Wang, T.,
+    Lacroix, T. and Sayed, W. E. (2023). Mistral 7b.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kim et al. (2023) Kim, S., Hooper, C., Gholami, A., Dong, Z., Li, X., Shen,
+    S., Mahoney, M. W. and Keutzer, K. (2023). Squeezellm: Dense-and-sparse quantization.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. (2023) Li, Y., Yu, Y., Liang, C., He, P., Karampatziakis, N., Chen,
+    W. and Zhao, T. (2023). Loftq: Lora-fine-tuning-aware quantization for large language
+    models.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. (2023) Liu, Z., Desai, A., Liao, F., Wang, W., Xie, V., Xu, Z.,
+    Kyrillidis, A. and Shrivastava, A. (2023). Scissorhands: Exploiting the persistence
+    of importance hypothesis for LLM KV cache compression at test time. In Thirty-seventh
+    Conference on Neural Information Processing Systems.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[https://openreview.net/forum?id=JZfg6wGi6g](https://openreview.net/forum?id=JZfg6wGi6g)'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Liu et al. (2024) Liu, Z., Yuan, J., Jin, H., Zhong, S., Xu, Z., Braverman,
+    V., Chen, B. and Hu, X. (2024). Kivi: A tuning-free asymmetric 2bit quantization
+    for kv cache. arXiv preprint arXiv:2402.02750.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Merity et al. (2016) Merity, S., Xiong, C., Bradbury, J. and Socher, R. (2016).
+    Pointer sentinel mixture models. arXiv preprint arXiv:1609.07843.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Mirzadeh et al. (2023) Mirzadeh, I., Alizadeh, K., Mehta, S., Del Mundo, C. C.,
+    Tuzel, O., Samei, G., Rastegari, M. and Farajtabar, M. (2023). Relu strikes back:
+    Exploiting activation sparsity in large language models. arXiv preprint arXiv:2310.04564.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: OpenAI (2023) OpenAI (2023). Gpt-4 technical report.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Paszke et al. (2019) Paszke, A., Gross, S., Massa, F., Lerer, A., Bradbury,
+    J., Chanan, G., Killeen, T., Lin, Z., Gimelshein, N., Antiga, L., Desmaison, A.,
+    Köpf, A., Yang, E., DeVito, Z., Raison, M., Tejani, A., Chilamkurthy, S., Steiner,
+    B., Fang, L., Bai, J. and Chintala, S. (2019). Pytorch: An imperative style, high-performance
+    deep learning library. In Advances in Neural Information Processing Systems 32:
+    Annual Conference on Neural Information Processing Systems 2019, NeurIPS 2019,
+    December 8-14, 2019, Vancouver, BC, Canada (H. M. Wallach, H. Larochelle, A. Beygelzimer,
+    F. d’Alché-Buc, E. B. Fox and R. Garnett, eds.).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Pope et al. (2022) Pope, R., Douglas, S., Chowdhery, A., Devlin, J., Bradbury,
+    J., Levskaya, A., Heek, J., Xiao, K., Agrawal, S. and Dean, J. (2022). Efficiently
+    scaling transformer inference.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ribar et al. (2023) Ribar, L., Chelombiev, I., Hudlass-Galley, L., Blake, C.,
+    Luschi, C. and Orr, D. (2023). Sparq attention: Bandwidth-efficient llm inference.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sheng et al. (2023) Sheng, Y., Zheng, L., Yuan, B., Li, Z., Ryabinin, M., Fu,
+    D. Y., Xie, Z., Chen, B., Barrett, C., Gonzalez, J. E., Liang, P., Ré, C., Stoica,
+    I. and Zhang, C. (2023). Flexgen: High-throughput generative inference of large
+    language models with a single gpu.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Suzgun et al. (2022) Suzgun, M., Scales, N., Schärli, N., Gehrmann, S., Tay,
+    Y., Chung, H. W., Chowdhery, A., Le, Q. V., Chi, E. H., Zhou, D. and Wei, J. (2022).
+    Challenging big-bench tasks and whether chain-of-thought can solve them.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Thoppilan et al. (2022) Thoppilan, R., Freitas, D. D., Hall, J., Shazeer, N.,
+    Kulshreshtha, A., Cheng, H.-T., Jin, A., Bos, T., Baker, L., Du, Y., Li, Y., Lee,
+    H., Zheng, H. S., Ghafouri, A., Menegali, M., Huang, Y., Krikun, M., Lepikhin,
+    D., Qin, J., Chen, D., Xu, Y., Chen, Z., Roberts, A., Bosma, M., Zhao, V., Zhou,
+    Y., Chang, C.-C., Krivokon, I., Rusch, W., Pickett, M., Srinivasan, P., Man, L.,
+    Meier-Hellstern, K., Morris, M. R., Doshi, T., Santos, R. D., Duke, T., Soraker,
+    J., Zevenbergen, B., Prabhakaran, V., Diaz, M., Hutchinson, B., Olson, K., Molina,
+    A., Hoffman-John, E., Lee, J., Aroyo, L., Rajakumar, R., Butryna, A., Lamm, M.,
+    Kuzmina, V., Fenton, J., Cohen, A., Bernstein, R., Kurzweil, R., Aguera-Arcas,
+    B., Cui, C., Croak, M., Chi, E. and Le, Q. (2022). Lamda: Language models for
+    dialog applications.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023a) Touvron, H., Lavril, T., Izacard, G., Martinet, X.,
+    Lachaux, M.-A., Lacroix, T., Rozière, B., Goyal, N., Hambro, E., Azhar, F., Rodriguez,
+    A., Joulin, A., Grave, E. and Lample, G. (2023a). Llama: Open and efficient foundation
+    language models.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023b) Touvron, H., Martin, L., Stone, K., Albert, P., Almahairi,
+    A., Babaei, Y., Bashlykov, N., Batra, S., Bhargava, P., Bhosale, S., Bikel, D.,
+    Blecher, L., Ferrer, C. C., Chen, M., Cucurull, G., Esiobu, D., Fernandes, J.,
+    Fu, J., Fu, W., Fuller, B., Gao, C., Goswami, V., Goyal, N., Hartshorn, A., Hosseini,
+    S., Hou, R., Inan, H., Kardas, M., Kerkez, V., Khabsa, M., Kloumann, I., Korenev,
+    A., Koura, P. S., Lachaux, M.-A., Lavril, T., Lee, J., Liskovich, D., Lu, Y.,
+    Mao, Y., Martinet, X., Mihaylov, T., Mishra, P., Molybog, I., Nie, Y., Poulton,
+    A., Reizenstein, J., Rungta, R., Saladi, K., Schelten, A., Silva, R., Smith, E. M.,
+    Subramanian, R., Tan, X. E., Tang, B., Taylor, R., Williams, A., Kuan, J. X.,
+    Xu, P., Yan, Z., Zarov, I., Zhang, Y., Fan, A., Kambadur, M., Narang, S., Rodriguez,
+    A., Stojnic, R., Edunov, S. and Scialom, T. (2023b). Llama 2: Open foundation
+    and fine-tuned chat models.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Vaswani et al. (2017) Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones,
+    L., Gomez, A. N., Kaiser, Ł. and Polosukhin, I. (2017). Attention is all you need.
+    Advances in neural information processing systems, 30.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Vogels et al. (2019) Vogels, T., Karimireddy, S. P. and Jaggi, M. (2019). Powersgd:
+    Practical low-rank gradient compression for distributed optimization. CoRR, abs/1905.13727.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[http://arxiv.org/abs/1905.13727](http://arxiv.org/abs/1905.13727)'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Wei et al. (2022) Wei, J., Tay, Y., Bommasani, R., Raffel, C., Zoph, B., Borgeaud,
+    S., Yogatama, D., Bosma, M., Zhou, D., Metzler, D., Chi, E. H., Hashimoto, T.,
+    Vinyals, O., Liang, P., Dean, J. and Fedus, W. (2022). Emergent abilities of large
+    language models. Transactions on Machine Learning Research. Survey Certification.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[https://openreview.net/forum?id=yzkSU5zdwD](https://openreview.net/forum?id=yzkSU5zdwD)'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Wei et al. (2023) Wei, J., Wang, X., Schuurmans, D., Bosma, M., Ichter, B.,
+    Xia, F., Chi, E., Le, Q. and Zhou, D. (2023). Chain-of-thought prompting elicits
+    reasoning in large language models.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wolf et al. (2019) Wolf, T., Debut, L., Sanh, V., Chaumond, J., Delangue, C.,
+    Moi, A., Cistac, P., Rault, T., Louf, R., Funtowicz, M. et al. (2019). Huggingface’s
+    transformers: State-of-the-art natural language processing. arXiv preprint arXiv:1910.03771.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xiao et al. (2023) Xiao, G., Lin, J., Seznec, M., Wu, H., Demouth, J. and Han,
+    S. (2023). Smoothquant: Accurate and efficient post-training quantization for
+    large language models.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yao et al. (2022) Yao, Z., Yazdani Aminabadi, R., Zhang, M., Wu, X., Li, C.
+    and He, Y. (2022). Zeroquant: Efficient and affordable post-training quantization
+    for large-scale transformers. Advances in Neural Information Processing Systems,
+    35 27168–27183.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yuan et al. (2022) Yuan, A., Coenen, A., Reif, E. and Ippolito, D. (2022).
+    Wordcraft: Story writing with large language models. In 27th International Conference
+    on Intelligent User Interfaces. IUI ’22, Association for Computing Machinery,
+    New York, NY, USA.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[https://doi.org/10.1145/3490099.3511105](https://doi.org/10.1145/3490099.3511105)'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Zafrir et al. (2019) Zafrir, O., Boudoukh, G., Izsak, P. and Wasserblat, M.
+    (2019). Q8bert: Quantized 8bit bert. In 2019 Fifth Workshop on Energy Efficient
+    Machine Learning and Cognitive Computing - NeurIPS Edition (EMC2-NIPS). IEEE.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[http://dx.doi.org/10.1109/EMC2-NIPS53020.2019.00016](http://dx.doi.org/10.1109/EMC2-NIPS53020.2019.00016)'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Zhang et al. (2022) Zhang, S., Roller, S., Goyal, N., Artetxe, M., Chen, M.,
+    Chen, S., Dewan, C., Diab, M., Li, X., Lin, X. V., Mihaylov, T., Ott, M., Shleifer,
+    S., Shuster, K., Simig, D., Koura, P. S., Sridhar, A., Wang, T. and Zettlemoyer,
+    L. (2022). Opt: Open pre-trained transformer language models.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. (2023) Zhang, Z., Sheng, Y., Zhou, T., Chen, T., Zheng, L., Cai,
+    R., Song, Z., Tian, Y., Ré, C., Barrett, C., Wang, Z. and Chen, B. (2023). H[2]o:
+    Heavy-hitter oracle for efficient generative inference of large language models.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhao et al. (2023) Zhao, Y., Lin, C.-Y., Zhu, K., Ye, Z., Chen, L., Zheng,
+    S., Ceze, L., Krishnamurthy, A., Chen, T. and Kasikci, B. (2023). Atom: Low-bit
+    quantization for efficient and accurate llm serving.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Power Iteration Algorithm
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Algorithm 2 Low rank approximation of the error tensor
+  prefs: []
+  type: TYPE_NORMAL
+- en: 0:  Input matrix $\bm{X}\in\mathbb{R}^{n\times d}$  end while
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B Discussion on the Prompts
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/b925c81f13484b7fc94226181f9fe1be.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: Example of GSM8k-CoT prompt. The Red, Green, and Blue colored portions
+    correspond to the example question, a common preceding prompt, and the example
+    answer prompt, respectively. Here, we use the common prompt to improve the reasoning
+    of the LLM.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For the GSM8k dataset, there is a fixed prompt for all evaluations. The prompt
+    contains 8 examples with clear guidance step by step. For the MMLU and BBH dataset,
+    there are individual prompts for each sub dataset. [Figure 5](#A2.F5 "Figure 5
+    ‣ Appendix B Discussion on the Prompts ‣ GEAR: An Efficient KV Cache Compression
+    Recipe for Near-Lossless Generative Inference of LLM") shows one of the example
+    in GSM8K dataset.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix C Discussion on Throughput Benefit of GEAR
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we present the inference throughput benefit of GEAR on a general
+    system. Specifically, we evaluate with a general inference system with one single
+    100GB GPU and report the practical maximum batch-size and throughput. We set prefill
+    length to 1000 and a generation length to 100 (maximum) in this experiment. We
+    use LLaMA2-7B model with FP16 weights. The buffer ($n_{b}$ compared to the outlier-reduced
+    quantization method yielding similar accuracy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 6: General inference system throughput on one 100GB GPU with LLaMA2-7B.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Max Batch-size | Throughputs (tokens/s) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Outlier-R. Quant (b=4, s=10%) | 62 | 32 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GEAR (b=4, s=2%, r=2%, $n_{b}$=20) | 104 | 92 |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix D Extended Results
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: D.1 Understanding the Importance of K and V Error
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: “Do the quantization error for K and V cache play equally critical role or their
+    importance are different?”.
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\begin{array}[]{cc}\includegraphics[width=199.16928pt]{Figures/Source/llama2_7b_kv_error_ablation.png}&amp;\end{array}$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 6: Ablation with K and V error tensor rank.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To shed light on this intriguing question, we conduct experiments by keeping
+    the rank of either K or V frozen to a fixed value, while we keep on increasing
+    the rank of other. For both cases, we keep the sparsity to 1% in GEAR. Fig. [6](#A4.F6
+    "Figure 6 ‣ D.1 Understanding the Importance of K and V Error ‣ Appendix D Extended
+    Results ‣ GEAR: An Efficient KV Cache Compression Recipe for Near-Lossless Generative
+    Inference of LLM") (a) shows results with LLaMA2-7B on GSM8k-CoT. The [val1, val2],
+    identifies the fixed rank and variable $\rho$, respectively. From these results,
+    we can confirm that the K error may play a more critical role as opposed to V
+    error for complex reasoning tasks like GSM8k where multiple tokens are generated
+    in a sequential way, as we see consistently improved performance while increasing
+    rank to represent the former.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: D.2 GEAR Applied to Different KV Quantization Schemes
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Here we present results of GEAR applied on uniform quantized KV. As demonstrated
+    in Fig. [7(a)](#A4.F7.sf1 "In Figure 7 ‣ D.2 GEAR Applied to Different KV Quantization
+    Schemes ‣ Appendix D Extended Results ‣ GEAR: An Efficient KV Cache Compression
+    Recipe for Near-Lossless Generative Inference of LLM") application of GEAR even
+    with uniform quantization as its quantization scheme, the generative inference
+    performance significantly improves. We chose uniform quantization for this study,
+    as it is one of the simplest quantization that does not require any custom support
+    to compensate for operation delay. Note, here we used 6-bit (as our evaluations
+    show that 4-bit uniform quantization of KV provides near zero accuracy for complex
+    reasoning tasks) quantization scheme with a streaming gap of 20, meaning at max
+    20 recent K,V tokens would be in FP16 format. In specific, Fig. [7(a)](#A4.F7.sf1
+    "In Figure 7 ‣ D.2 GEAR Applied to Different KV Quantization Schemes ‣ Appendix
+    D Extended Results ‣ GEAR: An Efficient KV Cache Compression Recipe for Near-Lossless
+    Generative Inference of LLM") shows that for LLaMA2-7B GEAR on uniform asymmetric
+    quantization improves the accuracy by up to $\textbf{86.58}\%$, clearly demonstrating
+    the importance of the GEAR as well as its generalizability across different quantization
+    schemes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We further performed experiments to show efficacy of GEAR with group quantization.
+    We take inspiration from a contemporary research Liu et al. ([2024](#bib.bib16)),
+    that has shown significant improvement with group quantization in yielding improved
+    performance on complex reasoning tasks like GSM8k. In specific, we use the group-wise
+    quantization of Liu et al. ([2024](#bib.bib16)), namely group channel-wise^*^**Note,
+    unlike the channel grouping done over the batch in the main text, here we compute
+    the scaling and shifting parameters separately for each batch unit following Liu
+    et al. ([2024](#bib.bib16)). and token-wise as the inherent quantization of GEAR.
+    As demonstrated in Fig. [7(b)](#A4.F7.sf2 "In Figure 7 ‣ D.2 GEAR Applied to Different
+    KV Quantization Schemes ‣ Appendix D Extended Results ‣ GEAR: An Efficient KV
+    Cache Compression Recipe for Near-Lossless Generative Inference of LLM"), for
+    LLaMA2-7B, with 4-bit quantized KV cache, we show that the GEAR improves accuracy
+    of group quantization significantly by up to $\textbf{33.02}\%$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/c9a918efd4a45a1258e3f6d767170c4d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) With uniform quantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/1bbba9aad9b635487af3aec68403ed6b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) With group quantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 7: GEAR results with different quantization schemes, namely uniform
+    (asymmetric) and group quantization on GSM8k-CoT.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: D.3 GEAR with Weight Quantized Model
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: $\begin{array}[]{cc}\includegraphics[width=227.62204pt]{Figures/Source/gear_with_w8_uniform.png}\end{array}$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 8: GEAR results with weight quantized model on GSM8k-CoT. We use LLaMA2-7B
+    for this evaluation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this section, we present results of GEAR with outlier quantization applied
+    on models with weights quantized to 8-bits. In specific, we apply 8-bit uniform
+    quantization to the model weights and applied GEAR to the KV cache to simulate
+    the compression performance. Here we apply GEAR on top of outlier-reduced quantization
+    scheme. As shown in Fig. [8](#A4.F8 "Figure 8 ‣ D.3 GEAR with Weight Quantized
+    Model ‣ Appendix D Extended Results ‣ GEAR: An Efficient KV Cache Compression
+    Recipe for Near-Lossless Generative Inference of LLM"), the results with GEAR
+    significantly outperforms the outlier-reduced quantized KV baselines with significantly
+    higher outlier $\%$. Additionally, GEAR with weight quantized model can yield
+    similar performanace as that with the FP16 weights.'
+  prefs: []
+  type: TYPE_NORMAL

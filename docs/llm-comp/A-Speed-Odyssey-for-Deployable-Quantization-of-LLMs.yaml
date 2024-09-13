@@ -1,0 +1,1461 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:50:45'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: A Speed Odyssey for Deployable Quantization of LLMs
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2311.09550](https://ar5iv.labs.arxiv.org/html/2311.09550)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Qingyuan Li, Ran Meng, Yiduo Li, Bo Zhang, Liang Li, Yifan Lu, Xiangxiang Chu,
+    Yerui Sun, Yuchen Xie
+  prefs: []
+  type: TYPE_NORMAL
+- en: Meituan Inc.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{liqingyuan02,mengran03,liyiduo,zhangbo97,liliang58}@meituan.com'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The large language model era urges faster and less costly inference. Prior model
+    compression works on LLMs tend to undertake a software-centric approach primarily
+    focused on the simulated quantization performance. By neglecting the feasibility
+    of deployment, these approaches are typically disabled in real practice. They
+    used to drastically push down the quantization bit range for a reduced computation
+    which might not be supported by the mainstream hardware, or involve sophisticated
+    algorithms that introduce extra computation or memory access overhead. We argue
+    that pursuing a hardware-centric approach in the construction of quantization
+    algorithms is crucial. In this regard, we are driven to build our compression
+    method on top of hardware awareness, eliminating impractical algorithm choices
+    while maximizing the benefit of hardware acceleration. Our method, OdysseyLLM,
+    comes with a novel W4A8 kernel implementation called FastGEMM and a combined recipe
+    of quantization strategies. Extensive experiments manifest the superiority of
+    our W4A8 method which brings the actual speed boosting up to 4$\times$ vs. TensorRT-LLM
+    in INT8, yet without substantially harming the performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/70208fea725585e10e080b305de27fbd.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Inference latency on LLaMA-13B quantized in various bit widths. Tested
+    under an input of 1024 tokens and an output of 128 tokens with tensor parallelism
+    on a single A100-80G GPU. All implementations share the same techniques to have
+    a fair comparison. The lower half of a bar exhibits the context decoding stage
+    and the higher half shows the self-decoding stage.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Large language models (LLMs) such as GLM [[8](#bib.bib8)], BLOOM [[16](#bib.bib16)],
+    OPT [[45](#bib.bib45)] and LLaMA series [[34](#bib.bib34), [35](#bib.bib35)] possess
+    the powerful ability of “emergent knowledge” and have revolutionized the field
+    of natural language processing, which opens up a new era for artificial intelligence.
+    However, the massive scale of these models requires enormous storage and computational
+    resources, posing a series of challenges for deployment even for industrial high-end
+    server GPUs, let alone mobile or edge computing devices where computational resource
+    limitations tremendously hinder the widespread application of these models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/cf2ae4b8ec41051cb405917b2749c316.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Comparison of current MatMul paradigm in practical bit widths. $X$
+    is the scale for weights.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compressing large models is a highly challenging task. Current methods generally
+    fall into the categories of *pruning*, *distillation*, *quantization*, and *low-rank
+    decomposition*. To name a few, LLM-Pruner [[23](#bib.bib23)] is a structured pruning
+    method, where the pruning rate is limited to  20% to retain the model capability,
+    and the pruned model requires further fine-tuning to restore accuracy. SparseGPT [[10](#bib.bib10)]
+    and Wanda [[32](#bib.bib32)] compress large models using unstructured sparsity.
+    Although re-training is not required, they are heavily hardware-dependent and
+    have very limited use. On the contrary, quantization is a more universal compression
+    method, and most hardware provides dedicated computation acceleration units for
+    integers. However, as the scale of large models increases, the outlier phenomenon
+    in activation values becomes more severe. Traditional quantization methods for
+    activation values can lead to significant quantization errors. SmoothQuant [[39](#bib.bib39)]
+    achieves almost lossless W8A8 quantization (Fig. [2](#S1.F2 "Figure 2 ‣ 1 Introduction
+    ‣ A Speed Odyssey for Deployable Quantization of LLMs") (c)) by migrating the
+    quantization difficulty of activation values to weights. To further reduce the
+    cost, GPTQ [[11](#bib.bib11)] quantizes model weights to INT4, avoiding the quantization
+    problem of activation values and achieving significant performance gains. Unfortunately,
+    the fine-granularity (Fig. [2](#S1.F2 "Figure 2 ‣ 1 Introduction ‣ A Speed Odyssey
+    for Deployable Quantization of LLMs") (a)) in its solution inevitably creates
+    overhead that cancels out the lower-bit benefits. A vanilla adaption of GPTQ to
+    have a fine-grained W4A8 strategy as in Fig. [2](#S1.F2 "Figure 2 ‣ 1 Introduction
+    ‣ A Speed Odyssey for Deployable Quantization of LLMs") (b) naturally inherits
+    the disadvantages, let alone the performance degradation when we chase lower-bit
+    quantization. Therefore, designing a practical W4A8 quantization scheme is urgent
+    but it requires a deeper and thorough rethinking.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this paper, we are driven to invert the common practice by taking in a hardware-centric
+    approach. We seek real deployment that requires *reduced memory footprint*, *boosted
+    inference speed*, and *non-degraded quantized performance*. We argue that this
+    shift is crucial in developing new algorithms so that the outcome is readily applicable.
+    Hardware constraints help us eliminate the impractical choices to have a reduced
+    space of trial-and-error, shedding light on a viable solution in the meantime.
+    In a nutshell, our contributions can be summarized as follows,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We advocate a hardware-centric approach that ultimately leads to a deployable
+    solution which is a crucial paradigm change in algorithm construction.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We provide the first deployable W4A8 solution, codenamed as OdysseyLLM, that
+    comprises a tailored quantization configuration and a novel FastGEMM kernel for
+    4-bit integer matrix multiplication that dramatically reduces the cost, and it
+    achieves 2.23$\times$ speed boosting over the TensorRT-LLM FP16 and INT8 implementation
+    respectively.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '3.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Our W4A8 recipe is proven mostly on par with the state-of-the-art W8A8 quantization
+    method SmoothQuant on a variety of common language benchmarks for the state-of-the-art
+    LLMs.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 2 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Taxonomy of LLM Compression. A recent thorough survey [[46](#bib.bib46)] categorizes
+    LLM compression methods into pruning [[10](#bib.bib10), [32](#bib.bib32), [44](#bib.bib44)],
+    knowledge distillation [[13](#bib.bib13)], quantization [[39](#bib.bib39), [11](#bib.bib11)],
+    low-rank factorization [[44](#bib.bib44), [38](#bib.bib38)]. While each category
+    shows promising gains, in this paper we primarily focus on low-bit quantization
+    for extreme speed boosting. The orthogonal composition of these methods is also
+    tempting, *e.g*., LoRAPrune [[44](#bib.bib44)] obtains a 50% compression ratio
+    with structured pruning combined by LoRA [[15](#bib.bib15)]. QLoRA [[7](#bib.bib7)]
+    efficiently finetunes the 4-bit quantized LLMs with low-rank adaptation  [[15](#bib.bib15)]
+    as well. Nevertheless, there is still room for further investigation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Variants of Bit Widths in Quantization. Common choices of bit widths for LLM
+    quantization are W8A8 [[39](#bib.bib39), [40](#bib.bib40)], W4A16 [[11](#bib.bib11),
+    [19](#bib.bib19), [31](#bib.bib31)], W4A8 [[41](#bib.bib41), [17](#bib.bib17)],
+    and W4A4 [[42](#bib.bib42)]. W8A8 suffers from limited acceleration for token
+    generation while W4A16 is relatively slow during the pre-filling stage. Current
+    W4A8 recipes usually adopt a fine-grained strategy that hampers the inference.
+    Going further with W4A4 harms the performance and also induces complexity for
+    implementation. There are a few mixed-precision quantization methods like LLM.int8() [[6](#bib.bib6)]
+    and QUIK [[1](#bib.bib1)], where the calculation of some outlier layers fallback
+    in FP16 as a trade-off between accuracy and latency. Besides, quantization that
+    exploits the low-bit floating point representation (FP4, FP8) is analogous to
+    non-uniform integer quantization, which exhibits improved performance as well [[38](#bib.bib38),
+    [20](#bib.bib20)]. However, they are either restricted to certain GPUs only or
+    no such hardware is available yet.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Preliminary Knowledge on Quantization
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We show a glossary of common LLM quantization terms and techniques that build
+    up the recipes of current state-of-the-art compression methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Weight-only vs. Weight and Activation
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Quantization methods vary on whether only the weights $\mathbf{W}$ are quantized
+    [[39](#bib.bib39)]. The latter is more complicated and possibly induces more quantization
+    loss but it will be worth the pain for a decreased model size and an increased
+    inference speed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Layerwise Quantization
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: This is the most common scheme that iteratively quantizes each layer to obtain
+    $\mathbf{W}_{\mathbf{q}}$ by minimizing the mean square error before and after
+    quantization. For instance, when combined with the weight-only strategy, each
+    layer has to solve Eq. [1](#S3.E1 "Equation 1 ‣ Layerwise Quantization ‣ 3 Preliminary
+    Knowledge on Quantization ‣ A Speed Odyssey for Deployable Quantization of LLMs").
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\operatorname{argmin}_{\mathbf{w}}&#124;\mathbf{W}\mathbf{X}-\mathbf{W}_{\mathbf{q}}\mathbf{X}&#124;_{2}^{2}$
+    |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: Symmetric vs. asymmetric
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Eq. [2](#S3.E2 "Equation 2 ‣ Symmetric vs. asymmetric ‣ 3 Preliminary Knowledge
+    on Quantization ‣ A Speed Odyssey for Deployable Quantization of LLMs") shows
+    the quantization $\mathbf{Q}$ as 0\. While asymmetric quantization needs to find
+    the optimal position for the zero point to minimize the quantization error. This
+    however incurs additional subtraction and possible overflow.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathbf{Q}(x)$ |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\mathbf{D}(\mathbf{Q}(x))$ |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: Per channel vs. fine-grained
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Per channel quantization keeps a quantization scale for each channel, while
+    in fine-grained quantization (also known as group-wise or per group), weight channels
+    are further assembled into groups that have a more complex representation. Fig. [2](#S1.F2
+    "Figure 2 ‣ 1 Introduction ‣ A Speed Odyssey for Deployable Quantization of LLMs")
+    well illustrates their difference. Due to the intricate computing pipeline (Eq. [5](#S4.E5
+    "Equation 5 ‣ 4.2 Hardware Constraints ‣ 4 Motivation ‣ A Speed Odyssey for Deployable
+    Quantization of LLMs")), the fine-grained method inevitably prolongs the inference
+    time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Per tensor vs. Per token
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: For activation quantization, it is advisable to adopt a per-token strategy to
+    improve the performance over per tensor strategy (Fig. [2](#S1.F2 "Figure 2 ‣
+    1 Introduction ‣ A Speed Odyssey for Deployable Quantization of LLMs")), where
+    each activation token corresponds to a quantization scale, also shown in Fig. [2](#S1.F2
+    "Figure 2 ‣ 1 Introduction ‣ A Speed Odyssey for Deployable Quantization of LLMs")
+    (b) and (c). However, per token will increase a moderate amount of overhead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Bits | Granularity | LLaMA-1-7B | LLaMA-1-13B | LLaMA-1-65B | LLaMA-2-7B
+    | LLaMA-2-13B | LLaMA-2-70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | W16A16 | None | 73.74% | 76.19% | 79.20% | 73.70% | 76.64% | 79.57%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN[pt] | W16A8 | None | 73.26% [-0.5%] | 76.13% [(-0.1%)] | 78.67% [(-0.5%)]
+    | 73.70% | 76.83% [(+0.2%)] | 79.12% [(-0.5%)] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN[g128] | W4A16 | g128 | 72.87% [(-0.9%)] | 75.08% [(-1.1%)] | 78.87% [(-0.3%)]
+    | 71.24% [(-2.5%)] | 76.29% [(-0.4%)] | 78.69% [(-0.9%)] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ[g128] | W4A16 | g128 | 70.21% [(-3.5%)] | 75.68% [(-0.5%)] | 78.77%
+    [(-0.5%)] | 72.31% [(-1.4%)] | 75.99% [(-0.7%)] | 79.86% [(-0.3%)] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | W4A16 | pc | 65.34% [(-8.4%)] | 69.42% [(-6.8%)] | 75.63% [(-3.6%)]
+    | 64.25% [(-9.5%)] | 73.08% [(-3.6%)] | 77.02% [(-2.6%)] |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ[ro] | W4A16 | pc | 67.92% [(-5.8%)] | 71.05% [(-6.0%)] | 77.12% [(-2.1%)]
+    | 68.95% [(-4.8%)] | 74.35% [(-2.3%)] | 78.83% [(-0.7%)] |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 1: Accuracy comparison of different quantization methods on the LAMBADA
+    dataset for the LLaMA series models. pt: per-token, pc: per-channel, g128: 128
+    groups, ro: with activation reordering'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Motivation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Albeit the advances in LLM compression, the inference still incurs high latencies
+    due to its intrinsically low parallelizability and huge memory footprints. Facing
+    two main challenges below, we are driven to scheme a specific method to continue
+    exploring the possible upper limits.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Architecture Limitations
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Large language models adopt the Transformer structure [[36](#bib.bib36)] and
+    generate tokens in a “self-regressive” manner. The entire inference process can
+    be divided into the *context decoding* stage (pre-filling) and the *self-decoding*
+    stage (token generation). Context decoding stage under long input conditions is
+    a typical computationally intensive task. The self-decoding stage instead, due
+    to the non-parallel limitations of the “self-regressive” generation, cannot effectively
+    utilize hardware resources, rendering it a typical memory-intensive task. This
+    is also depicted in the roofline analysis in  [[1](#bib.bib1)]. Among the up-to-date
+    quantization methods, the W8A8 recipe has a significant acceleration effect in
+    the context decoding stage, while W4A16, due to its ability to further reduce
+    memory bandwidth, has more advantages in the self-decoding stage. Theoretically,
+    we can have W4A8 that combines these two quantization methods to enjoy the optimization
+    benefits of both two stages. However, this direction is largely stalled by degraded
+    performance and hardware constraints to be discussed below.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Hardware Constraints
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Current mainstream INT4 schemes [[11](#bib.bib11), [17](#bib.bib17)] have widely
+    adopted fine-grained quantization to counter the degradation effect. In Fig. [2](#S1.F2
+    "Figure 2 ‣ 1 Introduction ‣ A Speed Odyssey for Deployable Quantization of LLMs"),
+    we investigate the implementation of three popular quantization recipes of different
+    bit widths to exhibit the drawbacks of such choices. W4A16 (Fig. [2](#S1.F2 "Figure
+    2 ‣ 1 Introduction ‣ A Speed Odyssey for Deployable Quantization of LLMs")a) performs
+    4-bit groupwise quantization on weights. During matrix multiplication, it is costly
+    to dequantize ($\mathbf{Dq}$) the INT4 weights into FP16 in real-time before the
+    actual calculation, as described in Eq. [4](#S4.E4 "Equation 4 ‣ 4.2 Hardware
+    Constraints ‣ 4 Motivation ‣ A Speed Odyssey for Deployable Quantization of LLMs").
+    W4A8 (Fig. [2](#S1.F2 "Figure 2 ‣ 1 Introduction ‣ A Speed Odyssey for Deployable
+    Quantization of LLMs")b) performs 4-bit groupwise quantization on weights and
+    uses 8-bit per-token quantization for activation. Similarly, it needs to first
+    convert the INT4 weights into INT8 before GEMM operations, formulated in Eq. [5](#S4.E5
+    "Equation 5 ‣ 4.2 Hardware Constraints ‣ 4 Motivation ‣ A Speed Odyssey for Deployable
+    Quantization of LLMs"). Due to the use of group-wise quantization, each group
+    has to be dequantized back to FP32 when accumulating, which brings considerable
+    overhead. For W8A8 (Fig. [2](#S1.F2 "Figure 2 ‣ 1 Introduction ‣ A Speed Odyssey
+    for Deployable Quantization of LLMs")c) specified in Eq. [6](#S4.E6 "Equation
+    6 ‣ 4.2 Hardware Constraints ‣ 4 Motivation ‣ A Speed Odyssey for Deployable Quantization
+    of LLMs") and Eq. [7](#S4.E7 "Equation 7 ‣ 4.2 Hardware Constraints ‣ 4 Motivation
+    ‣ A Speed Odyssey for Deployable Quantization of LLMs"), it uses 8-bit per-channel
+    quantization for weights and 8-bit per-token quantization for activation. The
+    dequantization is performed after GEMM, which is so far the most hardware-friendly
+    process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle O_{i,j}^{FP32}$ |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle O_{i,j}^{FP32}$ |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle O_{i,j}^{FP32}$ |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle S_{i,j}$ |  | (7) |'
+  prefs: []
+  type: TYPE_TB
+- en: Trade-off between precision and speed? In Table [1](#S3.T1 "Table 1 ‣ Per tensor
+    vs. Per token ‣ 3 Preliminary Knowledge on Quantization ‣ A Speed Odyssey for
+    Deployable Quantization of LLMs"), we first test the performance of the LLaMA
+    models [[34](#bib.bib34)] with various quantization methods on the LAMBADA [[28](#bib.bib28)]
+    dataset. If we only quantize activations, RTN-pt readily delivers results close
+    to FP16, which prevents us from resorting to activation smoothing methods [[39](#bib.bib39),
+    [17](#bib.bib17)]. For fine-grained quantization methods for weights, both vanilla
+    Round-To-Nearest (RTN-g128) and GPTQ-g128 [[11](#bib.bib11)] can retain model
+    accuracy. However, after adopting per-channel quantization, RTN has an accuracy
+    drop in the range of 3% to 10%, while GPTQ with a reordering trick (higher error-prone
+    channels are quantized first) has 1% to 6%.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As mentioned in Sec [4.2](#S4.SS2 "4.2 Hardware Constraints ‣ 4 Motivation ‣
+    A Speed Odyssey for Deployable Quantization of LLMs"), fine-grained W4A8 requires
+    a large number of Dequantize operations to be inserted in the GEMM calculation
+    process, bringing non-negligible additional overhead, thereby offsetting the speed
+    advantage brought by INT8 GEMM. It seems impossible to achieve both accuracy and
+    speed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To fulfill our goal, we have no other choice but to abandon the fine-grained
+    weight quantization strategy and pursue the per-channel weight quantization instead.
+    To compensate for the caused accuracy loss therein, we are forced to involve particular
+    quantization schemes to make the performance comparable to that of fine-grained
+    ones. Additionally, to utilize hardware resources in full, we are compelled to
+    rewrite a specific GEMM operation for W4A8, which we later call FastGEMM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 OdysseyLLM
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Our proposed method, codenamed OdysseyLLM, records the way to a viable W4A8
+    solution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.1 Adaptive Weight Clipping
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The weights of neural networks generally exhibit a Gaussian distribution. As
+    INT4 has only half the bit widths of INT8, a typical min-max uniform 4-bit quantization
+    method [[37](#bib.bib37), [21](#bib.bib21)] will cause a large number of rounding
+    errors, especially near the weights close to 0, leading to a detrimental quantization
+    degradation. To alleviate this phenomenon, one can resort to clipping the range
+    of weights. For example, LSQ [[9](#bib.bib9)] and PACT [[3](#bib.bib3)] adaptively
+    learn a truncation value of the weight. However, the direct learning truncation
+    value method does not have obvious benefits in low-bit quantization on LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this regard, Ominiquant [[31](#bib.bib31)] proposed *Learnable Weight Clipping*,
+    which learns the truncation intensity (denoted by $\gamma$) of each channel. The
+    optimal truncation value is obtained by optimizing it through the gradient descent
+    method. Motivated by the hardware-centric principle, we revise their approach
+    into a symmetric version (Eq. [8](#S5.E8 "Equation 8 ‣ 5.1 Adaptive Weight Clipping
+    ‣ 5 OdysseyLLM ‣ A Speed Odyssey for Deployable Quantization of LLMs")) as it
+    is more hardware-efficient.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathbf{W}_{\mathbf{q}}$ |  | (8) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle S$ |  | (9) |'
+  prefs: []
+  type: TYPE_TB
+- en: We finally obtain a more compact weight distribution, *e.g*., $(-0.4,0.2)$ in
+    each layer have a smaller per-channel quantization MSE error compared to the original
+    weights, as depicted in Fig. [3](#S5.F3 "Figure 3 ‣ 5.1 Adaptive Weight Clipping
+    ‣ 5 OdysseyLLM ‣ A Speed Odyssey for Deployable Quantization of LLMs") (c).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/07c470f8d45138a6d527a00cb70a9155.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Top: Weight distribution of vanilla weights (a) and clamped weights
+    (b). Bottom: Comparison of layerwise MSE of per-channel fake quantization with
+    clamped and vanilla weights.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Dataset | Method/LLaMA | Bits | LLaMA-7B | LLaMA-13B | LLaMA-65B | LLaMA-2-7B
+    | LLaMA-2-13B | LLaMA-2-70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LAMBADA | FP16 | W16A16 | 73.74% | 76.19% | 79.20% | 73.70% | 76.64% | 79.57%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ-g128 | W4A16 | 66.80% | 73.72% | 78.73% | 70.23% | 75.80% | 78.40% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ-g128 | W4A16 | 70.21% | 75.68% | 78.77% | 72.31% | 75.99% | 79.86% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant^∗ | W8A8 | 73.49% | 76.15% | 78.07% | 73.36% | 76.05% | 78.71%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OdysseyLLM | W4A8 | 73.49% | 76.23% | 78.56% | 70.81% | 76.07% | 79.43% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| C4 | FP16 | W16A16 | 7.05 | 6.61 | 5.59 | 7.05 | 6.46 | 5.52 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ-g128 | W4A16 | 7.34 | 6.81 | 5.71 | 7.42 | 6.68 | 5.63 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ-g128 | W4A16 | 7.71 | 6.73 | 5.70 | 8.74 | 6.6 | 5.60 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant^∗ | W8A8 | 7.23 | 6.723 | 5.81 | 7.24 | 6.55 | 5.61 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OdysseyLLM | W4A8 | 7.5 | 6.88 | 5.93 | 7.58 | 6.7 | 5.78 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WikiText | FP16 | W16A16 | 5.73 | 5.1 | 3.51 | 5.65 | 4.95 | 3.36 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ-g128 | W4A16 | 6.01 | 5.32 | 3.69 | 6.04 | 5.16 | 3.53 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ-g128 | W4A16 | 6.31 | 5.24 | 3.67 | 6.36 | 5.1 | 3.50 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant^∗ | W8A8 | 5.89 | 5.21 | 3.73 | 5.797 | 5.04 | 3.46 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OdesseyLLM | W4A8 | 6.17 | 5.37 | 3.92 | 6.11 | 5.19 | 3.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: Performance comparison for various quantized LLaMA models on LAMBADA,
+    C4 and WikiText datasets. ^∗: per token for activations and per channel for weights'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Method | BitWidth | WinoGrande | PIQA | HellaSwag | ARC_e | Avg |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-1-7B | FP16 | W16A16 | 0.6985 | 0.7916 | 0.761 | 0.728 | 0.7448 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ-g128 | W4A16 | 0.6938 | 0.7845 | 0.7465 | 0.7168 | 0.7354 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ-g128 | W4A16 | 0.6661 | 0.7786 | 0.7229 | 0.6557 | 0.7058 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant^∗ | W8A8 | 0.7119 | 0.7894 | 0.7537 | 0.7386 | 0.7484 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OdysseyLLM | W4A8 | 0.6977 | 0.7878 | 0.7407 | 0.7155 | 0.7354 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-1-13B | FP16 | W16A16 | 0.7277 | 0.8009 | 0.7907 | 0.7471 | 0.7666
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ-g128 | W4A16 | 0.7151 | 0.7971 | 0.7818 | 0.7256 | 0.7549 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ-g128 | W4A16 | 0.7238 | 0.8025 | 0.7828 | 0.7353 | 0.7611 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant^∗ | W8A8 | 0.7238 | 0.802 | 0.7836 | 0.7466 | 0.764 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OdysseyLLM | W4A8 | 0.7238 | 0.7998 | 0.7792 | 0.7441 | 0.7617 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-1-65B | FP16 | W16A16 | 0.7735 | 0.8232 | 0.8415 | 0.7976 | 0.809 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ-g128 | W4A16 | 0.7664 | 0.821 | 0.8427 | 0.7992 | 0.8073 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ-g128 | W4A16 | 0.7632 | 0.8221 | 0.8382 | 0.79 | 0.8034 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant^∗ | W8A8 | 0.7593 | 0.7976 | 0.8097 | 0.7471 | 0.7784 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OdysseyLLM | W4A8 | 0.753 | 0.7933 | 0.8019 | 0.734 | 0.7706 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-7B | FP16 | W16A16 | 0.6906 | 0.7911 | 0.7598 | 0.7458 | 0.7468 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ-g128 | W4A16 | 0.6819 | 0.7786 | 0.7473 | 0.6675 | 0.7188 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ-g128 | W4A16 | 0.6772 | 0.7845 | 0.748 | 0.6742 | 0.721 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant^∗ | W8A8 | 0.6875 | 0.7873 | 0.7598 | 0.7104 | 0.7363 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OdysseyLLM | W4A8 | 0.6811 | 0.7742 | 0.7398 | 0.6953 | 0.7226 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-13B | FP16 | W16A16 | 0.7222 | 0.8052 | 0.7938 | 0.7744 | 0.7739
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ-g128 | W4A16 | 0.7253 | 0.7987 | 0.7838 | 0.766 | 0.7685 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ-g128 | W4A16 | 0.7245 | 0.7992 | 0.7899 | 0.7736 | 0.7718 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant^∗ | W8A8 | 0.723 | 0.8052 | 0.7977 | 0.7681 | 0.7735 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OdysseyLLM | W4A8 | 0.7111 | 0.7976 | 0.7782 | 0.763 | 0.7625 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-70B | FP16 | W16A16 | 0.7798 | 0.8275 | 0.8381 | 0.8098 | 0.8138
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ-g128 | W4A16 | 0.7727 | 0.8281 | 0.8341 | 0.803 | 0.8095 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ-g128 | W4A16 | 0.779 | 0.833 | 0.8343 | 0.8035 | 0.8125 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant^∗ | W8A8 | 0.7766 | 0.8303 | 0.8345 | 0.8127 | 0.8135 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OdysseyLLM | W4A8 | 0.7751 | 0.8313 | 0.8272 | 0.806 | 0.8099 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 3: Comparison on Common Sense QA. ^∗: per token for activations and per
+    channel for weights'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.2 Hessian-based Training-free Compensation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Although *learnable weight clipping* can effectively alleviate the loss brought
+    by 4-bit integer per-channel quantization, further compensation is still required
+    to enhance the performance. We generally follow a layerwise quantization structure [[25](#bib.bib25),
+    [18](#bib.bib18)] that reduces the mean square error before and after quantization.
+    In particular, we choose GPTQ [[11](#bib.bib11)] that speeds up the Hessian-based
+    quantization compensation algorithm OBQ [[12](#bib.bib12)] by parallel execution
+    and the removal of greedy strategy. Essentially, this genre of algorithms iteratively
+    updates the remaining set $F$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathbf{W}_{i}$ |  | (10) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\boldsymbol{\delta}_{F}$ |  | (11) |'
+  prefs: []
+  type: TYPE_TB
+- en: 5.3 Fast Mixed-Precision GEMM
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The W4A8 calls for a renovation for the kernel implementation to maximize the
+    benefit of this bit width setting on mainstream hardware. We take the following
+    three steps to obtain FastGEMM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/6f1fcbff104fcab4c5adfb96546328ff.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: Design of W4A8 FastGEMM (c) compared to FP16 (a) and vanilla version
+    (b). (d) Our SInt4to8 conversion (represented in two’s complement) where 4-bit
+    integers are multiplied by 16 to have a convenient 8-bit GEMM.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Kernel fusion. As shown in Fig. [4](#S5.F4 "Figure 4 ‣ 5.3 Fast Mixed-Precision
+    GEMM ‣ 5 OdysseyLLM ‣ A Speed Odyssey for Deployable Quantization of LLMs") (a),
+    modern GPUs only support GEMM calculations of the same type, while mixed precision
+    requires conversion to the same type first. Depicted in Fig. [4](#S5.F4 "Figure
+    4 ‣ 5.3 Fast Mixed-Precision GEMM ‣ 5 OdysseyLLM ‣ A Speed Odyssey for Deployable
+    Quantization of LLMs") (b), a naive approach is to implement a separate GPU Kernel
+    to perform type conversion, but this would increase additional memory access and
+    substantially slow down the model inference speed. Instead, we propose to fuse
+    SINT4toS8 and GEMM into one GPU kernel, abbreviated as FastGEMM and shown in Fig. [4](#S5.F4
+    "Figure 4 ‣ 5.3 Fast Mixed-Precision GEMM ‣ 5 OdysseyLLM ‣ A Speed Odyssey for
+    Deployable Quantization of LLMs") (c). However, it is non-trivial to achieve.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Removal of INT8 subtraction. As mentioned in Sec. [5.1](#S5.SS1 "5.1 Adaptive
+    Weight Clipping ‣ 5 OdysseyLLM ‣ A Speed Odyssey for Deployable Quantization of
+    LLMs"), we adopt symmetric quantization. This is beneficial for two reasons. First,
+    according to LLM-QAT [[21](#bib.bib21)], the LLaMA series performs better in terms
+    of accuracy with symmetric quantization compared to asymmetric quantization. Second,
+    modern GPUs like NVIDIA, in order to reduce the size of the chip, do not provide
+    subtraction instructions for the signed 8-bit integers³³3[https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#integer-arithmetic-instructions-sub](https://goo.by/RjASnb).
+    This leads to additional type conversion instructions when asymmetric quantization
+    is processing the zero point, thereby impeding the inference speed. Choosing symmetric
+    quantization directly removes the zero-point subtraction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/bafff3e17d125636baa390b03286affa.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: Vanilla W4A8’s UINT4toS8 vs. our proposed SINT4toS8. The green area
+    is on the device, the rest is offline.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reusing the sign bit. In Fig. [5](#S5.F5 "Figure 5 ‣ 5.3 Fast Mixed-Precision
+    GEMM ‣ 5 OdysseyLLM ‣ A Speed Odyssey for Deployable Quantization of LLMs"), a
+    vanilla W4A8’s UINT4toS8 operation can be very costly. For instance, to load the
+    two’s complement of -7 on GPU, it requires sophisticated calculation (detailed
+    in Sec. [A.1](#A1.SS1 "A.1 UINT4toS8 vs. SINT4toS8 ‣ Appendix A Kernel Implementation
+    ‣ A Speed Odyssey for Deployable Quantization of LLMs") (supp.)), especially there
+    is an additional on-device subtraction which is not directly supported by hardware.
+    By default, it has to be converted to higher precision (typically INT32) for such
+    subtraction which incurs substantial cost. We implement it as Asym GEMM in Fig. [7](#S7.F7
+    "Figure 7 ‣ 7.2 FastGEMM vs. Fine-grained vs. Asymmetric ‣ 7 Ablation Study ‣
+    A Speed Odyssey for Deployable Quantization of LLMs") to see how costly it is.
+    As we are motivated to explore the authentic benefit of W4A8, we have to fabricate
+    a faster W4A8 scheme to load signed INT4 to signed INT8\. Specifically, we store
+    the weights of signed INT4 into two’s complement, shown in Fig. [4](#S5.F4 "Figure
+    4 ‣ 5.3 Fast Mixed-Precision GEMM ‣ 5 OdysseyLLM ‣ A Speed Odyssey for Deployable
+    Quantization of LLMs") (d). During computation, we place the signed INT4 weights
+    in the higher 4 bits of signed INT8, which is equivalent to multiplying each value
+    by 16\. After the completion of the GEMM calculation, we divide the output value
+    by 16 to restore the correct results. Such multiplication and division can be
+    easily and efficiently implemented. Since the internal accumulator is of the INT32
+    type, there will be no overflow. With this novel conversion scheme, we can retain
+    accuracy while significantly improving inference speed and can be used out-of-box
+    on modern GPUs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d68d0f61a4a1a11afe6bfed9447a8e35.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: Latency comparison on LLaMA-2 models in various bitwidth settings.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 6.1 Settings
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Inference Implementation
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: The latency comparison in Fig. [1](#S1.F1 "Figure 1 ‣ 1 Introduction ‣ A Speed
+    Odyssey for Deployable Quantization of LLMs") and Fig. [6](#S5.F6 "Figure 6 ‣
+    5.3 Fast Mixed-Precision GEMM ‣ 5 OdysseyLLM ‣ A Speed Odyssey for Deployable
+    Quantization of LLMs") is made fair by utilizing the same set of configurations
+    except for bit widths. Specifically, we implemented the whole end-to-end inference
+    pipeline with CUTLASS [[26](#bib.bib26)] to have a delicate combination of GPU
+    Tensor Core execution, kernel fusion policy, and graph optimization. We also evaluate
+    the performance with the latest build of TensorRT-LLM [[27](#bib.bib27)]. All
+    latency measurements in the paper are tested on NVIDIA A100 80G GPUs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Models and Datasets
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Following recent quantization methods  [[22](#bib.bib22), [11](#bib.bib11)],
+    we evaluate our approach by conducting experiments on LLaMA series [[34](#bib.bib34),
+    [35](#bib.bib35)] models and presenting results on various tasks. We randomly
+    pick 128 sequences in C4  [[29](#bib.bib29)] datasets for calibration. We report
+    the zero-shot performance on Common Sense Reasoning tasks such as PIQA [[2](#bib.bib2)],
+    HellaSwag  [[43](#bib.bib43)], WinoGrande [[30](#bib.bib30)], ARC  [[4](#bib.bib4)].
+    We also assess the few-shot performance on Common Sense [[33](#bib.bib33)] and
+    MMLU  [[14](#bib.bib14)] datasets, along with perplexity scores on WikiText2  [[24](#bib.bib24)]
+    and C4  [[29](#bib.bib29)] datasets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.2 Performance Comparison
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Table [2](#S5.T2 "Table 2 ‣ 5.1 Adaptive Weight Clipping ‣ 5 OdysseyLLM ‣ A
+    Speed Odyssey for Deployable Quantization of LLMs") presents the performance comparison
+    on various common datasets LAMBADA, C4, and WikiText, while Table [3](#S5.T3 "Table
+    3 ‣ 5.1 Adaptive Weight Clipping ‣ 5 OdysseyLLM ‣ A Speed Odyssey for Deployable
+    Quantization of LLMs") is on Common Sense QA and Table [8](#A2.T8 "Table 8 ‣ B.1
+    Comparison on MMLU ‣ Appendix B Additional Experiments ‣ A Speed Odyssey for Deployable
+    Quantization of LLMs") (supp.) on MMLU. We compare our OdysseyLLM with the most
+    recent state-of-art quantization methods AWQ [[19](#bib.bib19)], SmoothQuant [[39](#bib.bib39)],
+    and GPTQ [[11](#bib.bib11)]. It turns out that our W4A8 OdysseyLLM mostly achieves
+    on-par performance with the state-of-the-art W8A8 approach SmoothQuant on a large
+    range of tasks, paving the way to its ready application in the real world. Being
+    a post-training quantization method, we also enjoy the low-cost benefit during
+    the quantization process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.3 Latency Comparison on LLaMA models
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We exhibit the overall latency comparison of LLaMA-2 models under the same implementations
+    (Sec. [6.1](#S6.SS1 "6.1 Settings ‣ 6 Experiments ‣ A Speed Odyssey for Deployable
+    Quantization of LLMs")) except the bandwidths in Fig. [6](#S5.F6 "Figure 6 ‣ 5.3
+    Fast Mixed-Precision GEMM ‣ 5 OdysseyLLM ‣ A Speed Odyssey for Deployable Quantization
+    of LLMs") where our W4A8 version prevails on all model scales. Notably, we achieve
+    at most 1.9$\times$ boost compared with FP16 for LLaMA-2 7B, 13B, and 70B respectively.
+    We use 1 GPU for 7B, and 13B, 4 GPUs for 70B. All inputs have an input sequence
+    length of 1024\. Output tokens are set to 128.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.4 Comparison with TensorRT-LLM
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: TensorRT-LLM [[27](#bib.bib27)] is so far the most advanced industry-level deployment
+    engine for LLMs, shipped with both FP16 and INT8 implementation. In Table [4](#S6.T4
+    "Table 4 ‣ 6.4 Comparison with TensorRT-LLM ‣ 6 Experiments ‣ A Speed Odyssey
+    for Deployable Quantization of LLMs"), we compare with TensorRT-LLM to show the
+    benefits of our inference engine and newly fabricated kernel. The settings are
+    kept the same as in Fig. [6](#S5.F6 "Figure 6 ‣ 5.3 Fast Mixed-Precision GEMM
+    ‣ 5 OdysseyLLM ‣ A Speed Odyssey for Deployable Quantization of LLMs") except
+    that here we use a batch size of 1\. Notice that our engine is mostly comparable
+    to TensorRT-LLM in both FP16 and W8A8 settings. Our engine with the new W4A8 kernel
+    obtains 1.37$\times$ against its FP16 setting.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | TensorRT-LLM | Ours |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | FP16 | W8A8 | FP16 | W8A8 | W4A8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-7B | 1411 | 1030 | 1513 | 1103 | 751 (1.37$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-13B | 2547 | 1657 | 2671 | 1824 | 1139 (1.45$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-70B | 4177 | 3087 | 4271 | 3135 | 2263 (1.36$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 4: Latency comparison (in $ms$) with TensorRT-LLM.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.5 Comparison with QUIK
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: QUIK [[1](#bib.bib1)] comes with a W4A4 implementation while outliers fall back
+    to higher precision. We show that how such an approach renders an overall inferior
+    speed in practice. Per-kernel measurements are shown in Table [5](#S6.T5 "Table
+    5 ‣ 6.5 Comparison with QUIK ‣ 6 Experiments ‣ A Speed Odyssey for Deployable
+    Quantization of LLMs") where our speed can be 4.33$\times$ faster in the self-decoding
+    stage. QUIK is only on par with our speed at the context decoding stage since
+    it is more computation-intensive. This benefit is quickly amortized throughout
+    an end-to-end setting. See Sec. [A.2](#A1.SS2 "A.2 Analysis on QUIK’s Latency
+    ‣ Appendix A Kernel Implementation ‣ A Speed Odyssey for Deployable Quantization
+    of LLMs") for a detailed analysis.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Stage | M | N | K | QUIK | Odyssey | Boost |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Context decode | 1024 | 4096 | 4096 | 0.139 | 0.121 | 1.14$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1024 | 8192 | 0.095 | 0.073 | 1.30$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 11088 | 4096 | 0.290 | 0.279 | 1.03$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 5120 | 5120 | 0.163 | 0.158 | 1.03$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Self-decode | 1 | 4096 | 4096 | 0.052 | 0.012 | 4.33$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1024 | 8192 | 0.080 | 0.019 | 4.21$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 11088 | 4096 | 0.054 | 0.016 | 3.37$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 5120 | 5120 | 0.060 | 0.014 | 4.28$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 5: GEMM latency comparison with QUIK. N stands for the output dimension
+    of weight, M$\times$K for activation shape'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7 Ablation Study
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 7.1 Quantization Strategy
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Table [6](#S7.T6 "Table 6 ‣ 7.1 Quantization Strategy ‣ 7 Ablation Study ‣ A
+    Speed Odyssey for Deployable Quantization of LLMs") justifies our choices of symmetric
+    LWC and GPTQ. Vanilla W4A8 which doesn’t involve compensation techniques falls
+    short in the performance (PPL) on WikiText2 and C4\. The recipe of LWC and GPTQ
+    combined generally produces the best result.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Dataset | Model | Baseline | B+LWC | B+LWC+GPTQ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WikiText2 | LLaMA-1-7B | 6.73 | 6.25 | 6.17 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-1-13B | 5.7 | 5.37 | 5.37 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-1-65B | 4.41 | 3.89 | 3.92 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-7B | 7.13 | 6.73 | 6.11 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-13B | 5.47 | 5.30 | 5.19 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-70B | 3.93 | 3.74 | 3.70 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| C4 | LLaMA-1-7B | 8.16 | 7.64 | 7.50 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-1-13B | 7.24 | 6.92 | 6.88 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-1-65B | 6.35 | 5.97 | 5.93 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-7B | 8.88 | 8.54 | 7.58 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-13B | 7.0 | 6.84 | 6.70 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-70B | 6.01 | 5.83 | 5.78 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 6: PPL on WikiText2 and C4\. Baseline (B): Vanilla W4A8, LWC: symmetric
+    learnable weight clipping'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7.2 FastGEMM vs. Fine-grained vs. Asymmetric
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We conducted an in-depth study on different matrix multiplication (GEMM) implementation
+    strategies on the LLaMA-2-70B model to understand their impact on performance.
+    As shown in Fig. [7](#S7.F7 "Figure 7 ‣ 7.2 FastGEMM vs. Fine-grained vs. Asymmetric
+    ‣ 7 Ablation Study ‣ A Speed Odyssey for Deployable Quantization of LLMs"), the
+    horizontal axis represents the GEMM Size $(dim_{i},dim_{o})$ of the model under
+    a partitioning on 4 GPUs, with an input length of 1024 and a batch size of 8\.
+    Noticeably, fine-grained GEMM requires frequent dequantization operations per
+    group, introducing a large amount of Integer2Float and Fused Multiply-Add (FMA)
+    overhead; the signed 8-bit subtraction operation in Asymmetric GEMM needs to fallback
+    to signed 32-bit, introducing additional conversion cost. In contrast, our FastGEMM
+    well solves the drawbacks of these two GEMMs, achieving the best performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f8fc3535d92622ac57d5dca7f8922c96.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7: Latency comparison (measured in nanoseconds) of all GEMMs in LLaMA-2-70B
+    with tensor parallelism of 4 at two decoding stages. The matrix size is the input
+    and output dimensions of GEMM. We use a batch size of 8 and an input length of
+    1024\. The number atop the bar is the boost w.r.t. fine-grained GEMM.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 8 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Under the hardware-centric guidance, our paper introduces the first deployable
+    W4A8 solution for LLMs. We give a composition of recipes named OdysseyLLM which
+    comprises symmetric learnable weight clipping, iterative Hessian-based compensation,
+    and a novel FastGEMM for an accelerated W4A8 calculation. To our knowledge, we
+    have achieved the fastest W4A8 LLMs available so far, with acceptable quantization
+    loss on common language benchmarks. We believe this exploration can serve as a
+    solid ground for further readily applicable compression algorithms to emerge,
+    reducing LLM inference cost and facilitating potential applications in constrained
+    scenarios.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Ashkboos et al. [2023] Saleh Ashkboos, Ilia Markov, Elias Frantar, Tingxuan
+    Zhong, Xincheng Wang, Jie Ren, Torsten Hoefler, and Dan Alistarh. Towards end-to-end
+    4-bit inference on generative large language models. *arXiv preprint arXiv:2310.09259*,
+    2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bisk et al. [2020] Yonatan Bisk, Rowan Zellers, Jianfeng Gao, Yejin Choi, et al.
+    Piqa: Reasoning about physical commonsense in natural language. In *Proceedings
+    of the AAAI conference on artificial intelligence*, pages 7432–7439, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Choi et al. [2018] Jungwook Choi, Zhuo Wang, Swagath Venkataramani, Pierce
+    I-Jen Chuang, Vijayalakshmi Srinivasan, and Kailash Gopalakrishnan. Pact: Parameterized
+    clipping activation for quantized neural networks. *arXiv preprint arXiv:1805.06085*,
+    2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Clark et al. [2018] Peter Clark, Isaac Cowhey, Oren Etzioni, Tushar Khot, Ashish
+    Sabharwal, Carissa Schoenick, and Oyvind Tafjord. Think you have solved question
+    answering? try arc, the ai2 reasoning challenge. *arXiv preprint arXiv:1803.05457*,
+    2018.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Dettmers et al. [2021] Tim Dettmers, Mike Lewis, Sam Shleifer, and Luke Zettlemoyer.
+    8-bit optimizers via block-wise quantization. *arXiv preprint arXiv:2110.02861*,
+    2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. [2022] Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer.
+    LLM.int8(): 8-bit matrix multiplication for transformers at scale. *arXiv preprint
+    arXiv:2208.07339*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. [2023] Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, and Luke
+    Zettlemoyer. Qlora: Efficient finetuning of quantized llms. *arXiv preprint arXiv:2305.14314*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Du et al. [2021] Zhengxiao Du, Yujie Qian, Xiao Liu, Ming Ding, Jiezhong Qiu,
+    Zhilin Yang, and Jie Tang. Glm: General language model pretraining with autoregressive
+    blank infilling. *arXiv preprint arXiv:2103.10360*, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Esser et al. [2019] Steven K Esser, Jeffrey L McKinstry, Deepika Bablani, Rathinakumar
+    Appuswamy, and Dharmendra S Modha. Learned step size quantization. *arXiv preprint
+    arXiv:1902.08153*, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Frantar and Alistarh [2023] Elias Frantar and Dan Alistarh. Sparsegpt: Massive
+    language models can be accurately pruned in one-shot, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Frantar et al. [2022a] Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and
+    Dan Alistarh. Gptq: Accurate post-training quantization for generative pre-trained
+    transformers. *arXiv preprint arXiv:2210.17323*, 2022a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Frantar et al. [2022b] Elias Frantar, Sidak Pal Singh, and Dan Alistarh. Optimal
+    Brain Compression: A framework for accurate post-training quantization and pruning.
+    *arXiv preprint arXiv:2208.11580*, 2022b. Accepted to NeurIPS 2022, to appear.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Gu et al. [2023] Yuxian Gu, Li Dong, Furu Wei, and Minlie Huang. Knowledge distillation
+    of large language models. *arXiv preprint arXiv:2306.08543*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hendrycks et al. [2020] Dan Hendrycks, Collin Burns, Steven Basart, Andy Zou,
+    Mantas Mazeika, Dawn Song, and Jacob Steinhardt. Measuring massive multitask language
+    understanding. *arXiv preprint arXiv:2009.03300*, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hu et al. [2021] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu,
+    Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. Lora: Low-rank adaptation of
+    large language models. *arXiv preprint arXiv:2106.09685*, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Laurençon et al. [2022] Hugo Laurençon, Lucile Saulnier, Thomas Wang, Christopher
+    Akiki, Albert Villanova del Moral, Teven Le Scao, Leandro Von Werra, Chenghao
+    Mou, Eduardo González Ponferrada, Huu Nguyen, et al. The BigScience corpus: A
+    1.6 TB composite multilingual dataset. 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. [2023] Qingyuan Li, Yifan Zhang, Liang Li, Peng Yao, Bo Zhang, Xiangxiang
+    Chu, Yerui Sun, Li Du, and Yuchen Xie. Fptq: Fine-grained post-training quantization
+    for large language models. *arXiv preprint arXiv:2308.15987*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. [2021] Yuhang Li, Ruihao Gong, Xu Tan, Yang Yang, Peng Hu, Qi Zhang,
+    Fengwei Yu, Wei Wang, and Shi Gu. BRECQ: Pushing the limit of post-training quantization
+    by block reconstruction. In *International Conference on Learning Representations
+    (ICLR)*, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lin et al. [2023] Ji Lin, Jiaming Tang, Haotian Tang, Shang Yang, Xingyu Dang,
+    and Song Han. Awq: Activation-aware weight quantization for llm compression and
+    acceleration, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. [2023a] Shih-yang Liu, Zechun Liu, Xijie Huang, Pingcheng Dong,
+    and Kwang-Ting Cheng. Llm-fp4: 4-bit floating-point quantized transformers. *arXiv
+    preprint arXiv:2310.16836*, 2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. [2023b] Zechun Liu, Barlas Oguz, Changsheng Zhao, Ernie Chang, Pierre
+    Stock, Yashar Mehdad, Yangyang Shi, Raghuraman Krishnamoorthi, and Vikas Chandra.
+    Llm-qat: Data-free quantization aware training for large language models. *arXiv
+    preprint arXiv:2305.17888*, 2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. [2023c] Zechun Liu, Barlas Oguz, Changsheng Zhao, Ernie Chang, Pierre
+    Stock, Yashar Mehdad, Yangyang Shi, Raghuraman Krishnamoorthi, and Vikas Chandra.
+    Llm-qat: Data-free quantization aware training for large language models, 2023c.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ma et al. [2023] Xinyin Ma, Gongfan Fang, and Xinchao Wang. Llm-pruner: On
+    the structural pruning of large language models, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Merity et al. [2016] Stephen Merity, Caiming Xiong, James Bradbury, and Richard
+    Socher. Pointer sentinel mixture models. *arXiv preprint arXiv:1609.07843*, 2016.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Nagel et al. [2020] Markus Nagel, Rana Ali Amjad, Mart Van Baalen, Christos
+    Louizos, and Tijmen Blankevoort. Up or down? Adaptive rounding for post-training
+    quantization. In *International Conference on Machine Learning (ICML)*, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: NVIDIA [2023a] NVIDIA. Cutlass 3.0. [https://github.com/NVIDIA/cutlass](https://github.com/NVIDIA/cutlass),
+    2023a.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: NVIDIA [2023b] NVIDIA. Tensorrt-llm. [https://github.com/NVIDIA/TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM),
+    2023b.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Paperno et al. [2016] Denis Paperno, Germán Kruszewski, Angeliki Lazaridou,
+    Quan Ngoc Pham, Raffaella Bernardi, Sandro Pezzelle, Marco Baroni, Gemma Boleda,
+    and Raquel Fernández. The LAMBADA dataset: Word prediction requiring a broad discourse
+    context. *arXiv preprint arXiv:1606.06031*, 2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Raffel et al. [2020] Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee,
+    Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter Liu. Exploring the
+    limits of transfer learning with a unified text-to-text transformer. *Journal
+    of Machine Learning Research*, 21(140):1–67, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sakaguchi et al. [2021] Keisuke Sakaguchi, Ronan Le Bras, Chandra Bhagavatula,
+    and Yejin Choi. Winogrande: An adversarial winograd schema challenge at scale.
+    *Communications of the ACM*, 64(9):99–106, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Shao et al. [2023] Wenqi Shao, Mengzhao Chen, Zhaoyang Zhang, Peng Xu, Lirui
+    Zhao, Zhiqian Li, Kaipeng Zhang, Peng Gao, Yu Qiao, and Ping Luo. Omniquant: Omnidirectionally
+    calibrated quantization for large language models. *arXiv preprint arXiv:2308.13137*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sun et al. [2023] Mingjie Sun, Zhuang Liu, Anna Bair, and J Zico Kolter. A simple
+    and effective pruning approach for large language models. *arXiv preprint arXiv:2306.11695*,
+    2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Talmor et al. [2019] Alon Talmor, Jonathan Herzig, Nicholas Lourie, and Jonathan
+    Berant. Commonsenseqa: A question answering challenge targeting commonsense knowledge,
+    2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. [2023a] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier
+    Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal,
+    Eric Hambro, Faisal Azhar, et al. Llama: Open and efficient foundation language
+    models. *arXiv preprint arXiv:2302.13971*, 2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. [2023b] Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert,
+    Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava,
+    Shruti Bhosale, et al. Llama 2: Open foundation and fine-tuned chat models. *arXiv
+    preprint arXiv:2307.09288*, 2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Vaswani et al. [2017] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit,
+    Llion Jones, Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. Attention is
+    all you need. In *Conference on Neural Information Processing Systems (NeurIPS)*,
+    2017.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wu et al. [2020] Hao Wu, Patrick Judd, Xiaojie Zhang, Mikhail Isaev, and Paulius
+    Micikevicius. Integer quantization for deep learning inference: Principles and
+    empirical evaluation, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wu et al. [2023] Xiaoxia Wu, Zhewei Yao, and Yuxiong He. Zeroquant-fp: A leap
+    forward in llms post-training w4a8 quantization using floating-point formats,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xiao et al. [2023] Guangxuan Xiao, Ji Lin, Mickael Seznec, Hao Wu, Julien Demouth,
+    and Song Han. Smoothquant: Accurate and efficient post-training quantization for
+    large language models. In *International Conference on Machine Learning*, pages
+    38087–38099\. PMLR, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yao et al. [2022] Zhewei Yao, Reza Yazdani Aminabadi, Minjia Zhang, Xiaoxia
+    Wu, Conglong Li, and Yuxiong He. ZeroQuant: Efficient and affordable post-training
+    quantization for large-scale transformers. *arXiv preprint arXiv:2206.01861*,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yao et al. [2023] Zhewei Yao, Xiaoxia Wu, Cheng Li, Stephen Youn, and Yuxiong
+    He. Zeroquant-v2: Exploring post-training quantization in llms from comprehensive
+    study to low rank compensation, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yuan et al. [2023] Zhihang Yuan, Lin Niu, Jiawei Liu, Wenyu Liu, Xinggang Wang,
+    Yuzhang Shang, Guangyu Sun, Qiang Wu, Jiaxiang Wu, and Bingzhe Wu. Rptq: Reorder-based
+    post-training quantization for large language models, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zellers et al. [2019] Rowan Zellers, Ari Holtzman, Yonatan Bisk, Ali Farhadi,
+    and Yejin Choi. Hellaswag: Can a machine really finish your sentence? *arXiv preprint
+    arXiv:1905.07830*, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Zhang et al. [2023] Mingyang Zhang, Chunhua Shen, Zhen Yang, Linlin Ou, Xinyi
+    Yu, Bohan Zhuang, et al. Pruning meets low-rank parameter-efficient fine-tuning.
+    *arXiv preprint arXiv:2305.18403*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. [2022] Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe,
+    Moya Chen, Shuohui Chen, Christopher Dewan, Mona Diab, Xian Li, Xi Victoria Lin,
+    et al. OPT: Open pre-trained transformer language models. *arXiv preprint arXiv:2205.01068*,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Zhu et al. [2023] Xunyu Zhu, Jian Li, Yong Liu, Can Ma, and Weiping Wang. A
+    survey on model compression for large language models. *arXiv preprint arXiv:2308.07633*,
+    2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Kernel Implementation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A.1 UINT4toS8 vs. SINT4toS8
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In modern computer systems, integer numbers are commonly stored as two’s complement
+    for multiple known benefits. To move these numbers from host to device requires
+    specific offline preprocessing. As illustrated in Fig. [5](#S5.F5 "Figure 5 ‣
+    5.3 Fast Mixed-Precision GEMM ‣ 5 OdysseyLLM ‣ A Speed Odyssey for Deployable
+    Quantization of LLMs") (main text), say we have a signed integer -7 represented
+    in its two’s complement as 1111 1001. We first have to rearrange within the range
+    (0,15) by adding 8 to have an unsigned integer 0000 0001. The lower 4-bit 0001
+    can be utilized for weight packing (*e.g*. four UINT4 integers packed in 32 bits).
+    Once the GPU receives such 32 bits, it is unpacked first to obtain each of these
+    4 numbers. Here comes the problem, to revert such a UINT4 number to an SINT8 for
+    later GEMM computation, we have to subtract 8 again, which is not directly available
+    for GPUs. One has to convert it to INT32 to enable subtraction, which is very
+    costly in practice. To avoid the unexpected cost, we simplify the pipeline by
+    directly packing the lower 4 bits 1001. During unpacking, we place them in the
+    higher 4 bits on a piece of INT8 GPU memory, which in effect renders a signed
+    integer number in 8 bits, but 16 times larger. We later divide the GEMM result
+    by 16 to restore the correct value. This new implementation substantially eases
+    the pain of type conversion and speeds up the overall performance of the FastGEMM
+    kernel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A.2 Analysis on QUIK’s Latency
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In Table [5](#S6.T5 "Table 5 ‣ 6.5 Comparison with QUIK ‣ 6 Experiments ‣ A
+    Speed Odyssey for Deployable Quantization of LLMs") in the main text, it has been
+    observed that QUIK’s performance is substantially poor during the self-decoding
+    phase. We discover the reason lies in their various separated CUTLUSS kernels
+    to adapt the mixed precision recipe. Ideally, pure W4A4 computation would be 2$\times$
+    speed boosting.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A.3 Latency Comparison with Hugging Face
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Hugging Face⁴⁴4[https://huggingface.co/blog/4bit-transformers-bitsandbytes](https://huggingface.co/blog/4bit-transformers-bitsandbytes)
+    provides a 4-bit implementation with the bitsandbytes library ⁵⁵5[https://github.com/TimDettmers/bitsandbytes](https://github.com/TimDettmers/bitsandbytes).
+    We compare their latencies in Table [7](#A1.T7 "Table 7 ‣ A.3 Latency Comparison
+    with Hugging Face ‣ Appendix A Kernel Implementation ‣ A Speed Odyssey for Deployable
+    Quantization of LLMs"). Note that this 4-bit implementation is even slower than
+    Hugging Face’s FP16 implementation, which prevents it from being a real application.
+    It adopts a particular normal format 4-bit (NF4) [[5](#bib.bib5)] to pursue a
+    higher precision and reduced memory, however, it comes at the cost of an extremely
+    complex computation strategy which ultimately leads to even worse speed compared
+    with FP16.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | BS | Hugging Face | Ours |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | FP16 | 4-bit | W4A8 | vs. HF F16 | vs. HF 4-bit |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-7B | 1 | 3439 | 6602 | 751 | 4.57$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-7B | 4 | 3769 | 10790 | 935 | 4.03$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-13B | 1 | 4578 | 8596 | 1139 | 4.01$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2-13B | 4 | 5610 | 19435 | 1447 | 3.87$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 7: Latency comparison (in $ms$) with Hugging Face.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B Additional Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: B.1 Comparison on MMLU
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Table. [8](#A2.T8 "Table 8 ‣ B.1 Comparison on MMLU ‣ Appendix B Additional
+    Experiments ‣ A Speed Odyssey for Deployable Quantization of LLMs") gives OdysseyLLM
+    compared with the state-of-the-art methods on MMLU, which are mostly comparable
+    with the W4A8 solution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Method | BitWidth | Hums. | STEM | Social | Other | Avg |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMa-1-7B | FP16 | W16A16 | 33.65% | 31.05% | 38.22% | 38.43% | 35.19% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ-g128 | W4A16 | 31.86% | 30.62% | 35.72% | 38.62% | 34.00% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ-g128 | W4A16 | 31.56% | 29.82% | 36.69% | 36.34% | 33.41% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant^∗ | W8A8 | 33.90% | 30.75% | 37.80% | 40.19% | 35.53% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OdysseyLLM | W4A8 | 32.56% | 30.38% | 35.13% | 38.49% | 34.03% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMa-1-13B | FP16 | W16A16 | 44.61% | 37.08% | 54.05% | 53.52% | 47.12%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ-g128 | W4A16 | 43.23% | 34.86% | 51.41% | 51.20% | 45.06% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ-g128 | W4A16 | 42.98% | 36.28% | 52.42% | 51.76% | 45.63% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant^∗ | W8A8 | 44.25% | 35.98% | 52.97% | 52.38% | 46.26% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OdysseyLLM | W4A8 | 42.15% | 35.69% | 51.48% | 50.74% | 44.79% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMa-1-65B | FP16 | W16A16 | 61.76% | 51.99% | 73.29% | 67.58% | 63.53%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ-g128 | W4A16 | 60.66% | 50.93% | 71.53% | 66.47% | 62.29% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ-g128 | W4A16 | 60.40% | 51.16% | 71.66% | 66.72% | 62.34% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant^∗ | W8A8 | 61.23% | 51.06% | 71.73% | 67.27% | 62.74% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OdysseyLLM | W4A8 | 59.72% | 48.64% | 71.56% | 65.76% | 61.33% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMa-2-7B | FP16 | W16A16 | 36.92% | 30.75% | 40.92% | 45.68% | 38.49% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ-g128 | W4A16 | 32.62% | 31.64% | 39.71% | 42.66% | 36.28% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ-g128 | W4A16 | 36.20% | 31.88% | 40.23% | 44.51% | 38.07% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant^∗ | W8A8 | 34.77% | 29.62% | 38.58% | 43.46% | 36.50% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OdysseyLLM | W4A8 | 34.41% | 28.83% | 40.66% | 41.39% | 36.19% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMa-2-13B | FP16 | W16A16 | 54.43% | 44.27% | 63.41% | 60.76% | 55.68%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ-g128 | W4A16 | 50.63% | 42.21% | 62.01% | 59.22% | 53.30% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ-g128 | W4A16 | 50.44% | 43.34% | 62.14% | 60.27% | 53.75% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant^∗ | W8A8 | 53.28% | 44.14% | 63.54% | 60.86% | 55.31% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OdysseyLLM | W4A8 | 50.78% | 42.41% | 61.13% | 59.04% | 53.15% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMa-2-70B | FP16 | W16A16 | 65.16% | 57.79% | 80.44% | 74.61% | 69.11%
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ-g128 | W4A16 | 64.44% | 57.89% | 79.62% | 73.60% | 68.47% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ-g128 | W4A16 | 64.02% | 56.66% | 80.11% | 74.06% | 68.28% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant^∗ | W8A8 | 63.53% | 56.00% | 79.23% | 73.81% | 67.73% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OdysseyLLM | W4A8 | 63.12% | 55.40% | 78.29% | 72.49% | 66.95% |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 8: Comparison on MMLU. ^∗: per token for activations and per channel
+    for weights'
+  prefs: []
+  type: TYPE_NORMAL

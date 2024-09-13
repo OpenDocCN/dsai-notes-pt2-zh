@@ -1,0 +1,1392 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:52:30'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: Effectively Compress KV Heads for LLM
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2406.07056](https://ar5iv.labs.arxiv.org/html/2406.07056)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Hao Yu^(1,2)  Zelan Yang³  Shen Li³  Yong Li³  Jianxin Wu^(1,2)
+  prefs: []
+  type: TYPE_NORMAL
+- en: ¹State Key Laboratory for Novel Software Technology, Nanjing University
+  prefs: []
+  type: TYPE_NORMAL
+- en: ²School of Artificial Intelligence, Nanjing University  ³Alibaba Inc.
+  prefs: []
+  type: TYPE_NORMAL
+- en: yuh@lamda.nju.edu.cn
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{yangzelan.yzl,litan.ls,jiufeng.ly}@alibaba-inc.com'
+  prefs: []
+  type: TYPE_NORMAL
+- en: wujx2001@gmail.com J. Wu is the corresponding author.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The advent of pre-trained large language models (LLMs) has revolutionized various
+    natural language processing tasks. These models predominantly employ an auto-regressive
+    decoding mechanism that utilizes Key-Value (KV) caches to eliminate redundant
+    calculations for previous tokens. Nevertheless, as context lengths and batch sizes
+    increase, the linear expansion in memory footprint of KV caches becomes a key
+    bottleneck of LLM deployment, which decreases generation speeds significantly.
+    To mitigate this issue, previous techniques like multi-query attention (MQA) and
+    grouped-query attention (GQA) have been developed, in order to reduce KV heads
+    to accelerate inference with comparable accuracy to multi-head attention (MHA).
+    Despite their effectiveness, existing strategies for compressing MHA often overlook
+    the intrinsic properties of the KV caches. In this work, we explore the low-rank
+    characteristics of the KV caches and propose a novel approach for compressing
+    KV heads. In particular, we carefully optimize the MHA-to-GQA transformation to
+    minimize compression error, and to remain compatible with rotary position embeddings
+    (RoPE), we also introduce specialized strategies for key caches with RoPE. We
+    demonstrate that our method can compress half or even three-quarters of KV heads
+    while maintaining performance comparable to the original LLMs, which presents
+    a promising direction for more efficient LLM deployment in resource-constrained
+    environments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In recent years, the emergence of pre-trained large language models (LLMs) [[16](#bib.bib16);
+    [34](#bib.bib34); [39](#bib.bib39)] has been a cornerstone in redefining performance
+    benchmarks across various natural language processing (NLP) tasks. These models
+    frequently exhibit capabilities that are on par with human levels of comprehension
+    and generation. In general, LLMs are built upon the neural structure of Transformers [[35](#bib.bib35)],
+    which requires a computational cost quadratic to the input sequence’s length and
+    makes long sequence inference intractable. To mitigate this issue, the auto-regressive
+    decoding LLMs support Key-Value (KV) caches, i.e., to cache the previous context’s
+    intermediate key and value states in memory. KV caches can avoid redundant computation
+    of previous tokens, thereby expediting the inference process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Nevertheless, all outputs of key and value weights for each block need to be
+    cached during inference, thus KV cache parameters are often extremely high. As
+    a result, the expansion of sequence lengths and batch sizes often causes a linear
+    increase in memory footprint for past KV caches, further resulting in the decoding
+    process during LLM inference being memory-bound [[19](#bib.bib19)]. Furthermore,
+    the current trend to support longer contexts exacerbates this issue. Consequently,
+    a sharp increase in KV caches can significantly slow down model inference and
+    such a heavy memory footprint presents a key challenge in LLM deployments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To address these challenges, researchers proposed multi-query attention (MQA) [[30](#bib.bib30)]
+    and grouped-query attention (GQA) [[1](#bib.bib1)], which use only one key-value
+    head to correspond to all or multiple query heads, respectively. MQA and GQA can
+    greatly reduce the sizes of KV caches during LLM inference, and achieve comparable
+    results as the original MHA mechanism. In particular, to effectively reduce KV
+    heads, the original GQA paper compares three compression strategies, i.e., randomly
+    keeping several heads, specifying the first head for each group, and averaging
+    KV heads in one group. They showed that directly mean-pooling KV head weights
+    achieves the best accuracies. However, we find that this compression strategy
+    ignores the inherent characteristics of KV caches, thus resulting in suboptimal
+    model initialization. Therefore, all the training data and abundant GPU times
+    are needed to fine-tune the compressed model after averaging the KV heads. This
+    high computing resource requirement presents a huge challenge to compressing KV
+    heads. As a direct consequence, attempts to compress KV heads of pre-trained LLMs
+    remain rare, and researchers now prefer to train GQA models or compress KV caches
+    directly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this paper, we investigate the low-rank property of KV caches and our observations
+    reveal that only a small number of top singular values need to be retained to
+    keep most of the KV cache energy. Inspired by this finding, we propose to compress
+    KV heads with low-rank decomposition. Our idea stems from a simple but crucial
+    realization, i.e., when compressing a deep learning model, we should focus on
+    minimizing the loss of the model outputs, rather than the model weights [[12](#bib.bib12)].
+    We first group KV heads and perform SVD for each group of KV caches. Then we calculate
+    low-rank approximations for those KV caches. In general, these low-rank compression
+    weights can be incorporated into the original model to convert MHA into GQA pattern
+    seamlessly. In addition, when LLM applies RoPE, the original method of weight
+    fusing to reduce key heads will be invalid. To solve this issue, we propose several
+    special strategies. In this case, although the compressed weights could not be
+    incorporated into the original model, those key caches are successfully compressed
+    and the generation speed of LLMs can still be improved.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Compared with average pooling KV head or low-rank approximating head weights
+    directly, our work can find a better initial weight for a compressed model, so
+    KV caches can be effectively compressed and fewer training samples and computing
+    resources are needed to restore the precision of the compressed model. We list
+    our contributions as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We carefully study the characteristics of KV caches and prove the low-rank property
+    of KV caches. That is, keeping only a small number of singular values in the KV
+    caches can preserve most of the context information.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To effectively compress KV caches, we propose a novel framework to reduce KV
+    heads, i.e., convert the original MHA into GQA pattern by low-rank decomposition.
+    Besides, we also propose special strategies to deal with the attention layer with
+    RoPE.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Extensive experiments have proved the effectiveness of our approach. On different
+    LLM series models, our framework can compress half and even three-quarters of
+    KV heads, and maintain comparable results as the original models, proving its
+    wide applicability and high efficiency in different scenarios.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 2 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Our work is connected to several themes in the literature, which we describe
+    next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.1 Large Language Models (LLMs)
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Large language models [[3](#bib.bib3); [16](#bib.bib16); [34](#bib.bib34); [39](#bib.bib39);
+    [7](#bib.bib7)] are designed to understand and generate human languages. In recent
+    years LLMs have developed rapidly and consistently show excellent performances
+    across various NLP tasks. These breakthroughs in performance can be partly attributed
+    to the powerful modeling capabilities of its multi-head attention mechanism. To
+    introduce positional information into attention, researchers have proposed various
+    positional embeddings. In this paper, we will show that our framework can easily
+    handle those models with different positional embeddings.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2 Weights Compression for Transformers
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In general, the common building block of LLM is transformer [[35](#bib.bib35)],
+    which tends to have a large number of parameters and is computationally intensive.
+    Weight compression technology can significantly reduce memory footprint and speed
+    up inference. Therefore, there is a lot of research work trying to compress transformer
+    models by various strategies, such as pruning, low-rank approximation, knowledge
+    distillation, etc. Mickel et al. [[22](#bib.bib22)] found that only a few heads
+    have a significant effect on translation tasks, and most heads can be pruned without
+    any precision loss. AFM [[12](#bib.bib12)] low-rank decomposed fully-connected
+    (FC) weights by PCA. GQA [[1](#bib.bib1)] introduced grouped-query attention and
+    averaged KV head weights to convert a multi-head checkpoint into a multi-query
+    checkpoint. LLM-Pruner [[37](#bib.bib37)] applied gradients to estimate the importance
+    of model weights and pruned less significant coupled structures within the model
+    based on this estimation. MiniLLM [[11](#bib.bib11)] proposed the reverse KL loss
+    to distill LLMs into smaller language models. To the best of our knowledge, although
+    weight compression is widespread, this is the first attempt to compress LLM’s
+    KV heads with low-rank approximation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.3 KV Cache Optimization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: KV cache compression is harder than weight compression since they are more sensitive
+    and are related to model inputs. Some previous works tried to quantize KV caches.
+    To achieve data-free distillation, LLM-QAT [[18](#bib.bib18)] leveraged generations
+    by a pre-trained model and quantized KV caches. Some previous works dropped unimportant
+    tokens with pre-designed criteria. H2O [[40](#bib.bib40)] and FastGen [[10](#bib.bib10)]
+    utilized accumulated attention scores for token importance and effectively reduced
+    the cache size by dropping tokens with lower scores. Scissorhands [[19](#bib.bib19)]
+    found only some pivotal tokens have a substantial influence at one step and significantly
+    influence future generations. Gear [[15](#bib.bib15)] first quantized KV caches
+    and then employed a low-rank matrix to approximate the quantization error. Multi-head
+    Latent Attention (MLA) [[7](#bib.bib7)] introduced low-rank key-value joint compression,
+    which applied a latent vector to generate KV caches implicitly and required LLM
+    to be trained from scratch, while our focus is on optimizing the existing MHA
+    mechanism. The effort to compress attention heads remains scarce nowadays, and
+    our work may potentially be combined with these previous efforts to achieve a
+    higher compression ratio.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Methods
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We describe our framework in this section. First we introduce the traditional
+    MHA & GQA algorithms, and the naive algorithm that converts MHA to GQA. Then we
+    present our finding that KV caches generally emerge as a low-rank characteristic.
+    Based on our finding, we present a KV head compression framework that uses SVD
+    to low-rank approximate KV caches. In addition, we also present a comparison method
+    that directly approximates KV head weights with SVD. Finally, we propose several
+    special policies to deal with RoPE.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Preliminaries
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Transformer applies a multi-head attention (MHA) mechanism to capture different
+    subspace representations inside the input sequence. Giving an input $x\in\mathbb{R}^{l\times
+    d}$ heads, i.e.,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | $\displaystyle\operatorname{MHA}(x)=[H_{1},\dots,H_{h}]W_{O},$ |  |
+    (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle H_{i}=\operatorname{Softmax}(Q_{i}K_{i}^{\top}/\sqrt{d_{h}})V_{i},$
+    |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $[\cdot]$ at every head and every layer are cached for subsequent generation,
+    which results in the initial KV caches, i.e.,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle K^{(0)}$ |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle V^{(0)}$ |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: Here $K^{(0)},V^{(0)}\in\mathbb{R}^{l\times d}$. This strategy avoids the recalculation
+    of previous tokens and significantly increases the generation speed. However,
+    the sizes of KV caches can increase dramatically in long context inference, which
+    results in speed degradation due to heavy memory bandwidth overhead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It can be seen that the sizes of KV caches are proportional to the number of
+    KV heads. To effectively reduce their memory footprint, previous researchers proposed
+    multi-query attention (MQA) [[30](#bib.bib30)] and grouped-query attention (GQA) [[1](#bib.bib1)].
+    In the original GQA paper, to compress MHA into the GQA mechanism, they directly
+    average key and value head weights in each group. $h$ matrices in GQA are calculated
+    by
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\tilde{W}_{K_{i}}$ |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\tilde{W}_{V_{i}}$ |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $i\in\{0,1,\cdots,g-1\}$. However, after analyzing KV caches, we identify
+    that the current strategy is suboptimal as it overlooks the intrinsic characteristics
+    of KV caches. Specifically, we have discovered that KV caches typically exhibit
+    a low-rank property. Based on our findings, we propose a more efficient compression
+    framework.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 KV Caches are Low-rank!
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To reveal the low-rank property of KV caches, we construct a small verification
+    experiment, i.e., we evaluate LLaMA2-7B [[34](#bib.bib34)] on the C4 [[27](#bib.bib27)]
+    training dataset. In particular, we sample 128 sequences from the C4 training
+    set and each sample is 2048 tokens long. We perform model inference on LLaMA2
+    and collect KV caches. KV cache sizes in each block are 262144$\times$4096\. Then
+    we perform SVD on those caches.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure [1](#S3.F1 "Figure 1 ‣ 3.3 Effectively Transfer MHA to GQA ‣ 3 Methods
+    ‣ Effectively Compress KV Heads for LLM") shows the percentage of the sum of these
+    top singular values to the sum of all singular values when 25% and 50% of the
+    highest singular values are retained. In particular, we report the rank of key
+    cache that before (i.e., K Cache w/o RoPE) and after (i.e., K Cache w/ RoPE) performing
+    RoPE. Two conclusions can be drawn from this experiment. First, only 25% of the
+    highest singular values need to be retained to get most of the energy. Second,
+    RoPE generally reduces the rank of key cache. Those phenomenons indicate that
+    for LLMs, KV caches are likely to be low-rank. To ensure that most of the energy
+    of KV caches is preserved, we only need to keep part of the output dimensions
+    of key and value head weights.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Effectively Transfer MHA to GQA
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/59d216a61ae1b649bd82b1aa43a2b3f7.png)![Refer to caption](img/f0daef4dba0638af6c838e5d16828aa9.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Ratio of energy kept in each KV cache for LLaMA2-7B when 25% (left)
+    and 50% (right) dimensions are retained. The $x$-axis is the block index.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/527d526a361472c98b467fd108c8e801.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Illustration of compressing key heads into GQA pattern. Note that
+    the strategy of compressing value heads is similar to this.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now we present our compression algorithm. Inspired by PCA [[36](#bib.bib36)]
+    and AFM [[12](#bib.bib12)], we compress KV caches by taking advantage of low-rank
+    approximation and then incorporate compression weights into the model. We illustrate
+    how to compress the key heads in Figure [2](#S3.F2 "Figure 2 ‣ 3.3 Effectively
+    Transfer MHA to GQA ‣ 3 Methods ‣ Effectively Compress KV Heads for LLM"). The
+    strategy of reducing value heads is similar to this, except that those compression
+    weights are fused into the value matrices $W_{V}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In particular, our compression algorithm needs a pre-designed dataset to calculate
+    compression weights. Given an MHA checkpoint with $h$, i.e.,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\tilde{K}_{i}$ |  | (7) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\tilde{V}_{i}$ |  | (8) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\tilde{K}_{i},\tilde{V}_{i}\in\mathbb{R}^{l\times td_{h}}$ as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\tilde{K}_{i}$ |  | (9) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\tilde{V}_{i}$ |  | (10) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\Psi^{i}_{d_{h}},\Omega^{i}_{d_{h}}\in\mathbb{R}^{d_{h}\times td_{h}}$-th
+    key and value matrices in GQA as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\tilde{W}_{K_{i}}$ |  | (11) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\tilde{W}_{V_{i}}$ |  | (12) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\tilde{W}_{K_{i}},\tilde{W}_{V_{i}}\in\mathbb{R}^{d\times d_{h}}$, then
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\tilde{W}_{Q_{i}}$ |  | (13) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\tilde{W}_{O_{i}}$ |  | (14) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\Psi^{p}_{d_{h},q},\Omega^{p}_{d_{h},q}\in\mathbb{R}^{d_{h}\times d_{h}}$,
+    respectively. We name this method SVD-*a*, as it performs SVD on the output activations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Except for this strategy which compresses KV heads with calibration sets, another
+    low-rank compression strategy that does not require data is to directly perform
+    SVD on KV weights, i.e.,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\hat{W}_{K_{i}}$ |  | (15) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\hat{W}_{V_{i}}$ |  | (16) |'
+  prefs: []
+  type: TYPE_TB
+- en: Then we perform SVD on $\hat{W}_{K_{i}}$. We treat this strategy as a baseline
+    method and name it SVD-*w*, as it low-rank decomposes model weight. Later we will
+    show that this SVD-*w* is not as effective as our approach that uses KV caches’
+    low-rank characteristic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After obtaining those compressed models, we use LoRA [[14](#bib.bib14)] to fine-tune
+    them. We will show that by removing half or even three-quarters of KV heads, our
+    compressed LLMs can still achieve comparable accuracies as the original model.
+    Note that our compression method is orthogonal to the fine-tuning strategy. If
+    more computing resources are available, full-parameter fine-tuning is also a viable
+    strategy to potentially achieve better accuracy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.4 Deal with RoPE
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: There is a special case when LLMs adopt RoPE [[32](#bib.bib32)], which inserts
+    a relative position embedding between $W_{Q}$. At this time, the attention score
+    calculation becomes
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle q_{m}k_{n}^{\top}=(x_{m}W_{q}R_{\theta,m}^{d})(x_{n}W_{k}R_{\theta,n}^{d})^{\top},$
+    |  | (17) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $x_{i}\in\mathbb{R}^{1\times d}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To deal with this difficulty, we come up with several strategies. First, we
+    do not divide key heads but directly calculate $\Psi$ during inference. Although
+    the compressed model is no longer in the GQA pattern, key cache compression is
+    achieved. Therefore, the original calculation becomes
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (18) |'
+  prefs: []
+  type: TYPE_TB
+- en: In particular, we will calculate $(x_{m}W_{q}R_{\theta,m}^{d})\Psi_{d_{h}}^{\top}$
+    only contains one token during the generation process, but key cache often has
+    many tokens. RoPE does not involve value caches, so the compression strategy for
+    value caches remains the same. Later our experiments will prove that all our three
+    strategies can reduce KV caches with faster generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experiment
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We now evaluate our methods in this section. More results can be found in the
+    appendix.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Settings
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Foundation models. We evaluate our framework on the 7B1 model of BLOOMZ [[24](#bib.bib24)],
+    and the 7B, 13B models of LLaMA2 [[34](#bib.bib34)]. BLOOMZ is BLOOM’s [[16](#bib.bib16)]
+    supervised fine-tuning (SFT) version using the open-sourced xP3 [[24](#bib.bib24)]
+    dataset.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compression. For BLOOMZ-7B1, we sampled 1‰ data from the xP3 dataset. The original
+    xP3 includes 83.6M samples, thus we randomly sampled 83.6K sampled from it. For
+    LLaMA2 models, following QLoRA [[8](#bib.bib8)], we use the FLANv2 [[20](#bib.bib20)]
+    dataset and extract 23K data from it. We concatenate the input and output of each
+    sample for inference, and then collect KV caches in each block to calculate compression
+    weights.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Here we reduce half and three-quarters KV heads. The original BLOOMZ-7B1 and
+    LLaMA2-7B have MHA structures that contain 32 heads, and we compress all attention
+    layers in the models to 16 or 8 heads. For BLOOMZ-7B1, we continue to reduce KV
+    heads into 4\. LLaMA2-13B contains 40 heads and we reduce them to 20 or 10 heads.
+    Note that BLOOMZ uses ALiBi [[26](#bib.bib26)] and does not involve RoPE so it
+    is a standard GQA mechanism after compression.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fine-tuning. We apply LoRA [[14](#bib.bib14)] to fine-tune the compressed model.
+    For 7B size models, we set LoRA’s $r=256$80G A100 GPU to fine-tune the compressed
+    model and set batch size per device as 1\. We set the gradient accumulation steps
+    as 16 and the LoRA dropout rate as 0.05\. Weight decay is 0.05 and AdamW [[21](#bib.bib21)]
+    is used. Note for the BLOOMZ-7B1 model, we continue to apply the same 83.6K sub-dataset
+    to fine-tune the compressed model. For LLaMA2 models, we select 232K data from
+    FLANv2 [[20](#bib.bib20)] as the training dataset.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Evaluation metrics. For BLOOMZ-7B1, we follow the evaluation metrics of the
+    original paper, i.e., we evaluate the zero-shot accuracy on XCOPA [[25](#bib.bib25)],
+    XNLI [[6](#bib.bib6)], XWinoGrad [[33](#bib.bib33)] and XStoryCloze [[17](#bib.bib17)]
+    with Bulgarian (BG), German (DE), Greek (EL), Russian(RU), Thai (TH), Turkish
+    (TR), Japanese (JP), Estonian (ET), Haitian (HT), Italian (IT), Quechua (QU) and
+    Burmese (MY) language questions and English prompts. For LLaMA2 models, we evaluate
+    the perplexity on WikiText2 [[31](#bib.bib31)] and C4 [[27](#bib.bib27)]. We further
+    assess the zero-shot commonsense question answering (QA) ability on tasks covering
+    SIQA [[29](#bib.bib29)], HellaSwag [[38](#bib.bib38)], PIQA [[2](#bib.bib2)],
+    WinoGrande [[28](#bib.bib28)], ARC [[5](#bib.bib5)], BoolQ [[4](#bib.bib4)], and
+    OpenBookQA [[23](#bib.bib23)]. We also evaluate both the zero-shot and five-shot
+    performance of the LLMs on the Massively Multitask Language Understanding (MMLU)
+    benchmark [[13](#bib.bib13)]. It consists of 57 language tasks including humanities,
+    STEM, social science, etc. We adopt lm-eval-harness [[9](#bib.bib9)] to produce
+    the accuracy results. Besides, we also report throughput in an 80G A100 GPU. Since
+    the prefilling stage is computation-bound while the decoding stage is memory-bound,
+    and here our goal is to compress KV caches, we set the context length to 2048
+    and calculate throughput when generating the 2050th token for simplicity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Main Results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We report the number (#) of KV heads, throughput, and accuracies of BLOOMZ-7B1
+    and LLaMA2 in Tables [1](#S4.T1 "Table 1 ‣ 4.2 Main Results ‣ 4 Experiment ‣ Effectively
+    Compress KV Heads for LLM") and [2](#S4.T2 "Table 2 ‣ 4.2 Main Results ‣ 4 Experiment
+    ‣ Effectively Compress KV Heads for LLM"), respectively. Further accuracies of
+    eight zero-shot commonsense question answering datasets are shown in Table [3](#S4.T3
+    "Table 3 ‣ 4.2 Main Results ‣ 4 Experiment ‣ Effectively Compress KV Heads for
+    LLM"). Note that for BLOOMZ-7B1, the ‘AVG.’ column is not the direct average accuracy
+    of the four datasets, as each dataset contains a different number of sub-datasets.
+    Therefore, we report the average accuracy of those sub-datasets. Detailed results
+    are shown in the appendix. For LLaMA2 models, we abbreviate WikiText2, HellaSwag,
+    WinoGrande, and OpenBookQA to W2, HLSW, WG, and OBQA, respectively. ARC-e and
+    ARC-c stand for ARC-easy and ARC-challenge tasks, respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: Performances of BLOOMZ-7B1 with our KV heads compression framework.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| #KV Heads | Throughput (token/s) | Accuracy | AVG. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| XNLI | XWinoGrad | XCOPA | XStoryCloze |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 32 | 8.56 | 39.73 | 51.49 | 51.03 | 54.25 | 47.25 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | 14.41 | 39.48 | 51.47 | 52.97 | 54.06 | 47.85 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 23.24 | 39.03 | 50.45 | 51.60 | 52.37 | 46.84 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 34.78 | 38.45 | 50.29 | 50.27 | 50.89 | 45.92 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: Performances of LLaMA2 models with our KV heads compression framework.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | #KV Heads | Throughput (token/s) | Perplexity ($\downarrow$) | MMLU
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2 | C4 | 0-shot | 5-shot |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA2-7B | 32 | 8.05 | 5.47 | 6.98 | 41.79 | 45.82 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | 13.41 | 7.08 | 9.12 | 48.32 | 48.74 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 20.81 | 9.17 | 11.24 | 44.62 | 45.54 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA2-13B | 40 | 5.04 | 4.88 | 6.47 | 52.12 | 55.17 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 20 | 8.60 | 6.51 | 8.01 | 53.65 | 54.71 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10 | 13.93 | 8.40 | 9.86 | 49.65 | 50.73 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 3: Accuracies in the commonsense QA datasets with different #KV heads
+    on LLaMA2 models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | #KV Heads | BoolQ | PIQA | SIQA | HLSW | WG | ARC-e | ARC-c | OBQA
+    | Avg. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA2-7B | 32 | 77.77 | 79.05 | 32.91 | 76.00 | 69.22 | 74.58 | 46.25 |
+    44.20 | 62.50 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | 83.61 | 77.97 | 32.80 | 72.53 | 73.56 | 78.45 | 49.66 | 46.40 | 64.37
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 80.58 | 76.77 | 32.91 | 66.67 | 67.88 | 73.32 | 43.34 | 43.80 | 60.66
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA2-13B | 40 | 80.61 | 80.52 | 33.11 | 79.38 | 72.30 | 77.40 | 49.06 |
+    45.20 | 64.70 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 20 | 85.78 | 80.41 | 32.04 | 77.84 | 74.59 | 80.22 | 54.35 | 46.80 | 66.50
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10 | 83.24 | 78.45 | 33.11 | 73.00 | 70.80 | 75.97 | 49.06 | 41.80 | 63.18
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: As these results exhibited, when compressing half of KV heads, our algorithm
+    can maintain the same or even higher accuracy, while guaranteeing more than 50%
+    throughput improvement at the decoding process. This phenomenon indicates that
+    our framework is a powerful solution in scenarios where memory efficiency is required.
+    When further compressing three-quarters of KV heads, BLOOM-7B1 and LLaMA2-13B
+    lost more KV cache information, resulting in a slight accuracy drop. However,
+    those results are still comparable with the original models’ accuracies. These
+    results demonstrate that our approach is an effective strategy to compress KV
+    heads and reduce KV cache sizes, thereby alleviating the heavy memory bandwidth
+    pressure during the LLM generation phase.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 Ablation Studies
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We further perform several analyses to explore the impact of different modules
+    of our method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4: Performances of LLaMA2 models with different initialization strategies.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| #KV Heads | Methods | Stage | Perplexity ($\downarrow$) | MMLU | QA AVG.
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2 | C4 | 0-shot | 5-shot |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | Mean-pool | Initialization | 1079.43 | 625.68 | 22.94 | 24.94 | 34.88
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fine-tune | 1079.43 | 625.68 | 35.25 | 35.41 | 56.57 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SVD-*w* | Initialization | 807.62 | 624.78 | 23.11 | 23.17 | 35.46 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fine-tune | 10.44 | 12.28 | 42.46 | 39.38 | 62.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SVD-*a* | Initialization | 13.57 | 18.57 | 28.05 | 25.97 | 48.87 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fine-tune | 7.08 | 9.12 | 48.32 | 48.74 | 64.37 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | Mean-pool | Initialization | 4113.79 | 2381.27 | 25.00 | 24.95 | 34.69
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fine-tune | 63.32 | 37.87 | 26.63 | 25.30 | 40.79 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SVD-*w* | Initialization | 3888.63 | 2350.09 | 23.42 | 22.94 | 35.43 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fine-tune | 15.44 | 17.13 | 24.30 | 23.69 | 55.86 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SVD-*a* | Initialization | 194.61 | 141.84 | 23.61 | 23.93 | 37.59 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fine-tune | 9.17 | 11.24 | 44.62 | 45.54 | 60.66 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 5: Performances of LLaMA2 models with different initialization data sizes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| #KV Heads | Data | Perplexity ($\downarrow$) | MMLU | QA AVG. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2 | C4 | 0-shot | 5-shot |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | 23K | 13.57 | 18.57 | 28.05 | 25.97 | 48.87 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 46K | 13.83 | 18.89 | 27.96 | 25.89 | 48.50 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 92K | 13.93 | 18.96 | 28.11 | 25.98 | 48.66 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 232K | 13.92 | 18.93 | 27.89 | 25.87 | 48.70 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 23K | 194.61 | 141.84 | 23.61 | 23.93 | 37.59 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 46K | 197.23 | 142.80 | 23.76 | 23.81 | 37.46 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 92K | 202.05 | 145.44 | 23.62 | 23.79 | 37.34 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 232K | 202.38 | 145.43 | 23.74 | 24.01 | 37.48 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 6: Performances of LLaMA2 models with different fine-tuning data sizes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| #KV Heads | Data | Perplexity ($\downarrow$) | MMLU | QA AVG. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2 | C4 | 0-shot | 5-shot |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | 23K | 7.29 | 9.41 | 43.49 | 44.16 | 61.93 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 46K | 7.38 | 9.35 | 42.42 | 44.62 | 61.53 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 92K | 7.26 | 9.20 | 45.00 | 46.36 | 62.57 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 232K | 7.08 | 9.12 | 48.32 | 48.74 | 64.37 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 23K | 9.62 | 12.11 | 32.71 | 35.37 | 57.13 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 46K | 9.48 | 11.84 | 39.93 | 40.10 | 57.53 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 92K | 9.73 | 11.50 | 40.53 | 42.90 | 59.04 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 232K | 9.17 | 11.24 | 44.62 | 45.54 | 60.66 |'
+  prefs: []
+  type: TYPE_TB
+- en: Comparing different compression strategies. Here we compare three different
+    compression strategies, namely directly mean-pooling KV head weights [[1](#bib.bib1)],
+    performing SVD for KV head weights (i.e., SVD-*w*), and our methods (i.e., SVD-*a*).
+    All other settings are consistent except for the compression strategy. We apply
+    LLaMA2-7B with 16 and 8 KV heads and report the results of direct compression
+    (i.e., the ‘Initialization’ rows) and further fine-tuning (i.e., the ‘Fine-tune’
+    rows). Due to page limitation, we report the average accuracy of eight zero-shot
+    commonsense QA datasets here (i.e., the ‘QA AVG.’ column).
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we can see from Table [4](#S4.T4 "Table 4 ‣ 4.3 Ablation Studies ‣ 4 Experiment
+    ‣ Effectively Compress KV Heads for LLM"), both mean-pooling and SVD-*w* lead
+    to collapse before fine-tuning, and our method far exceeds them both before &
+    after fine-tuning. Those results reveal the effectiveness of our algorithm. That
+    is, with limited computing and data resources, our SVD-*a* can significantly reduce
+    KV cache sizes and are very practical, while other strategies are not.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Influence of different data sizes for initialization and fine-tuning. Here we
+    investigate the effect of the size of different data sets. Similarly, we apply
+    LLaMA2-7B with 16 and 8 KV heads as the baseline. In particular, in our original
+    settings, we calculate the compression weights with 23K samples for initialization
+    and fine-tune the compression model with 232K samples. Here we sample 46K and
+    92K data from the original FLANv2 dataset and calculate the compression weights.
+    Then based on the model compressing with 23K samples, we continue to fine-tune
+    the model with 23K, 46K, 92K, and 232K samples respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Results of different dataset sizes on model initialization and fine-tuning are
+    shown in Tables [5](#S4.T5 "Table 5 ‣ 4.3 Ablation Studies ‣ 4 Experiment ‣ Effectively
+    Compress KV Heads for LLM") and [6](#S4.T6 "Table 6 ‣ 4.3 Ablation Studies ‣ 4
+    Experiment ‣ Effectively Compress KV Heads for LLM"), respectively. As we can
+    see, the data size required for initialization is not high, while the fine-tuning
+    process is relatively more data-hungry. During initialization, excess data does
+    not necessarily yield additional benefits. However, the more data for fine-tuning,
+    the better the compression model will perform. This phenomenon reveals that our
+    method can further achieve higher precision if there are more data and computational
+    resources.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 7: LLaMA2: different epoch v.s. data.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| #KV Heads | Data | Epoch | Perplexity ($\downarrow$) | MMLU | QA AVG. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W2 | C4 | 0-shot | 5-shot |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | 46K | 1 | 7.38 | 9.35 | 42.42 | 44.62 | 61.53 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 46K | 2 | 7.64 | 9.60 | 45.37 | 45.77 | 62.90 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 92K | 1 | 7.26 | 9.20 | 45.00 | 46.36 | 62.57 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 46K | 1 | 9.48 | 11.84 | 39.93 | 40.10 | 57.53 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 46K | 2 | 9.56 | 12.72 | 41.57 | 41.77 | 58.76 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 92K | 1 | 9.73 | 11.50 | 40.53 | 42.90 | 59.04 |'
+  prefs: []
+  type: TYPE_TB
+- en: Enlarge data sizes v.s. increase training epochs. Here we investigate the effect
+    of training time on the results, i.e., given the same training GPU resources,
+    whether it is more beneficial to continue enlarging the training dataset size
+    or increasing the training epoch. Similarly, we train the compressed LLaMA2-7B
+    with 2 epoch and 46K training samples, and compare the results of training 1 epoch
+    with 92K data. The results are shown in Table [7](#S4.T7 "Table 7 ‣ 4.3 Ablation
+    Studies ‣ 4 Experiment ‣ Effectively Compress KV Heads for LLM"). It can be seen
+    that the addition of high-quality samples is more helpful to the model accuracies
+    than increasing training epochs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Conclusion, Limitation, and Future Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this paper, we proposed a low-rank decomposition framework to compress KV
+    heads. We first discovered that KV caches are low-rank, and based on this finding
+    we converted the original MHA architecture to GQA mechanism by low-rank decomposition.
+    We also proposed several special strategies to handle the attention layer with
+    RoPE. With half or even three-quarters of KV cache compressed, our approach can
+    recover LLM’s accuracy with limited training and data resources, while this is
+    not possible with the previous KV head compression method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although our compression framework can significantly reduce KV caches and improve
+    the speed of LLM generation, our approach currently has some shortcomings. First
+    of all, when our method is used in the attention layer with RoPE, the key head
+    compression weights cannot be incorporated into the original model, resulting
+    in additional parameters and computational overhead, which will slightly slow
+    down the prefill stage. So how to compress key heads with RoPE more elegantly
+    will be an interesting direction in the future. In addition, when heavily compressing
+    KV heads or the model size is too large, LLM’s accuracy will decrease to some
+    extent. Therefore, how to better deal with these situations is also a future direction.
+    Besides, our approach can potentially be combined with previous KV cache compression
+    methods to achieve an extreme KV cache compression ratio, which we leave as a
+    viable direction for the future.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[1] Joshua Ainslie, James Lee-Thorp, Michiel de Jong, Yury Zemlyanskiy, Federico
+    Lebron, and Sumit Sanghai. GQA: Training generalized multi-query transformer models
+    from multi-head checkpoints. In Proceedings of the 2023 Conference on Empirical
+    Methods in Natural Language Processing, pages 4895–4901, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[2] Yonatan Bisk, Rowan Zellers, Ronan Le Bras, Jianfeng Gao, and Yejin Choi.
+    Piqa: Reasoning about physical commonsense in natural language. In Proceedings
+    of the AAAI Conference on Artificial Intelligence, pages 7432–7439, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[3] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan,
+    Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell,
+    et al. Language models are few-shot learners. In Advances in Neural Information
+    Processing Systems 33, volume 33, pages 1877–1901, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[4] Christopher Clark, Kenton Lee, Ming-Wei Chang, Tom Kwiatkowski, Michael
+    Collins, and Kristina Toutanova. Boolq: Exploring the surprising difficulty of
+    natural yes/no questions. In Proceedings of the Conference of the North American
+    Chapter of the Association for Computational Linguistics, pages 2924–2936, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[5] Peter Clark, Isaac Cowhey, Oren Etzioni, Tushar Khot, Ashish Sabharwal,
+    Carissa Schoenick, and Oyvind Tafjord. Think you have solved question answering?
+    try arc, the ai2 reasoning challenge. arXiv preprint arXiv:1803.05457, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[6] Alexis Conneau, Ruty Rinott, Guillaume Lample, Adina Williams, Samuel Bowman,
+    Holger Schwenk, and Veselin Stoyanov. XNLI: Evaluating cross-lingual sentence
+    representations. In Proceedings of the 2018 Conference on Empirical Methods in
+    Natural Language Processing, pages 2475–2485, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[7] DeepSeek-AI. DeepSeek-V2: A strong, economical, and efficient mixture-of-experts
+    language model. arXiv preprint arXiv:2405.04434, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[8] Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, and Luke Zettlemoyer. QLoRA:
+    Efficient finetuning of quantized llms. In Advances in Neural Information Processing
+    Systems 36, volume 36, pages 10088–10115, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[9] Leo Gao, Jonathan Tow, Stella Biderman, Sid Black, Anthony DiPofi, Charles
+    Foster, Laurence Golding, Jeffrey Hsu, Kyle McDonell, Niklas Muennighoff, et al.
+    A framework for few-shot language model evaluation, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[10] Suyu Ge, Yunan Zhang, Liyuan Liu, Minjia Zhang, Jiawei Han, and Jianfeng
+    Gao. Model tells you what to discard: Adaptive KV cache compression for LLMs.
+    In International Conference on Learning Representations, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[11] Yuxian Gu, Li Dong, Furu Wei, and Minlie Huang. MiniLLM: Knowledge distillation
+    of large language models. In International Conference on Learning Representations,
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[12] Yu Hao and Wu Jianxin. Compressing transformers: Features are low-rank,
+    but weights are not! In Proceedings of the AAAI Conference on Artificial Intelligence,
+    pages 11007–11015, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[13] Dan Hendrycks, Collin Burns, Steven Basart, Andy Zou, Mantas Mazeika,
+    Dawn Song, and Jacob Steinhardt. Measuring massive multitask language understanding.
+    In International Conference on Learning Representations, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[14] Edward J Hu, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang,
+    Lu Wang, Weizhu Chen, et al. LoRA: Low-rank adaptation of large language models.
+    In International Conference on Learning Representations, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[15] Hao Kang, Qingru Zhang, Souvik Kundu, Geonhwa Jeong, Zaoxing Liu, Tushar
+    Krishna, and Tuo Zhao. Gear: An efficient kv cache compression recipefor near-lossless
+    generative inference of llm. arXiv preprint arXiv:2403.05527, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[16] Teven Le Scao, Angela Fan, Christopher Akiki, Ellie Pavlick, Suzana Ilić,
+    Daniel Hesslow, Roman Castagné, Alexandra Sasha Luccioni, et al. Bloom: A 176b-parameter
+    open-access multilingual language model. arXiv preprint arXiv:2211.05100, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[17] Xi Victoria Lin, Todor Mihaylov, Mikel Artetxe, Tianlu Wang, Shuohui Chen,
+    Daniel Simig, Myle Ott, Naman Goyal, Shruti Bhosale, Jingfei Du, Ramakanth Pasunuru,
+    Sam Shleifer, Punit Singh Koura, Vishrav Chaudhary, Brian O’Horo, Jeff Wang, Luke
+    Zettlemoyer, Zornitsa Kozareva, Mona Diab, Veselin Stoyanov, and Xian Li. Few-shot
+    learning with multilingual generative language models. In Proceedings of the 2022
+    Conference on Empirical Methods in Natural Language Processing, pages 9019–9052,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[18] Zechun Liu, Barlas Oguz, Changsheng Zhao, Ernie Chang, Pierre Stock, Yashar
+    Mehdad, Yangyang Shi, Raghuraman Krishnamoorthi, and Vikas Chandra. LLM-QAT: Data-free
+    quantization aware training for large language models. arXiv preprint arXiv:2305.17888,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[19] Zichang Liu, Aditya Desai, Fangshuo Liao, Weitao Wang, Victor Xie, Zhaozhuo
+    Xu, Anastasios Kyrillidis, and Anshumali Shrivastava. Scissorhands: Exploiting
+    the persistence of importance hypothesis for llm kv cache compression at test
+    time. In Advances in Neural Information Processing Systems 36, volume 36, pages
+    52342–52364, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[20] Shayne Longpre, Le Hou, Tu Vu, Albert Webson, Hyung Won Chung, Yi Tay,
+    Denny Zhou, Quoc V Le, Barret Zoph, Jason Wei, et al. The flan collection: Designing
+    data and methods for effective instruction tuning. In International Conference
+    on Machine Learning, pages 22631–22648, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[21] Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization.
+    In International Conference on Learning Representations, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[22] Paul Michel, Omer Levy, and Graham Neubig. Are sixteen heads really better
+    than one? In Advances in Neural Information Processing Systems 32, volume 32,
+    2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[23] Todor Mihaylov, Peter Clark, Tushar Khot, and Ashish Sabharwal. Can a
+    suit of armor conduct electricity? a new dataset for open book question answering.
+    In Proceedings of the Conference on Empirical Methods in Natural Language Processing,
+    pages 2381–2391, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[24] Niklas Muennighoff, Thomas Wang, Lintang Sutawika, Adam Roberts, Stella
+    Biderman, Teven Le Scao, M Saiful Bari, Sheng Shen, Zheng Xin Yong, Hailey Schoelkopf,
+    et al. Crosslingual generalization through multitask finetuning. In Proceedings
+    of the 61st Annual Meeting of the Association for Computational Linguistics (Volume
+    1: Long Papers), pages 15991–16111, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[25] Edoardo Maria Ponti, Goran Glavaš, Olga Majewska, Qianchu Liu, Ivan Vulić,
+    and Anna Korhonen. XCOPA: A multilingual dataset for causal commonsense reasoning.
+    In Proceedings of the 2020 Conference on Empirical Methods in Natural Language
+    Processing (EMNLP), pages 2362–2376, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[26] Ofir Press, Noah Smith, and Mike Lewis. Train short, test long: Attention
+    with linear biases enables input length extrapolation. In International Conference
+    on Learning Representations, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[27] Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang,
+    Michael Matena, Yanqi Zhou, Wei Li, and Peter J Liu. Exploring the limits of transfer
+    learning with a unified text-to-text transformer. Journal of machine learning
+    research, 21(140):1–67, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[28] Keisuke Sakaguchi, Ronan Le Bras, Chandra Bhagavatula, and Yejin Choi.
+    WinoGrande: An adversarial winograd schema challenge at scale. In Communications
+    of the ACM, pages 99–106, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[29] Maarten Sap, Hannah Rashkin, Derek Chen, Ronan Le Bras, and Yejin Choi.
+    Social IQa: Commonsense reasoning about social interactions. In Proceedings of
+    the Conference on Empirical Methods in Natural Language Processing and the International
+    Joint Conference on Natural Language Processing (EMNLP-IJCNLP), pages 4463–4473,
+    2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[30] Noam Shazeer. Fast transformer decoding: One write-head is all you need.
+    arXiv preprint arXiv:1911.02150, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[31] Merity Stephen, Xiong Caiming, Bradbury James, Socher Richard, et al.
+    Pointer sentinel mixture models. In International Conference on Learning Representations,
+    2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[32] Jianlin Su, Murtadha Ahmed, Yu Lu, Shengfeng Pan, Wen Bo, and Yunfeng
+    Liu. Roformer: Enhanced transformer with rotary position embedding. Neurocomputing,
+    568:127063, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[33] Alexey Tikhonov and Max Ryabinin. It’s All in the Heads: Using Attention
+    Heads as a Baseline for Cross-Lingual Transfer in Commonsense Reasoning. In Findings
+    of the Association for Computational Linguistics: ACL-IJCNLP 2021, pages 3534–3546,
+    2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[34] Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi,
+    Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, et al. Llama 2: Open foundation
+    and fine-tuned chat models. arXiv preprint arXiv:2307.09288, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[35] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones,
+    Aidan N Gomez, Ł ukasz Kaiser, and Illia Polosukhin. Attention is all you need.
+    In Advances in Neural Information Processing Systems 30, volume 30, pages 5998–6008,
+    2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[36] Jianxin Wu. Essentials of Pattern Recognition: An Accessible Approach.
+    Cambridge University Press, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[37] Gongfan Fang Xinyin Ma and Xinchao Wang. Llm-pruner: On the structural
+    pruning of large language models. In Advances in Neural Information Processing
+    Systems 36, volume 36, pages 21702–21720, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[38] Rowan Zellers, Ari Holtzman, Yonatan Bisk, Ali Farhadi, and Yejin Choi.
+    HellaSwag: Can a machine really finish your sentence? In Proceedings of the 57th
+    Annual Meeting of the Association for Computational Linguistics, page 4791–4800,
+    2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[39] Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe, Moya Chen, Shuohui
+    Chen, Christopher Dewan, Mona Diab, et al. OPT: Open pre-trained transformer language
+    models. arXiv preprint arXiv:2205.01068, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[40] Zhenyu Zhang, Ying Sheng, Tianyi Zhou, Tianlong Chen, Lianmin Zheng, Ruisi
+    Cai, Zhao Song, Yuandong Tian, Christopher Ré, Clark Barrett, Zhangyang "Atlas"
+    Wang, and Beidi Chen. H2O: Heavy-hitter oracle for efficient generative inference
+    of large language models. In Advances in Neural Information Processing Systems
+    36, volume 36, pages 34661–34710, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A The running time of compression
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Here we report the time required to compress LLaMA2 models. The results are
+    shown in Table [8](#A1.T8 "Table 8 ‣ Appendix A The running time of compression
+    ‣ Effectively Compress KV Heads for LLM"). Numbers in the table are measured in
+    hours. As we can see, our algorithm requires very little time to compute the compression
+    weights, and the bottleneck of the entire framework is the time spent fine-tuning
+    the compressed models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 8: Hours needed to calculate compressing weights and fine-tune the model.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Size | Initialization | Fine-tuning | Size | Initialization | Fine-tuning
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Head = 16 | Head = 8 | Head = 16 | Head = 8 | Head = 20 | Head = 10 | Head
+    = 20 | Head = 10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 7B | 0.30 | 43.40 | 36.14 | 13B | 0.68 | 103.47 | 87.01 |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix B Detailed results of compressed models
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In Table [9](#A2.T9 "Table 9 ‣ Appendix B Detailed results of compressed models
+    ‣ Effectively Compress KV Heads for LLM") we report detailed accuracies of BLOOMZ-7B1
+    and its compressed version on each sub-dataset. For LLaMA2 models in the MMLU
+    datasets, we report the accuracies in Table [10](#A2.T10 "Table 10 ‣ Appendix
+    B Detailed results of compressed models ‣ Effectively Compress KV Heads for LLM").
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 9: Detailed accuracies of BLOOMZ-7B1 with different KV heads.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| #KV Heads | Dataset | Average ACC. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 32 | XNLI | XWinoGrad | 47.25 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BG | DE | EL | RU | TH | TR | JP | RU |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 40.30 | 42.80 | 38.74 | 42.70 | 37.69 | 36.15 | 50.26 | 52.70 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| XCOPA | XStoryCloze |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ET | HT | IT | QU | TH | TR | MY | RU |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 48.20 | 49.40 | 57.00 | 48.00 | 55.20 | 48.40 | 49.46 | 59.03 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | XNLI | XWinoGrad | 47.85 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BG | DE | EL | RU | TH | TR | JP | RU |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 39.86 | 42.92 | 38.51 | 42.62 | 36.99 | 36.00 | 50.43 | 52.51 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| XCOPA | XStoryCloze |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ET | HT | IT | QU | TH | TR | MY | RU |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 50.00 | 51.40 | 57.20 | 51.40 | 59.20 | 48.60 | 50.09 | 58.03 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | XNLI | XWinoGrad | 46.84 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BG | DE | EL | RU | TH | TR | JP | RU |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 39.27 | 42.16 | 38.35 | 41.57 | 37.00 | 35.85 | 49.16 | 51.75 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| XCOPA | XStoryCloze |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ET | HT | IT | QU | TH | TR | MY | RU |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 50.00 | 49.80 | 55.60 | 51.40 | 54.40 | 48.40 | 49.34 | 55.39 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | XNLI | XWinoGrad | 45.92 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BG | DE | EL | RU | TH | TR | JP | RU |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 38.82 | 40.76 | 37.70 | 41.43 | 36.38 | 35.61 | 48.91 | 51.68 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| XCOPA | XStoryCloze |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ET | HT | IT | QU | TH | TR | MY | RU |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 49.20 | 47.40 | 48.80 | 51.20 | 55.60 | 49.40 | 47.85 | 53.94 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 10: Detailed accuracies of LLaMA2 models with different KV heads in MMLU
+    datasets.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | #KV Heads | MMLU ($0$-shot) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Hums. | STEM | Social | Other | Avg. | Hums. | STEM | Social | Other | Avg.
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA2-7B | 32 | 39.64 | 34.25 | 47.35 | 47.18 | 41.79 | 43.32 | 36.98 |
+    51.77 | 52.69 | 45.82 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | 44.99 | 39.42 | 55.96 | 54.81 | 48.32 | 44.48 | 39.93 | 56.68 | 56.26
+    | 48.74 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 41.06 | 37.36 | 52.58 | 49.50 | 44.62 | 41.11 | 38.31 | 54.01 | 51.21
+    | 45.54 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA2-13B | 40 | 47.99 | 42.21 | 61.23 | 59.41 | 52.12 | 53.43 | 43.84 |
+    63.21 | 61.35 | 55.17 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 20 | 49.54 | 43.48 | 62.98 | 60.93 | 53.65 | 50.97 | 44.24 | 63.99 | 61.83
+    | 54.71 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10 | 46.25 | 40.22 | 57.62 | 56.49 | 49.65 | 46.89 | 41.42 | 59.90 | 56.90
+    | 50.73 |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix C Detailed results of different compression strategies
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In Tables [11](#A3.T11 "Table 11 ‣ Appendix C Detailed results of different
+    compression strategies ‣ Effectively Compress KV Heads for LLM") and [12](#A3.T12
+    "Table 12 ‣ Appendix C Detailed results of different compression strategies ‣
+    Effectively Compress KV Heads for LLM"), we compare the influence of three different
+    compression strategies in detail, which can better reflect the advantage of our
+    compression strategy. Although the model accuracy collapses after direct compression,
+    our compression model can quickly recover the accuracy after further fine-tuning.
+    These results demonstrate the effectiveness of our framework.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 11: Detailed accuracies in MMLU of LLaMA2 models with different initialization
+    strategies.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| #KV Heads | Methods | Stage | MMLU (0-shot) | MMLU (5-shot) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Hums. | STEM | Social | Other | Avg. | Hums. | STEM | Social | Other | Avg.
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | Mean-pool | Init. | 24.21 | 21.22 | 21.71 | 23.98 | 22.94 | 24.21 |
+    21.22 | 21.71 | 23.98 | 22.94 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fine-tune | 32.99 | 31.18 | 37.60 | 40.49 | 35.25 | 33.24 | 20.83 | 38.25
+    | 40.52 | 35.41 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SVD-*w* | Init. | 24.63 | 21.44 | 21.94 | 23.66 | 23.11 | 24.21 | 21.73 |
+    21.84 | 24.40 | 23.17 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fine-tune | 38.98 | 34.09 | 49.17 | 49.57 | 42.46 | 37.98 | 30.76 | 44.59
+    | 45.09 | 39.38 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SVD-*a* | Init. | 25.06 | 29.72 | 31.04 | 27.94 | 28.05 | 25.48 | 24.10 |
+    24.44 | 30.13 | 25.97 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fine-tune | 44.99 | 39.42 | 55.96 | 54.81 | 48.32 | 44.48 | 39.93 | 56.68
+    | 56.26 | 48.74 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | Mean-pool | Init. | 24.82 | 24.52 | 24.80 | 25.97 | 25.00 | 24.23 | 27.40
+    | 23.56 | 24.23 | 24.95 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fine-tune | 23.80 | 29.24 | 30.26 | 23.80 | 26.63 | 24.12 | 29.08 | 25.22
+    | 23.30 | 25.30 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SVD-*w* | Init. | 24.00 | 22.49 | 22.62 | 24.27 | 23.42 | 24.40 | 21.38 |
+    21.61 | 23.62 | 22.94 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fine-tune | 24.97 | 23.28 | 23.14 | 25.46 | 24.30 | 24.25 | 23.88 | 22.07
+    | 24.24 | 23.69 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SVD-*a* | Init. | 24.08 | 22.90 | 23.53 | 23.69 | 23.61 | 24.08 | 24.55 |
+    22.91 | 24.07 | 23.93 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fine-tune | 41.06 | 37.36 | 52.58 | 49.50 | 44.62 | 41.11 | 38.31 | 54.01
+    | 51.21 | 45.54 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 12: Detailed accuracies in zero-shot commonsense QA datasets of LLaMA2
+    models with different initialization strategies.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| #KV Heads | Methods | Stage | Commonsense QA (0-shot) | AVG. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BoolQ | PIQA | SIQA | HLSW | WG | ARC-e | ARC-c | OBQA |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | Mean-pool | Init. | 37.80 | 50.76 | 32.70 | 26.47 | 50.28 | 26.68 |
+    26.71 | 27.60 | 34.88 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fine-tune | 73.27 | 74.37 | 34.29 | 60.44 | 62.51 | 70.12 | 40.36 | 37.20
+    | 56.57 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SVD-*w* | Init. | 38.47 | 53.10 | 31.58 | 27.88 | 51.62 | 28.83 | 24.23 |
+    28.00 | 35.46 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fine-tune | 79.45 | 77.80 | 32.96 | 69.20 | 69.69 | 76.30 | 46.59 | 44.80
+    | 62.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SVD-*a* | Init. | 60.21 | 69.26 | 33.27 | 51.93 | 59.67 | 51.60 | 31.83 |
+    33.20 | 48.87 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fine-tune | 83.61 | 77.97 | 32.80 | 72.53 | 73.56 | 78.45 | 49.66 | 46.40
+    | 64.37 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | Mean-pool | Init. | 37.83 | 49.89 | 33.06 | 26.28 | 48.93 | 26.22 | 27.30
+    | 28.00 | 34.69 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fine-tune | 60.03 | 58.38 | 32.91 | 38.48 | 50.75 | 37.92 | 24.49 | 23.40
+    | 40.79 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SVD-*w* | Init. | 42.60 | 50.76 | 34.14 | 26.59 | 51.22 | 26.39 | 25.94 |
+    25.80 | 35.43 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fine-tune | 69.60 | 73.99 | 32.75 | 60.30 | 63.93 | 70.24 | 39.68 | 36.40
+    | 55.86 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SVD-*a* | Init. | 46.33 | 56.96 | 32.80 | 30.30 | 51.70 | 32.53 | 24.32 |
+    25.80 | 37.59 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Fine-tune | 80.58 | 76.77 | 32.91 | 66.67 | 67.88 | 73.32 | 43.34 | 43.80
+    | 60.66 |'
+  prefs: []
+  type: TYPE_TB

@@ -1,0 +1,1513 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:53:16'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Dynamic Memory Compression: Retrofitting LLMs for Accelerated Inference'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2403.09636](https://ar5iv.labs.arxiv.org/html/2403.09636)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Piotr Nawrot    Adrian Łańcucki    Marcin Chochowski    David Tarjan    Edoardo
+    M. Ponti
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Transformers have emerged as the backbone of large language models (LLMs). However,
+    generation remains inefficient due to the need to store in memory a cache of key–value
+    representations for past tokens, whose size scales linearly with the input sequence
+    length and batch size. As a solution, we propose Dynamic Memory Compression (DMC),
+    a method for on-line key–value cache compression at inference time. Most importantly,
+    the model learns to apply different compression rates in different heads and layers.
+    We retrofit pre-trained LLMs such as Llama 2 (7B, 13B and 70B) into DMC Transformers,
+    achieving up to ~3.7$\times$ cache compression, outperforming up-trained grouped-query
+    attention (GQA). GQA and DMC can be even combined to obtain compounded gains.
+    As a result DMC fits longer contexts and larger batches within any given memory
+    budget.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Machine Learning, ICML
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^QNVIDIA     ^KUniversity of Wrocław     ^VUniversity of Edinburgh
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Transformer Large Language Models (LLMs) are the state of the art in generative
+    and conversational AI (Touvron et al., [2023](#bib.bib32); Jiang et al., [2023](#bib.bib18)).
+    Their deployment, however, is curtailed in part by their inefficiency. This is
+    not only due to the quadratic complexity of attention layers (Bahdanau et al.,
+    [2014](#bib.bib3); Vaswani et al., [2017](#bib.bib34)): during generation, Transformers
+    store the keys and values of past tokens in memory to avoid recomputing them multiple
+    times. Since this key–value (KV) cache grows linearly with the sequence length
+    and batch size, generation with Transformers quickly becomes prohibitive due to
+    the excessive memory load. This issue emerges even more clearly with long-context
+    generation (e.g., in dialogues and stories) or when serving large numbers of user
+    queries.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/520c30b10926a7f082d81d39ef4e079e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Regular key–value cache with items $kv_{i}$ depicted as boxes. New items
+    are always appended.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/607d0c2ab30156b1878bf94090d4f5ad.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Dynamic Memory Compression (DMC) chooses whether to accumulate or append
+    current items, resulting in a smaller key–value cache.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 1: Key–value cache update mechanisms.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A widespread solution to increase the memory efficiency of Transformers during
+    inference is Grouped Query Attention (GQA; Ainslie et al., [2023](#bib.bib1);
+    Shazeer, [2019](#bib.bib30)), which uses a number of key and value heads inferior
+    to the number of query heads through parameter sharing. As an alternative, the
+    number of overall tokens in memory can be reduced through token merging (Zhang
+    et al., [2018](#bib.bib37); Liu et al., [2018](#bib.bib21); Bolya et al., [2022](#bib.bib6))
+    or token pruning (Anagnostidis et al., [2023](#bib.bib2); Kim & Cho, [2020](#bib.bib19)).
+    Nevertheless, these methods often pay the price of a severe degradation in downstream
+    performance. On the other hand, hardware/IO-aware (Dao et al., [2022](#bib.bib12);
+    Kwon et al., [2023](#bib.bib20)) and sub-quadratic algorithms for attention (Beltagy
+    et al., [2020](#bib.bib4); Choromanski et al., [2020](#bib.bib9)) do not alleviate
+    the memory load of the KV cache.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In our work, we aim to achieve a lossless compression of the KV cache of LLMs,
+    thus retaining their performance while reducing their memory load. To this end,
+    we propose Dynamic Memory Compression (DMC). As shown in [Figure 1](#S1.F1 "In
+    1 Introduction ‣ Dynamic Memory Compression: Retrofitting LLMs for Accelerated
+    Inference"), during every time step, DMC decides whether to append the current
+    key and value representations to the cache or to perform a weighted average of
+    them with the top item on the cache. Note that memory grows sub-linearly in DMC,
+    which therefore falls halfway between vanilla Transformers and state space language
+    models (Fu et al., [2023](#bib.bib13); Gu & Dao, [2023](#bib.bib15)), where memory
+    is constant.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In our experiments, we equip pre-existing LLMs—such as Llama 2 (Touvron et al.,
+    [2023](#bib.bib32)) 7B, 13B, and 70B—with DMC by retrofitting them on a negligible
+    percentage of the original pre-training data (~2% for 2$\times$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We verify that KV cache compression translates into more efficient generation
+    in practice. We measure that DMC $4\times$ increases the inference throughput
+    between 340% and 370% for Llama 2 7B and 13B on NVIDIA H100 or A100 GPUs without
+    loss in performance. In fact, it allows us to fit larger batches and longer sequences
+    into a given memory budget. Finally, compression schemata learned by DMC provide
+    insights into the internal structure of the LLMs, revealing a preference for compressing
+    heads in higher layers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Background
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 2.1 Multi-Head Self-Attention
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Let $X=(\mathbf{x}_{1},\ldots,\mathbf{x}_{n})\in\mathbb{R}^{n\times d}$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle Q^{h}$ |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle K^{h}$ |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle V^{h}$ |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: The attention scores and outputs for the $i$-th token are then computed as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Finally, the outputs from all heads are concatenated and linearly transformed
+    to produce the final output $O\in\mathbb{R}^{n\times d}$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $O=(W_{o}[\mathbf{o}_{1}^{1},\ldots,\mathbf{o}_{1}^{n_{h}}],\ldots,W_{o}[\mathbf{o}_{n}^{1},\ldots,\mathbf{o}_{n}^{n_{h}}])$
+    |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $W_{o}\in\mathbb{R}^{d\times d}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2 KV Caching During Inference
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In a Transformer decoder, the generation of sequences is auto-regressive: each
+    new token is predicted based on the previously generated ones. To avoid redundant
+    computation, it is common to store the keys and values of previously computed
+    tokens in the KV cache. For each time step $i$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle K^{h}$ |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle V^{h}$ |  | (7) |'
+  prefs: []
+  type: TYPE_TB
+- en: Note that this process is not necessary for queries as only the query for the
+    current token $\mathbf{x}_{i}$ is needed at each inference time step.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As a consequence, the KV cache grows linearly with each new token. This progressive
+    expansion leads to substantial memory consumption and increased latency, especially
+    for long input sequences. This issue is further exacerbated when serving multiple
+    requests concurrently, as each inference process requires its own KV cache, significantly
+    straining the system’s resources.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '3 Method: Dynamic Memory Compression'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Inference with LLMs tends to be memory bound rather than compute bound, as
+    we explain in [Appendix A](#A1 "Appendix A Memory-Bound Operations in Transformers
+    ‣ Dynamic Memory Compression: Retrofitting LLMs for Accelerated Inference") in
+    detail. This means that latency scales linearly with the size of the KV cache.
+    We tackle the problem of reducing the size of KV cache which brings two immediate
+    benefits (Zhang et al., [2023](#bib.bib38)): 1) it lowers the latency of auto-regressive
+    generation, and 2) increases throughput by saving GPU memory and allowing for
+    larger batch sizes or sequence lengths.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section we introduce Dynamic Memory Compression (DMC), a simple and
+    inexpensive method for on-line compression of the KV cache at inference time.
+    In what follows, we first describe the inference-time operation of DMC, which
+    constitutes our end goal. Next, we illustrate how to teach a pre-trained LLM such
+    behavior through short, continued pre-training.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Inference
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Consider the forward pass of an attention layer during auto-regressive inference
+    ([Section 2.1](#S2.SS1 "2.1 Multi-Head Self-Attention ‣ 2 Background ‣ Dynamic
+    Memory Compression: Retrofitting LLMs for Accelerated Inference")). In a vanilla
+    Transformer, at every time step $t$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 1 Single-head KV cache update with Dynamic Memory Compression (DMC)
+  prefs: []
+  type: TYPE_NORMAL
+- en: KV-Update$K,V,\mathbf{q}_{t},\mathbf{k}_{t},\mathbf{v}_{t}$\Procedure\State\State\If\Comment\State\State\State\Else\Comment\State\State\State\EndIf\State\State\State\EndProcedure
+  prefs: []
+  type: TYPE_NORMAL
+- en: Based on $\alpha_{t}$ was predicted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In fact, the $\alpha$ as the Compression Ratio (CR).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, multi-head self-attention is calculated similarly to vanilla Transformer
+    using KV cache sequences, with the exception that KV sequences for different heads
+    might have different lengths. [Algorithm 1](#alg1 "In 3.1 Inference ‣ 3 Method:
+    Dynamic Memory Compression ‣ Dynamic Memory Compression: Retrofitting LLMs for
+    Accelerated Inference") is applied to every MHSA layer and head independently.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Training
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The DMC inference algorithm switches between accumulating and appending tokens
+    to the KV cache. In order to endow LLMs with DMC, we continue pre-training them
+    on a negligible amount of their pre-training data, gradually increasing the compression
+    rate towards a target. However, this poses serious challenges. First, we opt for
+    end-to-end learning via gradient descent and continuous relaxation of the decision
+    variables. As a result, we have to define an operation for KV cache updating when
+    $0<\alpha<1$ is not reduced through compression during training; rather, all intermediate
+    states of keys and values are explicitly kept in memory and an auxiliary (gradually
+    discretized) mask regulates query interactions. We elaborate on our solutions
+    to these challenges below.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Gradient Estimation for Discrete Decisions
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: The decision whether to accumulate or append at inference time is a discrete
+    one; however, rounding $\mathrm{sigmoid}(\mathbf{k}[0])$ to the nearest integer
+    for training would result in a non-differentiable operation with zero gradients.
+    Hence, we resort to stochastic reparametrization of the decision variable during
+    training
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\alpha_{t}\sim\text{Gumbel-sigmoid}(\mathbf{k}[0]-c,\tau)\in[0,1],$ |  |
+    (8) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\tau$. This ensures that DMC initially performs no compression and starts
+    the training behaving just like the vanilla Transformer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Partial accumulations
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'As we relax our discrete decisions, we now must define a mechanism to update
+    the KV cache that generalizes [Algorithm 1](#alg1 "In 3.1 Inference ‣ 3 Method:
+    Dynamic Memory Compression ‣ Dynamic Memory Compression: Retrofitting LLMs for
+    Accelerated Inference") to continuous $\alpha$ as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle z_{0}$ |  | (9) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle{\mathbf{k}}_{0}$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle{\mathbf{v}}_{0}$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Note that when $\alpha\in\{0,1\}$, [Equation 9](#S3.E9 "In Partial accumulations
+    ‣ 3.2 Training ‣ 3 Method: Dynamic Memory Compression ‣ Dynamic Memory Compression:
+    Retrofitting LLMs for Accelerated Inference") defaults to [Algorithm 1](#alg1
+    "In 3.1 Inference ‣ 3 Method: Dynamic Memory Compression ‣ Dynamic Memory Compression:
+    Retrofitting LLMs for Accelerated Inference").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Intermediate compression steps
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Aside from key and value computations shown in [Equation 9](#S3.E9 "In Partial
+    accumulations ‣ 3.2 Training ‣ 3 Method: Dynamic Memory Compression ‣ Dynamic
+    Memory Compression: Retrofitting LLMs for Accelerated Inference"), the rest of
+    the forward pass can be performed in parallel for all tokens in the sequence.
+    Nonetheless, this creates a mismatch between training and evaluation, since all
+    intermediate states of keys and values are accessible during self-attention.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To illustrate this issue, consider the example of a KV cache during DMC inference
+    shown in [Figure 2](#S3.F2 "In Intermediate compression steps ‣ 3.2 Training ‣
+    3 Method: Dynamic Memory Compression ‣ Dynamic Memory Compression: Retrofitting
+    LLMs for Accelerated Inference") for the sequence of decision scores $\alpha_{1:5}=(1,1,0,1,0)$
+    values, and exactly corresponds to the inference time query-to-key attendance
+    pattern.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/b52b033f32aad112fb518057da810400.png)![Refer to caption](img/6a852604c0d7f2c0ccd28d0bf087b0e2.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: An example of KV cache growth in DMC during inference (left). During
+    training (right), we retain all intermediate states seen during inference and
+    gradually block access to some of them (gray arrows)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: $$\blockarray{cccccc}&amp;{\bf k_{0}}{\bf k_{1}}{\bf k_{2}}\dots{\bf k_{n}}\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: \block{c[ccccc]}{\bf q_{0}}0-\infty-\infty\dots-\infty\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{\bf q_{1}}\log(1\shortminus\alpha_{1})0-\infty-\infty\\'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{\bf q_{2}}\log(1\shortminus\alpha_{1})\log(1\shortminus\alpha_{2})0-\infty\\'
+  prefs: []
+  type: TYPE_NORMAL
+- en: \vdots\vdots\ddots\vdots\\
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{\bf q_{n}}\log(1\shortminus\alpha_{1})\log(1\shortminus\alpha_{2})\log(1\shortminus\alpha_{3})\dots
+    0\\'
+  prefs: []
+  type: TYPE_NORMAL
+- en: $$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 3: Additive mask applied during training to the the normalized attention
+    scores to block queries from attending intermediate KV states (as well as future
+    states).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Training objective
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'The model is incentivized to compress the KV cache to a certain CR, and thus
+    increase the predicted $\alpha$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (10) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'It is added to the language modeling loss term $\ell_{\text{LM}}=-\sum_{t=1}^{n}\log
+    p_{\boldsymbol{\theta}}(\mathbf{x}_{t}\mid\mathbf{x}_{<t})$, with the final objective
+    of the training being:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\text{arg min}_{\boldsymbol{\theta}}\,\ell_{\text{LM}}+\ell_{\text{CR}}.$
+    |  | (11) |'
+  prefs: []
+  type: TYPE_TB
+- en: Importantly, the training procedure is designed for slowly ramping up the desired
+    compression rate and stopping at will. This enables producing a series of models
+    with different compression rates within a single run. It follows that all hyperparameters,
+    like Gumbel-sigmoid sampling temperature and learning rate, are not decayed and
+    remain constant throughout training.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Practical Considerations
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Implementing a variable-length cache without padding
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'DMC allows every head to learn a custom compression, which results in KV cache
+    sequences with variable lengths across heads. One could implement this cache naïvely
+    with padded tensors. Foreshadowing our results in [Section 5.2](#S5.SS2 "5.2 Throughput
+    and Latency Measurements ‣ 5 Results ‣ Dynamic Memory Compression: Retrofitting
+    LLMs for Accelerated Inference"), however, the largest efficiency gains during
+    inference stem from the reduced memory footprint, which allows us to increase
+    the batch size and dramatically improve throughput. In order to get these benefits,
+    the memory cannot be wasted on storing KV cache as padded tensors.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thus, we provide a simple custom implementation of attention in PyTorch, building
+    on FlashAttention (Dao et al., [2022](#bib.bib12)) and PagedAttention (Kwon et al.,
+    [2023](#bib.bib20)), in which the heads can learn wildly different compression
+    rates but which does not require padding. As an ablation, we also study a constrained
+    variant (DMC-C) in which we force the heads in a given layer to maintain similar
+    compression rates, which minimizes the padding necessary in naïve attention implementations;
+    however, it significantly constrains the learned compression schema and leads
+    to worse model quality.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Window grouping approximation
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'The calculation of partial accumulations, during training of DMC models [Equation 9](#S3.E9
+    "In Partial accumulations ‣ 3.2 Training ‣ 3 Method: Dynamic Memory Compression
+    ‣ Dynamic Memory Compression: Retrofitting LLMs for Accelerated Inference"), for
+    a sequence of $n$ positions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experimental Setup
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Baselines
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'In our experiments, we evaluate strategies to retrofit a state-of-the-art Large
+    Language Model (LLM), Llama 2 (Touvron et al., [2023](#bib.bib32)),⁴⁴4Obtained
+    from [https://huggingface.co/meta-llama](https://huggingface.co/meta-llama). into
+    a more efficient model across various sizes: 7B, 13B, and 70B. In addition to
+    comparing the downstream performance of DMC with the original model, we also use
+    Grouped Query Attention (GQA) as a main baseline, as it constitutes the most widespread
+    strategy to ensure KV cache efficiency (Jiang et al., [2023](#bib.bib18)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Checkpoint adaptation
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'To equip the original Llama 2 with GQA, we perform the standard checkpoint
+    conversion proposed by Ainslie et al. ([2023](#bib.bib1)): the key and value projection
+    matrices are split by head. Then the resulting sub-matrices corresponding to heads
+    in the same group are merged. Note that this results in a fixed CR during training.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As for DMC, we avoid the introduction of new parameters by re-purposing the
+    first dimension from both the $\mathbf{k}_{t}$ to 0 according to the following
+    formula:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathbf{q}_{t}[0]$ |  | (12) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\mathbf{k}_{t}[0]$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: where $t$ in order to perform no compression at the start.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Training hyperparameters
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We follow the training hyperparameters outlined by Touvron et al. ([2023](#bib.bib32)).
+    We employ the AdamW optimizer with parameters $\beta_{1}=0.9$ for the 70B model.
+    Finally, we set the window size ([Section 3.3](#S3.SS3.SSS0.Px2 "Window grouping
+    approximation ‣ 3.3 Practical Considerations ‣ 3 Method: Dynamic Memory Compression
+    ‣ Dynamic Memory Compression: Retrofitting LLMs for Accelerated Inference")) to
+    12, and keep the Gumbel-sigmoid temperature constant at 0.1 throughout the entire
+    training.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Training schedule
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'The volume of data for continued pre-training of DMC is contingent on the targeted
+    KV cache compression ratio; a larger CR necessitates more data. We use a training
+    schedule with 24B, 48B, and 72B tokens for training to $2\times$ compression,
+    respectively. In [Appendix D](#A4 "Appendix D Training Ablations ‣ Dynamic Memory
+    Compression: Retrofitting LLMs for Accelerated Inference") we include an ablation
+    where we use a schedule with twice less data.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For DMC, we discovered that the annealing strategy was crucial. Starting the
+    training without compression and its measured increase helps to preserve the original
+    perplexity. Through extensive ablations (see [Appendix D](#A4 "Appendix D Training
+    Ablations ‣ Dynamic Memory Compression: Retrofitting LLMs for Accelerated Inference")),
+    we found that any significant increase of perplexity, even if recovered during
+    continued pre-training, prevents the model from regaining its performance on downstream
+    tasks. The target CR is linearly increased from $1\times$..'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Upon achieving the target compression ratio with the DMC model, we initiate
+    a final solidifying phase wherein we: 1) continue up-training for an additional
+    8B tokens, 2) maintain a fixed compression ratio, and 3) implement a cosine learning
+    rate schedule, annealing it down to 10% of the initial value. This phase aims
+    at stabilizing the model with a specific, fixed compression ratio.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Evaluation
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Following Touvron et al. ([2023](#bib.bib32)), we evaluate models on a series
+    of downstream tasks, including MMLU (Hendrycks et al., [2021](#bib.bib16)) for
+    factuality, HumanEval (Chen et al., [2021](#bib.bib7)) for Python code generation,
+    and several question-answering datasets for common-sense reasoning: PIQA (Bisk
+    et al., [2020](#bib.bib5)), BoolQ (Clark et al., [2019](#bib.bib10)), Arc-C and
+    Arc-E (Clark et al., [2018](#bib.bib11)), HellaSwag (Zellers et al., [2019](#bib.bib36)),
+    and WinoGrande (Sakaguchi et al., [2021](#bib.bib29)). We report the 5-shot performance
+    on MMLU, average pass@1 scores for HumanEval, and average 0-shot performance on
+    common-sense benchmarks (CS-QA). For pass@1 scores we use a temperature of 0.1
+    and nucleus sampling (Holtzman et al., [2019](#bib.bib17)) with top-p $=$ 0.95.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Results
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '| Scale | Method | CR | MMLU | CS-QA | Human Eval |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 7B | – | – | 44.6 | 70.5 | 14.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GQA | 2$\times$ | 39.8 | 68.9 | 12.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DMC | 45.2 | 70.8 | 15.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GQA | 4$\times$ | 34.7 | 68.3 | 14.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DMC | 43.9 | 70.2 | 16.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 13B | – | – | 54.5 | 73.5 | 17.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GQA | 2$\times$ | 50.2 | 72.7 | 15.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DMC | 54.8 | 74.2 | 20.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GQA | 4$\times$ | 48.6 | 72.2 | 16.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DMC | 54.2 | 73.2 | 22.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 70B^∗ | – | 8$\times^{*}$ | 68.8 | 78.0 | 29.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DMC | 16$\times^{*}$ | 68.8 | 77.9 | 29.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 1: MMLU accuracy (Acc.), Commonsense Question Answering (CS-QA), Exact
+    Match (EM), and Human-Eval Pass@1 for several scales (7B, 13B, and 70B) and compression
+    rates (CRs; $1\times$ .'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8db9c87179510078aa59c407b7f5bd41.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: Sample efficiency of DMC and GQA. Horizontal lines correspond to
+    the performance of the original Llama 2\. Every DMC model was trained first with
+    increasing CR, then with constant CR for the last 2K steps (marked with $\star$).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.1 Main Results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We report the performance of the original LLM (equivalent to $1\times$ CR)
+    and efficient variants (DMC and GQA) in [Table 1](#S5.T1 "In 5 Results ‣ Dynamic
+    Memory Compression: Retrofitting LLMs for Accelerated Inference"). For the original
+    LLM we use results reproduced in our codebase as described in [Appendix B](#A2
+    "Appendix B Replicating the Original Results ‣ Dynamic Memory Compression: Retrofitting
+    LLMs for Accelerated Inference").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8c0b04ab73dbef40cf5da26ef8bd4fca.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Inference throughput averaged over the generation of 1K tokens with 3K tokens
+    of context (up to 4K in total). On the x-axis, we show the maximum batch size
+    that fits in memory on a single GPU (7B and 13B) or two GPUs with tensor parallelism
+    (70B) for the Vanilla, DMC 2$\times$ models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7b8f6f86979e755ec30c494aa7af8ca4.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Latency of next token generation. Solid lines denote measurements with the
+    maximum batch size that fits on a single GPU. Dotted lines denote DMC 4$\times$
+    with the same batch size as the vanilla LLM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 5: Efficiency measurements with the Megatron-LM framework on NVIDIA
+    A100 80GB and H100 GPUs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: DMC vs Original First, comparing DMC with the original LLM, we note that it
+    even increases the performance in MMLU and CS-QA at $2\times$ CR. Overall, the
+    fact that DMC is in general close or superior to the original performance makes
+    it suitable as a drop-in replacement for KV caching to achieve higher inference
+    efficiency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'DMC vs GQA Moreover, [Table 1](#S5.T1 "In 5 Results ‣ Dynamic Memory Compression:
+    Retrofitting LLMs for Accelerated Inference") allows for comparing DMC with GQA
+    for equivalent CRs ($2\times$ CR). For CS-QA and Human-Eval, on the other hand,
+    we observe comparable gains over GQA across CRs and model scales. These findings
+    illustrate that DMC should be preferred to GQA for retrofitting LLMs into variants
+    that are more efficient at inference time.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '70B: DMC and GQA However, many widely adopted LLMs were pre-trained with GQA
+    which leads to the question of whether DMC and GQA can be used together to reap
+    compounded benefits. To investigate this, we retrofit Llama 2 70B, which has been
+    pre-trained with $8\times$ smaller than a vanilla LLM with neither GQA nor DMC.
+    We observe that the performance remains unchanged, and conclude that DMC and GQA
+    can be easily and successfully combined.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'DMC vs DMC-C Finally, in [Table 3](#A5.T3 "In In-layer Relaxation ‣ Appendix
+    E DMC Ablations ‣ Dynamic Memory Compression: Retrofitting LLMs for Accelerated
+    Inference") in [Appendix E](#A5 "Appendix E DMC Ablations ‣ Dynamic Memory Compression:
+    Retrofitting LLMs for Accelerated Inference"), we compare DMC with its Constrained
+    variant DMC-C. In general, while remaining superior to GQA, DMC-C displays a significant
+    degradation in several configurations, most notably 7B $4\times$ in MMLU compared
+    to the ceiling. On the other hand, DMC recovers all performance loss in DMC-C.
+    When used in combination with custom attention implementations which does not
+    require excessive padding, standard DMC should therefore be vastly preferred,
+    as it retains the original LLM performance while reaping the advantages in memory
+    efficiency fully.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Sample Efficiency To shed light on the sample efficiency of DMC and GQA, we
+    report their performance on MMLU, CS-QA, and Codex-Eval across retrofitting steps
+    in [Figure 4](#S5.F4 "In 5 Results ‣ Dynamic Memory Compression: Retrofitting
+    LLMs for Accelerated Inference"). First, for a target CR of $2\times$).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.2 Throughput and Latency Measurements
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'To verify whether increased CRs result in concrete efficiency gains, in [Figure 5](#S5.F5
+    "In 5.1 Main Results ‣ 5 Results ‣ Dynamic Memory Compression: Retrofitting LLMs
+    for Accelerated Inference") we present the performance properties of DMC, estimated
+    within the NVIDIA Megatron-LM framework (Narayanan et al., [2021](#bib.bib24)).
+    Specifically, we run measurements on a single GPU (NVIDIA A100 80GB SXM or H100
+    SXM) in bfloat16 precision for Llama 7B and 13B. For Llama 70B, we run the same
+    measurements on two GPUs of the same type with tensor parallelism. We feed the
+    model with 2K tokens of English text, and generate additional 2K tokens in an
+    auto-regressive manner to ensure that the model properly compresses its own generations.
+    The reported throughput consists of the average over the last 1K tokens. We limit
+    the sequence to 4K tokens to avoid issues with context length extrapolation, as
+    this is the maximum length observed by Llama 2 during pre-training.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d7350fc7184fcc500a2109ef491bf539.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '![Refer to caption](img/9bcf7e3d4f4a08bfa98176d2d18f0b92.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: Heatmaps of average compression rates across layers (X-axis) and
+    heads (Y-axis). Heads are arranged from the highest compression to the lowest
+    top-down for clarity.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In order to maximize the utilization of the GPU, we increase the batch size
+    to the maximum that fits into memory (see [Appendix A](#A1 "Appendix A Memory-Bound
+    Operations in Transformers ‣ Dynamic Memory Compression: Retrofitting LLMs for
+    Accelerated Inference") for details). The compression of the KV cache with DMC
+    allows for substantial increases in batch size and thus significant throughput
+    gains. As shown in [Figure 5(a)](#S5.F5.sf1 "In Figure 5 ‣ 5.1 Main Results ‣
+    5 Results ‣ Dynamic Memory Compression: Retrofitting LLMs for Accelerated Inference"),
+    DMC $2\times$. This means that the efficiency boost observed in practice is very
+    close to the theoretical limit. In addition, the extra memory saved with DMC could
+    also be used to cache longer contexts.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we compare the latency of the original LLM with DMC 4$\times$, the
+    memory footprint of the KV cache is reduced and latency for longer contexts improves
+    significantly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'While we acknowledge that the behavior of LLMs at inference time depends on
+    a multitude of factors and implementation details, our measurements in [Figure 5](#S5.F5
+    "In 5.1 Main Results ‣ 5 Results ‣ Dynamic Memory Compression: Retrofitting LLMs
+    for Accelerated Inference") offer evidence that DMC increases throughput and reduces
+    the latency of autoregressive generation with LLMs. We speculate that in the future,
+    DMC might be used to grow the KV cache sub-linearly, which would provide an alternative
+    between vanilla Transformers and State Space Models, where memory is constant
+    (Fu et al., [2023](#bib.bib13); Gu & Dao, [2023](#bib.bib15)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.3 Per-Head Learned Compression Rates
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Since the training loss does not enforce any compression schema a priori, as
+    it just requires to match a certain global CR, we can investigate what schema
+    the model discovers in practice. In [Figure 6](#S5.F6 "In 5.2 Throughput and Latency
+    Measurements ‣ 5 Results ‣ Dynamic Memory Compression: Retrofitting LLMs for Accelerated
+    Inference"), we report the CR for each layer and head for different scales (7B,
+    13B, and 70B) and CRs (2$\times$ DMC achieves extremely high CRs for several heads
+    also in the few layers after the very first one. This is counter-productive as
+    token representations are not contextualized yet, which makes taking the correct
+    decision (whether to append or accumulate) hard.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This same pattern (in terms of relative preference for compressing the certain
+    ranges of layers) also corresponds to how the distribution of CRs across layers
+    changes throughout training steps, as we keep annealing the auxiliary loss $\ell_{\text{CR}}$
+    towards the target CR. [Figure 7](#A3.F7 "In Evolution Throughout the Training
+    ‣ Appendix C Analysis of the Compression Schema Learned by DMC ‣ Dynamic Memory
+    Compression: Retrofitting LLMs for Accelerated Inference") in [Appendix C](#A3
+    "Appendix C Analysis of the Compression Schema Learned by DMC ‣ Dynamic Memory
+    Compression: Retrofitting LLMs for Accelerated Inference") illustrates how CR
+    increases first in deeper layers, then in some non-contiguous intermediate ranges.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Efficient inference in Transformer models is a subject of extensive research,
+    with detailed overviews provided by several surveys (Pope et al., [2022](#bib.bib27);
+    Treviso et al., [2022](#bib.bib33)). This section narrows its focus to advancements
+    in Transformer inference efficiency through KV cache size reduction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Grouped Query Attention (GQA; Ainslie et al., [2023](#bib.bib1)) represents
+    the most widespread strategy, evolving from Multi Query Attention (MQA; Shazeer,
+    [2019](#bib.bib30)). GQA reduces the number of KV heads by allocating shared KV
+    representations across subsets of query heads. Prior efforts in token merging
+    (Zhang et al., [2018](#bib.bib37)) condensed the entire past context into a single
+    token, while (Liu et al., [2018](#bib.bib21); Rae et al., [2019](#bib.bib28))
+    employed strided convolution and mean pooling kernels to reduce the number of
+    KV tokens. Sliding window attention techniques (Beltagy et al., [2020](#bib.bib4);
+    Child et al., [2019](#bib.bib8)) restrict attention to a maximum of $w$ preceding
+    tokens. Though effective in limiting KV cache, such methods perform fixed-size
+    compression, unlike the presented dynamic DMC, which adapts the compression schema
+    based on the input sequence. This yields superior results, as we prove in an ablation
+    in [Appendix E](#A5 "Appendix E DMC Ablations ‣ Dynamic Memory Compression: Retrofitting
+    LLMs for Accelerated Inference").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Previous learnable compression methods (Anagnostidis et al., [2023](#bib.bib2),
+    inter alia) decide which tokens to drop from the KV cache. DMC takes a different
+    approach as instead of dropping tokens it merges them. Hence, it preserves cached
+    information more faithfully. Moreover, the DMC compression mechanism has constant
+    complexity with respect to the context length, while the one proposed by Anagnostidis
+    et al. ([2023](#bib.bib2)) is linear. Mu et al. ([2023](#bib.bib23)) instead compresses
+    prompts through costly generation which limits their inference benefits. Moreover,
+    this method is only applicable to compressing the model input while DMC compresses
+    *on-the-fly* the entire sequence, including both the model input and the generated
+    output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Non-learnable cache eviction strategies (Zhang et al., [2023](#bib.bib38); Sheng
+    et al., [2023](#bib.bib31); Liu et al., [2023](#bib.bib22); Wang et al., [2020](#bib.bib35);
+    Ge et al., [2023](#bib.bib14)) utilize attention scores or token properties to
+    filter tokens in the KV cache. These approaches, while bypassing additional training,
+    rely on heuristics and lack the ability to learn the compression mechanisms. In
+    contrast, DMC integrates compression into its learning objective in an end-to-end
+    manner, where compression is synergistic to language generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, DMC draws inspiration from Dynamic Token Pooling (Nawrot et al., [2022](#bib.bib25)),
+    which introduces a learnable boundary predictor to merge the representations of
+    groups of tokens in intermediate layers. DMC improves upon this idea by applying
+    it to the KV cache of and introducing a continuous relaxation of the pooling decision
+    during training. Moreover, it enables retrofitting pre-trained LLMs with minimal
+    extra steps rather than training language models from scratch.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7 Conclusions and Future Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We proposed Dynamic Memory Compression, a method to reduce the length of the
+    KV cache in Transformers, which enhances the memory efficiency and speed of LLMs
+    at inference time. For every new token, DMC learns end-to-end whether to append
+    its KV representations to the cache or merge them with the top element in the
+    cache. We show how to retrofit LLMs such as Llama 2 at different scales (7B, 13B,
+    and 70B) into efficient DMC versions with a negligible amount of extra data and
+    without extra parameters. DMC LLMs with 2$\times$ compression rates (CRs) retain
+    (or even improve upon) the performance of the original LLM. In addition, we demonstrate
+    that, for comparable CRs, DMC has significantly higher continued pre-training
+    performance and sample efficiency than Grouped Query Attention (GQA), a widespread
+    method for KV cache size reduction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Impact Statement
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Dynamic Memory Compression in Large Language Models (LLMs) like Llama 2 results
+    in better computational efficiency, reducing both operational costs and environmental
+    impact (Patterson et al., [2021](#bib.bib26)). By enabling higher throughput and
+    lower latency, DMC democratizes access to advanced AI, making state-of-the-art
+    models suitable for a broader range of hardware. This may not only accelerate
+    innovation across diverse sectors but also promote AI development and applications
+    in an environmentally conscious manner.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Ainslie et al. (2023) Ainslie, J., Lee-Thorp, J., de Jong, M., Zemlyanskiy,
+    Y., Lebrón, F., and Sanghai, S. K. GQA: Training generalized multi-query transformer
+    models from multi-head checkpoints. *ArXiv*, abs/2305.13245, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Anagnostidis et al. (2023) Anagnostidis, S., Pavllo, D., Biggio, L., Noci, L.,
+    Lucchi, A., and Hofmann, T. Dynamic context pruning for efficient and interpretable
+    autoregressive transformers. *ArXiv*, abs/2305.15805, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Bahdanau et al. (2014) Bahdanau, D., Cho, K., and Bengio, Y. Neural machine
+    translation by jointly learning to align and translate. *ArXiv*, abs/1409.0473,
+    2014.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Beltagy et al. (2020) Beltagy, I., Peters, M. E., and Cohan, A. Longformer:
+    The long-document transformer. *ArXiv*, abs/2004.05150, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bisk et al. (2020) Bisk, Y., Zellers, R., Le bras, R., Gao, J., and Choi, Y.
+    PIQA: Reasoning about physical commonsense in natural language. *Proceedings of
+    the AAAI Conference on Artificial Intelligence*, 34(05), Apr. 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bolya et al. (2022) Bolya, D., Fu, C.-Y., Dai, X., Zhang, P., Feichtenhofer,
+    C., and Hoffman, J. Token merging: Your ViT but faster. *ArXiv*, abs/2210.09461,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chen et al. (2021) Chen, M., Tworek, J., Jun, H., Yuan, Q., Ponde, H., Kaplan,
+    J., Edwards, H., Burda, Y., Joseph, N., Brockman, G., Ray, A., Puri, R., Krueger,
+    G., Petrov, M., Khlaaf, H., Sastry, G., Mishkin, P., Chan, B., Gray, S., Ryder,
+    N., Pavlov, M., Power, A., Kaiser, L., Bavarian, M., Winter, C., Tillet, P., Such,
+    F. P., Cummings, D. W., Plappert, M., Chantzis, F., Barnes, E., Herbert-Voss,
+    A., Guss, W. H., Nichol, A., Babuschkin, I., Balaji, S., Jain, S., Carr, A., Leike,
+    J., Achiam, J., Misra, V., Morikawa, E., Radford, A., Knight, M. M., Brundage,
+    M., Murati, M., Mayer, K., Welinder, P., McGrew, B., Amodei, D., McCandlish, S.,
+    Sutskever, I., and Zaremba, W. Evaluating large language models trained on code.
+    *ArXiv*, abs/2107.03374, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Child et al. (2019) Child, R., Gray, S., Radford, A., and Sutskever, I. Generating
+    long sequences with sparse transformers. *ArXiv*, abs/1904.10509, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Choromanski et al. (2020) Choromanski, K., Likhosherstov, V., Dohan, D., Song,
+    X., Gane, A., Sarlós, T., Hawkins, P., Davis, J., Mohiuddin, A., Kaiser, L., Belanger,
+    D., Colwell, L. J., and Weller, A. Rethinking attention with Performers. *ArXiv*,
+    abs/2009.14794, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Clark et al. (2019) Clark, C., Lee, K., Chang, M.-W., Kwiatkowski, T., Collins,
+    M., and Toutanova, K. BoolQ: Exploring the surprising difficulty of natural yes/no
+    questions. In Burstein, J., Doran, C., and Solorio, T. (eds.), *Proceedings of
+    the 2019 Conference of the North American Chapter of the Association for Computational
+    Linguistics*, Minneapolis, Minnesota, June 2019\. Association for Computational
+    Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Clark et al. (2018) Clark, P., Cowhey, I., Etzioni, O., Khot, T., Sabharwal,
+    A., Schoenick, C., and Tafjord, O. Think you have solved question answering? try
+    ARC, the AI2 reasoning challenge. *ArXiv*, abs/1803.05457, 2018.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dao et al. (2022) Dao, T., Fu, D., Ermon, S., Rudra, A., and Ré, C. FlashAttention:
+    Fast and memory-efficient exact attention with IO-awareness. In Koyejo, S., Mohamed,
+    S., Agarwal, A., Belgrave, D., Cho, K., and Oh, A. (eds.), *Advances in Neural
+    Information Processing Systems*, volume 35\. Curran Associates, Inc., 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Fu et al. (2023) Fu, D. Y., Dao, T., Saab, K. K., Thomas, A. W., Rudra, A.,
+    and Re, C. Hungry hungry hippos: Towards language modeling with state space models.
+    In *The Eleventh International Conference on Learning Representations*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ge et al. (2023) Ge, S., Zhang, Y., Liu, L., Zhang, M., Han, J., and Gao, J.
+    Model tells you what to discard: Adaptive kv cache compression for llms. *ArXiv*,
+    abs/2310.01801, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Gu & Dao (2023) Gu, A. and Dao, T. Mamba: Linear-time sequence modeling with
+    selective state spaces. *ArXiv*, abs/2312.00752, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hendrycks et al. (2021) Hendrycks, D., Burns, C., Basart, S., Zou, A., Mazeika,
+    M., Song, D., and Steinhardt, J. Measuring massive multitask language understanding.
+    In *International Conference on Learning Representations*, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Holtzman et al. (2019) Holtzman, A., Buys, J., Du, L., Forbes, M., and Choi,
+    Y. The curious case of neural text degeneration. *ArXiv*, abs/1904.09751, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Jiang et al. (2023) Jiang, A. Q., Sablayrolles, A., Mensch, A., Bamford, C.,
+    Chaplot, D. S., de las Casas, D., Bressand, F., Lengyel, G., Lample, G., Saulnier,
+    L., Lavaud, L. R., Lachaux, M.-A., Stock, P., Scao, T. L., Lavril, T., Wang, T.,
+    Lacroix, T., and Sayed, W. E. Mistral 7B. *ArXiv*, abs/2310.06825, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kim & Cho (2020) Kim, G. and Cho, K. Length-adaptive Transformer: Train once
+    with length drop, use anytime with search. In *Annual Meeting of the Association
+    for Computational Linguistics*, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kwon et al. (2023) Kwon, W., Li, Z., Zhuang, S., Sheng, Y., Zheng, L., Yu, C. H.,
+    Gonzalez, J. E., Zhang, H., and Stoica, I. Efficient memory management for large
+    language model serving with pagedattention. *Proceedings of the 29th Symposium
+    on Operating Systems Principles*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Liu et al. (2018) Liu, P. J., Saleh, M., Pot, E., Goodrich, B., Sepassi, R.,
+    Kaiser, L., and Shazeer, N. M. Generating wikipedia by summarizing long sequences.
+    *ArXiv*, abs/1801.10198, 2018.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. (2023) Liu, Z., Desai, A., Liao, F., Wang, W., Xie, V., Xu, Z.,
+    Kyrillidis, A., and Shrivastava, A. Scissorhands: Exploiting the persistence of
+    importance hypothesis for llm kv cache compression at test time. *ArXiv*, abs/2305.17118,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Mu et al. (2023) Mu, J., Li, X. L., and Goodman, N. D. Learning to compress
+    prompts with gist tokens. *ArXiv*, abs/2304.08467, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Narayanan et al. (2021) Narayanan, D., Shoeybi, M., Casper, J., LeGresley,
+    P., Patwary, M., Korthikanti, V. A., Vainbrand, D., Kashinkunti, P., Bernauer,
+    J., Catanzaro, B., Phanishayee, A., and Zaharia, M. A. Efficient large-scale language
+    model training on gpu clusters using megatron-lm. *SC21: International Conference
+    for High Performance Computing, Networking, Storage and Analysis*, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Nawrot et al. (2022) Nawrot, P., Chorowski, J., Lańcucki, A., and Ponti, E.
+    Efficient transformers with dynamic token pooling. In *Annual Meeting of the Association
+    for Computational Linguistics*, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Patterson et al. (2021) Patterson, D. A., Gonzalez, J., Le, Q. V., Liang, C.,
+    Munguía, L.-M., Rothchild, D., So, D. R., Texier, M., and Dean, J. Carbon emissions
+    and large neural network training. *ArXiv*, abs/2104.10350, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Pope et al. (2022) Pope, R., Douglas, S., Chowdhery, A., Devlin, J., Bradbury,
+    J., Levskaya, A., Heek, J., Xiao, K., Agrawal, S., and Dean, J. Efficiently scaling
+    transformer inference. *ArXiv*, abs/2211.05102, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Rae et al. (2019) Rae, J. W., Potapenko, A., Jayakumar, S. M., and Lillicrap,
+    T. P. Compressive transformers for long-range sequence modelling. *ArXiv*, abs/1911.05507,
+    2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sakaguchi et al. (2021) Sakaguchi, K., Bras, R. L., Bhagavatula, C., and Choi,
+    Y. WinoGrande: An adversarial winograd schema challenge at scale. *Commun. ACM*,
+    64(9), 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Shazeer (2019) Shazeer, N. M. Fast transformer decoding: One write-head is
+    all you need. *ArXiv*, abs/1911.02150, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sheng et al. (2023) Sheng, Y., Zheng, L., Yuan, B., Li, Z., Ryabinin, M., Fu,
+    D. Y., Xie, Z., Chen, B., Barrett, C. W., Gonzalez, J., Liang, P., Ré, C., Stoica,
+    I., and Zhang, C. High-throughput generative inference of large language models
+    with a single gpu. In *International Conference on Machine Learning*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023) Touvron, H., Martin, L., Stone, K., Albert, P., Almahairi,
+    A., Babaei, Y., Bashlykov, N., Batra, S., Bhargava, P., Bhosale, S., Bikel, D.,
+    Blecher, L., Ferrer, C. C., Chen, M., Cucurull, G., Esiobu, D., Fernandes, J.,
+    Fu, J., Fu, W., Fuller, B., Gao, C., Goswami, V., Goyal, N., Hartshorn, A., Hosseini,
+    S., Hou, R., Inan, H., Kardas, M., Kerkez, V., Khabsa, M., Kloumann, I., Korenev,
+    A., Koura, P. S., Lachaux, M.-A., Lavril, T., Lee, J., Liskovich, D., Lu, Y.,
+    Mao, Y., Martinet, X., Mihaylov, T., Mishra, P., Molybog, I., Nie, Y., Poulton,
+    A., Reizenstein, J., Rungta, R., Saladi, K., Schelten, A., Silva, R., Smith, E. M.,
+    Subramanian, R., Tan, X. E., Tang, B., Taylor, R., Williams, A., Kuan, J. X.,
+    Xu, P., Yan, Z., Zarov, I., Zhang, Y., Fan, A., Kambadur, M., Narang, S., Rodriguez,
+    A., Stojnic, R., Edunov, S., and Scialom, T. Llama 2: Open foundation and fine-tuned
+    chat models. *ArXiv*, abs/2307.09288, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Treviso et al. (2022) Treviso, M. V., Ji, T., Lee, J.-U., van Aken, B., Cao,
+    Q., Ciosici, M. R., Hassid, M., Heafield, K., Hooker, S., Martins, P. H., Martins,
+    A. F. T., Milder, P., Raffel, C., Simpson, E., Slonim, N., Balasubramanian, N.,
+    Derczynski, L., and Schwartz, R. Efficient methods for natural language processing:
+    A survey. *Transactions of the Association for Computational Linguistics*, 11,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Vaswani et al. (2017) Vaswani, A., Shazeer, N. M., Parmar, N., Uszkoreit, J.,
+    Jones, L., Gomez, A. N., Kaiser, L., and Polosukhin, I. Attention is all you need.
+    In *Neural Information Processing Systems*, 2017.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wang et al. (2020) Wang, H., Zhang, Z., and Han, S. Spatten: Efficient sparse
+    attention architecture with cascade token and head pruning. *2021 IEEE International
+    Symposium on High-Performance Computer Architecture (HPCA)*, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zellers et al. (2019) Zellers, R., Holtzman, A., Bisk, Y., Farhadi, A., and
+    Choi, Y. HellaSwag: Can a machine really finish your sentence? In Korhonen, A.,
+    Traum, D., and Màrquez, L. (eds.), *Proceedings of the 57th Annual Meeting of
+    the Association for Computational Linguistics*, Florence, Italy, July 2019\. Association
+    for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Zhang et al. (2018) Zhang, B., Xiong, D., and Su, J. Accelerating neural transformer
+    via an average attention network. *ArXiv*, abs/1805.00631, 2018.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. (2023) Zhang, Z. A., Sheng, Y., Zhou, T., Chen, T., Zheng, L.,
+    Cai, R., Song, Z., Tian, Y., Ré, C., Barrett, C. W., Wang, Z., and Chen, B. H2o:
+    Heavy-hitter oracle for efficient generative inference of large language models.
+    *ArXiv*, abs/2306.14048, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Appendix A Memory-Bound Operations in Transformers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: During autoregressive generation with a KV cache, the sequence length during
+    every forward pass is $n=1$. The vast majority of time is spent on calculations
+    for linear layers and multi-head self-attention. For linear layers, the ratio
+    of FLOPs to input bytes improves as the batch size increases. For small batch
+    sizes, the operations are memory bounded on reading the weight matrices from HBM.
+    On the other hand, for MHSA layers during inference the ratio of FLOPs to input
+    bytes does not change and MHSA layers are always memory bounded on current GPUs.
+    The impact of KV cache compression is two-fold as it 1) allows us to decrease
+    the latency of MHSA layers, and 2) allows us to fit larger batch sizes in HBM,
+    resulting in better throughput and better utilization of GPUs during the calculations
+    of linear layers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B Replicating the Original Results
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To make sure that our implementation is correct, for each downstream task we
+    compare the performance reported in the original Llama 2 paper (Touvron et al.,
+    [2023](#bib.bib32)) with those obtained from the Hugging Face Hub checkpoints.
+    Furthermore, we evaluate the impact of using our internal data mixture for up-training,
+    acknowledging that variations in data proportions and preprocessing methodologies
+    can influence model behavior. In particular, we up-train the vanilla pre-trained
+    Llama-2 checkpoint for 200 training steps, amounting to 1B tokens, in accordance
+    with the original Llama-2 training schedule. We compute the average and standard
+    deviation of checkpoints after 50, 100, 150, 200 steps. In our experiments, we
+    replicate the results reported by the Llama 2 paper almost exactly, as shown in
+    [Table 2](#A2.T2 "In Appendix B Replicating the Original Results ‣ Dynamic Memory
+    Compression: Retrofitting LLMs for Accelerated Inference").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | CS-QA | MMLU | Human-Eval |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 7B | 13B | 70B | 7B | 13B | 70B | 7B | 13B | 70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Paper | 70.6 | 73.7 | 78.5 | 45.3 | 54.8 | 68.9 | 12.8 | 18.3 | 29.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Checkpoint | 70.6 | 73.7 | 78.5 | 45.7 | 55.1 | 69.1 | 13.4 | 17.7 | 30.5
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Up-trained | 70.5 ± 0.2 | 73.5 ± 0.1 | 78.0 ± 0.1 | 44.6 ± 0.6 | 54.5 ± 0.3
+    | 68.8 ± 0.3 | 14.0 ± 1.2 | 17.5 ± 1.5 | 29.6 ± 1.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: Replicating the original up-training results.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix C Analysis of the Compression Schema Learned by DMC
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Evolution Throughout the Training
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'In [Figure 7](#A3.F7 "In Evolution Throughout the Training ‣ Appendix C Analysis
+    of the Compression Schema Learned by DMC ‣ Dynamic Memory Compression: Retrofitting
+    LLMs for Accelerated Inference"), we illustrate how the CR changes for each layer
+    of the Llama 2 7B model throughout the training from 1$\times$ global CR. Each
+    subplot corresponds to a different global CR which occurs at different stages
+    of the training, going from the smallest (1.17) at the top, to the highest (4.16)
+    at the bottom. There is a clear trend such that, for a smaller global Compression
+    Ratio (i.e. at the beginning of the training), the model emphasizes compression
+    in the later layers. As the global Compression Ratio increases, the model keeps
+    on compressing in final layers but also starts to compress the earlier layers.
+    We hypothesize that the token representations in the initial layers do not contain
+    sufficient information to perform any meaningful grouping. Conversely, token representations
+    in the subsequent layers are more defined and, possibly, after several attention
+    layers, already contain redundant/shared information.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/472ac18174dd0bba29a75649d5e560a8.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7: Compression distribution across layers at different stages of retrofitting
+    a Llama 2 7B model. We adhere to the convention where, for a given subplot, a
+    larger space above a given layer indicates greater compression at that layer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sequence Length versus Compression Ratio
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Do DMC models compress sequences with a uniform CR independent from their total
+    length? We find that this is not the case. As show by [Figure 8](#A3.F8.1 "In
+    Sequence Length versus Compression Ratio ‣ Appendix C Analysis of the Compression
+    Schema Learned by DMC ‣ Dynamic Memory Compression: Retrofitting LLMs for Accelerated
+    Inference"), the CR increases logarithmically as we increase the total sequence
+    length. This holds true across all global CRs (including both 2$\times$).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/58d538d3afa1b03337b658a0bda17524.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8: CR achieved by Llama 2 7B for particular sequence lengths across
+    various global CRs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Absolute Position versus Compression Decision
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Do DMC models learn a fixed compression schema, or do they exhibit position
+    biases? In [Figure 9](#A3.F9.3 "In Absolute Position versus Compression Decision
+    ‣ Appendix C Analysis of the Compression Schema Learned by DMC ‣ Dynamic Memory
+    Compression: Retrofitting LLMs for Accelerated Inference"), we plot the average
+    value of the decision variable $\alpha$ compression ratios (CR).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/53046fe54793bb2948c4e8aaf7ac1ed6.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 9: Average value of the decision $\alpha$ for positions (0, 4096) averaged
+    over 128 samples, heads and layers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compression Schemata learned by DMC-C
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Studying the compression schema in [Figure 10](#A3.F10 "In Compression Schemata
+    learned by DMC-C ‣ Appendix C Analysis of the Compression Schema Learned by DMC
+    ‣ Dynamic Memory Compression: Retrofitting LLMs for Accelerated Inference") learned
+    by DMC-C, we find a very different pattern compared to DMC, due to the auxiliary
+    loss forcing the model to compress similarly across heads in the same layer. Nevertheless,
+    we observe a similar global preference for compressing deeper layers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/0d2c5616d209c8d22695bdf312d6178f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '![Refer to caption](img/c32c68824fd19b964aa87cfd549ab6dc.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 10: Heatmaps of average compression rates across layers (X-axis) and
+    heads (Y-axis) for DMC-C. Heads are arranged from the highest compression to the
+    lowest top-down for clarity.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Interpretability
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'A natural question arises, whether the compression schema that the model learns
+    is somehow aligned with human intuitions about text segmentation. We analyzed
+    the outputs of Llama 2 13B DMC with CR $4$ and noticed that some heads compress
+    according to the boundaries of linguistic units, such as words or syntactic phrases.
+    [Figure 11](#A3.F11.3 "In Interpretability ‣ Appendix C Analysis of the Compression
+    Schema Learned by DMC ‣ Dynamic Memory Compression: Retrofitting LLMs for Accelerated
+    Inference") shows the compression schema learned by head 14 in layer 0\. In this
+    case, the model merges the subwords back into words *reverting* the tokenizer.
+    Interestingly, some groupings of tokens correspond to semantic units, e.g., “1
+    9 th century”’, “5 0 percent", or “a week back later”. Yet, we also stress that
+    many heads and layers are not interpretable as their behavior does not overlap
+    with linguistic units.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'More generally higher layers merge longer tokens sequences, in line with [Figure 6](#S5.F6
+    "In 5.2 Throughput and Latency Measurements ‣ 5 Results ‣ Dynamic Memory Compression:
+    Retrofitting LLMs for Accelerated Inference"). For instance, [Figure 12](#A3.F12.3
+    "In Interpretability ‣ Appendix C Analysis of the Compression Schema Learned by
+    DMC ‣ Dynamic Memory Compression: Retrofitting LLMs for Accelerated Inference")
+    shows the decisions of layer 24 head 2\. We leave a more in-depth analysis of
+    compression schemata learned by DMC to future work.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/04e71150d62a9f474c0df1e636904cdd.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 11: Compression schema found by Llama 2 13B DMC 4$\times$ in layer 0,
+    head 14\. Tokens that are merged in the KV cache are marked with the same color.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/1202b1630f73fef9cfe8c16e5f0042c4.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 12: Compression schema found by Llama 2 13B DMC 4$\times$ for layer
+    24, head 2\. Tokens that are merged in the KV cache are marked with the same color.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix D Training Ablations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Training Steps per Increase in CR
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/104a39e98541acfeca80f2ae38c68aed.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 13: Different up-training regimes for DMC-C: Short (red) increases CR
+    by 1 every 6K steps, Long (blue) increases CR by 1 every 3K steps. Horizontal
+    lines correspond to the performance of the original Llama 2.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another advantage of DMC is its high flexibility. In fact, based on the availability
+    of resources, different regimes can be chosen when annealing the CR to the target
+    during up-training. In [Figure 13](#A4.F13 "In Training Steps per Increase in
+    CR ‣ Appendix D Training Ablations ‣ Dynamic Memory Compression: Retrofitting
+    LLMs for Accelerated Inference"), we compare a Short and a Long regime for the
+    contrained variant of DMC (DMC-C), which continuously increase the CR by 1 every
+    3K and 6K steps (12B and 24B tokens), respectively. It is evident how there exists
+    a trade-off between training steps (hence, time) and performance. Additionally,
+    [Figure 13](#A4.F13 "In Training Steps per Increase in CR ‣ Appendix D Training
+    Ablations ‣ Dynamic Memory Compression: Retrofitting LLMs for Accelerated Inference")
+    showcases another aspect of the higher flexibility DMC affords: it is compatible
+    with arbitrary real-valued CRs, as opposed to integer CRs divisible by 2 as in
+    GQA.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Schedules of Target CR
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d114d85c56634d606a69513d01937d28.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 14: Validation perplexity and MMLU accuracy vs training steps for Fixed
+    Memory Pooling and a variant of DMC where the auxiliary loss CR is immediately
+    set to the target on the onset of training. All models follow the regular training
+    schedule and are trained up to 2$\times$ CR.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Additionally, we explore how different schedules for the target CR impact the
+    model performance. In the standard setup, this is annealed from 1 to the target
+    CR throughout the duration of training. Here, we compare it with a setup where
+    the CR used in the auxiliary loss for compression is set to the target from the
+    start (DMC-immediate). We show the results in [Figure 14](#A4.F14 "In Schedules
+    of Target CR ‣ Appendix D Training Ablations ‣ Dynamic Memory Compression: Retrofitting
+    LLMs for Accelerated Inference"). As expected, DMC-immediate has a perplexity
+    spike at the beginning when the model quickly increases the CR due to the auxiliary
+    loss. While perplexity is recovered during training, even to a lower point than
+    DMC with annealing, downstream accuracy on MMLU benchmark is degraded across the
+    board. This showcases why avoiding perplexity spikes is fundamental to successfully
+    retrofit an LLM.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix E DMC Ablations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/997097a048fec0d71f636c119f9c449e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 15: Validation perplexity and test MMLU accuracy vs compression rate
+    for different types of compression priors, in-layer relaxations, and importance
+    scores. All models follow the short training regime and are trained up to 2$\times$
+    CR.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fixed vs Learned Memory Compression
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We assessed the importance of dynamically learning compression decisions in
+    DMC by comparing it with Fixed Memory Pooling, which reduces the overall number
+    of tokens in memory by deterministically averaging every $n$ in this case is identical
+    to the compression rate. The results, shown in [Figure 14](#A4.F14 "In Schedules
+    of Target CR ‣ Appendix D Training Ablations ‣ Dynamic Memory Compression: Retrofitting
+    LLMs for Accelerated Inference"), demonstrate that the dynamic component of DMC
+    is crucial to achieve lower perplexity as well as higher downstream accuracy.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Global vs Local (Layer-wise) Compression Prior
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We compare two approaches to compression: a Local Prior, which enforces a pre-specified
+    compression ratio (CR) in each layer independently, requiring every layer to compress
+    approximately the same amount, and a Global Prior used by default DMC, which applies
+    a pre-specified CR across all layers, giving the model the freedom to apply different
+    CRs in each layer, provided that their average compression equals the global CR.
+    [Figure 15](#A5.F15 "In Appendix E DMC Ablations ‣ Dynamic Memory Compression:
+    Retrofitting LLMs for Accelerated Inference") clearly indicates that the Global
+    Prior (DMC in [Figure 15](#A5.F15 "In Appendix E DMC Ablations ‣ Dynamic Memory
+    Compression: Retrofitting LLMs for Accelerated Inference")) improves MMLU performance
+    compared to the Local Prior.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In-layer Relaxation
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: '| Scale | Method | CR | MMLU | CS-QA | Human Eval |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 7B | – | – | 44.6 | 70.5 | 14.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GQA | 2$\times$ | 39.8 | 68.9 | 12.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DMC | 45.2 | 70.8 | 15.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DMC-C | 45.5 | 70.6 | 14.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GQA | 4$\times$ | 34.7 | 68.3 | 14.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DMC | 43.9 | 70.2 | 16.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DMC-C | 38.2 | 69.6 | 14.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 13B | – | – | 54.5 | 73.5 | 17.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GQA | 2$\times$ | 50.2 | 72.7 | 15.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DMC | 54.8 | 74.2 | 20.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DMC-C | 54.8 | 73.9 | 18.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GQA | 4$\times$ | 48.6 | 72.2 | 16.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DMC | 54.2 | 73.2 | 22.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DMC-C | 52.4 | 72.9 | 18.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 70B^∗ | – | 8$\times^{*}$ | 68.8 | 78.0 | 29.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DMC | 16$\times^{*}$ | 68.8 | 77.9 | 29.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | DMC-C | 16$\times^{*}$ | 67.4 | 78.2 | 31.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 3: MMLU accuracy (Acc.), Commonsense Question Answering (CS-QA) Exact
+    Match (EM), and Human-Eval Pass@1 for several scales (7B, 13B, and 70B) and compression
+    rates (CRs; $1\times$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We then compare three strategies to determine how similar compression schemata
+    for heads within each layer should be (assuming a global prior):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'DMC: There are no constraints on the decision and importance scores, except
+    for the global loss nudging the model towards a pre-defined CR.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'DMC-C: Different heads can have varying decision and importance scores within
+    each layer. However, an auxiliary loss encourages the model to maintain similar
+    CRs among all heads within the layer.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '3.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'DMC-HardC: Decision scores $\alpha_{t}$ are shared across heads, leading to
+    the same shortening schema within each layer across heads.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'As per [Figure 15](#A5.F15 "In Appendix E DMC Ablations ‣ Dynamic Memory Compression:
+    Retrofitting LLMs for Accelerated Inference"), the default DMC strategy shows
+    a consistent MMLU performance across varying CRs, while both DMC-C and DMC-HardC
+    exhibit a sharp drop in MMLU as the compression reaches 1.9$\times$. Moreover,
+    in [Table 3](#A5.T3 "In In-layer Relaxation ‣ Appendix E DMC Ablations ‣ Dynamic
+    Memory Compression: Retrofitting LLMs for Accelerated Inference") we report a
+    more thorough comparison between DMC and DMC-C. In general, while remaining superior
+    to GQA, DMC-C displays a significant degradation in several configurations when
+    compared to regular DMC.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Importance Scores
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Finally, we assess the impact of predicting importance scores for accumulation
+    as opposed to uniformly weighting each token in a group. [Figure 15](#A5.F15 "In
+    Appendix E DMC Ablations ‣ Dynamic Memory Compression: Retrofitting LLMs for Accelerated
+    Inference") shows that DMC-C with Uniform Weighting is worse than learned weighting
+    DMC-C.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix F Masking Implementation Details
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We mask the unnormalized attention score for the pair $(i,j)$ as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\hat{a}_{(i,j)}=\underbrace{\frac{\mathbf{q}_{i}[1:d_{h}]^{\top}\mathbf{k}_{j}[1:d_{h}]}{\sqrt{d_{h}}}}_{\text{attention
+    score}}+\underbrace{\log(1-\alpha_{j+1})\vphantom{\frac{1}{\sqrt{d_{h}}}}}_{\text{attention
+    mask}}.$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: We rely on the memory efficient implementation of MHSA from PyTorch, which allows
+    adding arbitrary masks to the attention scores before softmax. Notwithstanding
+    this, at inference time DMC remains compatible with efficient libraries for attention
+    such as Flash Attention (Dao et al., [2022](#bib.bib12)). The $\log(1-\alpha_{j+1})$
+    for better numerical precision.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix G Limitations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'This paper is focused on retrofitting existing LLMs into DMC variants. In our
+    preliminary experiments with pre-training LLMs with DMC from scratch we obtained
+    negative results when compared to the training curve of GQA. We speculate that
+    this is due to the mutual dependency of modeling and segmenting data: when token
+    representations are not of sufficient quality, boundary decisions are unreliable.
+    Vice versa, incorrect boundary decisions may lead to poor token representations.
+    This creates a vicious cycle which may be broken by techniques that facilitate
+    convergence, such as an Expectation Maximization-style alternation between modeling
+    and segmenting.'
+  prefs: []
+  type: TYPE_NORMAL

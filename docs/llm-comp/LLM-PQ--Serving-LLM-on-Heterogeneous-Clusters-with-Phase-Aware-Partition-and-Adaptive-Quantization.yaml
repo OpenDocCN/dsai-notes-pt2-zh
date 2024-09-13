@@ -1,0 +1,1854 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:49:58'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'LLM-PQ: Serving LLM on Heterogeneous Clusters with Phase-Aware Partition and
+    Adaptive Quantization'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2403.01136](https://ar5iv.labs.arxiv.org/html/2403.01136)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Juntao Zhao University of Hong KongHong Kong ,  Borui Wan University of Hong
+    KongHong Kong ,  Yanghua Peng ByteDance Inc.USA ,  Haibin Lin ByteDance Inc.USA
+     and  Chuan Wu University of Hong KongHong Kong
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Recent breakthroughs in Large-scale language models (LLMs) have demonstrated
+    impressive performance on various tasks. The immense sizes of LLMs have led to
+    very high resource demand and cost for running the models. Though the models are
+    largely served using uniform high-caliber GPUs nowadays, utilizing a heterogeneous
+    cluster with a mix of available high- and low-capacity GPUs can potentially substantially
+    reduce the serving cost. There is a lack of designs to support efficient LLM serving
+    using a heterogeneous cluster, while the current solutions focus on model partition
+    and uniform compression among homogeneous devices. This paper proposes LLM-PQ,
+    a system that advocates adaptive model quantization and phase-aware partition
+    to improve LLM serving efficiency on heterogeneous GPU clusters. We carefully
+    decide on mixed-precision model quantization together with phase-aware model partition
+    and micro-batch sizing in distributed LLM serving with an efficient algorithm,
+    to greatly enhance inference throughput while fulfilling user-specified model
+    quality targets. Extensive experiments on production inference workloads in 11
+    different clusters demonstrate that LLM-PQ achieves up to 2.88$\times$ on average)
+    throughput improvement in inference, showing great advantages over state-of-the-art
+    works. Source code available at https://github.com/tonyzhao-jt/LLM-PQ.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1\. Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Large-scale language models (LLMs) such as GPT3, LLaMA, OPT, and BLOOM ([scao2022bloom,](#bib.bib31)
+    ; [Zhang2022OPTOP,](#bib.bib40) ; [Touvron2023LLaMAOA,](#bib.bib33) ) have exhibited
+    unprecedented performance in pushing the envelope of various artificial intelligence
+    (AI) tasks. The outstanding model performance is largely attributed to a very
+    large model size ranging from a few hundred million to even half a trillion parameters.
+    Training an LLM requires thousands of GPUs and millions of dollars ([gpt3,](#bib.bib3)
+    ). Serving a trained LLM is also resource-demanding and cost-intensive, as an
+    LLM cannot commonly be fit into a single GPU, therefore multiple GPUs are required
+    for distributed inference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To cope with the massive size of LLMs, a number of approaches have been proposed
+    to enable their efficient deployment in practice. DeepSpeed ([Aminabadi2022DeepSpeedIE,](#bib.bib1)
+    ), FasterTransformer and HuggingFace Text Generation Inference (TGI) ([huggingface_text_generation_inference,](#bib.bib13)
+    ) integrate existing model parallelism techniques, such as tensor-parallelism
+    (TP) and pipeline parallelism (PP), with memory footprint reduction schemes, e.g.,
+    quantization or offloading, to lower the resource demands of model serving in
+    a distributed manner. For memory footprint reduction schemes, quantization converts
+    model weights into lower-precision formats (e.g., 8-bit), reducing memory consumption.
+    Offloading methods ([flexgen,](#bib.bib32) ) leverage aggregate CPU and NVMe memory
+    capacity to store weights or compute a portion of the GPU workload. However, the
+    existing solutions are mainly designed for models serving on homogeneous clusters,
+    limiting their performance in a heterogeneous cluster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/aea12a54f0ebc6b51840210a022ef8d7.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) GPU Portions
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/6a0836767d2966238500ad6710748275.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Average utilization of different types of GPUs in one month
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 1\. GPU proportions and utilization rates in a real-world production
+    AI cluster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A practical AI cloud or machine learning (ML) cluster often contains heterogeneous
+    devices, e.g., GPUs of different models purchased at different times. Utilization
+    of different types of GPUs may differ substantially. Fig. [1](#S1.F1 "Figure 1
+    ‣ 1\. Introduction ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters with Phase-Aware
+    Partition and Adaptive Quantization") shows the proportion of different GPUs in
+    a production cluster, with fewer percentages of high-calibre GPUs (NVIDIA A100,
+    V100) the majority being relatively low-calibre inference GPUs (such as T4). The
+    utilization rate of other GPUs is much lower than that of A100, which are used
+    intensively for both training and inference of large models nowadays for the best
+    performance. Efficiently exploiting available heterogeneous GPUs for LLM serving
+    is worthwhile to explore, to fully utilize available resources and substantially
+    reduce the cost of provisioning LLM-enabled applications.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The commonly adopted TP and PP paradigms partition model operations/layers
+    evenly among the GPUs, which is not suitable for heterogeneous GPUs and results
+    in either low utilization of high-capacity GPUs or out-of-memory (OOM) errors
+    on low-memory GPUs. The limited studies of models serving on heterogeneous clusters ([hu2021pipeline,](#bib.bib17)
+    ) focus on the partition of encoder-based transformer models. However, mainstream
+    LLMs with decoder-only structures contain two phases during inference: prompt
+    processing (prefill) and token generation (decode). While the former phase is
+    similar to the inference of encoder-based transformers, the latter has a totally
+    different pattern (see Sec. [2.1](#S2.SS1 "2.1\. Generative Inference of LLM ‣
+    2\. BackGround and Motivation ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters
+    with Phase-Aware Partition and Adaptive Quantization")), making the previous partition
+    solutions not suitable. Besides, the execution time required for each phase, depending
+    on the prompt length and token generation number, varies significantly. What is
+    worse, in a heterogeneous cluster, this difference can even be amplified, causing
+    model partitioning that focuses on the time of the first phase instead of both
+    being far from optimal. Therefore, phase-aware model partition schemes warrant
+    investigation. Additionally, extra memory required for pre-and post-processing
+    during LLM inference, such as text embedding for converting input tokens to word
+    vectors, should also be considered, especially when utilizing low-calibre GPUs
+    which have limited GPU memory.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When the model is partitioned among heterogeneous GPUs, adopting a single quantization
+    precision across all model layers in different types of GPUs is always suboptimal.
+    uniform single-precision model quantization can select a precision, e.g., INT4,
+    that is suitable for GPUs with lower memory to avoid OOM (Out Of Memory) problem,
+    but causing a notable portion of memory waste for those with abundant GPU memory.
+    Adaptive mixed-precision quantization for LLM, which is not investigated in the
+    literature ([frantar2023gptq,](#bib.bib14) ; [xiao2023smoothquant,](#bib.bib36)
+    ), is more desirable. By using higher precision for model weights on GPUs with
+    more available memory instead of forcing them to use the same one in those low-calibre
+    GPUs, adaptive mixed-precision quantization can not only avoid memory waste but
+    promote the model quality as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this work, we propose a novel system, LLM-PQ, to enable efficient LLM generative
+    serving on heterogeneous GPU clusters. Instead of emphasizing the enhancement
+    of throughput faced with infinite requests, as commonly pursued in recent works
+    like vLLM ([vllm,](#bib.bib20) ). LLM-PQ directs its focus toward the efficient
+    processing of a given workload, which is faced by the offline task. LLM-PQ advocates
+    adaptive model quantization and phase-aware model partition, as well as efficient
+    micro-batch scheduling for LLM pipeline serving. It jointly determines the quantization
+    precisions, model layer partition, and hybrid micro-batch sizing strategies, given
+    the LLM, available resources of the heterogeneous cluster, and user-specified
+    model quality targets. Our contributions in designing LLM-PQ can be summarized
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\triangleright$ We provide a cost model that details the memory requirements
+    of LLM serving under a mixed-precision quantization scheme. We learn a linear
+    regression model to accurately predict the latency of mixed-precision LLM inference
+    workloads with varying sequence lengths and batch sizes based on their phase-aware
+    computational characteristics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\triangleright$ We introduce adaptive mixed-precision into the search space
+    of heterogeneous pipeline serving of LLM and provide a variance indicator the
+    measure the layer sensitivity towards different level quantization. We develop
+    an iterative algorithm that first explores possible GPU orderings and different
+    (phase, micro-batch size) pairs in the pruned search space, and then solves an
+    integer linear programming (ILP) problem to determine the best partition and quantization
+    bitwidths.
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\triangleright$ on average) as compared to state-of-the-art approaches.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2\. BackGround and Motivation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 2.1\. Generative Inference of LLM
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/4ee0e03eba4f4182aa7a178213e9ce67.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2\. Two phases in LLM generative serving: (Top) Prefill phase takes
+    the prompt sequence to generate the initial key-value pairs. (Bottom) Decode phase
+    takes previously generated token & stored KV pairs to generate the next token.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'LLM generally refers to a suite of decoder-only transformer models with large
+    parameter sizes ([Zhang2022OPTOP,](#bib.bib40) ; [scao2022bloom,](#bib.bib31)
+    ). Unlike encoder-based transformers like ViT-Huge ([vit,](#bib.bib11) ) and Bert-Large ([bert,](#bib.bib9)
+    ) that are sequence-to-sequence, LLMs generate tokens one by one in an inference
+    process that comprises two phases ([Zhang2022OPTOP,](#bib.bib40) ; [scao2022bloom,](#bib.bib31)
+    )(Fig. [2](#S2.F2 "Figure 2 ‣ 2.1\. Generative Inference of LLM ‣ 2\. BackGround
+    and Motivation ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters with Phase-Aware
+    Partition and Adaptive Quantization")): prefill and decode ([flexgen,](#bib.bib32)
+    ). In the prefill phase, the input prompt sequence produces key/value (KV) caches
+    for each transformer layer, which is used in the attention mechanism as a context
+    vector for later token generation. During the decode phase, stored KV pairs are
+    updated as each subsequent token is generated one by one based on the preceding
+    token; the token generation process continues until a stopping criterion is met,
+    such as reaching the end of a sequence (EOS) or exceeding the maximum number of
+    tokens allowed. During generative inference, each layer of the LLM undergoes a
+    prefill phase followed by several passes in the decode phase (an example is given
+    in Fig. [2](#S2.F2 "Figure 2 ‣ 2.1\. Generative Inference of LLM ‣ 2\. BackGround
+    and Motivation ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters with Phase-Aware
+    Partition and Adaptive Quantization")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The time taken by the prefill and decode phases varies to the prompt length.
+    By sampling 10,000 conversations generated by chatGPT from the ShareGPT ([ryokoai_sharegpt52k,](#bib.bib30)
+    ) dataset, we found that the prompt length varies substantially: $<128$) when
+    the prompt is long. Unlike prefill time, the decode time is determined by the
+    number of generated tokens. These characteristics make the inference pattern of
+    LLM more complicated than encoder-based transformers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2\. Heterogenous Model Parallelization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/525003ce64a97dc7236a6e1e65658618.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 3\. Phase time decomposition with different precisions. $\times$ indicates
+    time on P100 compared to V100.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pipeline parallelism ([Aminabadi2022DeepSpeedIE,](#bib.bib1) ; [huang2019gpipe,](#bib.bib18)
+    ) has been widely adopted to distribute massive parameters of LLM across devices.
+    The model is split into stages and micro-batches are processed over the stages
+    in a pipelining manner. Each device executes a model stage, and data is passed
+    between devices as it moves through the pipeline. Workload balance among stages
+    is important as the throughput of pipeline serving is bounded by the execution
+    time of the slowest stage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Deriving optimal partitions among heterogeneous devices is challenging, especially
+    when considering the two-phase token generation. The lower part of Fig. [3](#S2.F3
+    "Figure 3 ‣ 2.2\. Heterogenous Model Parallelization ‣ 2\. BackGround and Motivation
+    ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters with Phase-Aware Partition and
+    Adaptive Quantization") gives the execution time of a single layer of the respective
+    model with prompt length 512 and batch size 8\. The execution time ratio when
+    running the same phase on different devices varies substantially. For example,
+    under FP16, the execution time of the layer in the prefill phase on P100 is 14.53$\times$
+    for the decode phase. Since the LLM inference time contains these two phases,
+    pipeline stage partitioning should consider the execution time of both phases
+    on each GPU. Existing solutions (e.g., PipeEdge ([hu2021pipeline,](#bib.bib17)
+    )) partition single-phase encoder-based models on heterogeneous devices, whose
+    solutions cannot be directly extended to two phases of LLM serving.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Furthermore, a complete language model includes an embedding layer, which is
+    responsible for converting sentences into word vectors. In heterogeneous clusters,
+    the embedding layer encounters more significant imbalance issues compared to homogeneous
+    clusters due to the variety of the GPU’s computing and memory capabilities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.3\. Online and Offline Serving Task
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: There are two suites of the LLM inference workload. The online task handles
+    infinite requests from runtime users, where the prompt length and token generation
+    number are unpredictable. vLLM ([vllm,](#bib.bib20) ) introduces pageAttention
+    to efficiently manage substantial and dynamically changing KV caches for each
+    request. The offline task consists of predictable batch prompt processing tasks,
+    where prompts are padded to a uniform length and the number of token generations
+    is predetermined. FlexGen ([flexgen,](#bib.bib32) ) addresses the memory constraints
+    in this scenario by employing multi-hierarchy offloading and zig-zag packing techniques.
+  prefs: []
+  type: TYPE_NORMAL
+- en: LLM-PQ targets the offline task with the prior knowledge of the prompt length
+    and token generation number.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Opportunity 1: Phase-Aware Model Partition on Heterogenous GPUs. By considering
+    the inference time of both the prefill and decode phases, and also taking into
+    account the resource consumption and computation of the embedding layer, we can
+    obtain a more comprehensive understanding of the complex generation process of
+    LLM and therefore a more accurate latency modeling for making pipeline stage partition
+    decision. This approach ensures improved performance in heterogeneous pipeline
+    serving.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.4\. Quantization in LLM
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Quantization is a model compression technique that maps high-precision values,
+    such as those stored in FP16, to their low-precision counterparts. For symmetric
+    quantization, the input data or model weight distribution is evenly partitioned
+    into a fixed number of bins. Each bin is rounded to an n-bit quantized value using
+    $\hat{x}=[\frac{x-q_{x}}{s_{x}}]$ is the dequantized value in floating point.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'LLM Quantization. The weights of LLMs are typically stored in FP16/BF16\. Due
+    to the large size of LLMs, it is often necessary to further compress the model
+    weights for inference serving, e.g., using INT8 quantization to reduce the weight
+    storage by half. Existing LLM quantization approaches can be categorized into
+    two: (1) W8A8 kernel-based quantization (e.g., SmoothQuant ([xiao2023smoothquant,](#bib.bib36)
+    ) and ZeroQuant([yao2022zeroquant,](#bib.bib37) )), which quantizes both activations
+    and weights during serving; (2) weight-only quantization ([frantar2023gptq,](#bib.bib14)
+    ; [frantar2023optq,](#bib.bib15) ; [lin2023awq,](#bib.bib21) ), which only quantizes
+    model weights when loading the model into GPU memory. In this paper, we adopt
+    decomposition kernel-based HuggingFace bitsandbytes ([dettmers2022llmint8,](#bib.bib6)
+    ) to implement INT8 quantization. For precisions lower than 8 (e.g., 3 and 4),
+    we use weight-only kernels provided by GPTQ ([frantar2023gptq,](#bib.bib14) )
+    following serving system setup of HuggingFace TGI ([huggingface_text_generation_inference,](#bib.bib13)
+    ), OpenLLM ([Pham_OpenLLM_Operating_LLMs_2023,](#bib.bib28) ).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, Existing LLM quantization works uniformly quantize all model layers
+    to the same bit by default (e.g., 3, 4, or 8 ([frantar2023gptq,](#bib.bib14) ;
+    [dettmers2022llmint8,](#bib.bib6) )) which leads to underutilized memory on high-calibre
+    GPUs or OOM problems on low-calibre GPUs in a heterogeneous cluster. This is because
+    different types of GPUs are not allowed to choose their most suitable quantization
+    precision to match their capacities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/17c0cfdf4579a286fb03ee626f24ccf7.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) BlOOM-3b PPL vs. Bitwidth
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/02e622b1e837919dae7c50b741f975c7.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) OPT-1.3b Accuracy vs. Bitwidth
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 4\. BLOOM-3b (a) and OPT-1.3b (b) perplexity (PPL) & accuracy under different
+    quantization schemes. Smaller PPL means the model is more confident in its prediction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Opporunity 2: Adaptive Quantization for Better Accuracy and Speed. We advocate
+    adaptive quantization by choosing potentially different bits for model layers
+    on different GPUs, to better utilize the available memory, as well as to improve
+    model quality and computation speed as compared to uniform quantization. We illustrate
+    the benefits of adaptive quantization as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1\. Adaptive quantization can lead to better model accuracy. We run BLOOM-3b1 ([scao2022bloom,](#bib.bib31)
+    ) and OPT-1.3b ([Zhang2022OPTOP,](#bib.bib40) ) with different precision setups
+    on A100 and evaluate the perplexity ([jelinek1977perplexity,](#bib.bib19) ), on
+    three text datasets ([wikitext2,](#bib.bib24) ; [ptb,](#bib.bib23) ; [c4,](#bib.bib29)
+    ). We also measure the model accuracy on popular zero-shot question-answering
+    benchmarks LAMBADA ([paperno-etal-2016-lambada,](#bib.bib26) ), ARC([allenai:arc,](#bib.bib5)
+    ) and PIQA ([Bisk2020,](#bib.bib2) );We use calibration data from the C4 dataset
+    to determine quantization statistics. In Fig. [4](#S2.F4 "Figure 4 ‣ 2.4\. Quantization
+    in LLM ‣ 2\. BackGround and Motivation ‣ LLM-PQ: Serving LLM on Heterogeneous
+    Clusters with Phase-Aware Partition and Adaptive Quantization"), the ‘mixed4-8’
+    case denotes that we uniformly randomly assign 4 or 8 bits to each model layer,
+    while ‘mixed3-4’ is to uniformly randomly assign bitwidth 3 or 4 to each layer.
+    Mixed-precision quantization leads to better model performance than uniformly
+    using the lower bit.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/44bd97a79763f1a52b531a3639be2fce.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5\. Execution time of prefill and decode phases under different precisions
+    and batch sizes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '2\. Adaptive quantization speeds up inference. Fig. [5](#S2.F5 "Figure 5 ‣
+    2.4\. Quantization in LLM ‣ 2\. BackGround and Motivation ‣ LLM-PQ: Serving LLM
+    on Heterogeneous Clusters with Phase-Aware Partition and Adaptive Quantization")
+    shows how quantization performs with different device types and input shapes.
+    The latency is measured on a single layer of OPT-30b with prompt length 512\.
+    We observe that uniform low-precision quantization may not always result in inference
+    speed-up, due to additional overhead that quantization introduces. FP16 precision
+    leads to the fastest inference in many cases. If low-precision uniform quantization
+    does not fully occupy the GPU memory, swapping certain layers with faster higher-precision
+    kernels can accelerate the inference process. For instance, when there is remaining
+    memory after uniformly quantizing to INT8, utilizing INT8-FP16 mixed-precision
+    can be beneficial.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.5\. Challenges
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Table 1\. Model performance comparison under different layer quantizations.
+    The best results are marked in bold. Unselected layers are retained in FP16.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Layers Quantized to 4-bit | Avg. Perplexity | Avg. Accuracy (%) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-1.3b | 0-8 | 15.52 | 62.82 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8-16 | 15.78 | 62.49 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16-24 | 15.98 | 61.67 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BLOOM-3b | 0-10 | 17.65 | 60.71 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10-20 | 17.88 | 60.24 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 20-30 | 17.94 | 60.37 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Adopting adaptive mixed-precisions in conjunction with a heterogeneous pipeline
+    model serving poses new challenges. Quantization bit (precision) selection must
+    be considered jointly with layer partition, as the same quantized kernel can perform
+    differently on different GPUs, as shown in Fig. [3](#S2.F3 "Figure 3 ‣ 2.2\. Heterogenous
+    Model Parallelization ‣ 2\. BackGround and Motivation ‣ LLM-PQ: Serving LLM on
+    Heterogeneous Clusters with Phase-Aware Partition and Adaptive Quantization")
+    and Fig. [5](#S2.F5 "Figure 5 ‣ 2.4\. Quantization in LLM ‣ 2\. BackGround and
+    Motivation ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters with Phase-Aware Partition
+    and Adaptive Quantization"). For example, T4 supports fast INT8 due to its tensor
+    core, making the execution time of the 8-bit layer comparable to FP16, while V100’s
+    INT8 implementation always incurs longer latency than FP16\. Other factors such
+    as micro-batch size, prompt length, and token generation number also affect the
+    kernel speed and pipeline bubble in prefill and decode phases. To produce an optimized
+    inference execution plan, we should take into account all these factors, which
+    results in a complex problem with a very large solution space.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, determining the optimal inference execution plan requires an accurate
+    estimation of memory and latency across devices under different precisions. Profiling
+    every possible combination of precision, GPU type, and input shape for all partition
+    cases would be very time-consuming. An efficient cost model is needed to reduce
+    the overhead. Second, different layers in an LLM may exhibit different sensitivities
+    to quantization, in terms of model performance impact, when quantized to the same
+    bit. Table [1](#S2.T1 "Table 1 ‣ 2.5\. Challenges ‣ 2\. BackGround and Motivation
+    ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters with Phase-Aware Partition and
+    Adaptive Quantization") shows that selecting different layers of LLMs for quantization
+    can render different model qualities. This finding highlights the importance of
+    identifying a suitable layer quantization sensitivity indicator to guide bits
+    selection, achieving the goal of reducing memory waste and promoting model quality
+    simultaneously. Last, due to the large solution space of our joint decision-making
+    problem, offline search for optimal solutions can still be time-consuming. An
+    efficient algorithm is in need to effectively prune the solution space.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We design LLM-PQ to handle all these challenges and achieve significant performance
+    gains of LLM serving on heterogeneous clusters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3\. LLM-PQ Overview
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/6dffd8b798ffa2c8358aa9b45f8d1274.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6\. LLM-PQ Overview
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'LLM-PQ includes an offline assigner and a distributed model inference runtime.
+    A system overview is given in Fig. [6](#S3.F6 "Figure 6 ‣ 3\. LLM-PQ Overview
+    ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters with Phase-Aware Partition and
+    Adaptive Quantization").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The offline assigner makes optimized decisions on model layer partition, micro-batch
+    sizing, and quantization bit assignment to each layer. It collects user inputs
+    including the pre-trained LLM, devices and their resource configurations in the
+    heterogeneous cluster, precision candidates, query workload characteristics (the
+    prompt length, token generation length, and batch size), and a ‘quality scalar’
+    that represents user’s level of concern for mode quality (Sec. [4.3](#S4.SS3 "4.3\.
+    Optimizer ‣ 4\. Assigner Design ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters
+    with Phase-Aware Partition and Adaptive Quantization")). The cost models include:
+    (i) an analytical memory model which takes model meta-information such as hidden
+    space size and decoder layer number as input and predicts the GPU memory occupation
+    for a model shard with its mixed-precision plan; (ii) a latency cost model, which
+    predicts the execution latency of a model shard based on inference latency samples
+    of a single decoder layer collected by the profiler on different GPUs. The Indicator
+    Generator is responsible for producing an indicator that quantifies the model
+    performance perturbation introduced by a quantized layer under a specific bit.
+    The optimizer derives the bit assignment, layer partition, and micro-batch sizing
+    using the indicator and the cost models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The distributed runtime executes the plans generated by the assigner and conducts
+    LLM generative inference. The master engine handles preprocessing and postprocessing
+    for token generation, such as embedding lookup and process logits into a predicted
+    token, and micro-batch sizing for different generation phases. Each worker process
+    is responsible for one pipeline stage and is located on a different GPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4\. Assigner Design
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Table 2\. Notation
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| $h_{1}$ | Hidden dimension of 2nd MLP layer |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $v$ | Prompt length |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $t$ | Bitwidth of the current layer |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $d_{t}$ | Dimension of position embedding |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $vocab_{s}$ | Max position embeddings |'
+  prefs: []
+  type: TYPE_TB
+- en: 4.1\. Cost Model
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Memory Cost Model. Memory is a first-class citizen in LLM serving systems. The
+    peak memory usage of pipeline LLM serving is largely due to the model weights,
+    the KV cache for all requests, and the peak temporary memory required by the model
+    layers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Weight Storage. The model weight storage is dominated by embedding weights,
+    projections convert the hidden dimension into the word embedding dimension at
+    the model’s head and tail, and linear weights inside the decoder layers. The embedding
+    weights consist of (1) token embeddings: $vocab_{s}\times d_{t}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For decoder layers, only linear and layer norm layers contribute to memory
+    consumption. For self-attention, the parameters consist of (1) QKV, OUT: $h_{1}^{2}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: KV Storage Modeling. Like in other frameworks ([FTransformer,](#bib.bib25) ),
+    LLM-PQ reserves the KV cache with a size of maximum sentence length, combining
+    the maximum prompt length $s$ is the bitwidth used to represent each element in
+    the KV cache.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Peak Temporary Memory. Temporary memory required by operators depends on many
+    factors including precision, kernel implementation, and the cache allocator mechanism
+    of the DNN framework. We consider a worst-case scenario in evaluating the peak
+    memory required by all involved operators inside the embedding layer and one decoder
+    layer in both prefill and decode phases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Latency Cost Model. Computation intensity varies across the prefill and decode
+    phases. For example, NVIDIA V100 GPU has an arithmetic intensity of 139 (125TFLOPS
+    / 900 GB/s); the arithmetic intensity during the decode phase of inference over
+    OPT-175b and 30b models for a batch size of 32 and prompt length of 512 is 48
+    and 43, respectively. On the other hand, execution of the prefill phase on the
+    models incurs arithmetic intensity of 9553 and 6354, respectively, showing that
+    the prefill phase is more computation intensive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Therefore, we model the execution time of the prefill phase as a function of
+    FLOPs, based on $v,s,vs$. We profile the execution time of each phase on one decoder
+    layer under different precisions with common prompt lengths and batch sizes. We
+    then use interpolation among the sample points to obtain a linear regression model
+    for the execution time of one decoder layer in each phase. We choose linear regression
+    because, in LLM serving, GEMM takes more than 80% latency ([du2022energonai,](#bib.bib12)
+    ) and is either FLOPs and MOPs related, while the other operators scaled with
+    MOPs, thus workload can be shaped and scaled by the previous parameters. The latency
+    of a model shard can be obtained by summing up the latencies of all involved decoder
+    layers with respect to their precisions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2\. Indicator of Model Perturbation by Quantization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We build performance indicators for low-precision weight-only kernels. INT8
+    kernel in this paper incurs little performance dradation ([dettmers2022llmint8,](#bib.bib6)
+    ), we take the same indicator format with weight-only kernels for simplicity.
+    State-of-the-art weight-only quantization of LLMs focuses on linear operators
+    and  ([frantar2023gptq,](#bib.bib14) ; [lin2023awq,](#bib.bib21) ; [dettmers2023spqr,](#bib.bib8)
+    ) typically target the following objective:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| (1) |  | $\tiny\mathbf{{Q}^{*}}=\operatorname*{arg\,min}_{Q}\mathcal{L}(\tilde{\mathbf{W}}),\quad\quad\quad\mathcal{L}(\tilde{\mathbf{W}})=\&#124;\mathbf{W}\mathbf{X}-\tilde{\mathbf{W}}\mathbf{X}\&#124;_{2}^{2}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Here $\mathcal{L}$) with respect to different precisions, incurring large computation
+    overhead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We adopt a different approach to describe a layer’s sensitivity upon quantization.
+    One key observation is that the quantization error originates from the $Round$.
+    We consider the round variance of quantization for two widely applied rounding
+    methods, i.e., deterministic and stochastic ([wan2023adaptive,](#bib.bib34) ),
+    and derive an upper bound of the output variance introduced by quantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Theorem 1.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'The variance of a linear operator’s output after weight-only quantization using
+    stochastic or deterministic rounding is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| (2) |  | $\tiny Var[\tilde{\mathbf{W}}\mathbf{X}]=\left\{\begin{aligned}
+    &amp;Var[\mathbf{W}\mathbf{X}]+D_{\mathbf{W}}S_{\mathbf{W}}^{2}\frac{1}{4}Var[\mathbf{X}],&amp;\mbox{\small
+    Deterministic}\\ &amp;Var[\mathbf{W}\mathbf{X}]+D_{\mathbf{W}}S_{\mathbf{W}}^{2}\frac{1}{6}(\mathbb{E}[\mathbf{X}]^{2}+Var[\mathbf{X}]),&amp;\mbox{\small
+    Stochastic}\end{aligned}\right.$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: where $D_{\mathbf{W}}$ is the scaling factor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The theorem shows that the variance introduced by quantization in each linear
+    operator is proportional to the dimension and scaling factor of the model weights.
+    The scaling factor $S_{\mathbf{W}}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Proposition 2 (Variance Indicator).
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: We measure the quantization sensitivity of a decoder layer $i$ using the estimated
+    quantization variance of the layer’s output, i.e.,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| (3) |  | $\tiny\omega_{i,b}=\sum_{o}^{O_{i}}D_{\mathbf{W}_{o}}(S_{\mathbf{W}_{o}}(b_{i}))^{2}G(\mathbf{X}_{o})$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: where $O_{i}$ for stochastic, respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The variance indicator $\omega$). The missing proofs can be found in supplementary
+    materials.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3\. Optimizer
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We present an iterative algorithm (Algorithm [1](#alg1 "Algorithm 1 ‣ 4.3\.
+    Optimizer ‣ 4\. Assigner Design ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters
+    with Phase-Aware Partition and Adaptive Quantization")) to decide the quantization
+    bitwidth for each decoder layer, micro-batch sizes, and LLM model partition and
+    on each device, to strike the best balance between inference latency and model
+    quality degradation. The algorithm explores potential device topology orderings
+    and micro-batch sizes for prefill and decode phases; given a device topology ordering
+    and micro-batch sizes, we solve an integer linear program (ILP) to determine the
+    most suitable bitwidth assignment and layer partition among the devices.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bidwidth Assignment and Layer Partition.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We use binary variable $z_{i,j,b}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: $T_{max}^{pre}$ trading off more model quality over inference acceleration.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first parenthesized term in the objective (LABEL:eq:objective) represents
+    the end-to-end serving latency for a batch’s token generation. In a pipeline-parallel
+    serving system, the latency of serving a batch is the execution time of all pipeline
+    stages plus $\mu-1$ tokens. The second term in the objective corresponds to overall
+    model quality degradation (measured by our variance indicator).
+  prefs: []
+  type: TYPE_NORMAL
+- en: $T_{max}^{pre},T_{max}^{dec},T_{pre}$ and its successor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| (4) |  | $\displaystyle\min_{\mathbb{Z}}$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (5) |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (6) |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (7) |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (8) |  | $\displaystyle T_{pre}=\sum_{j}^{N}T_{pre,j},\quad T_{dec}=\sum_{j}^{N}T_{dec,j}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (9) |  | $\displaystyle\sum_{j=1}^{N}\sum_{b\in BITs}z_{i,j,b}=1,\quad\forall
+    i=1,...,L$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (10) |  | $\displaystyle\sum_{j=1}^{N}z_{i,j,b}=y_{i,b},\quad\forall i=1,...,L,b\in
+    BITs$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (11) |  | $\displaystyle\sum_{b\in BITs}z_{i,j,b}=u_{i,j},\quad\forall i=1,...,L,j=1,...,N,$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (12) |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (13) |  | $\displaystyle\sum_{i=1}^{L}\sum_{b\in BITs}z_{i,1,b}M_{i,b}^{s+n}+M_{emb}\leq
+    M_{1}$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (14) |  | $\displaystyle y_{i,b},u_{i,j},z_{i,j,b}\in{0,1},\quad\forall i=1,...,L,j=1,...,N,b\in
+    BITs$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (15) |  | $\displaystyle u_{0,0}=1,u_{L,N}=1,$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (16) |  | $\displaystyle u_{i,j}+u_{i-1,k}\leq 1,\forall i=2,...,L,j=1,...,N-1,k=j,...,N-1$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Constraints ([9](#S4.E9 "In 4.3\. Optimizer ‣ 4\. Assigner Design ‣ LLM-PQ:
+    Serving LLM on Heterogeneous Clusters with Phase-Aware Partition and Adaptive
+    Quantization")) - ([11](#S4.E11 "In 4.3\. Optimizer ‣ 4\. Assigner Design ‣ LLM-PQ:
+    Serving LLM on Heterogeneous Clusters with Phase-Aware Partition and Adaptive
+    Quantization")) ensure that only one bitwidth is assigned to a given layer and
+    each layer can only be placed on a single device. Constraints ([12](#S4.E12 "In
+    4.3\. Optimizer ‣ 4\. Assigner Design ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters
+    with Phase-Aware Partition and Adaptive Quantization"))-([13](#S4.E13 "In 4.3\.
+    Optimizer ‣ 4\. Assigner Design ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters
+    with Phase-Aware Partition and Adaptive Quantization")) guarantee that memory
+    consumption on each device $j$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We solve the ILP using an off-the-shelf solver GUROBI ([gurobi,](#bib.bib16)
+    ).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 1 Best Inference Execution Plan
+  prefs: []
+  type: TYPE_NORMAL
+- en: 0:LLM Model $A$
+  prefs: []
+  type: TYPE_NORMAL
+- en: Device Topology Ordering and Microbatch Sizing. We enumerate all possible combinations
+    of device topology ordering ($GetDeviceOrder$. Given each combination, we solve
+    the ILP to obtain the corresponding best quantization bitwidth and layer partitions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Complexity of Algorithm [1](#alg1 "Algorithm 1 ‣ 4.3\. Optimizer ‣ 4\. Assigner
+    Design ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters with Phase-Aware Partition
+    and Adaptive Quantization"). The solution space size of ILP problem (LABEL:eq:objective)
+    is ${\frac{L!}{N!(L-N)!}(|Bits|)}^{L}$. This may raise concerns for scalability.
+    We propose several practical optimizations to expedite it.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Optimization #1: Pruning. As discussed in Sec. [4.1](#S4.SS1 "4.1\. Cost Model
+    ‣ 4\. Assigner Design ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters with Phase-Aware
+    Partition and Adaptive Quantization"), prefill phase is compute-bound, while the
+    decode phase is memory-bound. GPUs have higher computation capacity than memory
+    bandwidth. Increasing the micro-batch size during the decode phase improves efficiency,
+    but excessively large sizes waste computation capabilities. Evenly partitioning
+    the global batch size across pipeline stages optimizes performance. In the prefill
+    phase, a smaller batch size reduces pipeline bubbles, but extremely small sizes
+    are inefficient. Thus, we enumerate prefill micro-batch size within $[1,\xi]$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Optimization #2: Grouping. Grouping multiple layers together and deciding group
+    placement and bitwidth selection can reduce the solution space exponentially.
+    For models with a parameter size smaller than 30b, layer grouping is not necessary
+    as $L$ is small. For models larger than 30b, grouping layers in sets of 2 is typically
+    sufficient.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Optimization #3: Heuristic to solve ILP (LABEL:eq:objective).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Algorithm 2 Bitwidth Transfer. Replacing ILP in Algo. [1](#alg1 "Algorithm
+    1 ‣ 4.3\. Optimizer ‣ 4\. Assigner Design ‣ LLM-PQ: Serving LLM on Heterogeneous
+    Clusters with Phase-Aware Partition and Adaptive Quantization")'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 0:  $G_{i}$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'GPUs exhibit varying computation capacities, leading to different execution
+    performances for layers while their memory occupation remains fixed. This characteristic
+    allows for precision conversion and layer partition alteration between stages
+    according to transformation rules $\mathcal{C}$. For example, (4, 8, 2) facilitate
+    the replacement of one 8-bit layer from the pioneer with 2 * 4-bit layers from
+    the straggler. Such transformations increase precision or reduce layer count to
+    accelerate the slowest stage. Leveraging this observation, we propose a heuristic
+    approach called bitwidth transfer, detailed in Algorithm [2](#alg2 "Algorithm
+    2 ‣ 4.3\. Optimizer ‣ 4\. Assigner Design ‣ LLM-PQ: Serving LLM on Heterogeneous
+    Clusters with Phase-Aware Partition and Adaptive Quantization"), for solving the
+    ILP problem (LABEL:eq:objective). Initially, we remove the latency objective from
+    the ILP and solve it under reduced constraints, noted as adabits(comparison in
+    Sec. [6.9](#S6.SS9 "6.9\. Comparison with Pure Adaptive Quantization ‣ 6\. Evaluation
+    ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters with Phase-Aware Partition and
+    Adaptive Quantization"))(lines 1-3). We generate potential transformations (line
+    3), identify the slowest (straggler) and other stages (line 5), and apply possible
+    transformations to improve the target objective value iteratively (lines 6-16).
+    The heuristic is effective in most cases, particularly when KV size does not dominate
+    memory occupation. Further discussion on its usage is provided in Sec. [6.7](#S6.SS7
+    "6.7\. Approaches Expediting Optimizer Algorithm ‣ 6\. Evaluation ‣ LLM-PQ: Serving
+    LLM on Heterogeneous Clusters with Phase-Aware Partition and Adaptive Quantization").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5\. Implementation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We have implemented LLM-PQ using PyTorch-2.0.0 ([Paszke_PyTorch_An_Imperative_2019,](#bib.bib27)
+    ) with over 6000 LoCs (1355 LoCs for Assigner). We extend models on HuggingFace ([HF_transformers,](#bib.bib35)
+    ) (transformers-4.28.0) to support pre-allocated KV cache and adaptive quantization.
+    We implement pipeline serving and a thread-safe micro-batch manager on top of
+    the heterogeneous pipeline in  ([hu2021pipeline,](#bib.bib17) ) with asynchronous
+    communication among stages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On-The-Fly Quantizer To optimize the utilization of low-caliber GPUs with smaller
+    DRAM that may frequently experience precision changes, we have developed a specialized
+    and efficient plugin for on-the-fly quantized model loading. In this approach,
+    we have decoupled the integrated model weight into module-level weights. During
+    runtime, we determine the granularity of processed weights by overlapping the
+    disk-to-CPU weight loading time with the on-GPU model quantization and CPU-to-GPU
+    memory copy. This results in a significant reduction in DRAM required for model
+    loading but also improves recovery speed from the possible failure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: API and Commands. LLM-PQ provides an entry file for the plan generation for
+    different heterogeneous devices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[⬇](data:text/plain;base64,bGxtcHEtYWxnbyBcCiAtLW1vZGVsLW5hbWUgJHttb2RlbF9uYW1lfSAtLW1vZGVsX3NpemUgJHttb2RlbF9zaXplfSBcCiAtLWRldmljZV9uYW1lcyAiJHtkZXZpY2VfbmFtZXNbQF19IiBcCiAtLWRldmljZV9udW1iZXJzICIke2RldmljZV9udW1iZXJzW0BdfSIgXAogLS1vbWVnYV9maWxlICRvbWVnYV9maWxlIFwgIyBpbmRpY2F0b3IgZmlsZQogLS1nbG9iYWxfYnogJGJhdGNoX3NpemUgLS1zICRzIC0tbiAkbiBcICMgd29ya2xvYWQKIC0tdGhldGEgJHRoZXRhIFwgIyB1c2VyIHNjYWxhcgogLS08Z3JvdXAgJGdyb3VwX3NpemU+IDwtLXNoYXEtZWZmaWNpZW50PiBcICMgZmFzdGVyCiAtLTxmaXQvdXNlX3Byb2ZpbGVyX3ByZWRpY3Rpb24+ICAjIHVzZSBjb3N0IG1vZGVsIG9yIHByb2ZpbGVkIHJlc3VsdA==)llmpq-algo  \--model-name  ${model_name}  --model_size  ${model_size}  \--device_names  "${device_names[@]}"  \--device_numbers  "${device_numbers[@]}"  \--omega_file  $omega_file  \  #  indicator  file--global_bz  $batch_size  --s  $s  --n  $n  \  #  workload--theta  $theta  \  #  user  scalar--<group  $group_size>  <--shaq-efficient>  \  #  faster--<fit/use_profiler_prediction>  #  use  cost  model  or  profiled  result'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The output strategy can be launched directly. If the same GPU type is located
+    on the same node, other configurations, such as ranks, will be derived automatically
+    and registered to the distributed runtime. Alternatively, distributedconfigs same
+    as those in PyTorch can be used to launch the strategy, but the noauto flag must
+    be specified.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[⬇](data:text/plain;base64,bGxtcHEtZGlzdCAtLXN0cmF0X2ZpbGVfbmFtZSAkc3RyYXRlZ3lfZmlsZV9wYXRoIFwKPC0tbWFzdGVyX2FkZHIgLS1tYXN0ZXJfcG9ydD4vPGRpc3RyaWJ0ZWRjb25maWdzIC0tbm9fYXV0bz4=)llmpq-dist  --strat_file_name  $strategy_file_path  \<--master_addr  --master_port>/<distribtedconfigs  --no_auto>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6\. Evaluation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 6.1\. Experimental Setup
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Models & Precisions. We run BLOOM ([scao2022bloom,](#bib.bib31) ) and OPT ([Zhang2022OPTOP,](#bib.bib40)
+    ) model families, focusing on middle- and large-sized models, specifically OPT-13b,
+    30b, 66b, and BLOOM-176b. We evaluate candidate precisions: $BITs=\{3,4,8,16\}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Baselines. We compare LLM-PQ with three baselines: (1) PipeEdge, where we apply
+    uniform quantization and use PipeEdge ([hu2021pipeline,](#bib.bib17) ) for heterogeneous
+    layer partition. (2) Uniform, which uses uniform quantization, evenly partitions
+    the model layers among devices and decides micro-batch sizes that minimize the
+    inference latency, mimicking the policy of existing serving systems such as HF-Transformers ([HF_transformers,](#bib.bib35)
+    ) and Deepspeed ([Aminabadi2022DeepSpeedIE,](#bib.bib1) ). (3) Offloading, where
+    we adopt CPU and disk swapping in FlexGen ([flexgen,](#bib.bib32) ) to maximize
+    the throughput of token generation for low-calibre GPUs, we adopt even partition
+    for this method. For (1)(2), we keep lowering the quantization bitwidth from the
+    maximum (i.e., FP16) until the model can fit into the devices or no feasible solutions
+    are available. For (1)(3), we use the same micro-batch size for prefill and decode
+    phases by partitioning the global batch size by the number of pipeline stages.
+    FlexGen is specialized for OPT models and thus has no results on BLOOM models.
+    We did not conduct a comparison with vLLM ([vllm,](#bib.bib20) ) as it primarily
+    focuses on the online task, and the paged attention mechanism is of no use when
+    dealing with fixed token generation numbers. Also, vLLM didn’t support pipeline
+    parallelism, making the comparison unfair in our case.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Metrics. We evaluate LLM serving performance by (1) token generation throughput,
+    (2) end-to-end serving latency of one batch, and (3) model quality, using perplexity
+    (PPL) on WikiText2 ([wikitext2,](#bib.bib24) ), Penn Treebank (PTB) ([ptb,](#bib.bib23)
+    ) and C4 ([c4,](#bib.bib29) ). The weight calibration data consists of 128 randomly
+    selected 2048-token segments from the C4 dataset ([c4,](#bib.bib29) ).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Workload. We use synthetic datasets following the prompt length setup in the
+    DeepSpeed paper  ([Aminabadi2022DeepSpeedIE,](#bib.bib1) ), i.e., 128 and 512\.
+    By default, we pad input prompts to 512 tokens, use an input batch size of 32,
+    and set the number of tokens to be generated to $n=100$. We follow the same setup
+    as in ORCA ([orca,](#bib.bib38) ) to never emit the EOS but continue to generate
+    tokens until reaching the expected token generation length.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Heterogeneous Clusters. Devices/nodes are in our production cluster. We construct
+    a number of heterogeneous clusters for model serving (clusters 1-8 in Table [3](#S6.T3
+    "Table 3 ‣ 6.1\. Experimental Setup ‣ 6\. Evaluation ‣ LLM-PQ: Serving LLM on
+    Heterogeneous Clusters with Phase-Aware Partition and Adaptive Quantization")),
+    with a mix of common types of GPUs. GPUs of the same type are located on the same
+    node, intra-connected with NV-LINK; Clusters 1,2,9,10,11 are on a single node
+    and others consist of two nodes. Nodes in Clusters 3,5,8,11 are interconnected
+    with 800Gbps Ethernet; 4,6, and 7 with 100Gbps Ethernet. All GPUs are equipped
+    with GB/s SSD; Each node is equipped with two CPUs, P100 nodes with Intel Xeon
+    CPU E5-2630 v4 2.2GHz, 64G RAM, V100 and A800 with Intel Xeon Gold 6230 2.1GHz,
+    128G RAM and 450G RAM, T4 with Intel Xeon Platinum 8260 CPU, 108G RAM, A100-40G
+    with AMD EPYC 7H12 64-Core, 256G RAM. OS: Ubuntu 20.04.6 LTS. We also show LLM-PQ’s
+    performance on several homogenous clusters (clusters 9-11 in Table [3](#S6.T3
+    "Table 3 ‣ 6.1\. Experimental Setup ‣ 6\. Evaluation ‣ LLM-PQ: Serving LLM on
+    Heterogeneous Clusters with Phase-Aware Partition and Adaptive Quantization")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Experiment Settings $\theta$, solver setup, and overhead table are provided
+    in Appendix [A.2](#A1.SS2 "A.2\. Experiment ‣ Appendix A Appendix ‣ LLM-PQ: Serving
+    LLM on Heterogeneous Clusters with Phase-Aware Partition and Adaptive Quantization").
+    The model size to run on each cluster is decided such that the total weight size
+    of the non-quantized model is comparable to the overall device memory capacity
+    in the cluster.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 3\. Cluster Configurations
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Cluster | Devices | Model Size | Cluster | Devices | Model Size |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | 1xV100-32G | 13b | 2 | 1xA100-40G | 13b |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 3 | 3xT4-16G + 1xV100-32G | 30b | 4 | 3xP100-12G + 1xV100-32G | 30b |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 5 | 4xT4-16G + 2xV100-32G | 66b | 6 | 2xV100-32G + 2xA100-40G | 66b |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 7 | 4xV100-32G + 4xA100-40G | 176b | 8 | 4xV100-32G + 2xA800-80G | 176b |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 9 | 4xT4-16G | 30b | 10 | 4xV100-32G | 66b |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 11 | 4xA800-80G | 176b |  |  |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 6.2\. Fidelity of Cost Models
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We evaluate our memory cost model on BLOOM of sizes 560m and 1b7, and OPT of
+    13b, 30b, and 66b, with prompt length uniformly sampled between 128 and 512, the
+    batch size chosen among 2, 4, and 8, generated token length sampled between 100
+    and 200, and randomly generated precision setting from the available bitwidth
+    set. We consider the memory consumption of model weights and KV caching here and
+    compare the predicted memory usage with those collected from real systems. We
+    also create 50 unseen workloads with different precisions, batch sizes (3,5 or
+    7), prompt lengths, and past sequence lengths (384 or 768) for each device, evaluate
+    our latency cost model on them. Fig. [7](#S6.F7 "Figure 7 ‣ 6.2\. Fidelity of
+    Cost Models ‣ 6\. Evaluation ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters with
+    Phase-Aware Partition and Adaptive Quantization") shows that the error of the
+    memory cost model is almost negligible, and the average error of the latency cost
+    model is less than 6%.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We observed that, during the prefill phase, the cost of observations typically
+    increases linearly with the workload. However, it is noteworthy that in the decode
+    phase, a notable difference in latency occurs only when a substantial change in
+    context length (50-100) is present.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/28a659adebcfc0d03741f2c62f88b62f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7\. Comparison of memory and latency reported by the cost models and
+    obtained in real systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.3\. Serving in Heterogeneous Clusters
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Table 4\. Serving performance comparison. The best results are marked in bold.
+    The missing results are due to OOM. The $\times$ is derived comparing with the
+    PipeEdge baseline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model Size | Cluster | Model | Scheme | PPL | Latency (s) | Throughput (Token/s)
+    | Model Size | Cluster | Model | Scheme | PPL | Latency (s) | Throughput (Token/s)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---
+    | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 13b | 1 | OPT | PipeEdge | 11.78 | 233.77 | 13.69 | 66b | 5 | OPT | PipeEdge
+    | 10.50 | 750.84 | 4.26 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $Uniform{}^{*}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FlexGen | 11.22 | 174.88 | 18.30(1.34$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $FlexGen-int8{}^{*}$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $LLM-PQ{}^{*}$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | OPT | PipeEdge | 11.38 | 30.84 | 103.76 | 6 | OPT | PipeEdge | 10.34
+    | 115.03 | 27.82 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Uniform | 11.38 | 30.84 | 103.76 | Uniform | 10.50 | 431.92 | 7.41(0.27$\times$)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FlexGen | 11.22 | 71.09 | 45.01(0.43$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FlexGen-int8 | 11.23 | 31.11 | 102.87(0.99$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-PQ | 11.23(-0.14) | 20.63 | 155.13(1.50$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 30b | 3 | OPT | PipeEdge | 10.70 | 146.40 | 21.86 | 176b | 7 | BLOOM | PipeEdge
+    | 10.97 | 729.91 | 4.38 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Uniform | 10.78 | 948.90 | 3.37(0.15$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FlexGen | 10.70 | 820.72 | 3.90(0.18$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FlexGen-int8 | 10.70 | 309.95 | 10.32(0.47$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-PQ | 10.70 | 80.60 | 39.70(1.82$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | OPT | PipeEdge | 10.78 | 449.55 | 7.12 | 8 | BLOOM | PipeEdge | 10.97
+    | 848.98 | 3.77 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Uniform | $\dagger$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FlexGen | 10.70 | 1,348.16 | 2.37(0.33$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FlexGen-int8 | 10.70 | 448.18 | 7.14(1$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-PQ | 10.70(-0.08) | 214.19 | 14.94(2.10$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table [4](#S6.T4 "Table 4 ‣ 6.3\. Serving in Heterogeneous Clusters ‣ 6\. Evaluation
+    ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters with Phase-Aware Partition and
+    Adaptive Quantization") demonstrates that LLM-PQ achieves the highest inference
+    throughput by dividing the total number of generated tokens in a batch by the
+    corresponding end-to-end latency. and the best model accuracy in clusters 3, 4,
+    6, 7, and 8\. In cluster 2, LLM-PQ incur a negligible perplexity drop (0.01) but
+    achieves a much faster inference speed (1.5$\times$). In cluster 6, the perplexity
+    of LLM-PQ is even better than in the FP16 case. As compared with PipeEdge and
+    Uniform, LLM-PQ can better utilize memory in heterogeneous devices and conduct
+    phase-aware and precision-aware model partitions. LLM-PQ also outperforms FlexGen
+    and FlexGen-int8 in most cases as they suffer from heavy swapping overhead. The
+    results on cluster 1 reveal that our micro-batch sizing reducing the peak temporary
+    memory needed by the model, allowing the int8 quantized model to fit nicely into
+    the device memory.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.4\. Serving in Homogeneous Clusters
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Table 5\. Serving performance comparison in homogenous clusters. The best inference
+    throughput is marked in bold.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Cluster | Scheme | PPL | Latency (s) | Throughput (Token/s) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-30b | 9 | PipeEdge | 10.78 | 1,045.93 | 3.06 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Uniform | 10.78 | 1,045.93 | 3.06 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FlexGen | 10.70 | 1,033.39 | 3.10(1.01$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FlexGen-int8 | 10.70 | 313.46 | 10.21(3.34$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-PQ | 10.75 | 407.75 | 7.85(2.57$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-66b | 10 | PipeEdge | 10.33 | 182.47 | 17.54 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Uniform | 10.50 | 477.52 | 6.70(0.38$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FlexGen | 10.33 | 433.99 | 7.37(0.42$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FlexGen-int8 | 10.34 | 206.93 | 15.46(0.88$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-PQ | 10.33 | 178.11 | 17.97(1.02$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BLOOM-176b | 11 | PipeEdge | 10.90 | 49.12 | 65.14 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Uniform | 10.97 | 895.45 | 3.57(0.05$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-PQ | 10.90 | 45.45 | 70.41(1.08$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'On homogeneous clusters, 9, 10, and 11, Table [5](#S6.T5 "Table 5 ‣ 6.4\. Serving
+    in Homogeneous Clusters ‣ 6\. Evaluation ‣ LLM-PQ: Serving LLM on Heterogeneous
+    Clusters with Phase-Aware Partition and Adaptive Quantization") shows that LLM-PQ
+    still achieves throughput gains, though smaller than on heterogeneous clusters.
+    In the case of cluster 9, the performance and perplexity of LLM-PQ are inferior
+    to that of FlexGen-int8\. This discrepancy is attributed to the limited GPU memory
+    compared to the workload requirement, resulting in high compression and usage
+    of more low-precision kernels. Consequently, the computational speed is slower,
+    but the efficiency of swapping is enhanced. Among other cases, LLM-PQ performs
+    the best on model quality and serving throughput.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.5\. Effectiveness of Variance Indicator
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'To further validate the effectiveness of our model variance indicator, we compare
+    it with random assignment, where $\omega_{i,b}$ in (LABEL:eq:objective) to ensure
+    that different indicators lead to similar inference latency, eliminating the influence
+    of value range of the indicator. In Table [6](#S6.T6 "Table 6 ‣ 6.5\. Effectiveness
+    of Variance Indicator ‣ 6\. Evaluation ‣ LLM-PQ: Serving LLM on Heterogeneous
+    Clusters with Phase-Aware Partition and Adaptive Quantization"), we observe that
+    LLM-PQ achieve better perplexity than FP16 on cluster 6\. On cluster 9, with heavier
+    quantization as mentioned above, Hessian-based and our indicators yield the same
+    perplexity, outperforming the pure random indicator.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 6\. Effectiveness of LLM-PQ’s variance indicator. PPL is compared with
+    Random, while $\times$ is compared with Hessian.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Cluster | Method | PPL | Overhead (s) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-66b | 6 | Random | 10.33 | 0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Hessian | 10.33 | 25625.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-PQ | 10.31(-0.02) | 434.78(58.15$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-30b | 9 | Random | 11.04 | 0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Hessian | 10.75 | 15670.87 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-PQ | 10.75(-0.29) | 215.60(72.69$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: 6.6\. Serving with Shorter Prompts
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We next experiment with input prompt length of 128 and maximal token generatoin
+    number $n=200$. Table [7](#S6.T7 "Table 7 ‣ 6.6\. Serving with Shorter Prompts
+    ‣ 6\. Evaluation ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters with Phase-Aware
+    Partition and Adaptive Quantization") shows that LLM-PQ achieves substantial inference
+    speed-ups without any accuracy degradation, and even shows accuracy improvements.
+    This confirms the correctness of our two-phase latency modeling in LLM-PQ. We
+    note that the throughput gain of LLM-PQ in cluster 4 is much lower than that with
+    prompt length 512, which we attribute to the reduced KV cache memory and the fact
+    that smaller prompts and larger token generation numbers make the inference system
+    more akin to the one-phase system that PipeEdge focuses on.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 7\. Serving performance comparison under shorter prompts. The best results
+    are marked in bold.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Cluster | Scheme | PPL | Latency(s) | Throughput (Token/s) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-13b | 1 | PipeEdge | 11.23 | 84.80 | 75.47 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Uniform | 11.23 | 84.80 | 75.47(1.00$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FlexGen | 11.22 | 119.24 | 53.68(0.71$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FlexGen-int8 | 11.23 | 80.35 | 79.65(1.06$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-PQ | 11.23 | 47.63 | 134.38(1.78$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-30b | 4 | PipeEdge | 10.70 | 366.54 | 17.46 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Uniform | 10.80 | 281.83 | 22.71(1.30$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FlexGen | 10.70 | 2,147.03 | 2.98(0.17$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FlexGen-int8 | 10.70 | 681.78 | 9.39(0.54$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-PQ | 10.70 | 262.34 | 24.40(1.40$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-66b | 6 | PipeEdge | 10.33 | 132.34 | 48.36 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Uniform | 10.33 | 298.99 | 21.41(0.44$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FlexGen | 10.33 | 408.19 | 15.68(0.32$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FlexGen-int8 | 10.34 | 376.69 | 16.99(0.35$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-PQ | 10.30(-0.03) | 75.98 | 84.23(1.74$\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: 6.7\. Approaches Expediting Optimizer Algorithm
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Table 8\. Effectiveness of Grouping and Heuristic approaches under time limit.
+    The best results are marked in bold.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Cluster | Method | Throughput (token/s) | Overhead (s) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-30b | 3 | Group=2 | 39.70 | 1.07 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Group=1 | 39.70(+0) | 3.29 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Heuristic | 35.17 | 5.36 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-66b | 6 | Group=2 | 39.56 | 2.70 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Group=1 | 44.93(+5.37) | 19.14 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Heuristic | 28.45 | 7.70 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-30b | 4 | Group=2 | 14.72 | 12.29 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Group=1 | 13.93(-0.79) | 204.59 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Heuristic | 14.94(+0.22) | 1.99 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-66b | 10 | Group=2 | 16.64 | 59.27 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Group=1 | 17.57(+0.93) | 127.28 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Heuristic | 17.97(+1.33) | 2.11 |'
+  prefs: []
+  type: TYPE_TB
+- en: In LLM-PQ, we provide two approaches, layer grouping, and a heuristic, to reduce
+    and the complexity of the optimizer’s bitwidth selection, model partition, and
+    placement. We evaluate the inference throughput and the time required to derive
+    the solution when applying three strategies (group = 2, group = 1, and heuristic),
+    on clusters 3, 4, 6, and 10\. group = 2 means group 2 decoder layers together
+    for decision. We set a 60-second time limit for the ILP solver.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Group = 1 covers the entire solution space and typically produces better results
+    compared to group = 2 (on clusters 6 and 10), but it introduces a larger overhead,
+    as shown in Table [8](#S6.T8 "Table 8 ‣ 6.7\. Approaches Expediting Optimizer
+    Algorithm ‣ 6\. Evaluation ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters with
+    Phase-Aware Partition and Adaptive Quantization"). On cluster 4, group = 1 cannot
+    find a good solution within the time limit. On cluster 3, group = 1 and group
+    = 2 produce the same solution. Performance of the heuristic largely depends on
+    the starting point produced by adabits (start point of optimization #3 in Sec. [4.3](#S4.SS3
+    "4.3\. Optimizer ‣ 4\. Assigner Design ‣ LLM-PQ: Serving LLM on Heterogeneous
+    Clusters with Phase-Aware Partition and Adaptive Quantization")). It leads to
+    the best throughput with the smallest overhead in clusters 4 and 10.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We highlight the utilization of heuristics significantly enhances the scalability
+    of LLM-PQ in offline workloads: solving time of a cluster comprising two P100,
+    V100, and A100 GPUs each for OPT66B is reduced to 31s.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.8\. Parameter Sensitivity
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f275d8bbaf67e18223bc1ef3c1cb5329.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Cluster 9 OPT-30b
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/24cf767685caa45db83b9e3fd617a955.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Cluster 5 OPT-66b
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 8\. Sensitivity experiments on $\theta$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We next investigate the impact of user quality scalar $\theta$ generally results
+    in lower inference throughput and higher model accuracy, as less weight is placed
+    on inference latency and more on model quality in our ILP optimization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.9\. Comparison with Pure Adaptive Quantization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e906cb128cd8412dbd1cffbe141a6356.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 9\. Comparison with pure adaptive quantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To verify the significance of concurrently considering adaptive bitwidth, layer
+    partitioning, and micro-batch sizing, we further compare LLM-PQ with adabits used
+    in the heuristic method. We evaluate the performance of adabits with same model
+    setup on clusters 3, 5, and 6, 9 with prompt length 512 and on cluster 4 with
+    prompt length 128\. In Fig. [9](#S6.F9 "Figure 9 ‣ 6.9\. Comparison with Pure
+    Adaptive Quantization ‣ 6\. Evaluation ‣ LLM-PQ: Serving LLM on Heterogeneous
+    Clusters with Phase-Aware Partition and Adaptive Quantization") LLM-PQ outperforms
+    adabits in all selected cases.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7\. Discussions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Search for Tensor Parallelization. We did not incorporate tensor parallelism
+    in our serving system implementation due to the favorable characteristics of the
+    pipeline when dealing with heterogeneity, which results in reduced communication
+    requirements. It can be readily included in our search space. Tensor parallelism
+    heavily relies on the 2-d device mesh configuration, and tensor sharding strategies
+    can be searched based on the device mesh enumeration. Given 2 nodes with 8 GPUs
+    per node (totaling 16 devices), we can represent them as a device mesh of size
+    2×8, 1×16, 4×4, 8×2, or 16×1, where the device communication with different bandwidths
+    for the first and second-dimension, and the tensor-parallel can apply along either
+    the first or second dimension ([zheng2022alpa,](#bib.bib41) ). As the possible
+    device mesh is limited, it is similar to how we enumerate all possible 1-d device
+    orderings. For the above reason, we can view the device along the tensor-parallel
+    dimension as a new device with larger memory and different kernel performance
+    (as tensor-parallel will introduce some communication overhead), and it is still
+    a 1-d partition problem along another axis, which conforms to our solutions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Other Quantization Schemes There is rapid development in quantization methods
+    for LLM. The latest weight-only quantization methods, such as AWQ ([lin2023awq,](#bib.bib21)
+    ), SpQR ([dettmers2023spqr,](#bib.bib8) ) and QLoRA ([dettmers2023qlora,](#bib.bib7)
+    ), AWQ improves kernel efficiency through re-order free quantization and utilizes
+    TensorCore. SpQR improves the accuracy of GPTQ through better outlier detection.
+    QLoRA proposes a memory-efficient 4-bit finetuning method and introduces double
+    quantization to further reduce the memory footprint by quantizing the scalars
+    used in quantization. LLM-PQ views these schemes as candidate quantization schemes,
+    and these new schemes can be efficiently integrated into our system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Apply to ORCA or vLLM ORCA ([orca,](#bib.bib38) ) introduces iterative-level
+    scheduling, while vLLM ([vllm,](#bib.bib20) ) possesses an efficient page-attention
+    technology for memory management. LLM-PQ’s design is orthogonal to both of them.
+    However, unlike the offline task, the online workload is unpredictable, and the
+    available paged memory for Key-Value (KV) storage is affected by quantization
+    level. While the available memory plays a crucial role in influencing throughput
+    when confronted with an infinite number of requests, there is always a trade-off
+    between the speed of quantized operators and the amount of available memory. This
+    trade-off necessitates new design considerations for performance optimization
+    when implementing LLM-PQ at runtime.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 8\. Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We propose LLM-PQ, an efficient system for LLM serving atop heterogeneous clusters.
+    We derive efficient cost models to accurately predict memory occupation and execution
+    latency of mixed-precision LLM serving. We introduce adaptive mixed-precision
+    into the search space of pipeline serving and proposed an efficient indicator
+    to guide bitwidth selection in the search process. We jointly consider serving
+    latency in different token generation phases based on various precision settings,
+    micro-batch sizes, and layer partitions, and derive efficient optimized solutions.
+    Our extensive experiments validate the performance of LLM-PQ on a variety of cluster
+    setups, which surpasses state-of-the-art approaches of serving LLM on heterogeneous
+    clusters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[1] Reza Yazdani Aminabadi, Samyam Rajbhandari, Minjia Zhang, Ammar Ahmad Awan,
+    Cheng Li, Du Li, Elton Zheng, Jeff Rasley, Shaden Smith, Olatunji Ruwase, and
+    Yuxiong He. Deepspeed- inference: Enabling efficient inference of transformer
+    models at unprecedented scale. SC22: International Conference for High Performance
+    Computing, Networking, Storage and Analysis, pages 1–15, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[2] Yonatan Bisk, Rowan Zellers, Ronan Le Bras, Jianfeng Gao, and Yejin Choi.
+    Piqa: Reasoning about physical commonsense in natural language. In Thirty-Fourth
+    AAAI Conference on Artificial Intelligence, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[3] Tom B. Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared Kaplan,
+    Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell,
+    Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, T. J. Henighan, Rewon
+    Child, Aditya Ramesh, Daniel M. Ziegler, Jeff Wu, Clemens Winter, Christopher
+    Hesse, Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack
+    Clark, Christopher Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario
+    Amodei. Language models are few-shot learners. ArXiv, abs/2005.14165, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[4] Jianfei Chen, Lianmin Zheng, Zhewei Yao, Dequan Wang, Ion Stoica, Michael
+    Mahoney, and Joseph Gonzalez. Actnn: Reducing training memory footprint via 2-bit
+    activation compressed training. In International Conference on Machine Learning,
+    2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[5] Peter Clark, Isaac Cowhey, Oren Etzioni, Tushar Khot, Ashish Sabharwal,
+    Carissa Schoenick, and Oyvind Tafjord. Think you have solved question answering?
+    try arc, the ai2 reasoning challenge. arXiv:1803.05457v1, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[6] Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer. Llm. int8
+    (): 8-bit matrix multiplication for transformers at scale. arXiv preprint arXiv:2208.07339,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[7] Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, and Luke Zettlemoyer. Qlora:
+    Efficient finetuning of quantized llms. arXiv preprint arXiv:2305.14314, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[8] Tim Dettmers, Ruslan Svirschevski, Vage Egiazarian, Denis Kuznedelev, Elias
+    Frantar, Saleh Ashkboos, Alexander Borzunov, Torsten Hoefler, and Dan Alistarh.
+    Spqr: A sparse-quantized representation for near-lossless llm weight compression.
+    ArXiv, abs/2306.03078, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[9] Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. Bert:
+    Pre-training of deep bidirectional transformers for language understanding. arXiv
+    preprint arXiv:1810.04805, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[10] Zhen Dong, Zhewei Yao, Amir Gholami, Michael W. Mahoney, and Kurt Keutzer.
+    Hawq: Hessian aware quantization of neural networks with mixed-precision. In Proceedings
+    of the IEEE/CVF International Conference on Computer Vision (ICCV), October 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[11] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, Dirk Weissenborn,
+    Xiaohua Zhai, Thomas Unterthiner, Mostafa Dehghani, Matthias Minderer, Georg Heigold,
+    Sylvain Gelly, et al. An image is worth 16x16 words: Transformers for image recognition
+    at scale. arXiv preprint arXiv:2010.11929, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[12] Jiangsu Du, Ziming Liu, Jiarui Fang, Shenggui Li, Yongbin Li, Yutong Lu,
+    and Yang You. Energonai: An inference system for 10-100 billion parameter transformer
+    models. arXiv preprint arXiv:2209.02341, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[13] Hugging Face. Text generation inference. [https://github.com/huggingface/text-generation-inference](https://github.com/huggingface/text-generation-inference),
+    n.d. Accessed on: July 24, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[14] Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan Alistarh. Gptq:
+    Accurate post-training quantization for generative pre-trained transformers. ArXiv,
+    abs/2210.17323, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[15] Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan Alistarh. OPTQ:
+    Accurate quantization for generative pre-trained transformers. In The Eleventh
+    International Conference on Learning Representations, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[16] Gurobi Optimization, LLC. Gurobi Optimizer Reference Manual, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[17] Yang Hu, Connor Imes, Xuanang Zhao, Souvik Kundu, Peter A. Beerel, Stephen P.
+    Crago, and John Paul Walters. Pipeline parallelism for inference on heterogeneous
+    edge computing. ArXiv, abs/2110.14895, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[18] Yanping Huang, Youlong Cheng, Ankur Bapna, Orhan Firat, Dehao Chen, Mia
+    Chen, HyoukJoong Lee, Jiquan Ngiam, Quoc V Le, Yonghui Wu, et al. Gpipe: Efficient
+    training of giant neural networks using pipeline parallelism. Advances in neural
+    information processing systems, 32, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[19] Fred Jelinek, Robert L Mercer, Lalit R Bahl, and James K Baker. Perplexity—a
+    measure of the difficulty of speech recognition tasks. The Journal of the Acoustical
+    Society of America, 62(S1):S63–S63, 1977.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[20] Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao
+    Yu, Joseph Gonzalez, Hao Zhang, and Ion Stoica. Efficient memory management for
+    large language model serving with pagedattention. In Proceedings of the 29th Symposium
+    on Operating Systems Principles, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[21] Ji Lin, Jiaming Tang, Haotian Tang, Shang Yang, Xingyu Dang, and Song
+    Han. Awq: Activation-aware weight quantization for llm compression and acceleration.
+    ArXiv, abs/2306.00978, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[22] Zirui Liu, Kaixiong Zhou, Fan Yang, Li Li, Rui Chen, and Xia Hu. Exact:
+    Scalable graph neural networks training via extreme activation compression. In
+    International Conference on Learning Representations, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[23] Mitchell P. Marcus, Beatrice Santorini, and Mary Ann Marcinkiewicz. Building
+    a large annotated corpus of English: The Penn Treebank. Computational Linguistics,
+    19(2):313–330, 1993.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[24] Stephen Merity, Caiming Xiong, James Bradbury, and Richard Socher. Pointer
+    sentinel mixture models, 2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[25] NVIDIA. Fastertransformer: Transformer related optimization, including
+    bert, gpt, n.d.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[26] Denis Paperno, Germán Kruszewski, Angeliki Lazaridou, Ngoc Quan Pham,
+    Raffaella Bernardi, Sandro Pezzelle, Marco Baroni, Gemma Boleda, and Raquel Fernández.
+    The LAMBADA dataset: Word prediction requiring a broad discourse context. In Proceedings
+    of the 54th Annual Meeting of the Association for Computational Linguistics (Volume
+    1: Long Papers), August 2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[27] Adam Paszke, Sam Gross, Francisco Massa, Adam Lerer, James Bradbury, Gregory
+    Chanan, Trevor Killeen, Zeming Lin, Natalia Gimelshein, Luca Antiga, Alban Desmaison,
+    Andreas Köpf, Edward Yang, Zach DeVito, Martin Raison, Alykhan Tejani, Sasank
+    Chilamkurthy, Benoit Steiner, Lu Fang, Junjie Bai, and Soumith Chintala. Pytorch:
+    An imperative style, high-performance deep learning library. In Neural Information
+    Processing Systems, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[28] Aaron Pham, Chaoyu Yang, Sean Sheng, Shenyang Zhao, Sauyon Lee, Bo Jiang,
+    Fog Dong, Xipeng Guan, and Frost Ming. OpenLLM: Operating LLMs in production,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[29] Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang,
+    Michael Matena, Yanqi Zhou, Wei Li, and Peter J. Liu. Exploring the limits of
+    transfer learning with a unified text-to-text transformer. arXiv e-prints, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[30] RyokoAI. Sharegpt52k. [https://huggingface.co/datasets/RyokoAI/ShareGPT52K](https://huggingface.co/datasets/RyokoAI/ShareGPT52K),
+    2021. Dataset accessed on [insert date].'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[31] Teven Le Scao, Angela Fan, Christopher Akiki, Ellie Pavlick, Suzana Ilić,
+    Daniel Hesslow, Roman Castagné, Alexandra Sasha Luccioni, François Yvon, Matthias
+    Gallé, et al. Bloom: A 176b-parameter open-access multilingual language model.
+    ArXiv, abs/2211.05100, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[32] Ying Sheng, Lianmin Zheng, Binhang Yuan, Zhuohan Li, Max Ryabinin, Beidi
+    Chen, Percy Liang, Christopher Ré, Ion Stoica, and Ce Zhang. Flexgen: High-throughput
+    generative inference of large language models with a single gpu. In Proceedings
+    of the 40th International Conference on Machine Learning, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[33] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne
+    Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal, Eric Hambro, Faisal
+    Azhar, Aur’elien Rodriguez, Armand Joulin, Edouard Grave, and Guillaume Lample.
+    Llama: Open and efficient foundation language models. ArXiv, abs/2302.13971, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[34] Borui Wan, Jun Zhao, and Chuan Wu. Adaptive message quantization and parallelization
+    for distributed full-graph gnn training. ArXiv, abs/2306.01381, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[35] Thomas Wolf, Lysandre Debut, Victor Sanh, Julien Chaumond, Clement Delangue,
+    Anthony Moi, Perric Cistac, Clara Ma, Yacine Jernite, Julien Plu, Canwen Xu, Teven
+    Le Scao, Sylvain Gugger, Mariama Drame, Quentin Lhoest, and Alexander M. Rush.
+    Transformers: State-of-the-Art Natural Language Processing. In Proceedings of
+    the 2020 Conference on Empirical Methods in Natural Language Processing: System
+    Demonstrations, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[36] Guangxuan Xiao, Ji Lin, Mickael Seznec, Hao Wu, Julien Demouth, and Song
+    Han. Smoothquant: Accurate and efficient post-training quantization for large
+    language models. In International Conference on Machine Learning, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[37] Zhewei Yao, Reza Yazdani Aminabadi, Minjia Zhang, Xiaoxia Wu, Conglong
+    Li, and Yuxiong He. Zeroquant: Efficient and affordable post-training quantization
+    for large-scale transformers. In Advances in Neural Information Processing Systems,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[38] Gyeong-In Yu, Joo Seong Jeong, Geon-Woo Kim, Soojeong Kim, and Byung-Gon
+    Chun. Orca: A distributed serving system for Transformer-Based generative models.
+    In 16th USENIX Symposium on Operating Systems Design and Implementation (OSDI
+    22), 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[39] Biao Zhang and Rico Sennrich. Root Mean Square Layer Normalization. In
+    Advances in Neural Information Processing Systems 32, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[40] Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe, Moya Chen, Shuohui
+    Chen, Christopher Dewan, Mona Diab, Xian Li, Xi Victoria Lin, Todor Mihaylov,
+    Myle Ott, Sam Shleifer, Kurt Shuster, Daniel Simig, Punit Singh Koura, Anjali
+    Sridhar, Tianlu Wang, and Luke Zettlemoyer. Opt: Open pre-trained transformer
+    language models. ArXiv, abs/2205.01068, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[41] Lianmin Zheng, Zhuohan Li, Hao Zhang, Yonghao Zhuang, Zhifeng Chen, Yanping
+    Huang, Yida Wang, Yuanzhong Xu, Danyang Zhuo, Eric P Xing, et al. Alpa: Automating
+    inter-and $\{$ parallelism for distributed deep learning. In 16th USENIX Symposium
+    on Operating Systems Design and Implementation (OSDI 22), 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Appendix
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'A.1\. Proof of Theorem [1](#S4.Thmtheorem1 "Theorem 1\. ‣ 4.2\. Indicator of
+    Model Perturbation by Quantization ‣ 4\. Assigner Design ‣ LLM-PQ: Serving LLM
+    on Heterogeneous Clusters with Phase-Aware Partition and Adaptive Quantization")'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Proof.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Let $\mathbf{X}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In deterministic rounding [[36](#bib.bib36), [14](#bib.bib14)], quantized scalar
+    can be either $\hat{w}=\lfloor\frac{w-q_{w}}{s_{w}}\rfloor$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For stochastic rounding [[4](#bib.bib4), [22](#bib.bib22)], scalar $\hat{w}=\lfloor\frac{w-q_{w}}{s_{w}}\rfloor$
+    ∎
+  prefs: []
+  type: TYPE_NORMAL
+- en: A.2\. Experiment
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: A.2.1\. $\theta$ and Solver Setup
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Table 9\. Solver setups for Table [4](#S6.T4 "Table 4 ‣ 6.3\. Serving in Heterogeneous
+    Clusters ‣ 6\. Evaluation ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters with
+    Phase-Aware Partition and Adaptive Quantization") and  [5](#S6.T5 "Table 5 ‣ 6.4\.
+    Serving in Homogeneous Clusters ‣ 6\. Evaluation ‣ LLM-PQ: Serving LLM on Heterogeneous
+    Clusters with Phase-Aware Partition and Adaptive Quantization")'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Cluster | Group | Heuristic? | $\theta$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | 1 | N | 1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | 1 | N | 1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 3 | 1 | N | 1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | - | Y | 1000 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 5 | - | Y | 50 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 6 | 1 | N | 100 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 7 | 1 | N | 10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 1 | N | 10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 9 | 1 | N | 1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10 | - | Y | 1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 11 | - | Y | 10 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table [9](#A1.T9 "Table 9 ‣ A.2.1\. 𝜃 and Solver Setup ‣ A.2\. Experiment ‣
+    Appendix A Appendix ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters with Phase-Aware
+    Partition and Adaptive Quantization") provides the $\theta$ and solver configurations
+    used in both hetero- and homogeneous results for LLM-PQ.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A.2.2\. Overhead Table
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Table 10\. Problem solving overhead for Table [4](#S6.T4 "Table 4 ‣ 6.3\. Serving
+    in Heterogeneous Clusters ‣ 6\. Evaluation ‣ LLM-PQ: Serving LLM on Heterogeneous
+    Clusters with Phase-Aware Partition and Adaptive Quantization") and  [5](#S6.T5
+    "Table 5 ‣ 6.4\. Serving in Homogeneous Clusters ‣ 6\. Evaluation ‣ LLM-PQ: Serving
+    LLM on Heterogeneous Clusters with Phase-Aware Partition and Adaptive Quantization")'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Cluster | Overhead(s) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | 0.2977 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | 0.2977 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 3 | 2.78127 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 2.28628 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 5 | 9.9239153 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 6 | 115.981 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 7 | 44.3031 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | 19.31674 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 9 | 1.15838 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10 | 2.45544 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 11 | 3.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AVG | 18.38195685 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SLOWEST | 115.981 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table [10](#A1.T10 "Table 10 ‣ A.2.2\. Overhead Table ‣ A.2\. Experiment ‣
+    Appendix A Appendix ‣ LLM-PQ: Serving LLM on Heterogeneous Clusters with Phase-Aware
+    Partition and Adaptive Quantization") presents the solving latency of both hetero-
+    and homogeneous results for LLM-PQ. We also provide a data point for the three-nodes
+    cluster: Cluster of P100, V100, and A100 GPUs (two each type): solving time with
+    31s for OPT66B using heuristic.'
+  prefs: []
+  type: TYPE_NORMAL

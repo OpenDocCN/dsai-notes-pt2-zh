@@ -1,0 +1,1813 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:51:18'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: Optimize Weight Rounding via Signed Gradient Descent for the Quantization of
+    LLMs
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2309.05516](https://ar5iv.labs.arxiv.org/html/2309.05516)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Wenhua Cheng  , Weiwei Zhang, Haihao Shen, Yiyang Cai, Xin He & Kaokao Lv
+  prefs: []
+  type: TYPE_NORMAL
+- en: Intel Corresponding author wenhua.cheng@intel.com
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Large Language Models (LLMs) have proven their exceptional capabilities in performing
+    language-related tasks. However, their deployment poses significant challenges
+    due to their considerable memory and storage requirements. In response to this
+    issue, weight-only quantization, particularly 3 and 4-bit weight-only quantization,
+    has emerged as one of the most viable solutions. As the number of bits decreases,
+    the quantization grid broadens, thus emphasizing the importance of up and down
+    rounding. While previous studies have demonstrated that fine-tuning up and down
+    rounding with the addition of perturbations can enhance accuracy in some scenarios,
+    our study is driven by the precise and limited boundary of these perturbations,
+    where only the threshold for altering the rounding value is of significance. Consequently,
+    we propose a concise and highly effective approach for optimizing the weight rounding
+    task. Our method, named SignRound, involves lightweight block-wise tuning using
+    signed gradient descent, enabling us to achieve outstanding results within 400
+    steps. SignRound competes impressively against recent methods without introducing
+    additional inference overhead. The source code will be publicly available at [https://github.com/intel/neural-compressor](https://github.com/intel/neural-compressor)
+    soon.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Large language models (LLMs) have demonstrated exceptional proficiency on language-related
+    tasks([OpenAI,](#bib.bib24) ; Touvron et al., [2023a](#bib.bib32)). Nevertheless,
+    the deployment of LLMs presents notable hurdles due to their extensive memory
+    and storage needs. Moreover, the computational demands of these models leads to
+    the challenges for real-time applications. Consequently, it becomes imperative
+    to explore techniques like quantization to facilitate the efficient deployment
+    of LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Quantization techniques can be broadly classified into two categories: quantization-aware
+    training (QAT) (Esser et al., [2019](#bib.bib6); Zhuang et al., [2021](#bib.bib46);
+    Lee et al., [2021](#bib.bib13); Liu et al., [2023](#bib.bib19)) and post-training
+    quantization (PTQ) (Nagel et al., [2019](#bib.bib22); Xiao et al., [2022](#bib.bib38);
+    Frantar et al., [2022](#bib.bib8); Nagel et al., [2020](#bib.bib23)). QAT involves
+    training the model with quantization in mind. During QAT, the model is trained
+    using simulated lower-precision representations, allowing it to learn and adapt
+    to the effects of quantization. This approach often yields better accuracy compared
+    to PTQ. However, QAT comes with certain drawbacks, including increased training
+    complexity, longer training times, and the need to tune hyperparameters. Applying
+    QAT to LLMs can be particularly costly, despite recent efforts (Hu et al., [2021](#bib.bib11);
+    Dettmers et al., [2023](#bib.bib5)) to improve the efficiency of fine-tuning LLMs.
+    In contrast, PTQ directly quantizes the model without any simulated training or
+    fine-tuning. While PTQ is a concise approach, it is susceptible to significant
+    accuracy drops. This highlights the need for further advancements in PTQ methods
+    to enhance their accuracy preservation capabilities.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Two types of tensors could be quantized: activations and weights. Weight-only
+    quantization has gained prominence in recent times as it offers a favorable tradeoff
+    for LLMs. Quantizing activations for LLMs can be challenging (Wei et al., [2022b](#bib.bib36);
+    Xiao et al., [2023](#bib.bib39); Bondarenko et al., [2023](#bib.bib3)), making
+    weight-only quantization a more practical choice. Additionally, the primary bottleneck
+    in generating new tokens for LLMs often lies in memory bandwidth (Kim et al.,
+    [2023](#bib.bib12)), further emphasizing the significance of weight-only quantization.
+    In this work, we only focus on weight only quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In order to quantize the weights, a rounding operation is necessary, with rounding-to-nearest
+    (RTN) being the predominant method. RTN quantizes each element independently by
+    simply rounding it to the nearest integer. However, RTN fails to consider the
+    relationships between weights and weights, as well as weights and activations.
+    The potential of an advanced rounding strategy to improve accuracy has been initially
+    demonstrated by Nagel et al. (Nagel et al., [2020](#bib.bib23)). They addressed
+    the rounding task by formulating it as a quadratic unconstrained binary optimization
+    problem and approximated the task loss by employing a Taylor series expansion.
+    However, relying exclusively on the second-order term may not produce accurate
+    results. This is because rounding can introduce considerable weight modifications
+    that may make other order terms significant and non-negligible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We prefer the signed gradient descent method to effectively tackle the issue
+    of sub-optimal rounding solutions. This approach is inspired by the well-defined
+    boundaries of the solution space, which are confined to the range of [-0.5, 0.5],
+    where only the threshold for altering the rounding value is of significance. Figure
+    [1](#S3.F1 "Figure 1 ‣ 3.1 SignRound ‣ 3 Methodology ‣ Optimize Weight Rounding
+    via Signed Gradient Descent for the Quantization of LLMs") provides an overview
+    of our method, SignRound. It utilizes signed gradient descent to fine-tune the
+    up and down rounding through block-wise output reconstruction, resulting in enhanced
+    flexibility and faster convergence. Our contributions are primarily threefold:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We introduce a succinct and potent method for optimizing the weight-rounding
+    task. Our approach utilizes a minimal amount of unlabeled data and executes quantization
+    in a block-wise fashion. Moreover, it is worth noting that our method does not
+    introduce any additional overhead during inference, further enhancing its general
+    practicality.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Our findings demonstrate that a mere alteration of approximately 5% of the rounding
+    values can significantly enhance the performance of some quantization models.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Our empirical results exhibit substantial performance enhancements over the
+    established baseline of RTN, and our method contends favorably against recent
+    techniques.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 2 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Quantization Aware Training.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: QAT methods have gained widespread popularity in model compression, as they
+    enable the fine-tuning process, often leading to superior accuracy compared to
+    the PTQ method. In their work, (Esser et al., [2019](#bib.bib6)) proposed a novel
+    approach that estimates and scales the task loss gradient at each weight and activation
+    layer’s quantizer step size, allowing for joint learning with other network parameters. (Zhuang
+    et al., [2021](#bib.bib46)) put forward a progressive quantization scheme that
+    involves quantizing activations after weights. Additionally, CPQ (Lee et al.,
+    [2021](#bib.bib13)) effectively identified the optimal quantization grids while
+    naturally encouraging the underlying full-precision weights to gather around those
+    quantization grids cohesively during training. While QAT methods are popular in
+    relatively small-scale models, their application in LLMs is limited due to the
+    high computational cost associated with training or fine-tuning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Post-training Quantization (PTQ).
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: PTQ methods simplify the quantization process without the needs of additional
+    training. (Nagel et al., [2019](#bib.bib22)) focused on minimizing quantization
+    error through weight equalization and bias correction techniques. (Liu et al.,
+    [2021](#bib.bib20)) specifically addressed the quantization of vision transformers,
+    introducing a ranking loss to preserve the relative order of self-attention results
+    after quantization and exploring a mixed-precision quantization scheme. (Frantar
+    & Alistarh, [2022](#bib.bib7)) leveraged Optimal Brain Surgeon (Hassibi et al.,
+    [1993](#bib.bib10)) to tune weights during model compression. Both Hawq (Yao et al.,
+    [2021](#bib.bib40)) and HAQ (Wang et al., [2019](#bib.bib34)) aimed to identify
+    important layers and maintain higher precision for them. Given its low resource
+    requirement, PTQ is particularly suitable for the quantization of Large Language
+    Models (LLMs). We will next focus on the quantization methods designed for LLMs,
+    most of which fall under the category of PTQ.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Large Language Models Quantization.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Significant advancements have been made in addressing the pressing demand for
+    quantizing large language models (LLMs). LLM.int8() (Dettmers et al., [2022](#bib.bib4))
+    introduced a mixed precision approach to preserve essential channels in high precision.
+    ZeroQuantV2 (Yao et al., [2023](#bib.bib41)) employed low-rank matrices to enhance
+    model quality recovery. RPTQ (Yuan et al., [2023](#bib.bib42)) mitigated the impact
+    of range differences between channel by rearranging the channels and quantizing
+    them in clusters. Other methods, such as SPIQ (Yvinec et al., [2023](#bib.bib43)),
+    SmoothQuant (Xiao et al., [2022](#bib.bib38)), Outlier Suppression+ (Wei et al.,
+    [2023](#bib.bib37)), utilized handcrafted equivalent transformations to mitigate
+    quantization errors. While these approaches are effective, their applicability
+    is limited due to the performance overhead involved during inference, because
+    there is no chance to fuse the transformation scale to the model itself on certain
+    model architectures. LLM-QAT (Liu et al., [2023](#bib.bib19)) employs QAT to enhance
+    the performance of W4A8. In the context of weight-only quantization, GPTQ (Frantar
+    et al., [2022](#bib.bib8)) optimized weights using the Optimal Brain Surgeon (Hassibi
+    et al., [1993](#bib.bib10)) technique, achieving low-bit quantization on LLMs
+    with minimal computational overhead. AWQ (Lin et al., [2023](#bib.bib18)) followed
+    the equivalent transformation approach with additional tuning in a constrained
+    space, and has the similar limitations as SmoothQuant (Xiao et al., [2022](#bib.bib38)).
+    SqueezeLLM (Kim et al., [2023](#bib.bib12)) employed sensitivity-based non-uniform
+    quantization and dense-and-sparse decomposition to achieve lossless compression
+    to ultra-low precision. While recent advancements in LLM quantization have made
+    significant progress, there is still room for improvement in achieving minimal
+    quantization loss without introducing inference overhead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Rounding Methods.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Adaptive Rounding (Nagel et al., [2020](#bib.bib23)) has already showcased the
+    potential of an advanced rounding strategy to enhance accuracy (Li et al., [2021](#bib.bib16);
+    Wei et al., [2022a](#bib.bib35)). They used the rounding task as a quadratic unconstrained
+    binary optimization problem by approximating the task loss through a Taylor series
+    expansion. However, considering only the second-order term may not yield accurate
+    results. This is because the rounding value gets multiplied by a scaling coefficient
+    during de-quantization, potentially introducing significant weight changes that
+    make other order terms non-negligible. FlexRound (Lee et al., [2023](#bib.bib14))
+    introduces a more flexible approach to rounding by incorporating element-wise
+    division. This allows for simultaneous learning of a shared quantization grid
+    size and individual scales for each pre-trained weight. However, it’s not easily
+    scalable to apply to LLMs due to the needs of specialized hyperparameters for
+    each specific model and task. AQuant (Li et al., [2022](#bib.bib17)) introduced
+    a dynamic approach where the border becomes a function dependent on the activation
+    value to reduce the quantization error of activation. We specifically concentrate
+    on the up and down rounding task for weight quantization in this work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Signed Gradient Descent.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Signed gradient descent is not commonly utilized and is typically applied in
+    specific scenarios, such as reducing communication costs. This is because signed
+    gradient carries significantly less information compared to original gradient.
+    Recent studies have shed light on the advantages of sign-based methods over gradient
+    descent in certain conditions. Safaryan et al. (Safaryan & Richtárik, [2021](#bib.bib29))
+    found that sign-based methods are preferable when the Hessian matrix is concentrated
+    on its diagonal and the maximal eigenvalue is much larger than the average eigenvalue.
+    Li et al. (Li et al., [2023](#bib.bib15)) investigated a variant of sign-based
+    gradient descent that exhibits faster convergence. Additionally, Safaryan et al.
+    (Safaryan & Richtárik, [2021](#bib.bib29)) proposed a stochastic sign descent
+    with momentum, which converges under the standard bounded variance assumption
+    with the optimal asymptotic rate. These findings contribute to a better understanding
+    of the potential benefits and applications of signed gradient descent methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Methodology
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We provide an overview of quantization before diving into the details of our
+    approach. To quantize and de-quantize the weights, the following operation as
+    shown in Eq.[1](#S3.E1 "In 3 Methodology ‣ Optimize Weight Rounding via Signed
+    Gradient Descent for the Quantization of LLMs") is used (disregarding zero point
+    for simplicity).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\widetilde{W}=s*clip(\left\lfloor\frac{W}{s}\right\rceil,n,m),n,m\in\mathbb{N}$
+    |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $s$ is typically performed using the RTN method. While RTN is a concise
+    approach, it quantizes each element independently, thereby losing the ability
+    to model the correlation among different weights or activations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To introduce more flexibility into the rounding operation, a tensor $V$ is set
+    to 0.5 in all of experiments to ensure that the changes made only impact the rounding
+    value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\widetilde{W}=s*clip(\left\lfloor\frac{W}{s}+V\right\rceil,n,m),n,m\in\mathbb{N}$
+    |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: This adjustment allows for a more adaptable and context-aware quantization process.
+    If we try to reconstruct the output of layers, the loss could be formulated as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $L=&#124;&#124;WX-\widetilde{W}X&#124;&#124;_{F}^{2}$ |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $X$ denotes the Frobenius norm. Then the final optimization task is described
+    as the following
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathop{\arg min}\limits_{V}&#124;&#124;WX-\widetilde{W}X&#124;&#124;_{F}^{2}$
+    |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: 3.1 SignRound
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f5d247629e27eb1e96951492c886b1fd.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: An illustration of SignRound. Unlike the direct rounding in RTN,
+    SignRound performs signed gradient descent to fine-tune the up and down rounding
+    through block-wise output reconstruction. After lightweight forward and backward
+    steps, WINT4 has been well optimized towards the minimal loss, therefore ready
+    for the final inference deployment. Note that Quant and Dequant are two standard
+    operations for quantization and dequantization respectively.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since $V$, and only the threshold for altering the rounding value is of significance,
+    we prefer scaled signed gradient descent instead of normal gradient descent to
+    optimize this task. Figure [1](#S3.F1 "Figure 1 ‣ 3.1 SignRound ‣ 3 Methodology
+    ‣ Optimize Weight Rounding via Signed Gradient Descent for the Quantization of
+    LLMs") shows an illustration of our method. More precisely, we follow the below
+    optimization to approach the sub-optimal solution of Eq. [4](#S3.E4 "In 3 Methodology
+    ‣ Optimize Weight Rounding via Signed Gradient Descent for the Quantization of
+    LLMs").
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | $\displaystyle V_{t+1}=V_{t}-lr*sign(\frac{\partial L}{\partial V})$
+    |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle\mathrm{s.t.}&#124;\sum_{t}lr*sign(\frac{\partial L}{\partial
+    V})&#124;\leq B$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: where $t$ is the absolute operation and B is the boundary we use, which is set
+    to 0.5 in all our experiments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Further, by employing straight-through estimator (STE) (Bengio et al., [2013](#bib.bib1)),
+    it can be easily demonstrated that $sign(\frac{\partial L}{\partial V})=sign(\frac{\partial
+    L}{\partial W})$ are all positive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\frac{\partial L}{\partial W}=-2(WX-\widetilde{W}X)X^{T}$ |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\frac{\partial L}{\partial V}=-2s(WX-\widetilde{W}X)X^{T}$ |  | (7) |'
+  prefs: []
+  type: TYPE_TB
+- en: So our optimization could be simplified as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | $\displaystyle V_{t+1}=V_{t}-lr*sign(\frac{\partial L}{\partial W})$
+    |  | (8) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle\mathrm{s.t.}&#124;\sum_{t}lr*sign(\frac{\partial L}{\partial
+    W})&#124;\leq B$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Moreover, as Eq [3](#S3.E3 "In 3 Methodology ‣ Optimize Weight Rounding via
+    Signed Gradient Descent for the Quantization of LLMs") averages the loss of each
+    element, which presumes that each one contributes equally to the network, that
+    basically is not true. To alleviate this issue, we optimize the rounding task
+    blockwise. To clarify, in our context, we use the term ’layer’ to refer to a linear/convolution
+    layer, while ’block’ denotes a transformer block that typically consists of several
+    linear layers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The above pseudocode [1](#alg1 "Algorithm 1 ‣ 3.1 SignRound ‣ 3 Methodology
+    ‣ Optimize Weight Rounding via Signed Gradient Descent for the Quantization of
+    LLMs") presents more details of SignRound.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 1 SignRound
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Input: Calibration Data $\mathcal{D}$'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Output: $best\_V$'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:$V\leftarrow 0$14:     update V via Eq. [8](#S3.E8 "In 3.1 SignRound ‣ 3 Methodology
+    ‣ Optimize Weight Rounding via Signed Gradient Descent for the Quantization of
+    LLMs")15:end for
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we conduct a comprehensive evaluation of SignRound from various
+    perspectives. Firstly, we provide a brief overview of the LLM architectures and
+    tasks that are included in our evaluation. Secondly, we present a detailed comparison
+    between our method and some other existing approaches, highlighting the unique
+    features and advantages of SignRound. Thirdly, we conduct additional experiments
+    to further demonstrate the validity of our choices, assess the sensitivity of
+    hyperparameters, and explore other relevant factors. Finally, the runtime is reported
+    in Appendix [D](#A4 "Appendix D Runtime ‣ Optimize Weight Rounding via Signed
+    Gradient Descent for the Quantization of LLMs") for reference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Experimental Settings
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Evaluation and Datasets.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We make assessments on several language tasks to satisfy the task-agnostic setting.
+    Specifically, we report average accuracy results on four common sense reasoning
+    tasks including HellaSwag (Zellers et al., [2019](#bib.bib44)), WinoGrande (Sakaguchi
+    et al., [2021](#bib.bib30)), PIQA (Bisk et al., [2020](#bib.bib2)) and LAMBADA
+    (Paperno et al., [2016](#bib.bib25)).Additionally, we benchmarked our models on
+    MMLU (hendrycks2020measuring), which encompasses 57 tasks spanning STEM, humanities,
+    social science, and more. Evaluation for all these tasks was performed using the
+    lm-eval-harness (Gao et al., [2021](#bib.bib9)). Furthermore, we complement our
+    evaluation with perplexity (ppl) analysis on Wikitext2 (Merity et al., [2016](#bib.bib21))
+    and C4 (Raffel et al., [2020](#bib.bib27)), by following the source code ¹¹1https://github.com/IST-DASLab/gptq
+    of GPTQ.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quantization Configurations.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: In line with the approach taken in GPTQ (Frantar et al., [2022](#bib.bib8)),
+    we specifically concentrate on weight-only quantization, targeting the linear
+    layers within transformer blocks. Other layers, such as the embedding layer and
+    typically the last layer like lm-head, are excluded from the quantization process.
+    We initially intended to utilize the pile (gao2020pile) dataset for calibration,
+    following AWQ (Lin et al., [2023](#bib.bib18)) and SmoothQuant (Xiao et al., [2022](#bib.bib38)).
+    However, due to its large size, we have opted to use the readily available pile-10k
+    dataset ²²2https://huggingface.co/datasets/NeelNanda/pile-10k, which consists
+    of the first 10k samples from pile, for both GPTQ and our method. We employ standard
+    uniform per-row asymmetric quantization on the min-max grid. Our evaluation primarily
+    focuses on W4, W4G128, and W3G128, where W4 indicates quantizing weights with
+    4 bits and G represents finer-granularity grouping as described in (Park et al.,
+    [2022](#bib.bib26); Frantar et al., [2022](#bib.bib8)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Large Language Models.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Our experimental evaluation encompasses a range of widely adopted LLM architectures,
+    such as LLaMAs (Touvron et al., [2023a](#bib.bib32)), LLaMAs v2 (Touvron et al.,
+    [2023b](#bib.bib33)), BLOOMs (Scao et al., [2022](#bib.bib31)), and OPTs (Zhang
+    et al., [2022](#bib.bib45)). We cover a wide range of LLM parameters, ranging
+    from millions to billions, to ensure comprehensive coverage and analysis.
+  prefs: []
+  type: TYPE_NORMAL
+- en: SignRound Hyperparameters.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We selected 512 samples randomly from pile-10k and truncated each sample to
+    a sequence length of 512\. The tuning process involves adjusting each block for
+    400 steps using a learning rate of 2.5e-3, a batch size of 8, and employing a
+    linear learning rate decay. We set the value of B in Eq. [8](#S3.E8 "In 3.1 SignRound
+    ‣ 3 Methodology ‣ Optimize Weight Rounding via Signed Gradient Descent for the
+    Quantization of LLMs") to 0.5\. Besides, we adopted automatic mixed precision(AMP)
+    to accelerate the tuning. It’s worth noting that adjusting the sequence length
+    to 2048 yielded improvements in numerous scenarios. However, we did not adopt
+    this as the default setting due to the associated runtime overhead. For models
+    $\geq$ 30B, we made configuration adjustments to strike a balance between runtime
+    and performance. Specifically, we reduced the sample count to 256, shorted the
+    sequence length to 256, and disabled AMP.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: Average % accuracy($\uparrow$) of HellaSwag, WinoGrand, PIQA and LAMBADA
+    for LLaMA & OPT.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| nbits | methods | LLaMA | OPT |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 7b | 13b | 7bv2 | 13bv2 | 125m | 1.3b | 2.7b | 6.7b | 13b |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | FP16 | 68.80 | 71.14 | 69.02 | 71.20 | 45.09 | 57.66 | 61.04 | 64.92
+    | 65.49 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4 | RTN | 67.38 | 68.82 | 66.98 | 70.17 | 39.41 | 47.22 | 58.61 | 62.99
+    | 64.08 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 64.70 | 70.00 | 66.89 | 69.24 | 43.58 | 56.15 | 59.92 | 63.09 | 64.83
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 68.05 | 70.58 | 67.74 | 70.03 | 44.13 | 56.17 | 60.58 | 64.34 | 65.05
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4G128 | RTN | 67.85 | 70.84 | 68.32 | 70.72 | 45.27 | 56.47 | 60.70 | 64.03
+    | 64.84 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 66.32 | 70.92 | 68.90 | 70.68 | 42.88 | 56.99 | 61.23 | 64.75 | 65.37
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 68.09 | 71.43 | 68.65 | 70.81 | 44.23 | 57.30 | 60.86 | 64.76 | 65.67
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3G128 | RTN | 64.94 | 67.70 | 65.92 | 68.70 | 39.11 | 42.61 | 36.99 | 56.09
+    | 49.56 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 58.29 | 68.73 | 65.51 | 68.73 | 39.78 | 54.43 | 58.47 | 62.98 | 64.68
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 66.62 | 69.59 | 66.88 | 69.70 | 43.31 | 55.46 | 59.12 | 53.42 | 63.61
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: Average % accuracy($\uparrow$) of HellaSwag, WinoGrand, PIQA and LAMBADA
+    for BLOOM.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | W4 | W4G128 | W3G128 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Size | 560m | 1b7 | 3b | 7b1 | 560m | 1b7 | 3b | 7b1 | 560m | 1b7 | 3b |
+    7b1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 45.50 | 52.31 | 55.48 | 60.22 | 45.50 | 52.31 | 55.48 | 60.22 | 45.50
+    | 52.31 | 55.48 | 60.22 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 43.10 | 49.97 | 53.16 | 57.73 | 44.28 | 52.08 | 54.86 | 59.31 | 40.83
+    | 47.98 | 52.51 | 57.59 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 43.95 | 50.91 | 54.65 | 58.27 | 44.79 | 52.08 | 55.68 | 59.59 | 42.74
+    | 48.81 | 53.41 | 58.12 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 45.00 | 51.47 | 54.63 | 59.52 | 45.40 | 51.85 | 55.40 | 59.83 | 44.08
+    | 50.52 | 53.64 | 58.69 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 3: C4 ppl ( $\downarrow$) at W4.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | LLaMA | OPT | BLOOM |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Size | 7b | 13b | 7bv2 | 13bv2 | 1.3b | 2.7b | 6.7b | 13b | 560m | 1b7 |
+    3b | 7b1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 7.34 | 6.80 | 7.26 | 6.73 | 16.07 | 14.34 | 12.71 | 12.06 | 26.59
+    | 19.49 | 17.48 | 15.20 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 8.12 | 7.23 | 8.16 | 7.14 | 27.49 | 18.83 | 14.37 | 13.32 | 29.87 |
+    21.25 | 18.76 | 16.05 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 8.64 | 7.13 | 7.90 | 6.87 | 17.04 | 15.06 | 13.39 | 12.29 | 28.15
+    | 20.71 | 18.18 | 15.67 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 7.84 | 7.05 | 11.20 | 7.72 | 16.92 | 14.97 | 13.08 | 12.48 | 28.12
+    | 20.41 | 18.18 | 15.67 |'
+  prefs: []
+  type: TYPE_TB
+- en: 4.2 Comparing With Other Methods
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We conducted a comprehensive benchmarking of our results against RTN and GPTQ (Frantar
+    et al., [2022](#bib.bib8)). However, it is important to highlight that act-order
+    was not enabled in GPTQ due to the kernel overhead it introduces (Lin et al.,
+    [2023](#bib.bib18)), although it has the potential to improve accuracy for certain
+    models. When evaluating perplexity (ppl), we prioritize reporting the ppl on C4
+    dataset as our primary focus, taking into consideration the potential occurrence
+    of NaN values when assessing perplexity for Wikitext2 and ptb datasets, both for
+    SignRound and GPTQ. Furthermore, we conducted a limited and non-rigorous comparison
+    between our approach and AWQ Lin et al. ([2023](#bib.bib18)) in Appendix [A.1](#A1.SS1
+    "A.1 Non-rigorous comparison with AWQ ‣ Appendix A More results ‣ Optimize Weight
+    Rounding via Signed Gradient Descent for the Quantization of LLMs").
+  prefs: []
+  type: TYPE_NORMAL
+- en: We begin by presenting the average accuracy results for the HellaSwag, WinoGrand,
+    PIQA, and LAMBADA tasks across LLaMA, OPT, and BLOOM models with a size below
+    13B. These results are shown in Table [1](#S4.T1 "Table 1 ‣ SignRound Hyperparameters.
+    ‣ 4.1 Experimental Settings ‣ 4 Experiments ‣ Optimize Weight Rounding via Signed
+    Gradient Descent for the Quantization of LLMs") and [2](#S4.T2 "Table 2 ‣ SignRound
+    Hyperparameters. ‣ 4.1 Experimental Settings ‣ 4 Experiments ‣ Optimize Weight
+    Rounding via Signed Gradient Descent for the Quantization of LLMs"). In conclusion,
+    our method outperforms RTN in 36 out of 39 scenarios, showcasing its effectiveness.
+    Additionally, when comparing our approach to GPTQ, we surpass it in 32 out of
+    39 scenarios, further highlighting the strengths of our method. While our method
+    showcases overall effectiveness, it is important to acknowledge the presence of
+    outliers, such as OPT6.7B at W3G128\. Although the root cause for this has not
+    been identified yet, it could be mitigated by fine-tuning hyperparameters, as
+    discussed in the following sections. For detailed results of LLaMA7B, LLaMA13B,
+    LLAMA7B-V2, and LLAMA13B-V2, please refer to Appendix [E](#A5 "Appendix E Detailed
+    Results of some LLaMa models ‣ Optimize Weight Rounding via Signed Gradient Descent
+    for the Quantization of LLMs"). The results in Appendix [E](#A5 "Appendix E Detailed
+    Results of some LLaMa models ‣ Optimize Weight Rounding via Signed Gradient Descent
+    for the Quantization of LLMs") also highlight that changing the sequence length
+    to 2048 could bring noticeable improvement in many scenarios.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We then present the perplexity (ppl) results for C4 in Table [3](#S4.T3 "Table
+    3 ‣ SignRound Hyperparameters. ‣ 4.1 Experimental Settings ‣ 4 Experiments ‣ Optimize
+    Weight Rounding via Signed Gradient Descent for the Quantization of LLMs"), along
+    with the detailed results for Wikitext2 in Appendix [A.2](#A1.SS2 "A.2 Results
+    of Wikitext2 ppl at W4 ‣ Appendix A More results ‣ Optimize Weight Rounding via
+    Signed Gradient Descent for the Quantization of LLMs"). In conclusion, we achieve
+    better or comparable performance in 9 out of 12 models. In certain cases where
+    the results may not be optimal, we can still fine-tune the hyperparameters to
+    achieve better results, as demonstrated in the subsequent sections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we present a comprehensive breakdown of the accuracies achieved by MMLU
+    for LLaMA-7B and LLaMa-7B-V2 in Table [4](#S4.T4 "Table 4 ‣ 4.2 Comparing With
+    Other Methods ‣ 4 Experiments ‣ Optimize Weight Rounding via Signed Gradient Descent
+    for the Quantization of LLMs"). By analyzing the average accuracies, we observe
+    that SingRound outperforms RTN and GPTQ in 4 out of the 6 scenarios when the best
+    model-wise setting is applied.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4: Accuracies($\uparrow$) of MMLU(5-shot) for LLaMA-7B & LLaMA-7B-V2\.
+    ”Ours-2048” indicates that we have modified the sequence length of the calibration
+    dataset from 512 to 2048.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | LLaMA-7B | LLaMA-7B-V2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Hums. | STEM | Social | Other | Avg. | Hums. | STEM | Social | Other |
+    Avg. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | FP16 | 38.32 | 31.17 | 38.05 | 36.85 | 35.64 | 51.40 | 37.00 | 52.23 |
+    49.51 | 46.56 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4G-1 | RTN | 34.84 | 29.53 | 32.87 | 36.28 | 33.10 | 44.03 | 32.83 | 44.97
+    | 42.19 | 40.24 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 33.31 | 26.29 | 29.86 | 33.11 | 30.32 | 46.21 | 34.29 | 46.68 | 44.85
+    | 42.21 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 34.30 | 31.05 | 34.74 | 36.66 | 33.95 | 47.28 | 33.14 | 46.90 | 44.70
+    | 42.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours2048 | 35.10 | 30.69 | 36.43 | 36.85 | 34.42 | 47.40 | 33.92 | 49.61
+    | 44.91 | 43.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4G128 | RTN | 36.30 | 31.67 | 37.40 | 37.99 | 35.48 | 49.54 | 36.50 | 50.95
+    | 47.87 | 45.31 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 37.77 | 29.64 | 36.38 | 37.45 | 34.83 | 50.30 | 36.51 | 50.91 | 47.69
+    | 45.43 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 36.06 | 30.86 | 35.99 | 36.21 | 34.44 | 51.39 | 37.87 | 52.56 | 49.69
+    | 46.95 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours2048 | 35.66 | 30.05 | 36.16 | 37.57 | 34.46 | 50.12 | 36.70 | 51.44
+    | 48.20 | 45.69 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3G128 | RTN | 32.97 | 30.28 | 33.66 | 32.60 | 32.17 | 41.14 | 33.06 | 40.98
+    | 40.94 | 38.51 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 30.77 | 28.29 | 30.73 | 31.33 | 30.12 | 44.66 | 37.55 | 46.36 | 43.47
+    | 42.48 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 30.12 | 28.21 | 30.64 | 30.34 | 29.68 | 44.53 | 33.53 | 44.60 | 43.52
+    | 40.82 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours2048 | 32.43 | 28.62 | 31.03 | 32.10 | 30.85 | 42.75 | 32.98 | 42.88
+    | 41.30 | 39.34 |'
+  prefs: []
+  type: TYPE_TB
+- en: We also provide the results for models with a capacity of 30B or greater at
+    W3G128 in Table [5](#S4.T5 "Table 5 ‣ 4.2 Comparing With Other Methods ‣ 4 Experiments
+    ‣ Optimize Weight Rounding via Signed Gradient Descent for the Quantization of
+    LLMs") and W4 in Appendix [A.3](#A1.SS3 "A.3 Other results for large models ‣
+    Appendix A More results ‣ Optimize Weight Rounding via Signed Gradient Descent
+    for the Quantization of LLMs"). Additionally, we discovered that recovering the
+    sequence length to 512 of the calibration dataset yielded improvements in certain
+    scenarios, and thus we include these results. In summary, our approach achieves
+    comparable performance to GPTQ for the given accuracy task. However, we slightly
+    lag behind GPTQ in terms of ppl tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 5: Average % accuracy($\uparrow$ 30B at W3G128\. ”Ours-seq512” indicates
+    that we have modified the sequence length of the calibration dataset from 256
+    to 512.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | Accuracy | PPL on C4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Type | LLaMA | OPT | LLaMA | OPT |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Size | 30b | 65b | 30b | 66b | 30b | 65b | 30b | 66b |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 73.46 | 75.48 | 67.87 | 69.54 | 6.13 | 5.98 | 11.46 | 10.99 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 72.17 | 73.69 | 62.83 | 38.00 | 6.85 | 6.52 | 30.81 | 285.41 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 72.09 | 73.97 | 66.76 | 67.87 | 6.80 | 6.52 | 11.74 | 11.87 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours-seq256 | 72.45 | 73.71 | 66.51 | 68.00 | 6.83 | 6.52 | 13.00 | 13.34
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours-seq512 | 71.95 | 73.78 | 66.70 | 67.26 | 6.79 | 6.53 | 12.50 | 13.97
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: 4.3 Block-wise versus Layer-wise
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We examined the effects of layer-wise and block-wise tuning. As explained in
+    Section [3.1](#S3.SS1 "3.1 SignRound ‣ 3 Methodology ‣ Optimize Weight Rounding
+    via Signed Gradient Descent for the Quantization of LLMs"), the term ”layer” refers
+    to a linear/convolution layer, while ”block” specifically denotes a transformer
+    block consisting of multiple linear layers. To simplify this evaluation, we set
+    the sequence length to 256 and disable AMP. Based on the below results, block-wise
+    tuning outperformed layer-wise tuning in the majority of scenarios.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 6: Comparing block-wise and layer-wise tuning for around 7B models, the
+    models LLaMA7b, LLaMA7bv2, OPT6.7b, and BLOOM7b1 are denoted by 7b, 7bv2, 6.7b,
+    and 7b1 respectively. The accuracy is the % average accuracy($\uparrow$) is evaluated
+    using the C4 dataset.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | W4 | W3G128 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Size | 7b | 7bv2 | 6.7b | 7b1 | 7b | 7bv2 | 6.7b | 7b1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| layer-acc-seq256 | 67.50 | 67.78 | 63.46 | 58.72 | 65.96 | 66.09 | 61.60
+    | 58.24 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| block-acc-seq256 | 67.64 | 67.96 | 64.55 | 59.08 | 66.31 | 66.63 | 57.76
+    | 58.34 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| layer-c4-ppl-seq256 | 8.02 | 7.92 | 13.44 | 15.73 | 8.81 | 8.69 | 16.83 |
+    16.15 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| block-c4-ppl-seq256 | 7.81 | 8.19 | 13.10 | 15.71 | 8.34 | 10.84 | 25.44
+    | 16.05 |'
+  prefs: []
+  type: TYPE_TB
+- en: 4.4 The analysis of hyperparameters sensitivity
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We conducted a hyperparameters sensitivity analysis, the results of which are
+    summarized in Table [7](#S4.T7 "Table 7 ‣ 4.4 The analysis of hyperparameters
+    sensitivity ‣ 4 Experiments ‣ Optimize Weight Rounding via Signed Gradient Descent
+    for the Quantization of LLMs"). In the ”steps100” configuration, we used 100 steps,
+    and a learning rate of 1e-2. In the ”lr4e-3” configuration, we set the learning
+    rate to 4e-3\. We also changed the sequence length of the calibration dataset
+    from 512 to 2048, denoted by ”seq2048”. Please note that all other hyperparameters
+    not mentioned in each configuration were kept the same as the default configurations,
+    as detailed in Section [4.1](#S4.SS1 "4.1 Experimental Settings ‣ 4 Experiments
+    ‣ Optimize Weight Rounding via Signed Gradient Descent for the Quantization of
+    LLMs"). Overall, our method exhibits robustness to hyperparameters in common sense
+    reasoning tasks, with the exception of the perplexity of LLaMA-7b-v2\. However,
+    we did discover that certain hyperparameters, such as the sequence length of the
+    calibration dataset, can significantly impact performance in some scenarios, as
+    demonstrated in Table [4](#S4.T4 "Table 4 ‣ 4.2 Comparing With Other Methods ‣
+    4 Experiments ‣ Optimize Weight Rounding via Signed Gradient Descent for the Quantization
+    of LLMs") and [5](#S4.T5 "Table 5 ‣ 4.2 Comparing With Other Methods ‣ 4 Experiments
+    ‣ Optimize Weight Rounding via Signed Gradient Descent for the Quantization of
+    LLMs").
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 7: Hyperparameter sensitivity analysis, the models LLaMA7b, LLaMA7bv2,
+    OPT6.7b, and BLOOM7b1 are denoted by 7b, 7bv2, 6.7b, and 7b1 respectively. The
+    accuracy is the % average accuracy($\uparrow$) is evaluated using the C4 dataset.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | Accuracy | PPL on C4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Size | 7b | 7bv2 | 6.7b | 7b1 | 7b | 7bv2 | 6.7b | 7b1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| steps100 | 67.53 | 67.76 | 64.64 | 58.76 | 7.93 | 7.83 | 13.12 | 15.71 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| lr4e-3 | 68.01 | 67.57 | 64.57 | 59.47 | 7.81 | 10.29 | 13.09 | 15.66 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| seq2048 | 68.11 | 67.79 | 64.32 | 59.39 | 7.76 | 9.97 | 13.06 | 15.66 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| default | 68.05 | 67.74 | 64.34 | 59.52 | 7.84 | 11.20 | 13.08 | 15.67 |'
+  prefs: []
+  type: TYPE_TB
+- en: 4.5 The Analysis of Gradients and Their Effects on Rounding
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/53cf38997dfbdfb90112de5ab62478f3.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: LLaMA-7B
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/1e88fba19cd10eb22ceca1f14bc1b01d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: LLaMA-7B-V2
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/5025eeb632f37032765f3dba2e857179.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: OPT-6.7B
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/105f227d3d5f3c7f2d808af34cde570e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: BLOOM-7B1
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 2: The impact of the rounding value introduced by the $V$ in Eq. [2](#S3.E2
+    "In 3 Methodology ‣ Optimize Weight Rounding via Signed Gradient Descent for the
+    Quantization of LLMs")'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this analysis, we dive into the distribution of the magnitude of $V$ in Eq.
+    [2](#S3.E2 "In 3 Methodology ‣ Optimize Weight Rounding via Signed Gradient Descent
+    for the Quantization of LLMs") and its impact on rounding values across approximately
+    7 billion models at W4\. The visual representations of these distributions are
+    provided in Appendix [B](#A2 "Appendix B Visualization of V ‣ Optimize Weight
+    Rounding via Signed Gradient Descent for the Quantization of LLMs"). Our investigation
+    reveals that the majority of V values are concentrated within the range of [-0.3,
+    0.3]. Additionally, we observe an interesting pattern in the distribution of V
+    across different layers. The middle layers exhibit a more tightly clustered distribution
+    compared to the other layers. This observation aligns with the common understanding
+    that the head and tail layers tend to be more sensitive to compression, while
+    the middle layers are relatively more robust.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure [2](#S4.F2 "Figure 2 ‣ 4.5 The Analysis of Gradients and Their Effects
+    on Rounding ‣ 4 Experiments ‣ Optimize Weight Rounding via Signed Gradient Descent
+    for the Quantization of LLMs") illustrates the impact of the rounding value introduced
+    by the $V$ in Eq. [2](#S3.E2 "In 3 Methodology ‣ Optimize Weight Rounding via
+    Signed Gradient Descent for the Quantization of LLMs") for models around 7B at
+    W4\. The red line represents ”up rounding”, indicating that while RTN rounds the
+    value to the floor, SignRound changes it to the ceiling. Conversely, the green
+    line represents ”down rounding” indicating that while RTN rounds the value to
+    the ceiling, SignRound changes it to the floor. It is worth noting that SignRound
+    modifies only a small percentage of weight rounding values for each of the four
+    models, namely 5.27%, 5.29%, 4.14%, and 4.10%.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We were also intrigued by the possible correlation between rounding and activation,
+    as previous research has shown that keeping only 0.1%-1% of the channels corresponding
+    to larger activation can significantly improve the quantized performance in AWQ
+    (Lin et al., [2023](#bib.bib18)). We shown the result in Appendix [C](#A3 "Appendix
+    C Correction between SignRound and salient activation channels ‣ Optimize Weight
+    Rounding via Signed Gradient Descent for the Quantization of LLMs").
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Conclusions and Limitations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this paper, we present a highly effective and concise approach to optimize
+    the weight rounding task. Our method, SignRound, leverages lightweight block-wise
+    tuning using signed gradient descent, achieving remarkable results within a mere
+    400 steps. Extensive experiments demonstrate the superior performance of our approach.
+    As part of our future work, we plan to apply our approach to more diverse LLM
+    models (e.g., Code LLaMA (Rozière et al., [2023](#bib.bib28)), LLaMA v2 Chat (Touvron
+    et al., [2023b](#bib.bib33))), and contribute our recipes and implementations
+    to the open source community. On the other hand, although our method is generally
+    effective, there are a few outliers in certain scenarios, where we plan to mitigate
+    the issue by fine-tuning the hyperparameters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Bengio et al. (2013) Yoshua Bengio, Nicholas Léonard, and Aaron Courville. Estimating
+    or propagating gradients through stochastic neurons for conditional computation.
+    *arXiv preprint arXiv:1308.3432*, 2013.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bisk et al. (2020) Yonatan Bisk, Rowan Zellers, Jianfeng Gao, Yejin Choi, et al.
+    Piqa: Reasoning about physical commonsense in natural language. In *Proceedings
+    of the AAAI conference on artificial intelligence*, volume 34, pp.  7432–7439,
+    2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bondarenko et al. (2023) Yelysei Bondarenko, Markus Nagel, and Tijmen Blankevoort.
+    Quantizable transformers: Removing outliers by helping attention heads do nothing.
+    *arXiv preprint arXiv:2306.12929*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. (2022) Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer.
+    Llm. int8 (): 8-bit matrix multiplication for transformers at scale. *arXiv preprint
+    arXiv:2208.07339*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. (2023) Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, and Luke
+    Zettlemoyer. Qlora: Efficient finetuning of quantized llms. *arXiv preprint arXiv:2305.14314*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Esser et al. (2019) Steven K Esser, Jeffrey L McKinstry, Deepika Bablani, Rathinakumar
+    Appuswamy, and Dharmendra S Modha. Learned step size quantization. *arXiv preprint
+    arXiv:1902.08153*, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Frantar & Alistarh (2022) Elias Frantar and Dan Alistarh. Optimal brain compression:
+    A framework for accurate post-training quantization and pruning. *arXiv preprint
+    arXiv:2208.11580*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Frantar et al. (2022) Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan
+    Alistarh. Gptq: Accurate post-training quantization for generative pre-trained
+    transformers. *arXiv preprint arXiv:2210.17323*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Gao et al. (2021) Leo Gao, Jonathan Tow, Stella Biderman, Sid Black, Anthony
+    DiPofi, Charles Foster, Laurence Golding, Jeffrey Hsu, Kyle McDonell, Niklas Muennighoff,
+    Jason Phang, Laria Reynolds, Eric Tang, Anish Thite, Ben Wang, Kevin Wang, and
+    Andy Zou. A framework for few-shot language model evaluation, September 2021.
+    URL [https://doi.org/10.5281/zenodo.5371628](https://doi.org/10.5281/zenodo.5371628).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hassibi et al. (1993) Babak Hassibi, David G Stork, and Gregory J Wolff. Optimal
+    brain surgeon and general network pruning. In *IEEE international conference on
+    neural networks*, pp. 293–299\. IEEE, 1993.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hu et al. (2021) Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu,
+    Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. Lora: Low-rank adaptation of
+    large language models. *arXiv preprint arXiv:2106.09685*, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kim et al. (2023) Sehoon Kim, Coleman Hooper, Amir Gholami, Zhen Dong, Xiuyu
+    Li, Sheng Shen, Michael W Mahoney, and Kurt Keutzer. Squeezellm: Dense-and-sparse
+    quantization. *arXiv preprint arXiv:2306.07629*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Lee et al. (2021) Jung Hyun Lee, Jihun Yun, Sung Ju Hwang, and Eunho Yang. Cluster-promoting
+    quantization with bit-drop for minimizing network quantization loss. In *Proceedings
+    of the IEEE/CVF International Conference on Computer Vision*, pp.  5370–5379,
+    2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lee et al. (2023) Jung Hyun Lee, Jeonghoon Kim, Se Jung Kwon, and Dongsoo Lee.
+    Flexround: Learnable rounding based on element-wise division for post-training
+    quantization. *arXiv preprint arXiv:2306.00317*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Li et al. (2023) Xiuxian Li, Kuo-Yi Lin, Li Li, Yiguang Hong, and Jie Chen.
+    On faster convergence of scaled sign gradient descent. *IEEE Transactions on Industrial
+    Informatics*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. (2021) Yuhang Li, Ruihao Gong, Xu Tan, Yang Yang, Peng Hu, Qi Zhang,
+    Fengwei Yu, Wei Wang, and Shi Gu. Brecq: Pushing the limit of post-training quantization
+    by block reconstruction. *arXiv preprint arXiv:2102.05426*, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Li et al. (2022) Zhengyi Li, Cong Guo, Zhanda Zhu, Yangjie Zhou, Yuxian Qiu,
+    Xiaotian Gao, Jingwen Leng, and Minyi Guo. Efficient activation quantization via
+    adaptive rounding border for post-training quantization. *arXiv preprint arXiv:2208.11945*,
+    2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lin et al. (2023) Ji Lin, Jiaming Tang, Haotian Tang, Shang Yang, Xingyu Dang,
+    and Song Han. Awq: Activation-aware weight quantization for llm compression and
+    acceleration. *arXiv preprint arXiv:2306.00978*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. (2023) Zechun Liu, Barlas Oguz, Changsheng Zhao, Ernie Chang, Pierre
+    Stock, Yashar Mehdad, Yangyang Shi, Raghuraman Krishnamoorthi, and Vikas Chandra.
+    Llm-qat: Data-free quantization aware training for large language models. *arXiv
+    preprint arXiv:2305.17888*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Liu et al. (2021) Zhenhua Liu, Yunhe Wang, Kai Han, Wei Zhang, Siwei Ma, and
+    Wen Gao. Post-training quantization for vision transformer. *Advances in Neural
+    Information Processing Systems*, 34:28092–28103, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Merity et al. (2016) Stephen Merity, Caiming Xiong, James Bradbury, and Richard
+    Socher. Pointer sentinel mixture models. *arXiv preprint arXiv:1609.07843*, 2016.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Nagel et al. (2019) Markus Nagel, Mart van Baalen, Tijmen Blankevoort, and Max
+    Welling. Data-free quantization through weight equalization and bias correction.
+    In *Proceedings of the IEEE/CVF International Conference on Computer Vision*,
+    pp.  1325–1334, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Nagel et al. (2020) Markus Nagel, Rana Ali Amjad, Mart Van Baalen, Christos
+    Louizos, and Tijmen Blankevoort. Up or down? adaptive rounding for post-training
+    quantization. In *International Conference on Machine Learning*, pp. 7197–7206\.
+    PMLR, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '(24) OpenAI. Openai: Chatgpt. URL [https://openai.com/blog/chatgpt](https://openai.com/blog/chatgpt).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Paperno et al. (2016) Denis Paperno, Germán Kruszewski, Angeliki Lazaridou,
+    Quan Ngoc Pham, Raffaella Bernardi, Sandro Pezzelle, Marco Baroni, Gemma Boleda,
+    and Raquel Fernández. The lambada dataset: Word prediction requiring a broad discourse
+    context. *arXiv preprint arXiv:1606.06031*, 2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Park et al. (2022) Gunho Park, Baeseong Park, Se Jung Kwon, Byeongwook Kim,
+    Youngjoo Lee, and Dongsoo Lee. nuqmm: Quantized matmul for efficient inference
+    of large-scale generative language models. *arXiv preprint arXiv:2206.09557*,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Raffel et al. (2020) Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee,
+    Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter J Liu. Exploring
+    the limits of transfer learning with a unified text-to-text transformer. *The
+    Journal of Machine Learning Research*, 21(1):5485–5551, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Rozière et al. (2023) Baptiste Rozière, Jonas Gehring, Fabian Gloeckle, Sten
+    Sootla, Itai Gat, Xiaoqing Ellen Tan, Yossi Adi, Jingyu Liu, Tal Remez, Jérémy
+    Rapin, et al. Code llama: Open foundation models for code. *arXiv preprint arXiv:2308.12950*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Safaryan & Richtárik (2021) Mher Safaryan and Peter Richtárik. Stochastic sign
+    descent methods: New algorithms and better theory. In *International Conference
+    on Machine Learning*, pp. 9224–9234\. PMLR, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sakaguchi et al. (2021) Keisuke Sakaguchi, Ronan Le Bras, Chandra Bhagavatula,
+    and Yejin Choi. Winogrande: An adversarial winograd schema challenge at scale.
+    *Communications of the ACM*, 64(9):99–106, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Scao et al. (2022) Teven Le Scao, Angela Fan, Christopher Akiki, Ellie Pavlick,
+    Suzana Ilić, Daniel Hesslow, Roman Castagné, Alexandra Sasha Luccioni, François
+    Yvon, Matthias Gallé, et al. Bloom: A 176b-parameter open-access multilingual
+    language model. *arXiv preprint arXiv:2211.05100*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023a) Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier
+    Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal,
+    Eric Hambro, Faisal Azhar, et al. Llama: Open and efficient foundation language
+    models. *arXiv preprint arXiv:2302.13971*, 2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023b) Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert,
+    Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava,
+    Shruti Bhosale, et al. Llama 2: Open foundation and fine-tuned chat models. *arXiv
+    preprint arXiv:2307.09288*, 2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wang et al. (2019) Kuan Wang, Zhijian Liu, Yujun Lin, Ji Lin, and Song Han.
+    Haq: Hardware-aware automated quantization with mixed precision. In *Proceedings
+    of the IEEE/CVF conference on computer vision and pattern recognition*, pp.  8612–8620,
+    2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wei et al. (2022a) Xiuying Wei, Ruihao Gong, Yuhang Li, Xianglong Liu, and
+    Fengwei Yu. Qdrop: randomly dropping quantization for extremely low-bit post-training
+    quantization. *arXiv preprint arXiv:2203.05740*, 2022a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wei et al. (2022b) Xiuying Wei, Yunchen Zhang, Xiangguo Zhang, Ruihao Gong,
+    Shanghang Zhang, Qi Zhang, Fengwei Yu, and Xianglong Liu. Outlier suppression:
+    Pushing the limit of low-bit transformer language models. *Advances in Neural
+    Information Processing Systems*, 35:17402–17414, 2022b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wei et al. (2023) Xiuying Wei, Yunchen Zhang, Yuhang Li, Xiangguo Zhang, Ruihao
+    Gong, Jinyang Guo, and Xianglong Liu. Outlier suppression+: Accurate quantization
+    of large language models by equivalent and optimal shifting and scaling. *arXiv
+    preprint arXiv:2304.09145*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xiao et al. (2022) Guangxuan Xiao, Ji Lin, Mickael Seznec, Julien Demouth,
+    and Song Han. Smoothquant: Accurate and efficient post-training quantization for
+    large language models. *arXiv preprint arXiv:2211.10438*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xiao et al. (2023) Guangxuan Xiao, Ji Lin, Mickael Seznec, Hao Wu, Julien Demouth,
+    and Song Han. Smoothquant: Accurate and efficient post-training quantization for
+    large language models. In *International Conference on Machine Learning*, pp. 38087–38099\.
+    PMLR, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yao et al. (2021) Zhewei Yao, Zhen Dong, Zhangcheng Zheng, Amir Gholami, Jiali
+    Yu, Eric Tan, Leyuan Wang, Qijing Huang, Yida Wang, Michael Mahoney, et al. Hawq-v3:
+    Dyadic neural network quantization. In *International Conference on Machine Learning*,
+    pp. 11875–11886\. PMLR, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yao et al. (2023) Zhewei Yao, Xiaoxia Wu, Cheng Li, Stephen Youn, and Yuxiong
+    He. Zeroquant-v2: Exploring post-training quantization in llms from comprehensive
+    study to low rank compensation. *arXiv:2303.08302*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yuan et al. (2023) Zhihang Yuan, Lin Niu, Jiawei Liu, Wenyu Liu, Xinggang Wang,
+    Yuzhang Shang, Guangyu Sun, Qiang Wu, Jiaxiang Wu, and Bingzhe Wu. Rptq: Reorder-based
+    post-training quantization for large language models. *arXiv preprint arXiv:2304.01089*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yvinec et al. (2023) Edouard Yvinec, Arnaud Dapogny, Matthieu Cord, and Kevin
+    Bailly. Spiq: Data-free per-channel static input quantization. In *Proceedings
+    of the IEEE/CVF Winter Conference on Applications of Computer Vision*, pp.  3869–3878,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zellers et al. (2019) Rowan Zellers, Ari Holtzman, Yonatan Bisk, Ali Farhadi,
+    and Yejin Choi. Hellaswag: Can a machine really finish your sentence? *arXiv preprint
+    arXiv:1905.07830*, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. (2022) Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe,
+    Moya Chen, Shuohui Chen, Christopher Dewan, Mona Diab, Xian Li, Xi Victoria Lin,
+    et al. Opt: Open pre-trained transformer language models. *arXiv preprint arXiv:2205.01068*,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Zhuang et al. (2021) Bohan Zhuang, Mingkui Tan, Jing Liu, Lingqiao Liu, Ian
+    Reid, and Chunhua Shen. Effective training of convolutional neural networks with
+    low-bitwidth weights and activations. *IEEE Transactions on Pattern Analysis and
+    Machine Intelligence*, 44(10):6140–6152, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A More results
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A.1 Non-rigorous comparison with AWQ
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We conducted a limited comparison between our approach and AWQ Lin et al. ([2023](#bib.bib18)),
+    considering that our evaluation methodology closely follows that of GPTQ and we
+    only share a few common tasks with AWQ. It is important to acknowledge that this
+    comparison inherently lacks rigor due to our reliance on referencing AWQ’s data
+    alone. Consequently, this approach introduces the possibility of unfairness in
+    the evaluation process, primarily stemming from the utilization of different calibration
+    datasets and other potential factors that may influence the obtained results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We present the results of our common tasks alongside AWQ in table [8](#A1.T8
+    "Table 8 ‣ A.1 Non-rigorous comparison with AWQ ‣ Appendix A More results ‣ Optimize
+    Weight Rounding via Signed Gradient Descent for the Quantization of LLMs") and
+    all the results of AWQ are from their paper. While we both report MMLU results,
+    it is important to note that there was a bug fix ³³3https://github.com/EleutherAI/lm-evaluation-harness/pull/497
+    in lm-eval, resulting in significant changes to the baseline. So we have not included
+    them in this report.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 8: Reported results of AWQ and Ours'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| LLaMA-7B | AWQ | Ours |'
+  prefs: []
+  type: TYPE_TB
+- en: '| nbits | Method | PIQA | Hella. | Wino. | PIQA | Hella. | Wino. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | FP16 | 78.35 | 56.44 | 67.09 | 78.35 | 56.42 | 66.85 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3G128 | RTN | 75.84 | 53.10 | 63.22 | 75.73 | 53.17 | 63.14 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 70.89 | 46.77 | 60.93 | 72.58 | 47.10 | 59.91 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Proposed | 76.66 | 53.63 | 66.14 | 76.61 | 53.98 | 66.06 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4G128 | RTN | 77.86 | 55.81 | 65.59 | 77.58 | 55.86 | 65.75 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 77.20 | 53.98 | 65.67 | 77.26 | 54.09 | 64.09 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Proposed | 78.07 | 55.76 | 65.82 | 78.07 | 55.92 | 66.30 |'
+  prefs: []
+  type: TYPE_TB
+- en: A.2 Results of Wikitext2 ppl at W4
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The perplexity results for Wikitext2 at W4 are shown in Table [9](#A1.T9 "Table
+    9 ‣ A.2 Results of Wikitext2 ppl at W4 ‣ Appendix A More results ‣ Optimize Weight
+    Rounding via Signed Gradient Descent for the Quantization of LLMs"). In conclusion,
+    our performance is comparable to that of GPTQ.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 9: Wikitext2 ppl ( $\downarrow$) at W4'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | LLaMA | OPT | BLOOM |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Size | 7b | 13b | 7bv2 | 13bv2 | 1.3b | 2.7b | 6.7b | 13b | 560m | 1b7 |
+    3b | 7b1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 5.67 | 5.09 | 5.47 | 4.88 | 14.62 | 12.47 | 10.86 | 10.13 | 22.41
+    | 15.39 | 13.48 | 11.37 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 6.29 | 5.53 | 6.12 | 5.20 | 48.20 | 16.92 | 12.10 | 11.32 | 25.88 |
+    16.97 | 14.75 | 12.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 6.59 | 5.33 | 6.09 | 5.16 | 15.67 | 13.30 | 11.59 | 10.33 | 23.95
+    | 16.37 | 14.10 | 11.73 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  Ours | 6.12 | 5.32 | 298.42 | 9.15 | 15.65 | 13.05 | 11.18 | 10.66 | 23.80
+    | 16.22 | 14.13 | 11.80 |'
+  prefs: []
+  type: TYPE_TB
+- en: A.3 Other results for large models
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We present the results for models with a capacity of 30B or higher at W4 in
+    Table [10](#A1.T10 "Table 10 ‣ A.3 Other results for large models ‣ Appendix A
+    More results ‣ Optimize Weight Rounding via Signed Gradient Descent for the Quantization
+    of LLMs") and PPL on Wikitext2 in Table [11](#A1.T11 "Table 11 ‣ A.3 Other results
+    for large models ‣ Appendix A More results ‣ Optimize Weight Rounding via Signed
+    Gradient Descent for the Quantization of LLMs"). Furthermore, we observed that
+    adjusting the sequence length of the calibration dataset led to improvements in
+    specific scenarios, and we include these findings in our analysis. Overall, our
+    approach demonstrates comparable accuracy performance to GPTQ for the given task.
+    However, it is worth noting that we slightly fall behind GPTQ in terms of PPL
+    tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 10: Average % accuracy($\uparrow$ 30B at W4\. ”Ours-seq512” indicates
+    that we have modified the sequence length of the calibration dataset from 256
+    to 512.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | Accuracy | PPL on C4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Type | LLaMA | OPT | LLaMA | OPT |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Size | 30b | 65b | 30b | 66b | 30b | 65b | 30b | 66b |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 73.46 | 75.48 | 67.87 | 69.54 | 6.13 | 5.98 | 11.45 | 10.99 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 72.33 | 73.91 | 65.94 | 37.12 | 6.54 | 6.46 | 13.56 | 305.73 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 72.85 | 74.45 | 67.55 | 68.23 | 6.42 | 6.23 | 11.59 | 11.24 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours-seq256 | 72.69 | 74.03 | 66.74 | 68.80 | 6.47 | 6.31 | 11.84 | 11.42
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours-seq512 | 72.86 | 73.91 | 67.40 | 69.22 | 6.47 | 6.34 | 11.77 | 11.45
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 11: Wikitext ppl($\downarrow$ 30B. ”Ours-seq512” indicates that we have
+    modified the sequence length of the calibration dataset from 256 to 512.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | W4 | W3G128 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Type | LLaMA | OPT | LLaMA | OPT |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Size | 30b | 65b | 30b | 66b | 30b | 65b | 30b | 66b |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 4.10 | 3.56 | 9.56 | 9.34 | 4.10 | 3.56 | 9.56 | 9.34 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 4.54 | 3.99 | 10.98 | 110.43 | 4.87 | 4.44 | 23.05 | 126.92 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 4.45 | 4.16 | 9.66 | 9.66 | 4.84 | 4.17 | 9.75 | 10.58 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours-seq256 | 4.51 | 3.91 | 9.88 | 9.56 | 4.85 | 4.15 | 11.07 | 11.40 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours-seq512 | 4.52 | 3.90 | 9.88 | 9.70 | 4.81 | 4.17 | 10.54 | 10.87 |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix B Visualization of V
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We provide an analysis of the magnitude distribution of V in Eq. [2](#S3.E2
+    "In 3 Methodology ‣ Optimize Weight Rounding via Signed Gradient Descent for the
+    Quantization of LLMs") for approximately 7B models at W4 in Figure [3](#A2.F3
+    "Figure 3 ‣ Appendix B Visualization of V ‣ Optimize Weight Rounding via Signed
+    Gradient Descent for the Quantization of LLMs"). The findings reveal that the
+    majority of V values are concentrated within the range of [-0.3, 0.3]. Notably,
+    the middle layers demonstrate a narrower distribution in comparison to the other
+    layers. This observation suggests that the head or tail layers may be more susceptible
+    to the compression.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/0a11b7c16293b6a80900b2719283c38b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: LLaMA-7B
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/5dcc140a60a30a111aac15c3554ac35f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: LLaMA-7B-V2
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/659ef93dd082083a883d82b997800f8f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: OPT-6.7B
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/ba27e2512611134a6f898bb0da000695.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: BLOOM-7B1
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 3: The distribution of the magnitude of V in Eq. [2](#S3.E2 "In 3 Methodology
+    ‣ Optimize Weight Rounding via Signed Gradient Descent for the Quantization of
+    LLMs") for different models, namely LLaMA-7B, LLaMA-7B-V2, OPT-6.7B, and BLOOM-7B1
+    at W4\. Each color in the distribution represents a specific layer index in the
+    models, with blue indicating shallow layers closer to the data layer, and red
+    representing deeper layers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix C Correction between SignRound and salient activation channels
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We were also intrigued by the possible correlation between rounding and activation,
+    as previous research has shown that keeping only 0.1%-1% of the channels corresponding
+    to larger activation can significantly improve the quantized performance in AWQ
+    (Lin et al., [2023](#bib.bib18)). Therefore, we investigated whether the altered
+    rounding values tend to fall more frequently in these salient channels. The results
+    of our analysis, presented in Figure [4](#A3.F4 "Figure 4 ‣ Appendix C Correction
+    between SignRound and salient activation channels ‣ Optimize Weight Rounding via
+    Signed Gradient Descent for the Quantization of LLMs"), reveal an interesting
+    finding. The ratio, representing the percentage of altered rounding values falling
+    within the top 1% salient activation channels out of all altered rounding values,
+    is typically around 1%. This suggests that there is no strong correlation between
+    rounding and activation. It is possible that rounding values of less significant
+    channels need to be changed to compensate for the quantization error introduced
+    by these salient channels.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f79169c914a4b1488548fa55106ba8cb.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: LLaMA-7B
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a6117018d509032e216106f6e823f031.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: LLaMA-7B-V2
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/210ad7b3d2e9ea047de69ac6eddf3bdc.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: OPT-6.7B
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d2e7a03de109e75243e719ca92b457e3.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: BLOOM-7B1
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 4: The correction between SignRound and salient activation channels'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix D Runtime
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Table [12](#A4.T12 "Table 12 ‣ Appendix D Runtime ‣ Optimize Weight Rounding
+    via Signed Gradient Descent for the Quantization of LLMs") provides a runtime
+    comparison between GPTQ and our method. All measurements were conducted on a single
+    NVIDIA A100 card with 80GB of memory. Although our method demonstrates slightly
+    slower performance compared to GPTQ, it remains well within acceptable limits
+    for real-world deployment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 12: Runtime in seconds at W4'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Type | LLaMA | OPT | BLOOM |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 7B | 13B | 6.7B | 13B | 3B | 7B1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 712 | 1240 | 841 | 1523 | 345 | 661 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 899 | 1590 | 819 | 1429 | 467 | 843 |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix E Detailed Results of some LLaMa models
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Detailed results of LLaMA7B, LLaMA13B, LLAMA7B-V2, and LLAMA13B-V2 can be found
+    in Table [13](#A5.T13 "Table 13 ‣ Appendix E Detailed Results of some LLaMa models
+    ‣ Optimize Weight Rounding via Signed Gradient Descent for the Quantization of
+    LLMs"), Table [14](#A5.T14 "Table 14 ‣ Appendix E Detailed Results of some LLaMa
+    models ‣ Optimize Weight Rounding via Signed Gradient Descent for the Quantization
+    of LLMs"), Table [15](#A5.T15 "Table 15 ‣ Appendix E Detailed Results of some
+    LLaMa models ‣ Optimize Weight Rounding via Signed Gradient Descent for the Quantization
+    of LLMs"), and Table [16](#A5.T16 "Table 16 ‣ Appendix E Detailed Results of some
+    LLaMa models ‣ Optimize Weight Rounding via Signed Gradient Descent for the Quantization
+    of LLMs") respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 13: Accuracies($\uparrow$) of WikiText, PTB, C4 for LLaMA-7B, ”Ours-2048”
+    indicates that we have modified the sequence length of the calibration dataset
+    from 512 to 2048.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | Hella. | Wino. | PIQA | Lamb. | Avg. | Wiki. | PTB | C4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | FP16 | 56.42 | 66.85 | 78.35 | 73.57 | 68.80 | 5.68 | 10.12 | 7.34 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4G-1 | RTN | 54.96 | 67.25 | 77.31 | 70.00 | 67.38 | 6.29 | 11.25 | 8.12
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 52.25 | 63.85 | 74.59 | 68.12 | 64.70 | 6.59 | 12.02 | 8.64 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 55.28 | 66.14 | 77.64 | 73.14 | 68.05 | 6.12 | 10.88 | 7.84 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours-2048 | 54.96 | 67.56 | 77.80 | 72.13 | 68.11 | 6.05 | 10.87 | 7.76 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4G128 | RTN | 55.86 | 65.75 | 77.58 | 72.25 | 67.86 | 5.96 | 10.54 | 7.70
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 54.09 | 64.09 | 77.26 | 69.86 | 66.33 | 6.29 | 11.11 | 8.02 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 55.92 | 66.30 | 78.07 | 72.07 | 68.09 | 5.86 | 10.49 | 7.56 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours-2048 | 55.98 | 66.77 | 78.29 | 71.78 | 68.21 | 5.88 | 10.52 | 7.58 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3G128 | RTN | 53.17 | 63.14 | 75.73 | 67.71 | 64.94 | 7.01 | 12.83 | 9.18
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 47.10 | 59.91 | 72.58 | 53.58 | 58.29 | 8.28 | 16.84 | 10.45 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 53.98 | 66.06 | 76.61 | 69.82 | 66.62 | 6.93 | 11.67 | 8.30 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours-2048 | 53.45 | 65.67 | 76.55 | 71.08 | 66.69 | 6.52 | 11.60 | 8.26 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 14: Accuracies($\uparrow$) of WikiText, PTB, C4 for LLaMA-13B, ”Ours-2048”
+    indicates that we have modified the sequence length of the calibration dataset
+    from 512 to 2048.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | Hella. | Wino. | PIQA | Lamb. | Avg. | Wiki. | PTB | C4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | FP16 | 59.13 | 70.32 | 78.94 | 76.17 | 71.14 | 5.09 | 9.08 | 6.80 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4G-1 | RTN | 57.96 | 68.19 | 78.18 | 70.95 | 68.82 | 5.53 | 9.78 | 7.23
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 57.96 | 70.24 | 77.97 | 73.84 | 70.00 | 5.33 | 9.48 | 7.13 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 58.02 | 69.61 | 78.94 | 75.74 | 70.58 | 5.32 | 9.37 | 7.05 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours-2048 | 58.13 | 69.69 | 78.67 | 74.95 | 70.36 | 5.34 | 9.49 | 7.05 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4G128 | RTN | 58.43 | 70.32 | 79.33 | 75.32 | 70.85 | 5.26 | 9.29 | 6.94
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 58.79 | 70.56 | 79.33 | 75.00 | 70.92 | 5.21 | 9.28 | 6.92 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 58.62 | 71.35 | 79.76 | 75.98 | 71.43 | 5.19 | 9.18 | 6.90 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours-2048 | 58.47 | 70.56 | 79.22 | 76.23 | 71.12 | 5.19 | 9.19 | 6.90 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3G128 | RTN | 56.39 | 67.56 | 77.20 | 69.63 | 67.70 | 5.88 | 10.58 | 7.86
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 56.58 | 67.96 | 78.07 | 72.31 | 68.73 | 5.64 | 9.95 | 7.54 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 57.04 | 69.14 | 77.86 | 74.33 | 69.59 | 5.53 | 9.81 | 7.39 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours-2048 | 56.62 | 68.82 | 78.13 | 74.42 | 69.50 | 5.57 | 9.76 | 7.37 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 15: Accuracies($\uparrow$) of WikiText, PTB, C4 for LLaMA-7B-V2, ”Ours-2048”
+    indicates that we have modified the sequence length of the calibration dataset
+    from 512 to 2048.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | Hella. | Wino. | PIQA | Lamb. | Avg. | Wiki. | PTB | C4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | FP16 | 56.69 | 67.17 | 78.35 | 73.88 | 69.02 | 5.47 | 32.91 | 7.26 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4G-1 | RTN | 55.51 | 66.77 | 77.58 | 68.08 | 66.98 | 6.12 | 61.61 | 8.16
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 54.74 | 66.93 | 76.17 | 69.73 | 66.89 | 6.09 | NAN | 7.90 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 55.53 | 67.09 | 77.53 | 70.81 | 67.74 | 298.4 | 2677 | 11.20 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours-2048 | 55.63 | 67.96 | 77.64 | 69.92 | 67.79 | 196.7 | 2622 | 9.97 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4G128 | RTN | 56.55 | 66.93 | 77.37 | 72.44 | 68.32 | 5.72 | 50.25 | 7.58
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 56.16 | 68.03 | 78.56 | 72.83 | 68.90 | 5.73 | NAN | 7.53 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 56.21 | 67.56 | 77.64 | 73.20 | 68.65 | 60.03 | 1786 | 8.16 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours-2048 | 55.97 | 67.09 | 77.15 | 73.57 | 68.45 | 48.91 | 1872 | 8.05 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3G128 | RTN | 54.65 | 67.17 | 75.90 | 65.98 | 65.92 | 6.66 | 44.89 | 8.98
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 52.93 | 65.19 | 76.44 | 67.49 | 65.51 | 6.57 | NAN | 8.61 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 53.65 | 66.14 | 77.09 | 70.64 | 66.88 | NAN | 1159 | 9.88 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours-2048 | 53.91 | 67.32 | 76.33 | 71.12 | 67.17 | NAN | 1739 | 10.11 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 16: Accuracies($\uparrow$) of WikiText, PTB, C4 for LLaMA-13B-V2, ”Ours-2048”
+    indicates that we have modified the sequence length of the calibration dataset
+    from 512 to 2048.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | Hella. | Wino. | PIQA | Lamb. | Avg. | Wiki. | PTB | C4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | FP16 | 59.71 | 69.61 | 78.78 | 76.71 | 71.20 | 4.88 | 48.82 | 6.73 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4G-1 | RTN | 58.56 | 69.30 | 78.45 | 74.36 | 70.17 | 5.20 | 58.57 | 7.14
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 57.81 | 67.48 | 77.86 | 73.84 | 69.25 | 5.16 | 52.46 | 6.87 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 58.63 | 69.61 | 77.91 | 73.98 | 70.03 | 9.15 | 66.80 | 7.72 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours-2048 | 58.87 | 68.67 | 78.07 | 75.90 | 70.38 | 6.51 | 60.35 | 7.28 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4G128 | RTN | 59.12 | 69.46 | 78.02 | 76.29 | 70.72 | 4.98 | 52.22 | 6.87
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 59.22 | 68.51 | 78.84 | 76.13 | 70.68 | 4.99 | 51.59 | 6.87 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 59.20 | 69.14 | 78.35 | 76.56 | 70.81 | 5.80 | 51.92 | 6.84 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours-2048 | 59.25 | 70.48 | 78.29 | 76.81 | 71.21 | 5.00 | 51.78 | 6.84 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3G128 | RTN | 57.03 | 67.56 | 77.86 | 72.37 | 68.70 | 5.52 | 62.33 | 7.58
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 56.99 | 66.69 | 78.40 | 72.85 | 68.73 | 5.45 | 55.09 | 7.54 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 57.29 | 68.90 | 77.37 | 75.22 | 69.70 | 5.35 | 59.57 | 7.35 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours-2048 | 57.20 | 70.88 | 78.13 | 75.35 | 70.39 | 10.38 | 66.22 | 7.92
+    |'
+  prefs: []
+  type: TYPE_TB

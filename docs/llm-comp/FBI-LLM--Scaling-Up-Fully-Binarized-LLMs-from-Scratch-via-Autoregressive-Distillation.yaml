@@ -1,0 +1,1291 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 19:05:33'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'FBI-LLM: Scaling Up Fully Binarized LLMs from Scratch via Autoregressive Distillation'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2407.07093](https://ar5iv.labs.arxiv.org/html/2407.07093)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Liqun Ma¹,  Mingjie Sun², Zhiqiang Shen¹
+  prefs: []
+  type: TYPE_NORMAL
+- en: ¹Mohamed bin Zayed University of AI
+  prefs: []
+  type: TYPE_NORMAL
+- en: ²Carnegie Mellon University
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{Liqun.Ma,Zhiqiang.Shen}@mbzuai.ac.ae, mingjies@andrew.cmu.edu'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'This work presents a Fully BInarized Large Language Model (FBI-LLM), demonstrating
+    for the first time how to train a large-scale binary language model from scratch
+    (not the partial binary or ternary LLM like BitNet b1.58 [[1](#bib.bib1)]) to
+    match the performance of its full-precision counterparts (e.g., FP16 or BF16)
+    in transformer-based LLMs. It achieves this by employing an autoregressive distillation
+    (AD) loss with maintaining equivalent model dimensions (130M, 1.3B, 7B) and training
+    data volume as regular LLM pretraining, while delivering competitive results in
+    terms of perplexity and task-specific effectiveness. Intriguingly, by analyzing
+    the training trajectory, we find that the pretrained weight is not necessary for
+    training binarized LLMs from scratch. This research encourages a new computational
+    framework and may facilitate the future design of specialized hardware tailored
+    for fully 1-bit LLMs. We make all our models, code, and training dataset fully
+    accessible and transparent to support further research¹¹1Code: [https://github.com/LiqunMa/FBI-LLM](https://github.com/LiqunMa/FBI-LLM).
+    Model: [https://huggingface.co/LiqunMa/](https://huggingface.co/LiqunMa/)..'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/88eede1f46008b331fe980692e84e56d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Perplexity on Wikitext2 of existing binarized LLMs and our FBI-LLMs.
+    FBI-LLMs get similar or lower magnitude of perplexity on similar size of models
+    compared with other binarized LLMs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Benefiting from the huge parameter scale and massive training corpora, transformer-based
+    Large Language Models (LLMs), like ChatGPT [[2](#bib.bib2)] and LLaMA [[3](#bib.bib3),
+    [4](#bib.bib4)], perform great in tasks requiring domain knowledge and complex
+    reasoning. Moreover, the capabilities of LLMs tend to enhance as their parameter
+    sizes expand. This substantial scale in parameters results in considerable storage
+    and computational demands, which substantially restricts LLMs’ broader application
+    and development. Quantization efficiently mitigates these limitations by mapping
+    32-bit parameters to smaller bit sizes. It substantially cuts storage requirements
+    and enhances computational speed and energy efficiency during inference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As the most extreme case of quantization, binarization represents each parameter
+    by just {-1, 1}. It maximizes compression and efficiency but at the cost of accuracy.
+    Prior efforts to preserve the efficacy of binarized LLMs include retaining salient
+    parameters [[5](#bib.bib5)] or using near-one-bit to represent each parameter [[1](#bib.bib1)].
+    While these approaches have shown promise, they still leave room for optimization
+    in storage and efficiency, and additional full-precision parameters or parameter
+    encodings expressed in non-powers of 2 can cause extra overhead when adapting
+    to edge hardware.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/81aae89708cd0389cc9ba1cf0e520cf4.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Illustration of the FBI-LLM framework. We take the structure of LLaMA
+    as an example. Left: the LLM block with the proposed FBI-Linear using learnable
+    $\bm{\alpha}$. Right: our autoregressive distillation and model pertaining procedure.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Some works on fully binarized LLMs are based on the optimization goal of minimizing
+    the layer-wise $\ell_{2}$ loss [[6](#bib.bib6), [5](#bib.bib5)] or performing
+    binarization while continuing training a full-precision LLM with a small amount
+    of data [[7](#bib.bib7)]. These methods face several issues: 1) The binarization
+    process greatly compresses the parameter space of the original model, damaging
+    some of the knowledge stored in the full-precision model. Adequate training data
+    is needed to allow the binarized model to relearn this knowledge and adapt it
+    to the pattern of binarized parameters; 2) Deriving binarized models from existing
+    pretrained models does not allow for the selection of different parameter scales
+    or vocabulary sizes, limiting their flexibility and practical application.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this work, we propose a streamlined process for training Fully BInarized
+    LLMs from scratch, termed FBI-LLM. To enable stable training of binary LLMs from
+    scratch, we propose a novel training procedure based on distillation. Specifically,
+    during training, we gradually distill from a full-precision teacher and adopt
+    an autoregressive distillation-based scheme to match the predicted probabilities
+    of the teacher model at each token location. With this simple autoregressive distillation
+    loss, we can successfully train binarized LLMs from random initializations. Since
+    our modifications are focused on the loss function, FBI-LLM can be easily incorporated
+    into the existing LLM pre-training pipeline. Moreover, the binarization operation
+    is decoupled from model training in this method, thus any techniques that enhance
+    LLM training efficiency can be directly adapted for FBI-LLM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We empirically evaluate the effectiveness of our framework FBI-LLM, where we
+    trained models with sizes ranging from 130M, 1.3B, to 7B. We use the widely-used
+    Transformer architecture for LLMs, as can be seen in Fig. [2](#S1.F2 "Figure 2
+    ‣ 1 Introduction ‣ FBI-LLM: Scaling Up Fully Binarized LLMs from Scratch via Autoregressive
+    Distillation"). We show that we can train fully binarized LLMs from scratch, with
+    a small performance gap as compared to full-precision counterparts. Compared to
+    baseline methods, our training process leads to fully binarized LLMs with better
+    performance on perplexity (as shown in Fig. [1](#S1.F1 "Figure 1 ‣ 1 Introduction
+    ‣ FBI-LLM: Scaling Up Fully Binarized LLMs from Scratch via Autoregressive Distillation"))
+    and multiple downstream tasks. We show that autoregressive distillation is key
+    to training binarized LLMs. Further, analysis of pretraining checkpoints (e.g.,
+    flip-flop ratio and gradient norms) suggests there is no major difference between
+    inheriting the weights from full-precision LLMs and training binarized LLMs from
+    scratch.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Overall, the contribution of this paper can be summarized as follows: first,
+    we demonstrate for the first time that we can successfully train LLMs with binary
+    weights from scratch; second, we propose a novel loss formulation for stabilize
+    the training of binarized LLMs, where we adopt autoregressive distillation to
+    match the probability distribution of a teacher model; third, we conduct extensive
+    experimental and analysis to demonstrate and better understand the effectiveness
+    of our method.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Neural Network Binarization. Binarization, the most extreme form of network
+    quantization, converts model parameters into a 1-bit format. Many studies have
+    focused on Binary Neural Networks (BNNs) to improve their accuracy despite inherent
+    limitations. BinaryConnect [[8](#bib.bib8)] converts full-precision weights in
+    neural networks to 1-bit binary weights using stochastic methods during training
+    and simulates the effects of binary weights during inference. They also implement
+    a clipping function in backward propagation to prevent excessive growth of real-valued
+    weights. Expanding on this, they develop the Binarized Neural Network (BNN) [[9](#bib.bib9)],
+    which includes detailed training and acceleration techniques, demonstrating the
+    efficiency and practicality of BNNs through reduced storage and faster processing
+    times in image classification.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, these methods typically suffer from accuracy loss, prompting numerous
+    optimization-based solutions over recent years to mitigate this. Binary Weight
+    Networks (BWN) and XNOR-Net [[10](#bib.bib10)] introduce a scaling factor that
+    approximates floating-point parameters to reduce quantization errors. Further
+    developments like DoReFa-Net [[11](#bib.bib11)], WRPN [[12](#bib.bib12)], and
+    ABC-Net [[13](#bib.bib13)] introduce strategies to minimize information loss and
+    quantization errors. Innovations such as XNOR-Net++ [[10](#bib.bib10)] and various
+    mimic solutions like Distillation and Quantization (DQ) [[14](#bib.bib14)] continue
+    to refine these approaches, emphasizing stability and high accuracy in training
+    binary models. To address the non-differentiability of the binarization function,
+    techniques like the straight-through estimator (STE) [[15](#bib.bib15)] are used
+    for backpropagation. The ReActNet [[16](#bib.bib16)] improves BNNs with generalized
+    activation functions, and the BNN+ [[17](#bib.bib17)] introduces an enhanced derivative
+    approximation of the sign function along with a regularization strategy to optimize
+    weight learning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Large Language Model Binarization. PB-LLM [[5](#bib.bib5)] implements partial
+    binarization of the LLMs, retaining the salient parameters at full precision,
+    occupying only a small portion of all parameters, to maintain the linguistic reasoning
+    capacity. BiLLM [[18](#bib.bib18)] also considers the distribution pattern of
+    the weight scale. It uses a binary residual approximation strategy to binarize
+    salient parameters, which consists of an original binary tensor and a residual
+    binarized matrix to present the binarization result of salient parameters. BitNet
+    b1.58 [[1](#bib.bib1)] quantizes all parameters to the set of {-1, 0, 1}, where
+    they find that quantized LLMs achieve competitive performance to their full-precision
+    counterparts. However, PB-LLM and BiLLM use the extra cost of storage to process
+    salient weights, and BitNet b1.58 uses an average of 1.58 bits to represent weights.
+    None of them have reached the limits of binary models. There is room for further
+    improvement in model storage size and inference speed. Our work focuses on achieving
+    fully binarized LLMs while preserving the model’s capabilities as much as possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: BitNet [[19](#bib.bib19)] and OneBit [[7](#bib.bib7)] employ quantization-aware
+    training (QAT) to binarize LLMs. BitNet utilizes group quantization by applying
+    different scales to the parameters of various groups, which accelerates model
+    training. Its training loss aligns with that of pretraining autoregressive language
+    models. Conversely, OneBit preserves the full-precision model knowledge through
+    quantization-aware knowledge distillation, using a full-precision model as the
+    teacher and guiding the binarized model training with two distinct loss functions.
+    Unlike these two methods, our approach achieves similar or better results through
+    a more streamlined and efficient training process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Methodology
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section, we first provide an overview of the architecture of our FBI-LLM
+    in Section [3.1](#S3.SS1 "3.1 Architecture of FBI-LLM ‣ 3 Methodology ‣ FBI-LLM:
+    Scaling Up Fully Binarized LLMs from Scratch via Autoregressive Distillation").
+    Then, in Section [3.2](#S3.SS2 "3.2 FBI-Linear ‣ 3 Methodology ‣ FBI-LLM: Scaling
+    Up Fully Binarized LLMs from Scratch via Autoregressive Distillation"), we detail
+    the FBI-linear module, the main component of FBI-LLM. Finally, we elaborate the
+    FBI-LLM autoregressive distillation-based training procedure in Section [3.3](#S3.SS3
+    "3.3 Autoregressive Distillation ‣ 3 Methodology ‣ FBI-LLM: Scaling Up Fully Binarized
+    LLMs from Scratch via Autoregressive Distillation").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Architecture of FBI-LLM
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We illustrate the overall architecture of FBI-LLM in Fig. [2](#S1.F2 "Figure
+    2 ‣ 1 Introduction ‣ FBI-LLM: Scaling Up Fully Binarized LLMs from Scratch via
+    Autoregressive Distillation") (a). In transformer-based LLMs, the majority of
+    parameters are found within the linear modules. FBI-LM replaces all linear modules,
+    except for the causal head, with FBI-linear (Fully BInarized Linear). Since the
+    causal head directly influences the output token distribution in each step, binarizing
+    its parameters would significantly affect the accuracy of the model’s output,
+    so we retain its precision.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Additionally, the parameters in two other core modules of LLMs, embedding and
+    layer norm, also need to be kept at full precision. This is because the embedding
+    module contains semantic information about all tokens and, as the first layer
+    of the model input, determines the text’s initial representation. Layernorm, on
+    the other hand, scales the activation values directly. Binarizing its parameters
+    would significantly reduce the semantic expressiveness of the activation values
+    at each layer. Similar settings are also adopted in other work [[19](#bib.bib19)]
+    about the binarization of LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 FBI-Linear
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The main parameters in FBI-linear are a matrix $\bm{W}^{b}\in\mathbb{R}^{m\times
+    n}$ of the LLMs. During the training, the binarization process can be formulated
+    as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\bm{W}^{b}=sign(\bm{W}^{f})$ |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $sign$ function is formulated as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | <math id="S3.E2.m1.5" class="ltx_Math" alttext="sign(\bm{W}_{ij}^{f})=\begin{dcases}1,&amp;\bm{W}_{ij}^{f}></math>
+    |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: We follow the previous works [[10](#bib.bib10), [19](#bib.bib19)] to scale the
+    binarized parameter with full-precision scale factors. Scale factors can effectively
+    reduce the error between the binarized and original parameters, thereby preserving
+    the more representational capacity of the corresponding module. They constitute
+    a small fraction of the total parameters, making them a highly efficient enhancement
+    to the model’s performance without significantly increasing the parameter count
+    and computational demand.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Specifically, in the FBI-linear, we apply scaling at the granularity of the
+    matrix columns. The calculation process can be formulated as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\widetilde{\bm{W}}^{b}_{\cdot,j}=\alpha_{j}\bm{W}^{b}_{\cdot,j}+\beta_{j}$
+    |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\widetilde{\bm{W}}^{b}_{\cdot,j}$ respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To accelerate the model’s convergence speed, we initialize $\bm{\alpha}$ before
+    training as following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\alpha_{j}=a_{j}$ |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\beta_{j}=\frac{1}{m}\sum^{m}_{i}&#124;\bm{W}_{ij}^{f}-a_{j}&#124;$ |  |
+    (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $a_{j}=\frac{1}{m}\sum^{m}_{i}\bm{W}_{ij}^{f}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Autoregressive Distillation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Given a training corpus of tokens ${\bm{x}}=\left\{x_{1},\ldots,x_{n}\right\}$,
+    a standard autoregressive language modeling objective [[20](#bib.bib20)] is to
+    maximize the likelihood:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathcal{L}({\bm{x}})=\sum_{i}\log p\left(x_{i}\mid x_{i-k},\ldots,x_{i-1};\bm{\theta}\right)$
+    |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $k$, the teacher prediction probability for the next token can be formulated
+    as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\bm{p}^{\mathcal{T}}\left(x^{m+1}\mid x^{1},\ldots,x^{m}\right)=\operatorname{softmax}\left(\bm{h}_{l}^{m}\bm{W}_{m+1}\right).$
+    |  | (7) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\bm{h}_{l}^{m}$ represents parameters of the added linear output layer
+    to predict the next token’s probability.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The cross-entropy between the outputs of the student model and the teacher
+    model is calculated as the final loss function at each step of predicting the
+    next token. It can be formulated as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathcal{L}=-\frac{1}{n}\sum^{n}_{i}\bm{p}^{\mathcal{T}}(x^{i+1})\cdot\log\bm{p}^{\mathcal{S}}(x^{i+1})$
+    |  | (8) |'
+  prefs: []
+  type: TYPE_TB
+- en: Here $n$ is the corresponding predicted distribution of the student model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: QAT utilizing knowledge distillation has been shown to be effective in various
+    studies [[21](#bib.bib21), [22](#bib.bib22), [23](#bib.bib23), [24](#bib.bib24),
+    [7](#bib.bib7)]. However, unlike these works, our training process exclusively
+    uses the autoregressive distillation loss without adding any other losses to maintain
+    simplicity. Our experiments verified that using only the distillation loss yields
+    better results than the vanilla one-hot label based autoregressive loss while
+    maintaining methodological simplicity when working with fully binarized LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Since the $sign(\cdot)$ is non-differentiable at zero, it causes the gradient
+    chain to break during backpropagation, preventing optimization of the model parameters.
+    Therefore, we use the Straight-Through Estimator (STE) method [[15](#bib.bib15)]
+    during backpropagation, where the gradient of the output of the non-differentiable
+    function is used as an estimate for the gradient of the input, thus allowing the
+    gradient to be effectively propagated. This estimation can be formulated as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\frac{\partial\mathcal{L}}{\partial\bm{W}^{f}}=\frac{\partial\mathcal{L}}{\partial\bm{W}^{b}}$
+    |  | (9) |'
+  prefs: []
+  type: TYPE_TB
+- en: 4 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In our experiment, we follow the W1A16 setup [[18](#bib.bib18), [7](#bib.bib7)],
+    quantizing only the parameters to 1-bit while keeping the activation values at
+    16-bit. We train FBI-LLMs with sizes of 130M, 1.3B, and 7B, testing their performance
+    across multiple tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Setup
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Dataset. We train FBI-LLMs with the Amber dataset [[25](#bib.bib25)]. Amber
+    dataset is a mixture of RefinedWeb [[26](#bib.bib26)], StarCoder [[27](#bib.bib27)],
+    and RedPajama-v1 [[28](#bib.bib28)] and contains the total 1.26 trillion tokens.
+    It divides the data into 360 chunks, with each chunk containing an average of
+    3.5 billion tokens²²2As shown in Fig. [3](#S4.F3 "Figure 3 ‣ 4.2 Main Results
+    ‣ 4 Experiments ‣ FBI-LLM: Scaling Up Fully Binarized LLMs from Scratch via Autoregressive
+    Distillation"), in our experiment, about 10% of the training data chunks have
+    already achieved competitive performance. Further training is naturally expected
+    to yield even higher accuracy..'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Training details. Our models used for experiments adopt a similar structure
+    as LLaMA2 [[3](#bib.bib3)]. For the specific hyper-parameters settings of FBI-LLMs
+    of different sizes, refer to Table [1](#S4.T1 "Table 1 ‣ 4.1 Setup ‣ 4 Experiments
+    ‣ FBI-LLM: Scaling Up Fully Binarized LLMs from Scratch via Autoregressive Distillation").
+    The maximum sequence length is set to 2048. The optimizer is Adam with $\beta_{1}=0.9$
+    as it is warmed up over 2,000 steps. We use gradient clipping at 1.0. We use LLaMA2-7B
+    as the teacher model for all size FBI-LLMs to calculate autoregressive distillation
+    loss. We train models with 64 NVIDIA A100 GPUs in total and maintain BF16 precision
+    while training. Please refer to Appendix [C](#A3 "Appendix C Model Configuration
+    and Training Details ‣ FBI-LLM: Scaling Up Fully Binarized LLMs from Scratch via
+    Autoregressive Distillation") for more details.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: Hyper-parameters for FBI-LLMs in xxperiments.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model Size | # layers | hidden size | # attention heads | intermediate size
+    | batch size (tokens) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FBI-LLM 130M | 12 | 768 | 12 | 2,048 | 2M |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FBI-LLM 1.3B | 24 | 2,048 | 32 | 5,632 | 2.4M |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FBI-LLM 7B | 32 | 4,096 | 32 | 11,008 | 3.9M |'
+  prefs: []
+  type: TYPE_TB
+- en: Baselines. We compare our work with prior binarized LLMs Bi-LLM [[18](#bib.bib18)],
+    OneBit [[7](#bib.bib7)], and BitNet [[19](#bib.bib19)]. We also include the BitNet
+    b1.58 [[1](#bib.bib1)], which is a ternary quantization LLM, as our baseline model
+    for comparison³³3As the original BitNet b1.58 [[1](#bib.bib1)] has not open-sourced
+    their model, we use a third-party open-sourced one [https://huggingface.co/1bitLLM/](https://huggingface.co/1bitLLM/)
+    to evaluate certain indicators for the comparison. This model achieves slightly
+    better results than those reported in the original paper.. We further include
+    results from open-sourced full-precision models of various sizes, such as OPT [[29](#bib.bib29)],
+    LLaMA [[3](#bib.bib3), [4](#bib.bib4)], and TinyLLaMA [[30](#bib.bib30)], as references.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Evaluation Metrics. We evaluate the models based on their zero-shot performance
+    in some downstream tasks, including BoolQ [[31](#bib.bib31)], PIQA [[32](#bib.bib32)],
+    HellaSwag [[33](#bib.bib33)], Winogrande [[34](#bib.bib34)], ARC [[35](#bib.bib35)],
+    and OpenbookQA [[36](#bib.bib36)]. We also use perplexity as the evaluation metric.
+    Perplexity measures how well a probability model predicts a token, quantitatively
+    measuring the model’s generation power.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Main Results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Table [2](#S4.T2 "Table 2 ‣ 4.2 Main Results ‣ 4 Experiments ‣ FBI-LLM: Scaling
+    Up Fully Binarized LLMs from Scratch via Autoregressive Distillation") presents
+    the main results comparing our FBI-LLMs to various state-of-the-art baseline models.
+    We also report the average bit-width occupied by model parameters, excluding the
+    embedding layer and the head, for different models. Details on the calculation
+    process can be found in Appendix [B](#A2 "Appendix B Average Bit-width of Binarized
+    LLM ‣ FBI-LLM: Scaling Up Fully Binarized LLMs from Scratch via Autoregressive
+    Distillation"). Our FBI-LLMs maintain the lowest average bit-width across different
+    model sizes while demonstrating remarkable performance. We provide zero-shot accuracy,
+    which is a foundation for understanding how well a model can perform without additional
+    task-specific information. This metric is commonly used to assess the model’s
+    initial capabilities and aligns with certain benchmarking tasks aimed at measuring
+    the pre-trained LLM’s general comprehension and knowledge-reserving capabilities
+    across diverse downstream tasks without additional few-shot information.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since there is no binary baseline for the 130M size, we compare our 130M model
+    with the BitNet b1.58 at the 700M scale. Despite the fivefold difference in model
+    size and significant variations in quantization degree, our model still outperforms
+    BitNet b1.58 in BoolQA and OpenbookQA. For the 1.3B-scale binary models, our FBI-LLM
+    achieves the best performance in most downstream tasks and perplexity, even matching
+    or exceeding the capacity of some 7B-scale binary models like BiLLM-LLaMA2-7B.
+    Compared to the full-precision models of a similar scale, the proposed FBI-LLM
+    1.3B can achieve up to 87% of their performance in downstream tasks. In the 7B
+    scale, our model significantly outperformed nearly all baselines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/50d40e82887910845fa40ae4a2a172c6.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Changes in average perplexity and downstream task accuracy during
+    the training of FBI-LLM 7B. The horizontal axis represents the number of Amber
+    data blocks used for training.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Furthermore, limited by computational resources, the current results for FBI-LLM
+    7B are not final. We only use 8.6% (31 chunks) of the Amber dataset. Fig. [3](#S4.F3
+    "Figure 3 ‣ 4.2 Main Results ‣ 4 Experiments ‣ FBI-LLM: Scaling Up Fully Binarized
+    LLMs from Scratch via Autoregressive Distillation") illustrates the changes in
+    downstream task accuracy and perplexity during the training process of FBI-LLM-7B.
+    It is clear that, as of the current training progress, the performance of FBI-LLM-7B
+    will be improved consistently, and further training could yield better results.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 2: Performance on downstream tasks and perplexity. Here, BW means bit-width,
+    which refers to the average number of bits occupied by each parameter. HS, WG,
+    and OBQA are abbreviations for HellaSwag, Winogrande, and OpenbookQA, respectively.
+    We divide the table into three blocks based on model size. In each block, the
+    bold values represent the best values among the non-high-precision models, while
+    the values with an underline represent the best values among the high-precision
+    models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Size | BW | Zero-shot Accuracy $\uparrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BoolQ | PIQA | HS | WG | ARC-e | ARC-c | OBQA | Ave. | Wiki2 | PTB | C4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BitNet b1.58 [[1](#bib.bib1)] | 700M | 1.59 | 58.2 | 68.1 | 35.1 | 55.2 |
+    51.8 | 21.4 | 20.0 | 44.3 | 17.1 | 72.1 | 17.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FBI-LLM (Ours) | 130M | 1.01 | 62.1 | 59.3 | 28.7 | 51.0 | 34.9 | 20.5 |
+    26.4 | 40.4 | 28.2 | 136.6 | 26.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| TinyLLaMA [[30](#bib.bib30)] | 1.1B | 16 | 57.8 | 73.3 | 59.2 | 59.1 | 55.3
+    | 30.1 | 36.0 | 53.0 | 7.8 | 30.5 | 9.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT [[29](#bib.bib29)] | 1.3B | 16 | 57.8 | 72.5 | 53.7 | 59.5 | 51.0 | 29.5
+    | 33.4 | 51.1 | 14.6 | 20.3 | 16.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \hdashlineOneBit-OPT [[7](#bib.bib7)] | 1.3B | 1.02 | 59.5 | 62.6 | 34.3
+    | 51.1 | 41.3 | 24.1 | - | - | 25.4 | - | 23.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BitNet b1.58 [[1](#bib.bib1)] | 1.3B | 1.59 | 56.7 | 68.8 | 37.7 | 55.8 |
+    54.9 | 24.2 | 19.6 | 45.4 | 24.1 | 145.1 | 21.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FBI-LLM (Ours) | 1.3B | 1.01 | 60.3 | 69.0 | 42.3 | 54.0 | 43.6 | 25.3 |
+    29.6 | 46.3 | 12.6 | 39.3 | 13.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT [[29](#bib.bib29)] | 7B | 16 | 66.1 | 76.5 | 67.2 | 65.4 | 60.0 | 34.7
+    | 37.4 | 58.2 | 10.9 | 15.8 | 12.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA [[3](#bib.bib3)] | 7B | 16 | 75.1 | 79.2 | 76.2 | 69.9 | 72.9 | 44.9
+    | 44.4 | 66.0 | 5.7 | 41.2 | 7.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA2 [[4](#bib.bib4)] | 7B | 16 | 77.7 | 79.1 | 76.0 | 69.1 | 74.6 | 46.2
+    | 44.2 | 66.7 | 5.5 | 37.9 | 7.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \hdashlineOneBit-LLaMA2 [[7](#bib.bib7)] | 7B |  | 63.1 | 68.1 | 52.6 | 58.4
+    | 41.6 | 29.6 | - | - | 9.7 | - | 11.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BitNet [[19](#bib.bib19)] | 7B | - | - | - | 38.9 | 51.4 | - | - | - | -
+    | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BiLLM-OPT [[18](#bib.bib18)] | 7B | 1.11 | 62.2 | 58.6 | 31.9 | 51.5 | 34.1
+    | 23.9 | 29.0 | 41.6 | 35.4 | 73.6 | 43.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BiLLM-LLaMA [[18](#bib.bib18)] | 7B | 1.08 | 62.7 | 61.2 | 36.8 | 51.1 |
+    36.0 | 25.7 | 31.8 | 43.6 | 35.0 | 421.3 | 39.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BiLLM-LLaMA2 [[18](#bib.bib18)] | 7B | 1.08 | 61.8 | 60.6 | 34.8 | 52.4 |
+    36.2 | 24.4 | 33.2 | 43.3 | 32.5 | 3877.4 | 40.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FBI-LLM (Ours) | 7B | 1.01 | 61.5 | 72.6 | 57.7 | 58.9 | 53.0 | 29.9 | 36.8
+    | 52.9 | 9.1 | 29.6 | 10.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: 4.3 Effectiveness of Autoregressive Distillation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'To demonstrate the effectiveness of using only autoregressive distillation
+    as the training objective, we train two models: one using solely the autoregressive
+    distillation loss and the other using only the standard autoregressive loss. All
+    other training procedures are identical to those used for FBI-LLM. We evaluate
+    the performance of these models on downstream tasks and perplexity, as shown in
+    Fig. [4](#S4.F4 "Figure 4 ‣ 4.3 Effectiveness of Autoregressive Distillation ‣
+    4 Experiments ‣ FBI-LLM: Scaling Up Fully Binarized LLMs from Scratch via Autoregressive
+    Distillation"). The evaluation tasks and datasets are the same as those listed
+    in Table [2](#S4.T2 "Table 2 ‣ 4.2 Main Results ‣ 4 Experiments ‣ FBI-LLM: Scaling
+    Up Fully Binarized LLMs from Scratch via Autoregressive Distillation"). For clarity,
+    we present only the average accuracy across different tasks and the average perplexity
+    across different datasets here. Detailed performance for each task is provided
+    in Appendix [D](#A4 "Appendix D Detail Experiment Results ‣ FBI-LLM: Scaling Up
+    Fully Binarized LLMs from Scratch via Autoregressive Distillation").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It can be observed that throughout the training process, models trained with
+    autoregressive distillation objective consistently outperform those trained with
+    the standard autoregressive scheme in downstream tasks and perplexity. This indicates
+    that using autoregressive distillation objective is more effective in training
+    binarized LLMs. The utilized soft labels from the output probabilities of the
+    teacher model contain more information than hard labels (i.e., the vocabulary
+    labels). They provide a distribution over all possible vocabulary, indicating
+    not just the target word but also the relative confidence in other possible words.
+    This richer information helps the target model learn nuanced patterns and relationships
+    in the data that are captured by the strong teacher model. Since our target model
+    is learning solely from a smoothed version of the ground truth, it is less likely
+    to overfit to the noise or specific details in the training data that may not
+    generalize well to new data. Therefore, retaining only autoregressive distillation
+    as the training objective ensures the simplicity and effectiveness of the entire
+    training workflow.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/457f44f2a2c9f6b4cabba9c745b54018.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Average downstream task accuracy
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/07db5e5efbc9835db4009c71597b62b2.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Average perplexity
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 4: The model performance for different training loss.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Analysis
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we analyze 1) the better choice of training from scratch or
+    continuing training from pretrained LLM for binarized LLMs. 2) training instability
+    and our solution. 3) storage efficiency of our models. 4) generation case demonstrations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.1 Training from Scratch or Continue Training from Pretrained LLM?
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/1341668db1f5359cfc51d07acf534247.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Average flip-flop ratio
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/4f9d74d07f1f36c53034e344b9bbfac8.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Training loss
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 5: The flip-flop ratio and loss for different training procedures.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Intuitively, continuing training from a pretrained LLM to obtain a binarized
+    model can inherit knowledge from the original model, potentially achieving better
+    results than training from scratch. To evaluate this hypothesis, we conduct analytical
+    experiments to record and compare the behaviors of models under both training
+    procedures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To quantify and examine the model behaviors using pretrained parameters or
+    training from scratch, as well as their stability and initialization dependency
+    of them, we apply the flip-flop (FF) ratio [[37](#bib.bib37)]. The FF ratio measures
+    optimization stability behavior, which is defined as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | $\displaystyle\mathbf{C}_{\mathbf{FF}}=\frac{\left&#124;{Sign}\left(\bm{w}^{b}_{t+1}\right)-{Sign}\left(\bm{w}^{b}_{t}\right)\right&#124;_{\text{abs}}}{2},$
+    |  | (10) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\mathbf{C}_{\mathbf{FF}}$ is the absolute operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | $\displaystyle\mathbf{FF}_{\text{ratio}}=\frac{\sum_{l=1}^{L}\sum_{\bm{w}^{b}\in\bm{W}_{l}^{b}}\mathbf{C}_{\mathbf{FF}}}{N_{\text{total}}},$
+    |  | (11) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $N_{\text{total}}$ denotes the flip-flop ratio, which is the percentage
+    of parameters that change their signs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this experiment, we select TinyLLaMA as the base LLM and initialize the binarized
+    LLM parameters using either pretrained values or random assignments. We maintain
+    consistency in all other training details with the FBI-LLM. In addition to the
+    $\mathbf{FF}_{\text{ratio}}$, we monitor training losses and gradient norms prior
+    to gradient clipping across both training procedures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d00a5c88db8715475513d46bdcd33dbd.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: Gradient norm curves from different training procedures.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'From Fig. [5(a)](#S5.F5.sf1 "In Figure 5 ‣ 5.1 Training from Scratch or Continue
+    Training from Pretrained LLM? ‣ 5 Analysis ‣ FBI-LLM: Scaling Up Fully Binarized
+    LLMs from Scratch via Autoregressive Distillation"), it is observed that during
+    the beginning of training, the trend of $\mathbf{FF}_{\text{ratio}}$ step shown
+    in Fig. [5(b)](#S5.F5.sf2 "In Figure 5 ‣ 5.1 Training from Scratch or Continue
+    Training from Pretrained LLM? ‣ 5 Analysis ‣ FBI-LLM: Scaling Up Fully Binarized
+    LLMs from Scratch via Autoregressive Distillation"), the training loss experiences
+    similar issues. Additionally, Fig. [6](#S5.F6 "Figure 6 ‣ 5.1 Training from Scratch
+    or Continue Training from Pretrained LLM? ‣ 5 Analysis ‣ FBI-LLM: Scaling Up Fully
+    Binarized LLMs from Scratch via Autoregressive Distillation") highlights more
+    pronounced changes in the gradient norms during the continuing training.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: These findings challenge our initial hypothesis that starting with a pretrained
+    LLM would endow the binarized model with inherited knowledge, thus enhancing performance.
+    Instead, they imply that binarization through training is not sensitive to the
+    way of parameter initialization. Furthermore, we speculate that binarized and
+    full-precision LLMs employ different parameter combinations and configurations
+    to encode semantics, which results in substantial divergences in their parameter
+    space pattern. To adapt this pattern, the optimization process for binarization
+    by continuing training from a pretrained LLM might necessitate more profound parameter
+    adjustments. This could partly explain why it is more unstable compared to training
+    from scratch during the training.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.2 Training Instability
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Both binary and full-precision LLM training have been found to exhibit unstable
+    training behaviors [[19](#bib.bib19), [7](#bib.bib7), [38](#bib.bib38)]. Our FBI-LLM
+    exhibits similar issues, specifically manifesting as sudden spikes in training
+    loss when training 1.3B and 7B FBI-LLMs, which sometimes fail to converge after
+    that. We adopt the solution similar to PaLM [[38](#bib.bib38)]: if the loss no
+    longer tends to converge, the model reverts to the previous checkpoint and skips
+    the data chunk that triggered the unstable loss to continue training. The model
+    no longer encounters issues at the same training steps using this approach. We
+    observe that pretraining the 7B FBI model from scratch has approximately a 6%
+    probability of causing loss spikes. For the 1.3B model, training is more unstable
+    due to the lower capability, with about a 15% probability of loss spikes. This
+    is consistent with the pretraining behavior seen in real-valued LLMs while the
+    probability of spiking is significantly higher, which may be related to the limited
+    expressive capability of binary parameters. To handle this, we skip any data blocks
+    where loss spikes occur.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.3 Storage Efficiency
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Table 3: Compression and extra parameters ratio.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Model Size | Storage Size | Compression Ratio | Extra Parameter Ratio
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA | 130M | 0.25GB | 59.26% | 0.119% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FBI-LLM | 130M | 0.10GB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA | 1.3B | 2.54GB | 84.67% | 0.063% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FBI-LLM | 1.3B | 0.39GB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA | 7B | 12.55GB | 90.07% | 0.034% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FBI-LLM | 7B | 0.39GB |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table [3](#S5.T3 "Table 3 ‣ 5.3 Storage Efficiency ‣ 5 Analysis ‣ FBI-LLM:
+    Scaling Up Fully Binarized LLMs from Scratch via Autoregressive Distillation")
+    presents the theoretical storage space required by FBI-LLMs of various sizes compared
+    to the full-precision LLaMA with the same structure. It also details the proportion
+    of additional parameters ($\bm{\alpha}$) introduced by FBI-LLM. The comparison
+    in the table demonstrates that FBI-LLM can achieve a high compression ratio, significantly
+    reducing the storage burden of LLMs. Although the extra parameters for scaling
+    and shifting introduced by FBI-LLM need to be retained in full precision, their
+    proportion is minimal, rendering their impact on storage negligible.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.4 Generation Cases
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'As illustrated in Fig. [7](#S5.F7 "Figure 7 ‣ 5.4 Generation Cases ‣ 5 Analysis
+    ‣ FBI-LLM: Scaling Up Fully Binarized LLMs from Scratch via Autoregressive Distillation"),
+    although the generation quality of FBI-LLMs does not fully match that of full-precision
+    LLMs, FBI-LLMs can still generate fluent and meaningful content. Compared to BitNet
+    b1.58, which has a higher parameter bit-width, FBI-LLMs demonstrate a better understanding
+    of prompts and include more knowledge in some generated examples. This indicates
+    that FBI-LLMs possess strong generative capabilities and contain sufficient knowledge.
+    Furthermore, FBI-LLMs demonstrate the potential to scale up further, reaching
+    new levels of intelligence while being more hardware-friendly for deployment.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/ff440083cc6556549f5311b311ce18e3.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7: Generation cases. We compare the outputs of the full-precision model,
+    BitNet b1.58, and our FBI-LLM when given the same prompts.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We have proposed a learning framework using autoregressive distillation for
+    1-bit weight binarization of LLMs from scratch. Extensive experiments on models
+    of various sizes of 130M, 1.3B, and 7B demonstrate that FBI-LLM outperforms strong
+    baselines and strikes a good balance between model size and performance. We also
+    analyze the capabilities, properties, and potential of these extremely low-bit
+    models, providing guidance for future research.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Limitations. Our proposed binarization framework significantly reduces the memory
+    and computation consumptions of LLMs, providing potential for their efficient
+    deployment. However, there are several limitations of our models. Firstly, our
+    1-bit binarization inevitably incurs a performance loss compared to the original
+    full-precision model. Additionally, the training process, which includes knowledge
+    distillation, brings additional computational costs. Moreover, due to the unique
+    nature of binarization, current hardware makes it difficult to directly support
+    binarized LLMs to achieve real speedup. We also have not yet considered intermediate
+    activation binarization which is the same as previous studies. Finally, potential
+    ethical issues of pretrained LLMs, such as harmful biases, privacy concerns, and
+    the spread of disinformation, are likely to persist after binarization in our
+    LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[1] Shuming Ma, Hongyu Wang, Lingxiao Ma, Lei Wang, Wenhui Wang, Shaohan Huang,
+    Li Dong, Ruiping Wang, Jilong Xue, and Furu Wei. The era of 1-bit llms: All large
+    language models are in 1.58 bits. arXiv preprint arXiv:2402.17764, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[2] Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ahmad, Ilge Akkaya, Florencia Leoni
+    Aleman, Diogo Almeida, Janko Altenschmidt, Sam Altman, Shyamal Anadkat, et al.
+    Gpt-4 technical report. arXiv preprint arXiv:2303.08774, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[3] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne
+    Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal, Eric Hambro, Faisal
+    Azhar, et al. Llama: Open and efficient foundation language models. arXiv preprint
+    arXiv:2302.13971, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[4] Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi,
+    Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale,
+    et al. Llama 2: Open foundation and fine-tuned chat models. arXiv preprint arXiv:2307.09288,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[5] Yuzhang Shang, Zhihang Yuan, and Zhen Dong. Pb-llm: Partially binarized
+    large language models. In The Twelfth International Conference on Learning Representations,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[6] Elias Frantar and Dan Alistarh. Optimal brain compression: A framework
+    for accurate post-training quantization and pruning. ArXiv, abs/2208.11580, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[7] Yuzhuang Xu, Xu Han, Zonghan Yang, Shuo Wang, Qingfu Zhu, Zhiyuan Liu,
+    Weidong Liu, and Wanxiang Che. Onebit: Towards extremely low-bit large language
+    models. arXiv preprint arXiv:2402.11295, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[8] Matthieu Courbariaux, Yoshua Bengio, and Jean-Pierre David. Binaryconnect:
+    Training deep neural networks with binary weights during propagations. Advances
+    in neural information processing systems, 28, 2015.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[9] Itay Hubara, Matthieu Courbariaux, Daniel Soudry, Ran El-Yaniv, and Yoshua
+    Bengio. Binarized neural networks. Advances in neural information processing systems,
+    29, 2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[10] Mohammad Rastegari, Vicente Ordonez, Joseph Redmon, and Ali Farhadi. Xnor-net:
+    Imagenet classification using binary convolutional neural networks. In European
+    conference on computer vision, pages 525–542. Springer, 2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[11] Shuchang Zhou, Yuxin Wu, Zekun Ni, Xinyu Zhou, He Wen, and Yuheng Zou.
+    Dorefa-net: Training low bitwidth convolutional neural networks with low bitwidth
+    gradients. arXiv preprint arXiv:1606.06160, 2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[12] Asit Mishra, Eriko Nurvitadhi, Jeffrey J Cook, and Debbie Marr. Wrpn:
+    Wide reduced-precision networks. arXiv preprint arXiv:1709.01134, 2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[13] Xiaofan Lin, Cong Zhao, and Wei Pan. Towards accurate binary convolutional
+    neural networks. arXiv preprint arXiv:1711.11294, 2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[14] Antonio Polino, Razvan Pascanu, and Dan Alistarh. Model compression via
+    distillation and quantization. arXiv preprint arXiv:1802.05668, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[15] Yoshua Bengio, Nicholas Léonard, and Aaron Courville. Estimating or propagating
+    gradients through stochastic neurons for conditional computation. arXiv preprint
+    arXiv:1308.3432, 2013.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[16] Zechun Liu, Zhiqiang Shen, Marios Savvides, and Kwang-Ting Cheng. Reactnet:
+    Towards precise binary neural network with generalized activation functions. In
+    Computer Vision–ECCV 2020: 16th European Conference, Glasgow, UK, August 23–28,
+    2020, Proceedings, Part XIV 16, pages 143–159. Springer, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[17] Sajad Darabi, Mouloud Belbahri, Matthieu Courbariaux, and Vahid Partovi
+    Nia. BNN+: Improved binary network training, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[18] Wei Huang, Yangdong Liu, Haotong Qin, Ying Li, Shiming Zhang, Xianglong
+    Liu, Michele Magno, and Xiaojuan Qi. Billm: Pushing the limit of post-training
+    quantization for llms. arXiv preprint arXiv:2402.04291, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[19] Hongyu Wang, Shuming Ma, Li Dong, Shaohan Huang, Huaijie Wang, Lingxiao
+    Ma, Fan Yang, Ruiping Wang, Yi Wu, and Furu Wei. Bitnet: Scaling 1-bit transformers
+    for large language models. arXiv preprint arXiv:2310.11453, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[20] Alec Radford, Karthik Narasimhan, Tim Salimans, Ilya Sutskever, et al.
+    Improving language understanding by generative pre-training. 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[21] Jangho Kim, Yash Bhalgat, Jinwon Lee, Chirag Patel, and Nojun Kwak. Qkd:
+    Quantization-aware knowledge distillation. arXiv preprint arXiv:1911.12491, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[22] Yoonho Boo, Sungho Shin, Jungwook Choi, and Wonyong Sung. Stochastic precision
+    ensemble: self-knowledge distillation for quantized deep neural networks. In Proceedings
+    of the AAAI Conference on Artificial Intelligence, volume 35, pages 6794–6802,
+    2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[23] Cuong Pham, Tuan Hoang, and Thanh-Toan Do. Collaborative multi-teacher
+    knowledge distillation for learning low bit-width deep neural networks. In Proceedings
+    of the IEEE/CVF Winter Conference on Applications of Computer Vision, pages 6435–6443,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[24] Kartikeya Bhardwaj, Nilesh Prasad Pandey, Sweta Priyadarshi, Kyunggeun
+    Lee, Jun Ma, and Harris Teague. Oh! we freeze: Improving quantized knowledge distillation
+    via signal propagation analysis for large language models. arXiv preprint arXiv:2403.18159,
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[25] Zhengzhong Liu, Aurick Qiao, Willie Neiswanger, Hongyi Wang, Bowen Tan,
+    Tianhua Tao, Junbo Li, Yuqi Wang, Suqi Sun, Omkar Pangarkar, et al. Llm360: Towards
+    fully transparent open-source llms. arXiv preprint arXiv:2312.06550, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[26] Guilherme Penedo, Quentin Malartic, Daniel Hesslow, Ruxandra Cojocaru,
+    Alessandro Cappelli, Hamza Alobeidli, Baptiste Pannier, Ebtesam Almazrouei, and
+    Julien Launay. The refinedweb dataset for falcon llm: outperforming curated corpora
+    with web data, and web data only. arXiv preprint arXiv:2306.01116, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[27] Raymond Li, Loubna Ben Allal, Yangtian Zi, Niklas Muennighoff, Denis Kocetkov,
+    Chenghao Mou, Marc Marone, Christopher Akiki, Jia Li, Jenny Chim, et al. Starcoder:
+    may the source be with you! arXiv preprint arXiv:2305.06161, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[28] Together Computer. Redpajama: An open source recipe to reproduce llama
+    training dataset, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[29] Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe, Moya Chen, Shuohui
+    Chen, Christopher Dewan, Mona Diab, Xian Li, Xi Victoria Lin, et al. Opt: Open
+    pre-trained transformer language models. arXiv preprint arXiv:2205.01068, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[30] Peiyuan Zhang, Guangtao Zeng, Tianduo Wang, and Wei Lu. Tinyllama: An
+    open-source small language model. arXiv preprint arXiv:2401.02385, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[31] Christopher Clark, Kenton Lee, Ming-Wei Chang, Tom Kwiatkowski, Michael
+    Collins, and Kristina Toutanova. Boolq: Exploring the surprising difficulty of
+    natural yes/no questions. ArXiv, abs/1905.10044, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[32] Yonatan Bisk, Rowan Zellers, Jianfeng Gao, Yejin Choi, et al. Piqa: Reasoning
+    about physical commonsense in natural language. In Proceedings of the AAAI conference
+    on artificial intelligence, volume 34, pages 7432–7439, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[33] Rowan Zellers, Ari Holtzman, Yonatan Bisk, Ali Farhadi, and Yejin Choi.
+    Hellaswag: Can a machine really finish your sentence? In Annual Meeting of the
+    Association for Computational Linguistics, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[34] Keisuke Sakaguchi, Ronan Le Bras, Chandra Bhagavatula, and Yejin Choi.
+    Winogrande: An adversarial winograd schema challenge at scale. Communications
+    of the ACM, 64(9):99–106, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[35] Peter Clark, Isaac Cowhey, Oren Etzioni, Tushar Khot, Ashish Sabharwal,
+    Carissa Schoenick, and Oyvind Tafjord. Think you have solved question answering?
+    try arc, the ai2 reasoning challenge. ArXiv, abs/1803.05457, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[36] Todor Mihaylov, Peter Clark, Tushar Khot, and Ashish Sabharwal. Can a
+    suit of armor conduct electricity? a new dataset for open book question answering.
+    In Conference on Empirical Methods in Natural Language Processing, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[37] Zechun Liu, Zhiqiang Shen, Shichao Li, Koen Helwegen, Dong Huang, and
+    Kwang-Ting Cheng. How do adam and training strategies help bnns optimization.
+    In International conference on machine learning, pages 6936–6946\. PMLR, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[38] Aakanksha Chowdhery, Sharan Narang, Jacob Devlin, Maarten Bosma, Gaurav
+    Mishra, Adam Roberts, Paul Barham, Hyung Won Chung, Charles Sutton, Sebastian
+    Gehrmann, et al. Palm: Scaling language modeling with pathways. Journal of Machine
+    Learning Research, 24(240):1–113, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Appendix A Broader Impacts
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Our proposed fully binarized large language models (FBI-LLM) require less computational
+    power and memory in training and inference, making advanced AI technology accessible
+    to organizations and individuals with limited resources. With reduced hardware
+    requirements, smaller businesses, educational institutions, and non-profit organizations
+    can implement LLMs, democratizing access to cutting-edge AI. Binarized models
+    are more energy-efficient, which can significantly lower the carbon footprint
+    associated with running large-scale AI applications. However, even binarized LLMs
+    can still inherit and exist biases present in training data, leading to unfair
+    outcomes in applications like hiring, law enforcement, and lending.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B Average Bit-width of Binarized LLM
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'This section explains how to calculate the average bit-width of a binarized
+    LLM. Since the embedding layer and head have a large number of parameters and
+    are not binarized, we do not consider them when calculating the average bit-width.
+    Consider a module containing an RMSNorm and a linear layer with a parameter matrix
+    $A\in\mathbb{R}^{n\times n}$ is quantized to 1 bit. Therefore, the average bit-width
+    of this module can calculated as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\text{Average Bit-width}=\frac{1\times n^{2}+16\times 3n}{3n+n^{2}}$
+    |  | (12) |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix C Model Configuration and Training Details
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section, we list the model configurations and training details for
+    three scales of FBI-LLM models we trained in Table [4](#A3.T4 "Table 4 ‣ Appendix
+    C Model Configuration and Training Details ‣ FBI-LLM: Scaling Up Fully Binarized
+    LLMs from Scratch via Autoregressive Distillation").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4: The configuration and training details for FBI-LLM.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | FBI-LLM 130M | FBI-LLM 1.3B | FBI-LLM 7B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| hidden size | 768 | 2,048 | 4,096 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| intermediate size | 2,048 | 5,632 | 11,008 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| max sequence length | 2,048 | 2,048 | 2,048 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| # attention heads | 12 | 32 | 32 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| # hidden layers | 12 | 24 | 32 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| # key value heads | 12 | 32 | 32 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| initializer range | 0.02 | 0.02 | 0.02 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| vocabulary size | 32,000 | 32,000 | 32,000 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| learning rate | 3e-4 | 3e-4 | 3e-4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| batch size (token) | 2M | 2.4M | 3.9M |'
+  prefs: []
+  type: TYPE_TB
+- en: '| teacher model | LLaMA2-7B | LLaMA2-7B | LLaMA2-7B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| # GPUs (A100 80G) | 16 | 16 | 32 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPU hours for each data chunk | 130h | 189h | 729h |'
+  prefs: []
+  type: TYPE_TB
+- en: '| training speed (tokens/s/GPU) | 7,800 | 5,300 | 1,200 |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix D Detail Experiment Results
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We list the detailed experiment results about the effectiveness of autoregressive
+    distillation in Section [4.3](#S4.SS3 "4.3 Effectiveness of Autoregressive Distillation
+    ‣ 4 Experiments ‣ FBI-LLM: Scaling Up Fully Binarized LLMs from Scratch via Autoregressive
+    Distillation") in Table [5](#A4.T5 "Table 5 ‣ Appendix D Detail Experiment Results
+    ‣ FBI-LLM: Scaling Up Fully Binarized LLMs from Scratch via Autoregressive Distillation").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 5: Performance on down stream tasks and perplexity for different training
+    objectives. Here, NA means normal autoregressive training objective and AD means
+    autoregressive distillation training objective. Based on the number of training
+    chunk, the table is divided into several blocks. In each block, the values with
+    an underline represent the best value.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Training Chunk | Loss Type | Zero-shot Accuracy $\uparrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BoolQ | PIQA | HS | WG | ARC-e | ARC-c | OBQA | Ave. | Wiki2 | PTB | C4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | NA | 42.2 | 53.9 | 26.2 | 52.3 | 29.3 | 21.3 | 25.4 | 35.8 | 85.9 | 204.4
+    | 63.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AD | 50.1 | 54.1 | 26.6 | 51.0 | 29.2 | 21.9 | 24.4 | 36.8 | 81.2 | 193.4
+    | 61.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | NA | 60.8 | 56.7 | 27.0 | 52.2 | 31.9 | 20.2 | 23.2 | 38.9 | 42.9 | 128.8
+    | 37.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AD | 61.5 | 56.1 | 27.3 | 50.8 | 31.1 | 20.6 | 22.8 | 38.6 | 43.4 | 137.9
+    | 37.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 3 | NA | 62.0 | 57.1 | 27.5 | 51.3 | 31.5 | 21.2 | 24.0 | 39.2 | 36.7 | 170.2
+    | 32.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AD | 62.2 | 58.1 | 27.7 | 51.1 | 33.0 | 21.3 | 25.4 | 39.8 | 34.9 | 145.2
+    | 32.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | NA | 61.0 | 57.9 | 27.6 | 52.7 | 32.6 | 21.0 | 23.4 | 39.5 | 34.3 | 159.6
+    | 31.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AD | 62.0 | 57.7 | 27.7 | 50.1 | 33.0 | 21.2 | 26.8 | 39.8 | 32.9 | 142.1
+    | 31.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 5 | NA | 61.9 | 57.6 | 27.7 | 49.6 | 32.7 | 21.2 | 23.6 | 39.2 | 32.3 | 157.9
+    | 29.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AD | 62.2 | 58.4 | 28.0 | 50.8 | 32.9 | 21.3 | 25.8 | 39.9 | 31.7 | 137.0
+    | 29.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 6 | NA | 62.1 | 59.5 | 27.9 | 53.1 | 32.9 | 21.8 | 24.0 | 40.2 | 32.4 | 147.4
+    | 29.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AD | 62.2 | 59.2 | 27.7 | 49.9 | 33.9 | 22.9 | 26.0 | 40.2 | 31.3 | 129.0
+    | 29.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 7 | NA | 62.0 | 59.5 | 27.8 | 52.4 | 33.8 | 20.9 | 25.6 | 40.3 | 30.0 | 155.1
+    | 28.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AD | 62.1 | 59.5 | 28.3 | 51.2 | 33.8 | 21.8 | 25.4 | 40.3 | 31.0 | 119.3
+    | 28.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 | NA | 61.6 | 58.8 | 28.3 | 51.0 | 33.6 | 21.3 | 23.4 | 39.7 | 29.5 | 140.0
+    | 28.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AD | 62.2 | 59.0 | 28.1 | 50.8 | 32.3 | 20.6 | 24.0 | 39.6 | 30.1 | 113.8
+    | 28.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 9 | NA | 60.9 | 58.9 | 28.2 | 51.7 | 34.6 | 20.0 | 23.4 | 39.7 | 29.7 | 129.3
+    | 28.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AD | 62.2 | 60.1 | 28.2 | 51.8 | 33.5 | 21.1 | 26.6 | 40.5 | 29.9 | 129.8
+    | 27.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10 | NA | 61.8 | 59.5 | 27.9 | 50.3 | 34.0 | 20.8 | 25.8 | 40.0 | 29.5 |
+    144.7 | 28.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AD | 62.2 | 58.5 | 28.0 | 51.4 | 34.2 | 21.6 | 26.2 | 40.3 | 30.1 | 122.8
+    | 28.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 11 | NA | 62.1 | 59.9 | 28.4 | 52.7 | 34.1 | 21.6 | 25.4 | 40.6 | 28.8 |
+    138.2 | 27.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AD | 62.2 | 59.0 | 28.0 | 49.9 | 34.0 | 20.7 | 25.2 | 39.9 | 29.0 | 119.9
+    | 27.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 12 | NA | 62.2 | 59.1 | 27.9 | 51.9 | 34.6 | 21.2 | 24.8 | 40.2 | 29.1 |
+    150.3 | 27.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AD | 62.1 | 59.2 | 28.1 | 52.3 | 34.0 | 21.2 | 24.2 | 40.2 | 28.6 | 113.0
+    | 27.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 13 | NA | 62.2 | 58.6 | 27.9 | 49.6 | 34.6 | 22.6 | 25.4 | 40.1 | 28.7 |
+    135.0 | 27.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AD | 62.1 | 58.8 | 28.2 | 49.4 | 33.5 | 21.6 | 25.0 | 39.8 | 28.4 | 134.0
+    | 27.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 14 | NA | 62.2 | 58.3 | 28.4 | 49.4 | 34.3 | 20.7 | 23.8 | 39.6 | 28.6 |
+    138.5 | 26.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AD | 61.5 | 58.5 | 28.3 | 51.0 | 33.9 | 21.2 | 26.0 | 40.1 | 28.3 | 123.6
+    | 27.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 15 | NA | 62.2 | 58.8 | 28.1 | 51.5 | 34.1 | 21.3 | 26.4 | 40.4 | 28.0 |
+    138.9 | 26.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AD | 62.2 | 58.8 | 28.0 | 51.5 | 34.8 | 20.9 | 26.2 | 40.4 | 28.5 | 138.3
+    | 27.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16 | NA | 61.3 | 58.4 | 28.3 | 51.7 | 34.6 | 21.7 | 25.8 | 40.3 | 28.6 |
+    151.9 | 27.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AD | 62.1 | 60.2 | 28.1 | 51.9 | 33.2 | 22.3 | 25.2 | 40.4 | 28.2 | 124.6
+    | 27.2 |'
+  prefs: []
+  type: TYPE_TB

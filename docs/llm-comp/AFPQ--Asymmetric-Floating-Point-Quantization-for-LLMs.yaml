@@ -1,0 +1,923 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:50:48'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'AFPQ: Asymmetric Floating Point Quantization for LLMs'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2311.01792](https://ar5iv.labs.arxiv.org/html/2311.01792)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: 'Yijia Zhang^†, Sicheng Zhang^†¹¹footnotemark: 1, Shijie Cao^‡, Dayou Du^§,
+    Jianyu Wei^¶, Ting Cao^‡, Ningyi Xu^†'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^†Shanghai Jiao Tong University ^‡Microsoft Research Asia
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^§The Hong Kong University of Science and Technology (Guangzhou)
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^¶University of Science and Technology of China
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{zhangyijia, zhangsicheng, xuningyi}@sjtu.edu.cn, {shijiecao, ting.cao}@microsoft.com,'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ddu487@connect.hkust-gz.edu.cn, noob@mail.ustc.edu.cn   Equally contributed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Large language models (LLMs) show great performance in various tasks, but face
+    deployment challenges from limited memory capacity and bandwidth. Low-bit weight
+    quantization can save memory and accelerate inference. Although floating-point
+    (FP) formats show good performance in LLM quantization, they tend to perform poorly
+    with small group sizes or sub-4 bits. We find the reason is that the absence of
+    asymmetry in previous FP quantization makes it unsuitable for handling asymmetric
+    value distribution of LLM weight tensors. In this work, we propose asymmetric
+    FP quantization (AFPQ), which sets separate scales for positive and negative values.
+    Our method leads to large accuracy improvements and can be easily plugged into
+    other quantization methods, including GPTQ and AWQ, for better performance. Besides,
+    no additional storage is needed compared with asymmetric integer (INT) quantization.
+    The code is available at [https://github.com/zhangsichengsjtu/AFPQ](https://github.com/zhangsichengsjtu/AFPQ).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: LLMs have significantly advanced language understanding, generation, and reasoning Touvron
+    et al. ([2023](#bib.bib18)); Rozière et al. ([2023](#bib.bib16)); Zhang et al.
+    ([2022](#bib.bib23)). However, the increasing size of LLMs poses great pressure
+    on memory capacity and bandwidth during deployment. Low-bit quantization is a
+    widely used solution to decrease both memory capacity and bandwidth requirements.
+    To effectively accommodate LLMs, new quantization methods have been proposed,
+    such as GPTQ Frantar et al. ([2022](#bib.bib8)) and AWQ Lin et al. ([2023](#bib.bib13)).
+    These methods quantize LLMs with low-bit INT formats.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Recent studies suggest utilizing low-bit FP formats, such as FP4 and NF4, in
+    place of INT can lead to improved quantization accuracy of LLMs Dettmers and Zettlemoyer
+    ([2023](#bib.bib7)); Zhang et al. ([2023](#bib.bib24)); Wu et al. ([2023](#bib.bib19)).
+    This improvement is attributed to the non-uniform distribution of low-bit FP formats,
+    which more effectively align with LLM weights, characterized by mostly smaller
+    values and a long tail of larger, significant ones. Although generally superior,
+    FP formats tend to be worse than INT when quantization with small group sizes
+    or sub-4 bits.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/89fca5fccd679a5def997b889952af5e.png)![Refer to caption](img/787e698e885ef42bebb56933ad06ecf3.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: On LLaMA2-70B Touvron et al. ([2023](#bib.bib18)), our asymmetric
+    FP quantization reduces the WikiText-2 perplexity (the lower the better) in both
+    3-bit and 4-bit FP quantization (NF, short for NormalFloat, is an advanced type
+    of FP formats).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We identify this is caused by the absence of asymmetry in FP quantization. Given
+    that most weight tensors naturally exhibit asymmetric distributions, it is not
+    suitable to quantize them with standard low-bit FP values, which have a symmetric
+    distribution. Furthermore, we find the conventional methods used in asymmetric
+    INT quantization, such as scale and zero-point adjustments, do not perform well
+    in the context of FP quantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this work, we propose asymmetric floating point quantization (AFPQ), a simple
+    yet effective approach to fit the weight asymmetry in LLMs. Unlike previous symmetric
+    FP quantization, which uses a uniform scale for positive and negative values within
+    a weight group, AFPQ sets seperate scales for positive and negative values. AFPQ
+    ensures that the rescaled FP values can better match the original weight values,
+    thereby enhancing quantization accuracy in LLMs. In Figure [1](#S1.F1 "Figure
+    1 ‣ 1 Introduction ‣ AFPQ: Asymmetric Floating Point Quantization for LLMs"),
+    our AFPQ with FP and NP formats show better results in both 3-bit and 4-bit round-to-neare
+    (RTN) quantization. Moreover, AFPQ requires no additional storage compared with
+    asymmetric INT quantization. We also validate that the asymmetric FP (FP-asym)
+    low-bit inference system can reach up to 1.62x speedup compared with FP16 systems.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our contributions can be summarized as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We identify that the subpar quantization accuracy of FP for LLMs is caused by
+    the asymmetry of weights within the quantization group.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We introduce the asymmetric FP quantization, which can enhance FP quantization
+    performance significantly.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '3.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: As AFPQ operates on each individual sub-tensor or group, it can work as a plugin
+    to other tensor-level quantization algorithms, such as GPTQ and AWQ. We integrate
+    asymmetric FP quantization with these methods in this work.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 2 Background and Motivation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Model quantization methods.
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Quantization is a process that reduces the precision of Deep Neural Network
+    (DNN) weights to decrease model size and accelerate model inference Han et al.
+    ([2015](#bib.bib10)); Jacob et al. ([2018](#bib.bib12)). Existing quantization
+    methods can be broadly categorized into two types: Post Training Quantization
+    (PTQ) and Quantization Aware Training (QAT) Bengio et al. ([2013](#bib.bib1));
+    Gholami et al. ([2022](#bib.bib9)). QAT necessitates model training, which can
+    be expensive, whereas PTQ does not. We focus on PTQ in this work.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quantization of LLMs.
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'There are two methods for quantizing LLMs: 1) Quantizing both weights (W) and
+    activations (A), for example, W8A8 quantization Dettmers et al. ([2022](#bib.bib4));
+    Xiao et al. ([2023](#bib.bib20)); 2) W-only quantization, for example, W4A16 one Dettmers
+    and Zettlemoyer ([2023](#bib.bib7)). This article focuses on the W-only method.
+    The naive W-only method is RTN. The advanced methods include GPTQ Frantar et al.
+    ([2022](#bib.bib8)) and AWQ Lin et al. ([2023](#bib.bib13)). GPTQ uses second-order
+    information to compensate for the error of quantized weights, while AWQ scales
+    salient weights before quantization. Both methods use INT for quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Low-bit Formats.
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The current mainstream quantization formats include low-bit INT and FP Yao et al.
+    ([2022](#bib.bib21)); Wu et al. ([2023](#bib.bib19)). INT is uniformly distributed,
+    while FP, with its exponent and mantissa design, has a distribution that is dense
+    near zero and sparse far from it. In addition, some new formats have also emerged,
+    such as NF Dettmers et al. ([2021](#bib.bib5)), a new type of FP formats designed
+    based on normal number distribution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lack of asymmetry for FP quantization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In the weight tensors of LLMs, outliers often appear Lin et al. ([2023](#bib.bib13));
+    Dettmers et al. ([2023](#bib.bib6)). Due to the randomness of these outliers,
+    many weight tensors exhibit an asymmetric distribution of maximum and minimum
+    values. This phenomenon is particularly noticeable when the group size is small.
+    In Figure [2](#S2.F2 "Figure 2 ‣ Lack of asymmetry for FP quantization ‣ 2 Background
+    and Motivation ‣ AFPQ: Asymmetric Floating Point Quantization for LLMs"), we have
+    randomly selected some LLaMA2 weight groups. It can be observed that more than
+    50% of the groups exhibit an asymmetric value distribution.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/5e51376c784394eca9046e9c1a6ed075.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Randomly selected weight groups (group-size is 128) from LLaMA2-7B.
+    It is obvious that the maximum and minimum values in many groups are not symmetric
+    about zero.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/762f55241ddf8d6a1d92a011c56df1e6.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Red points are original asymmetric weight values. Recaled INT4-asym
+    covers the weight values well, but the coverage range of rescaled FP4-sym exceeds
+    the range of weight values, thus wasting values in FP formats.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For INT, asymmetric quantization with one zero-point (for range translation)
+    and one scale (for scaling) for each weight group can fit the asymmetric tensor
+    distribution well. For example, if we apply asymmetric INT quantization to asymmetric
+    weights in Figure [3](#S2.F3 "Figure 3 ‣ Lack of asymmetry for FP quantization
+    ‣ 2 Background and Motivation ‣ AFPQ: Asymmetric Floating Point Quantization for
+    LLMs"), the original weights will be fully covered by the rescaled asymmetric
+    INT (INT-asym) values. However, when applying previous FP quantization (only one
+    scale for scaling)¹¹1[https://github.com/openppl-public/ppq](https://github.com/openppl-public/ppq)²²2[https://github.com/TimDettmers/bitsandbytes](https://github.com/TimDettmers/bitsandbytes),
+    the range of rescaled symmetric FP (FP-sym) values exceeds the range of original
+    weights, leading to a waste of the expressive ability of some FP values. Therefore,
+    asymmetric FP quantization should be introduced for LLMs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Asymmetric Floating Point Quantization
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To make FP quantization applicable to the asymmetric distribution of LLM weights,
+    an intuitive approach is to apply the method with one scale and zero-point used
+    in asymmetric INT quantization to FP quantization, as shown in the purple section
+    of Figure [4](#S3.F4 "Figure 4 ‣ 3 Asymmetric Floating Point Quantization ‣ AFPQ:
+    Asymmetric Floating Point Quantization for LLMs"). However, this approach would
+    shift the dense number area of FP from zero to the left of zero, eliminating the
+    advantages of using FP formats. This might make FP less suitable for the value
+    distribution of LLM weights. This phenomenon will be demonstrated in Section 4.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To preserve the advantage of FP formats, we propose asymmetric FP quantization
+    with two separate scales, one for positive numbers and another for negative numbers
+    in each weight group. In this way, the rescaled FP-asym values from AFPQ can better
+    fit the distribution of original weights, as is shown in Figure [4](#S3.F4 "Figure
+    4 ‣ 3 Asymmetric Floating Point Quantization ‣ AFPQ: Asymmetric Floating Point
+    Quantization for LLMs") green section. The quantization algorithm is shown in
+    Appendix [B](#A2 "Appendix B Quantization algorithm ‣ AFPQ: Asymmetric Floating
+    Point Quantization for LLMs"). The benefits of AFPQ include: 1) Enhanced FP quantization
+    accuracy; 2) No additional storage overhead compared with asymmetric INT quantization
+    (both need two parameters for one group).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/3701a338d233e10ede85c87f3784f2b0.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: Red points are original asymmetric weight values. Recaled FP4-asym
+    using two scales gathers more values near zero than the FP4-asym using one scale
+    and zero-point, which aligns with the distribution of LLMs weights more.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As AFPQ operates on each individual sub-tensor or group, it can work as a plugin
+    to other high-level quantization algorithms such GPTQ Frantar et al. ([2022](#bib.bib8))
+    and AWQ Lin et al. ([2023](#bib.bib13)). To demonstrate the applicability, we
+    integrate AFPQ with GPTQ and AWQ for better quantization accuracy for LLMs. To
+    validate the inference efficiency, we have implemented an low-bit FP-asym inference
+    system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Experimental setup. We focus on 4-/3-bit PTQ since they can mostly preserve
+    the performance of LLMs Dettmers and Zettlemoyer ([2023](#bib.bib7)). The formats
+    we use are shown in Appendix [A](#A1 "Appendix A Low-bit formats used in this
+    work ‣ AFPQ: Asymmetric Floating Point Quantization for LLMs"). We select LLaMA2 Touvron
+    et al. ([2023](#bib.bib18)) models for basic evaluation because of their superior
+    performance among open-sourced LLMs Zhang et al. ([2022](#bib.bib23)); Scao et al.
+    ([2022](#bib.bib17)). We also include WizardCoder Luo et al. ([2023](#bib.bib14))
+    and MetaMath Yu et al. ([2023](#bib.bib22)) models for further evaluation. The
+    validation datasets or benchmarks in this section include WikiText-2 Merity et al.
+    ([2016](#bib.bib15)), MMLU Hendrycks et al. ([2021](#bib.bib11)), HumanEval Chen
+    et al. ([2021](#bib.bib2)), and gsm8k Cobbe et al. ([2021](#bib.bib3)). Besides
+    vanilla RTN quantization, we further include experiments based on GPTQ Frantar
+    et al. ([2022](#bib.bib8)) and AWQ Lin et al. ([2023](#bib.bib13)). We conduct
+    quantization experiments on AutoGPTQ project³³3[https://github.com/PanQiWei/AutoGPTQ](https://github.com/PanQiWei/AutoGPTQ).
+    Our inference system implementation is based on FasterTransformer framework⁴⁴4[https://github.com/NVIDIA/FasterTransformer](https://github.com/NVIDIA/FasterTransformer).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/da8857b795adeefe6feddd249a911e09.png)![Refer to caption](img/364b71869e6c84d17e0e77e883206848.png)![Refer
+    to caption](img/180ef79bb489683a02c5dc7fc626cf1a.png)![Refer to caption](img/b5cbbe99d1a12fafad10530b034bd881.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: When quantizing LLaMA2-70B, FP-asym and NF-asym quantization with
+    two scales shows lower perplexity (ppl) on WikiText-2 (the lower the better).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: WikiText-2 perplexity and MMLU average accuracy on LLaMA2 models after
+    4-bit RTN quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | LLaMA2-7B | LLaMA2-13B | LLaMA2-70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | g-1 | g256 | g128 | g64 | g-1 | g256 | g128 | g64 | g-1 | g256 | g128
+    | g64 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | FP16 | 5.47 | 4.88 | 3.32 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WikiText-2 $\downarrow$ | INT4 | 6.12 | 5.75 | 5.72 | 5.67 | 5.20 | 5.02
+    | 4.98 | 4.97 | 3.67 | 3.49 | 3.46 | 3.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| NF4-sym | 5.87 | 5.68 | 5.66 | 5.65 | 5.09 | 5.01 | 4.99 | 4.98 | 3.52 |
+    3.44 | 3.44 | 3.42 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | NF4-asym | 5.77 | 5.67 | 5.66 | 5.64 | 5.07 | 5.00 | 4.98 | 4.97 | 3.51
+    | 3.44 | 3.42 | 3.40 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | FP16 | 46.58 | 55.38 | 69.58 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MMLU(%) $\uparrow$ | INT4 | 40.31 | 43.67 | 45.28 | 45.59 | 52.92 | 54.09
+    | 54.33 | 54.44 | 67.82 | 68.43 | 68.32 | 68.53 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| NF4-sym | 43.04 | 43.94 | 45.09 | 45.70 | 53.59 | 54.37 | 54.58 | 54.84 |
+    67.96 | 68.41 | 68.66 | 69.18 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | NF4-asym | 45.05 | 43.53 | 45.42 | 46.12 | 54.10 | 54.93 | 54.71 | 55.03
+    | 67.78 | 68.64 | 68.81 | 68.93 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: WikiText-2 perplexity and MMLU average accuracy on LLaMA2 models after
+    3-bit RTN quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | LLaMA2-7B | LLaMA2-13B | LLaMA2-70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | g-1 | g256 | g128 | g64 | g-1 | g256 | g128 | g64 | g-1 | g256 | g128
+    | g64 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---
+    | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | FP16 | 5.47 | 4.88 | 3.32 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WikiText-2 $\downarrow$ | INT3 | 542.80 | 7.10 | 6.66 | 6.40 | 10.68 | 5.67
+    | 5.52 | 5.39 | 7.53 | 4.11 | 3.98 | 3.85 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| NF3-sym | 74.27 | 6.74 | 6.45 | 6.26 | 7.73 | 5.53 | 5.43 | 5.35 | 8.38 |
+    3.98 | 3.92 | 3.85 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | NF3-asym | 9.85 | 6.42 | 6.29 | 6.15 | 6.53 | 5.46 | 5.35 | 5.27 | 5.42
+    | 3.89 | 3.82 | 3.74 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | FP16 | 46.58 | 55.38 | 69.58 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MMLU(%) $\uparrow$ | INT3 | 25.22 | 37.46 | 38.50 | 40.06 | 27.79 | 48.91
+    | 51.23 | 50.77 | 34.39 | 64.77 | 65.05 | 66.16 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| NF3-sym | 26.20 | 36.85 | 38.61 | 38.47 | 38.96 | 49.84 | 50.97 | 51.72 |
+    40.63 | 66.40 | 65.90 | 66.92 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | NF3-asym | 30.31 | 38.58 | 41.61 | 41.11 | 42.74 | 52.31 | 52.60 | 53.3
+    | 56.07 | 66.23 | 66.78 | 66.43 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Comparisons between AFPQ with two scales and the one with scale + zero-point.
+    We evaluate LLaMA2-70B with these two methods using the RTN quantization on WikiText-2
+    perplexity following Frantar et al. ([2022](#bib.bib8)). As shown in Figure [5](#S4.F5
+    "Figure 5 ‣ 4 Experiments ‣ AFPQ: Asymmetric Floating Point Quantization for LLMs"),
+    quantization using FP-asym with two scales brings better quantization accuracy
+    in both 4-bit and 3-bit grouped quantization for FP and NF formats. For simplicity,
+    asymmetric FP quantization mentioned below is the one using two scales. Note that
+    the performance of the FP3 formats is still worse than INT3, this is because FP3
+    can only represent 7 values for quantization, whereas INT3 and NF3 can represent
+    8\. To ensure a fair comparison, the remaining quantization experiments in this
+    section are conducted using INT and NF formats.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Results across various group-sizes and bit-widths using RTN quantization. To
+    demonstrate the generality of our method, we evaluate our AFPQ using RTN on LLaMA2
+    models with different bit-widths and group-sizes. The evaluation focuses on WikiText-2
+    and MMLU benchmark with in-context learning (5-shot) following  Lin et al. ([2023](#bib.bib13)).
+    We provide the 4-bit and 3-bit results in Table [1](#S4.T1 "Table 1 ‣ 4 Experiments
+    ‣ AFPQ: Asymmetric Floating Point Quantization for LLMs") and Table [2](#S4.T2
+    "Table 2 ‣ 4 Experiments ‣ AFPQ: Asymmetric Floating Point Quantization for LLMs"),
+    respectively. For both bit-widths, quantization with NF-asym achieves better or
+    on-par results in all settings. It performs even better when model size is smaller
+    and bit-width is smaller. For example, NF3-asym with group-size 128 can lead to
+    3% MMLU accuracy improvement for LLaMA2-7B (a model size well-suited for edge
+    deployments Dettmers et al. ([2023](#bib.bib6))) compared with INT3 and NF3-sym
+    quantization. The conclusions of FP4 and FP3 are similar to NF formats, which
+    are shown in Appendix [C](#A3 "Appendix C Results of AFPQ with FP formats ‣ AFPQ:
+    Asymmetric Floating Point Quantization for LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 3: WikiText-2 perplexity and MMLU average accuracy on LLaMA2-70B after
+    we integrate asymmetric FP quantization with GPTQ.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | LLaMA2-70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | g-1 | g256 | g128 | g64 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WikiText-2 $\downarrow$ | INT3 | 4.57 | 3.88 | 3.77 | 3.67 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16: 3.32 | NF3-sym | 4.16 | 3.77 | 3.72 | 3.67 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| NF3-asym | 4.07 | 3.73 | 3.66 | 3.61 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MMLU(%) $\uparrow$ | INT3 | 60.10 | 66.65 | 67.25 | 67.75 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16: 69.58 | NF3-sym | 64.45 | 67.03 | 67.42 | 67.72 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| NF3-asym | 64.95 | 67.33 | 68.05 | 68.03 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 4: WikiText-2 perplexity and MMLU average accuracy on LLaMA2-70B after
+    we integrate asymmetric FP quantization with AWQ.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | LLaMA2-70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | g-1 | g256 | g128 | g64 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WikiText-2 $\downarrow$ | INT3 | 4.91 | 4.10 | 3.87 | 3.72 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16: 3.32 | NF3-sym | 4.26 | 4.03 | 3.83 | 3.71 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| NF3-asym | 4.18 | 3.87 | 3.74 | 3.65 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MMLU(%) $\uparrow$ | INT3 | 59.08 | 65.15 | 66.45 | 67.40 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16: 69.58 | NF3-sym | 62.60 | 65.02 | 65.88 | 67.66 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| NF3-asym | 63.57 | 66.56 | 67.00 | 67.41 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Results of applying AFPQ to GPTQ and AWQ. Although being effective PTQ methods,
+    there is still an accuracy gap between FP16 LLMs and quantized ones using GPTQ
+    or AWQ. In Table [3](#S4.T3 "Table 3 ‣ 4 Experiments ‣ AFPQ: Asymmetric Floating
+    Point Quantization for LLMs") and Table [4](#S4.T4 "Table 4 ‣ 4 Experiments ‣
+    AFPQ: Asymmetric Floating Point Quantization for LLMs"), We try to improve these
+    methods by replacing the INT3 quantization with NF3-asym ones in GPTQ and AWQ,
+    respectively. We evaluate LLaMA2-70B with WikiText-2 perplexity and MMLU (5-shot)
+    accuracy. Note that the INT3 or NF3 baseline is already strong, our NF3-asym quantization
+    can still raise the performance to a higher level. For group-size 128, the commonly
+    used setting in Frantar et al. ([2022](#bib.bib8)); Lin et al. ([2023](#bib.bib13)),
+    our method can reduce WikiText-2 ppl by 0.11 from GPTQ-INT3 and 0.13 from AWQ-INT3,
+    which should be considered significant.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Results in coding and mathematical tasks. As quantization may hurt LLMs’ performance
+    in difficult downstream tasks, such as coding and mathematical ones, we also evaluate
+    AFPQ on the WizardCoder-7B model and the MetaMath-7B model in Table [5](#S4.T5
+    "Table 5 ‣ 4 Experiments ‣ AFPQ: Asymmetric Floating Point Quantization for LLMs").
+    The benchmark for WizardCoder and MetaMath is HumanEval and gsm8k, respectively.
+    We use AWQ with NF3-asym in the group-size-64 quantization. We can see that NF3-asym
+    helps reach the highest quantization accuracy in both tasks. Notably, the accuracy
+    of quantized WizardCoder-7B is enhanced by 4.87% compared with AWQ-INT3, which
+    strongly proves the effectiveness of our method.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 5: Evaluation results on WizardCoder-7B and MetaMath-7B after 3-bit AWQ
+    with group-size of 64\. For WizardCoder-7B, we show the percentage of pass rates
+    on the HumanEval. For MetaMath-7B, we show the testing accuracy on gsm8k.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | FP16 | INT3 | NF3-sym | NF3-asym |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WizardCoder-7B $\uparrow$ | 57.31 | 47.56 | 45.12 | 52.43 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MetaMath-7B $\uparrow$ | 66.41 | 63.52 | 60.86 | 64.53 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Efficiency evaluation. Since our AFPQ method needs to store two parameters
+    (two scales) for each quantization group, the same as the asymmetric INT quantization
+    (one scale and one zero-point), no additional storage is needed for our method
+    compared with the INT-asym one. As for the inference speed, since low-bit NF-based
+    kernels have not been proposed in previous work, we develop these kernels and
+    integrate them into FasterTransformer framework. The implementation details can
+    be found in Appendix [D](#A4 "Appendix D Kernel implementation ‣ AFPQ: Asymmetric
+    Floating Point Quantization for LLMs"). We measure the end-to-end latency of LLaMA2
+    models on a single A6000 GPU. We keep the batch size to be 1, the input sequence
+    length to be 128, and a uniform output token count of 20\. In Table [6](#S4.T6
+    "Table 6 ‣ 4 Experiments ‣ AFPQ: Asymmetric Floating Point Quantization for LLMs"),
+    our AFPQ method with NF4-asym achieves up to 1.62x speedup compared with FP16
+    baseline. Although it incurs inference overhead compared with INT4-/NF4-sym-based
+    system, we believe the gap can be narrowed with kernel optimizations, which we
+    leave it as a future work.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 6: Inference latency (ms) of LLaMA2-7B and LLaMA2-13B under different
+    formats'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | FP16 | INT4 | NF4-sym | NF4-asym |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA2-7B | 415.06 | 174.29 | 187.23 | 265.54 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA2-13B | 788.01 | 309.87 | 317.15 | 485.42 |'
+  prefs: []
+  type: TYPE_TB
+- en: 5 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this study, we identify that the lack of asymmetry in previous FP quantization
+    can lead to poor quantization for LLM weight tensors with asymmetric distribution.
+    To solve the problem, we propose asymmetric FP quantization which sets separate
+    scales for positive and negative values. Our method can be easily plugged into
+    other effective methods, including GPTQ and AWQ, for performance improvements.
+    AFPQ enhances LLM quantization results and needs no additional storage compared
+    with asymmetric INT quantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Bengio et al. (2013) Yoshua Bengio, Nicholas Léonard, and Aaron Courville. 2013.
+    Estimating or propagating gradients through stochastic neurons for conditional
+    computation. *arXiv preprint arXiv:1308.3432*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chen et al. (2021) Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique
+    Ponde de Oliveira Pinto, Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph,
+    Greg Brockman, et al. 2021. Evaluating large language models trained on code.
+    *arXiv preprint arXiv:2107.03374*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Cobbe et al. (2021) Karl Cobbe, Vineet Kosaraju, Mohammad Bavarian, Mark Chen,
+    Heewoo Jun, Lukasz Kaiser, Matthias Plappert, Jerry Tworek, Jacob Hilton, Reiichiro
+    Nakano, Christopher Hesse, and John Schulman. 2021. Training verifiers to solve
+    math word problems. *arXiv preprint arXiv:2110.14168*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. (2022) Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer.
+    2022. Llm. int8 (): 8-bit matrix multiplication for transformers at scale. *arXiv
+    preprint arXiv:2208.07339*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Dettmers et al. (2021) Tim Dettmers, Mike Lewis, Sam Shleifer, and Luke Zettlemoyer.
+    2021. 8-bit optimizers via block-wise quantization. *arXiv preprint arXiv:2110.02861*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. (2023) Tim Dettmers, Ruslan Svirschevski, Vage Egiazarian,
+    Denis Kuznedelev, Elias Frantar, Saleh Ashkboos, Alexander Borzunov, Torsten Hoefler,
+    and Dan Alistarh. 2023. Spqr: A sparse-quantized representation for near-lossless
+    llm weight compression. *arXiv preprint arXiv:2306.03078*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers and Zettlemoyer (2023) Tim Dettmers and Luke Zettlemoyer. 2023. The
+    case for 4-bit precision: k-bit inference scaling laws. In *International Conference
+    on Machine Learning*, pages 7750–7774\. PMLR.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Frantar et al. (2022) Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan
+    Alistarh. 2022. Gptq: Accurate post-training quantization for generative pre-trained
+    transformers. *arXiv preprint arXiv:2210.17323*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Gholami et al. (2022) Amir Gholami, Sehoon Kim, Zhen Dong, Zhewei Yao, Michael W
+    Mahoney, and Kurt Keutzer. 2022. A survey of quantization methods for efficient
+    neural network inference. In *Low-Power Computer Vision*, pages 291–326\. Chapman
+    and Hall/CRC.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Han et al. (2015) Song Han, Huizi Mao, and William J Dally. 2015. Deep compression:
+    Compressing deep neural networks with pruning, trained quantization and huffman
+    coding. *arXiv preprint arXiv:1510.00149*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hendrycks et al. (2021) Dan Hendrycks, Collin Burns, Steven Basart, Andy Zou,
+    Mantas Mazeika, Dawn Song, and Jacob Steinhardt. 2021. Measuring massive multitask
+    language understanding. *Proceedings of the International Conference on Learning
+    Representations (ICLR)*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Jacob et al. (2018) Benoit Jacob, Skirmantas Kligys, Bo Chen, Menglong Zhu,
+    Matthew Tang, Andrew Howard, Hartwig Adam, and Dmitry Kalenichenko. 2018. Quantization
+    and training of neural networks for efficient integer-arithmetic-only inference.
+    In *Proceedings of the IEEE conference on computer vision and pattern recognition*,
+    pages 2704–2713.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lin et al. (2023) Ji Lin, Jiaming Tang, Haotian Tang, Shang Yang, Xingyu Dang,
+    and Song Han. 2023. Awq: Activation-aware weight quantization for llm compression
+    and acceleration. *arXiv preprint arXiv:2306.00978*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Luo et al. (2023) Ziyang Luo, Can Xu, Pu Zhao, Qingfeng Sun, Xiubo Geng, Wenxiang
+    Hu, Chongyang Tao, Jing Ma, Qingwei Lin, and Daxin Jiang. 2023. Wizardcoder: Empowering
+    code large language models with evol-instruct. *arXiv preprint arXiv:2306.08568*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Merity et al. (2016) Stephen Merity, Caiming Xiong, James Bradbury, and Richard
+    Socher. 2016. Pointer sentinel mixture models. *arXiv preprint arXiv:1609.07843*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Rozière et al. (2023) Baptiste Rozière, Jonas Gehring, Fabian Gloeckle, Sten
+    Sootla, Itai Gat, Xiaoqing Ellen Tan, Yossi Adi, Jingyu Liu, Tal Remez, Jérémy
+    Rapin, et al. 2023. Code llama: Open foundation models for code. *arXiv preprint
+    arXiv:2308.12950*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Scao et al. (2022) Teven Le Scao, Angela Fan, Christopher Akiki, Ellie Pavlick,
+    Suzana Ilić, Daniel Hesslow, Roman Castagné, Alexandra Sasha Luccioni, François
+    Yvon, Matthias Gallé, et al. 2022. Bloom: A 176b-parameter open-access multilingual
+    language model. *arXiv preprint arXiv:2211.05100*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023) Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier
+    Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal,
+    Eric Hambro, Faisal Azhar, et al. 2023. Llama: Open and efficient foundation language
+    models. *arXiv preprint arXiv:2302.13971*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wu et al. (2023) Xiaoxia Wu, Zhewei Yao, and Yuxiong He. 2023. Zeroquant-fp:
+    A leap forward in llms post-training w4a8 quantization using floating-point formats.
+    *arXiv preprint arXiv:2307.09782*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xiao et al. (2023) Guangxuan Xiao, Ji Lin, Mickael Seznec, Hao Wu, Julien Demouth,
+    and Song Han. 2023. Smoothquant: Accurate and efficient post-training quantization
+    for large language models. In *International Conference on Machine Learning*,
+    pages 38087–38099\. PMLR.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yao et al. (2022) Zhewei Yao, Reza Yazdani Aminabadi, Minjia Zhang, Xiaoxia
+    Wu, Conglong Li, and Yuxiong He. 2022. Zeroquant: Efficient and affordable post-training
+    quantization for large-scale transformers. *Advances in Neural Information Processing
+    Systems*, 35:27168–27183.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yu et al. (2023) Longhui Yu, Weisen Jiang, Han Shi, Jincheng Yu, Zhengying
+    Liu, Yu Zhang, James T Kwok, Zhenguo Li, Adrian Weller, and Weiyang Liu. 2023.
+    Metamath: Bootstrap your own mathematical questions for large language models.
+    *arXiv preprint arXiv:2309.12284*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. (2022) Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe,
+    Moya Chen, Shuohui Chen, Christopher Dewan, Mona Diab, Xian Li, Xi Victoria Lin,
+    et al. 2022. Opt: Open pre-trained transformer language models. *arXiv preprint
+    arXiv:2205.01068*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Zhang et al. (2023) Yijia Zhang, Lingran Zhao, Shijie Cao, Wenqiang Wang, Ting
+    Cao, Fan Yang, Mao Yang, Shanghang Zhang, and Ningyi Xu. 2023. Integer or floating
+    point? new outlooks for low-bit quantization on large language models. *arXiv
+    preprint arXiv:2305.12356*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Appendix A Low-bit formats used in this work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this work, we use FP4 E2M1 and FP3 E2M0 formats. Both excludes NaN and Inf
+    following Zhang et al. ([2023](#bib.bib24)). For NF formats, we use the values
+    from Bitsandbytes⁵⁵5[https://github.com/TimDettmers/bitsandbytes](https://github.com/TimDettmers/bitsandbytes).
+    The exact values of the INT, FP and NF formats used in our experiments are as
+    follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'INT4: [-8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7]'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'FP4: [-6, -4, -3, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 3, 4, 6]'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'NF4: [-1, -0.6961928009986877, -0.5250730514526367, -0.39491748809814453, -0.28444138169288635,
+    -0.18477343022823334, -0.09105003625154495, 0, 0.07958029955625534, 0.16093020141124725,
+    0.24611230194568634, 0.33791524171829224, 0.44070982933044434, 0.5626170039176941,
+    0.7229568362236023, 1]'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'INT3: [-4, -3, -2, -1, 0, 1, 2, 3]'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'FP3: [-4, -2, -1, 0, 1, 2, 4]'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'NF3: [-1, -0.5350227355957031, -0.2469314038753510, 0, 0.1833375245332718,
+    0.3819939494132996, 0.6229856610298157, 1]'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B Quantization algorithm
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We present the pseudocode of the quantization algorithm used in our experiments
+    in Algorithm [1](#alg1 "Algorithm 1 ‣ Appendix B Quantization algorithm ‣ AFPQ:
+    Asymmetric Floating Point Quantization for LLMs"), including existing INT-based
+    algorithm and FP-based algorithm.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // $weight_{max}$ represents the range of quantization formats
+  prefs: []
+  type: TYPE_NORMAL
+- en: // INT-based algorithm
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'def INTQuant:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: for *weight group in weight tensor to quantize* do
+  prefs: []
+  type: TYPE_NORMAL
+- en: $scale=\frac{weight_{max}-weight_{min}}{range}$end for
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 1 Basic quantization methods
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix C Results of AFPQ with FP formats
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Additional results of RTN quantization using FP4/3 formats are shown in Table [7](#A3.T7
+    "Table 7 ‣ Appendix C Results of AFPQ with FP formats ‣ AFPQ: Asymmetric Floating
+    Point Quantization for LLMs") and Table [8](#A3.T8 "Table 8 ‣ Appendix C Results
+    of AFPQ with FP formats ‣ AFPQ: Asymmetric Floating Point Quantization for LLMs"),
+    respectively.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 7: WikiText-2 perplexity and MMLU average accuracy on LLaMA2 models after
+    FP4 RTN quantization'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | LLaMA2-7B | LLaMA2-13B | LLaMA2-70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | g-1 | g256 | g128 | g64 | g-1 | g256 | g128 | g64 | g-1 | g256 | g128
+    | g64 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | FP16 | 5.47 | 4.88 | 3.32 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WikiText-2 $\downarrow$ | INT4 | 6.12 | 5.75 | 5.72 | 5.67 | 5.20 | 5.02
+    | 4.98 | 4.97 | 3.67 | 3.49 | 3.46 | 3.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP4-sym | 5.89 | 5.73 | 5.70 | 5.67 | 5.11 | 5.03 | 5.02 | 5.01 | 3.54 |
+    3.47 | 3.46 | 3.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | FP4-asym | 5.82 | 5.71 | 5.70 | 5.67 | 5.09 | 5.02 | 5.01 | 4.99 | 3.52
+    | 3.47 | 3.45 | 3.43 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | FP16 | 46.58 | 55.38 | 69.58 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MMLU(%) $\uparrow$ | INT4 | 40.31 | 43.67 | 45.28 | 45.59 | 52.92 | 54.09
+    | 54.33 | 54.44 | 67.82 | 68.43 | 68.32 | 68.53 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP4-sym | 44.14 | 44.25 | 43.74 | 44.04 | 53.77 | 54.17 | 54.83 | 54.62 |
+    68.14 | 68.72 | 68.71 | 68.90 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | FP4-asym | 45.25 | 44.61 | 45.15 | 44.55 | 54.23 | 54.47 | 54.70 | 54.99
+    | 68.74 | 68.65 | 68.86 | 69.06 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 8: WikiText-2 perplexity and MMLU average accuracy on LLaMA2 models after
+    FP3 RTN quantization'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | LLaMA2-7B | LLaMA2-13B | LLaMA2-70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | g-1 | g256 | g128 | g64 | g-1 | g256 | g128 | g64 | g-1 | g256 | g128
+    | g64 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---
+    | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | FP16 | 5.47 | 4.88 | 3.32 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WikiText-2 $\downarrow$ | INT3 | 542.80 | 7.10 | 6.66 | 6.40 | 10.68 | 5.67
+    | 5.52 | 5.39 | 7.53 | 4.11 | 3.98 | 3.85 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP3-sym | 1621.90 | 7.16 | 6.89 | 6.64 | 12.76 | 5.82 | 5.66 | 5.54 | 8.43
+    | 4.22 | 4.11 | 4.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | FP3-asym | 18.72 | 6.89 | 6.63 | 6.48 | 7.72 | 5.69 | 5.57 | 5.41 | 5.93
+    | 4.11 | 4.01 | 3.89 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | FP16 | 46.58 | 55.38 | 69.58 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MMLU(%) $\uparrow$ | INT3 | 25.22 | 37.46 | 38.50 | 40.06 | 27.79 | 48.91
+    | 51.23 | 50.77 | 34.39 | 64.77 | 65.05 | 66.16 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP3-sym | 23.73 | 31.75 | 36.55 | 33.08 | 27.13 | 48.66 | 49.76 | 49.89 |
+    32.32 | 64.65 | 65.17 | 65.91 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | FP3-asym | 27.32 | 35.42 | 40.33 | 40.24 | 36.15 | 50.09 | 50.72 | 51.60
+    | 49.74 | 64.62 | 66.14 | 66.41 |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix D Kernel implementation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Currently, W-only quantization requires low-bit weights to be dequantized to
+    FP16 during inference, and then calculations are performed with the FP16 activations.
+    In our system implementation, we store two 4-bit quantized weights using one byte.
+    During dequantization, we load the byte and recover it to two 4-bit weights.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For INT and FP formats, the conversion from 4-bit to FP16 values can be completed
+    by algebraic computation. For NP formats, it can be realized by using look-up
+    tables (LUTs). Then these values can be further dequantized using the methods
+    in Algorithm[1](#alg1 "Algorithm 1 ‣ Appendix B Quantization algorithm ‣ AFPQ:
+    Asymmetric Floating Point Quantization for LLMs").'
+  prefs: []
+  type: TYPE_NORMAL

@@ -1,0 +1,1634 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:49:17'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'SpinQuant: LLM Quantization with Learned Rotations'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2405.16406](https://ar5iv.labs.arxiv.org/html/2405.16406)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: \DeclareDocumentCommand\pdd
+  prefs: []
+  type: TYPE_NORMAL
+- en: O O m ∂#2​#1∂#3#2
+  prefs: []
+  type: TYPE_NORMAL
+- en: Zechun Liu     Changsheng Zhao${}^{*}$    Igor Fedorov    Bilge Soran    Dhruv
+    Choudhary
+  prefs: []
+  type: TYPE_NORMAL
+- en: Raghuraman Krishnamoorthi    Vikas Chandra    Yuandong Tian    Tijmen Blankevoort
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Meta   Equal contribution. Correspondence to: Zechun Liu <zechunliu@meta.com>.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Post-training quantization (PTQ) techniques applied to weights, activations,
+    and the KV cache greatly reduce memory usage, latency, and power consumption of
+    Large Language Models (LLMs), but may lead to large quantization errors when outliers
+    are present. Recent findings suggest that rotating activation or weight matrices
+    helps remove outliers and benefits quantization. In this work, we identify a collection
+    of applicable rotation parameterizations that lead to identical outputs in full-precision
+    Transformer architectures, and find that some random rotations lead to much better
+    quantization than others, with an up to *13 points* difference in downstream zero-shot
+    reasoning performance. As a result, we propose SpinQuant that *optimizes* (or
+    *learns*) the rotation matrices with Cayley optimization on a small validation
+    set. With 4-bit quantization of weight, activation, and KV-cache, SpinQuant narrows
+    the accuracy gap on zero-shot reasoning tasks with full precision to merely 2.9
+    points on the LLaMA-2 7B model, surpassing LLM-QAT by 19.1 points and SmoothQuant
+    by 25.0 points. SpinQuant also outperforms concurrent work QuaRot, which applies
+    random rotations to remove outliers. In particular, for LLaMA-2 7B/LLaMA-3 8B
+    models that are hard to quantize, SpinQuant reduces the gap to full precision
+    by 30.2%/34.1% relative to QuaRot.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Large Language models (LLMs) have demonstrated impressive performance across
+    many disciplines. SoTA open source models (e.g., LLaMA [[40](#bib.bib40)], Mistral
+    [[17](#bib.bib17)], etc) and proprietary LLMs (e.g., GPT [[2](#bib.bib2)], Gemini[[37](#bib.bib37)],
+    etc) have been used in general purpose chatting assistants, medical diagnosticians
+    [[38](#bib.bib38)], computer game content generators [[10](#bib.bib10)], coding
+    co-pilots [[32](#bib.bib32)], and much more.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To serve such a high demand, the inference cost becomes a real issue. Many effective
+    techniques have been developed. Post-training Quantization (PTQ), as one effective
+    category of techniques, quantizes the weights (or activations) into low-precision
+    and thus reduces the memory usage and may significantly improve latency. This
+    is not only important for server-side inference, but also for on-device scenarios
+    with small-sized LLMs [[26](#bib.bib26)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When applying quantization, outliers remain an open challenge because they
+    stretch the quantization range, leaving fewer effective bits available for the
+    majority of values. Prior research mitigates this challenge by trading quantization
+    difficulty between weights and activations [[43](#bib.bib43), [23](#bib.bib23)]
+    or employing mixed-precision to handle outliers [[47](#bib.bib47)]. Recent studies
+    take a different angle by demonstrating an interesting property: Multiplying the
+    weight matrix with a random rotation can effectively reduce outliers and enhance
+    quantizability [[7](#bib.bib7), [41](#bib.bib41)]. Intuitively, due to the statistical
+    property of random rotation, such a transform yields a outlier-less distribution
+    of resulting weight or activation entries [[13](#bib.bib13)]. Since the rotation
+    matrices can be constructed in pairs from identity mapping, and get integrated
+    into nearby weights without changing the overall network outputs, a property known
+    as *rotational invariance*[[4](#bib.bib4)], the transformed weights (or activations)
+    can be quantized with lower reconstruction error, without additional inference
+    overhead.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: While statistically any random rotation works well, in this paper, we find that
+    the performance of quantized network *varies a lot* with different rotation matrices.
+    For example, the downstream averaged accuracy on zero-shot reasoning tasks may
+    change up to 13 points with different rotations. As a result, we propose SpinQuant
+    that *optimizes* the rotation matrix to minimize the final loss of the quantized
+    network, with fixed weight parameters, by employing the Cayley SGD[[21](#bib.bib21)],
+    a proficient technique for optimizing orthonormal matrices. This optimization
+    does not alter the full-precision network output but refines the intermediate
+    activations and weights, making them more quantization-friendly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In SpinQuant, we also extend the concept of outlier reduction for single matrices [[7](#bib.bib7),
+    [41](#bib.bib41)] to a comprehensive network-level perspective. We identify four
+    different places that are rotationally invariant in most prevalent LLMs (e.g.,
+    OPT [[46](#bib.bib46)], LLaMA [[39](#bib.bib39)]), as depicted in Figure [1](#S1.F1
+    "Figure 1 ‣ 1 Introduction ‣ ​SpinQuant: LLM Quantization with Learned Rotations​").
+    This constitutes the optimization space of SpinQuant.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Experimental results demonstrate that SpinQuant significantly improves accuracy
+    compared to random rotation matrices. With 4-bit quantization of weights, activations,
+    and KV cache, SpinQuant achieves an average accuracy of 64.0 on zero-shot commonsense
+    reasoning tasks for LLaMA-2 7B. This marks a gap of just 2.9 points from the full-precision
+    network, considerably better than previous LLM-QAT [[25](#bib.bib25)] with a gap
+    as large as 22.0 points despite using the same precision. We also demonstrate
+    results on LLaMA-3, showing 17.7 points accuracy improvement than SmoothQuant [[43](#bib.bib43)]
+    on 70B model with 4-bit weights, activations, and KV cache quantization, narrowing
+    the gap to full-precision to only 4.4 points. In terms of speed, it only takes
+    100 iterations (and 1.3 hours) to optimize the rotation matrices on 800 WikiText2[[27](#bib.bib27)]
+    calibration data for a LLaMA-2 7B model on a single A100 node.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/9c2b7103c351bb09ba8ca6fe6e4e4c79.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Overall diagram of rotation. (a) The residual stream can be rotated
+    in the transformer network, resulting in numerically equivalent floating point
+    networks before and after rotation. The rotated activations exhibit fewer outliers
+    and are easier to quantize. (b) & (c) The rotation matrix can be integrated with
+    the corresponding weight matrices and we further define $R_{2}$ for reducing outliers
+    inside the block.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Motivation and Preliminaries
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/75cfad6c597e7cc540738199a4c3dbed.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Activation distribution in LLaMA-2 7B model before and after rotation.
+    Outliers exist in particular channels before rotation. Since channel-wise quantization
+    is not supported in most hardware, outlier removal using rotation enables accurate
+    token-wise or tensor-wise quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/76bbed934b175dad8a40b4388d492367.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Outlier measurement and quantization error across input activation
+    and weights in the five layers that take inputs from the residual (Q/K/V/Up/Gate-projection)
+    of each block in the LLaMA-2 7B model. (a) After rotation, kurtosis of activation
+    distributions is significantly reduced to approximately three across all layers.
+    Quantization error is reduced after rotation in both (b) activations and (c) weights.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Quantization reduces the precision of weights (and/or activations) in a neural
+    network in order to save memory and lower the latency. For Large language models
+    (LLMs), the presence of outliers extends the range of weight/activation values
+    and increases the reconstruction errors for normal values [[11](#bib.bib11), [24](#bib.bib24),
+    [44](#bib.bib44)] (Figures [2](#S2.F2 "Figure 2 ‣ 2 Motivation and Preliminaries
+    ‣ ​SpinQuant: LLM Quantization with Learned Rotations​") (a)&(c)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.1 Outlier Reduction via Random Rotation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: There exist many ways to mitigate the effect of outliers [[43](#bib.bib43),
+    [11](#bib.bib11)]. In this paper, we focus on the technique that uses random rotation
+    to reduce outliers, which outperforms previous approaches. Intuitively, a random
+    rotation matrix statistically blends large and small weights together into a well-behaved
+    distribution with fewer outliers, and thus is easier to quantize. Theoretically,
+    QuIP[[7](#bib.bib7), [41](#bib.bib41)] proves that multiplication of random orthonormal
+    matrix leads to high incoherence (i.e., lower maximal entry of a matrix compared
+    to its norm) with high probability and thus fewer outliers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure [3](#S2.F3 "Figure 3 ‣ 2 Motivation and Preliminaries ‣ ​SpinQuant:
+    LLM Quantization with Learned Rotations​") (a) illustrates the measurement of
+    the Kurtosis $\kappa$ across all layers becomes approximately 3, indicating a
+    more Gaussian-shaped distribution that is easier to quantize. This is corroborated
+    by Figure [3](#S2.F3 "Figure 3 ‣ 2 Motivation and Preliminaries ‣ ​SpinQuant:
+    LLM Quantization with Learned Rotations​") (b), where the quantization error of
+    the activation tensor significantly decreases after rotation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/b0e645b2c1d6440ce1c0763949888d0f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: The performance distributions under different random rotations on
+    LLaMA-2 7B, using network-level parameterization (Sec. [3.1](#S3.SS1 "3.1 Rotation
+    parameterization ‣ 3 Method ‣ ​SpinQuant: LLM Quantization with Learned Rotations​")).
+    We compare the distributions using random floating-point rotations, random Hadamard
+    matrices, and optimized rotation matrices with Cayley optimization (Sec. [3.2](#S3.SS2
+    "3.2 Cayley-optimized rotation ‣ 3 Method ‣ ​SpinQuant: LLM Quantization with
+    Learned Rotations​")). Despite that Hadamard matrices mostly perform better than
+    random rotations, both random groups demonstrate large variance. In contrast,
+    by optimizing the rotation matrix with Cayley optimization (i.e., SpinQuant),
+    the performance is improved significantly and the variance becomes much smaller.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2 Random rotations produce large variance
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Interestingly, while statistically random rotation leads to better quantization,
+    not all random rotations give the same quantization outcome. To show this, we
+    tested the zero-shot average accuracy of the rotated version of LLaMA-2 7B, quantized
+    to 4-bit weight and 4-bit activation, under 100 randomized trials. As shown in
+    Figure [4](#S2.F4 "Figure 4 ‣ 2.1 Outlier Reduction via Random Rotation ‣ 2 Motivation
+    and Preliminaries ‣ ​SpinQuant: LLM Quantization with Learned Rotations​"), the
+    performance variance is substantial, with the best random matrix outperforming
+    the worst by 13 points. Random Hadamard matrices ¹¹1A Hadamard matrix $H$. outperform
+    random matrices, in consistent with the findings in [[41](#bib.bib41)] that Hadamard
+    matrices yield tighter bounds on weight quantization error. However, even random
+    Hadamard rotation matrices exhibit a non-negligible variance in final performance,
+    as large as 6 points.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Given the huge variance across multiple trials of rotations, a natural question
+    arises:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Is it possible to *optimize* the rotation to maximize the benefit of quantization?
+  prefs: []
+  type: TYPE_NORMAL
+- en: As the main contribution of this work, we show that not only it is possible
+    to do so, but also such an optimization procedure leads to a much better quantized
+    network. For LLaMA-2 7B, it reduces the gap between the 4-bit quantization of
+    weights, activations, and KV caches and its 16-bit precision version to merely
+    2.9 points. It also works well for LLaMA-3 70B, whose performance deteriorates
+    under existing quantization techniques [[15](#bib.bib15)], shrinking the 4-bit
+    quantized network accuracy gap to full-precision from previous SoTA 9.4 points
+    to 4.4 points.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Method
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we introduce our rotation parameterization of popular LLM architectures,
+    which covers a broad search space to optimize. Such a parameterization leads to
+    identity network output without quantization. We then introduce Cayley optimization
+    to optimize these rotations for better downstream performance under quantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Rotation parameterization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Rotating activations in residual As shown in Figure [1](#S1.F1 "Figure 1 ‣
+    1 Introduction ‣ ​SpinQuant: LLM Quantization with Learned Rotations​")(a), we
+    rotate the activations in the residual path by multiplying the embedding output
+    $X$ freely without impacting the floating-point network’s accuracy or parameter
+    count.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Rotating activations in the attention block As depicted in Figure [1](#S1.F1
+    "Figure 1 ‣ 1 Introduction ‣ ​SpinQuant: LLM Quantization with Learned Rotations​")
+    (b), in the attention block, we propose to rotate the value matrix by multiplying
+    $R_{2}$) without introducing any new parameters in the network.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/5838ca70b2286109dddc9691c1f24bcf.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: Rotation equivalence in Multi-Head Self-Attention.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Additional unabsorbed rotations To further address the presence of outliers
+    in KV-cache, we adopt a recent approach [[5](#bib.bib5)], which adds a Hadamard
+    matrix ($R_{3}$ in Figure [1](#S1.F1 "Figure 1 ‣ 1 Introduction ‣ ​SpinQuant:
+    LLM Quantization with Learned Rotations​")(c)) inside the feed-forward layer,
+    reducing the outliers in the input to the down projection layer [[5](#bib.bib5)].'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/50e631cca98a0983da7d801872a925c9.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: Application of rotation pair to (a) query and key (b) down project
+    layer input.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After inserting rotation into LLM, the difficulty of network quantization is
+    significantly alleviated due to outlier elimination. As shown in Figure [3](#S2.F3
+    "Figure 3 ‣ 2 Motivation and Preliminaries ‣ ​SpinQuant: LLM Quantization with
+    Learned Rotations​") (b), activation quantization error drops sharply from as
+    high as 0.7 to around 0.15\. In addition, weight quantization also becomes easier
+    by absorbing the rotation matrix into the weight matrix, as shown in Figure [3](#S2.F3
+    "Figure 3 ‣ 2 Motivation and Preliminaries ‣ ​SpinQuant: LLM Quantization with
+    Learned Rotations​") (c), as depicted in Figure [3](#S2.F3 "Figure 3 ‣ 2 Motivation
+    and Preliminaries ‣ ​SpinQuant: LLM Quantization with Learned Rotations​") (c),
+    remarking rotation as a beneficial technique that simultaneously helps both weight
+    and activation quantization with a single implementation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Cayley-optimized rotation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'As illustrated in Figure [1](#S1.F1 "Figure 1 ‣ 1 Introduction ‣ ​SpinQuant:
+    LLM Quantization with Learned Rotations​"), we have determined that the incorporation
+    of four rotation matrices ($R_{1}$ that minimizes the final loss of the quantized
+    network:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\operatorname*{arg\,min}_{R\in\mathcal{M}}\mathcal{L}_{Q}(R_{1},R_{2}\mid
+    W,X)$ |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Here, $\mathcal{M}$ is parameterized as the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $R^{\prime}=\Delta R(Y)R:=\left(I-\frac{\alpha}{2}Y\right)^{-1}\left(I+\frac{\alpha}{2}Y\right)R$
+    |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $\Delta R(Y):=(I-\frac{\alpha}{2}Y)^{-1}(I+\frac{\alpha}{2}Y)$ of the
+    loss function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $Y=\hat{G}-\hat{G}^{\top},\quad\quad\hat{G}:=GR^{\top}-\frac{1}{2}RR^{\top}GR^{\top}$
+    |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: It can be shown that $\Delta R(Y)$2 times the computation time per iteration
+    compared to a naive SGD algorithm.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We apply the Cayley SGD method to solve Eqn. ([1](#S3.E1 "Equation 1 ‣ 3.2
+    Cayley-optimized rotation ‣ 3 Method ‣ ​SpinQuant: LLM Quantization with Learned
+    Rotations​")) for $\{R_{1},R_{2}\}$ count for only 0.26% of the weight size and
+    is constrained to be orthonormal. Consequently, the underlying floating-point
+    network remains unchanged, and the rotation only influences the quantization performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'By employing Cayley optimization to update the rotation for 100 iterations
+    on an 800-sample WikiText2 calibration dataset, we obtain a rotation matrix that
+    outperforms the best random matrix and random Hadamard matrix in 100 random seeds,
+    shown in Figure [4](#S2.F4 "Figure 4 ‣ 2.1 Outlier Reduction via Random Rotation
+    ‣ 2 Motivation and Preliminaries ‣ ​SpinQuant: LLM Quantization with Learned Rotations​").
+    The Cayley-optimized rotation exhibits minimal variance when initiated from different
+    random seeds. The rotation matrices are initialized with random Hadamard matrices
+    for optimization in our experiments and our ablation study in Section [4.3.3](#S4.SS3.SSS3
+    "4.3.3 Rotation type ‣ 4.3 Ablation studies ‣ 4.2 Main results ‣ 4 Experiments
+    ‣ ​SpinQuant: LLM Quantization with Learned Rotations​") demonstrates that the
+    optimized rotation is robust to random rotation initialization as well.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We conduct experiments on the LLaMA-2[[40](#bib.bib40)] models (7B/13B/70B)
+    and the LLaMA-3[[3](#bib.bib3)] models (8B/70B). Our evaluation of the proposed
+    SpinQuant was carried out on eight zero-shot commonsense reasoning tasks. These
+    tasks include BoolQ[[8](#bib.bib8)], PIQA[[6](#bib.bib6)], SIQA[[34](#bib.bib34)],
+    HellaSwag[[45](#bib.bib45)], WinoGrande[[33](#bib.bib33)], ARC-easy and ARC-challenge[[9](#bib.bib9)],
+    and OBQA [[28](#bib.bib28)]. Additionally, we also report the perplexity score
+    on WikiText2 testset [[27](#bib.bib27)] for our evaluation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Experimental settings
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We employ Cayley SGD [[21](#bib.bib21)] to optimize the rotation matrix, $R_{1}$12
+    hours for 70B models on 8 A100 GPUs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first results we show employ simple round-to-nearest (RTN) quantization
+    for the weights. The activation and key-value cache use asymmetric min-max dynamic
+    quantization, with per-token activation quantization and group size 128 for the
+    key-value quantization. Weight quantization employs per-channel symmetric quantization,
+    and we set the quantization ranges via a linear search of the mean-squared error
+    loss between quantized full-precision weights, following common practice [[7](#bib.bib7),
+    [30](#bib.bib30), [24](#bib.bib24)]. Besides rounding-to-nearest, we also show
+    that our method is compatible with GPTQ [[14](#bib.bib14)], for which we adhere
+    to the standard GPTQ settings by using 128 samples from WikiText-2 with a sequence
+    length of 2048 as the calibration set for GPTQ quantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Main results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Table 1: Comparison of the perplexity score on WikiText2 and averaged accuracy
+    on Zero-shot Common Sense Reasoning tasks. 0-shot${}^{4}$ adds BoolQ, SIQA, HellaSwag,
+    and OBQA tasks. Results for SmoothQuant[[43](#bib.bib43)], LLM-QAT[[25](#bib.bib25)],
+    GPTQ [[14](#bib.bib14)], and QuaRot [[5](#bib.bib5)] were obtained using their
+    publicly released codebase. While OmniQuant [[35](#bib.bib35)], AQLM [[12](#bib.bib12)],
+    AWQ [[23](#bib.bib23)], QuIP [[7](#bib.bib7)], and QuIP# [[41](#bib.bib41)] results
+    were quoted from their papers. SpinQuant* and QuaRot* represent using RTN quantization,
+    while SpinQuant and QuaRot denote using GPTQ weight quantization. Mean scores
+    for SpinQuant, GPTQ, and QuaRot are reported from six trials. Full results, including
+    error bars, are in the Appendix.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | LLaMA-3 8B | LLaMA-3 70B | LLaMA-2 7B | LLaMA-2 13B | LLaMA-2 70B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline3-15 #Bits | Method | 0-shot${}^{8}$ | Wiki |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---
+    | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W-A-KV |  | Avg.($\uparrow$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---
+    | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 16-16-16 | FloatingPoint | 69.6 | 6.1 | 74.5 | 2.8 | 68.6 | 66.9 | 5.5 |
+    69.9 | 68.3 | 5.0 | 76.0 | 72.9 | 3.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \hdashline 4-16-16 | RTN | 65.4 | 7.8 | 35.5 | 1e5 | 65.3 | 63.6 | 7.2 |
+    59.9 | 57.9 | 6.4 | 72.3 | 69.2 | 4.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | SmoothQuant | 61.0 | 10.7 | 66.9 | 12.0 | 62.3 | 59.1 | 7.5 | 66.1 | 63.3
+    | 6.1 | 73.6 | 70.2 | 4.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | LLM-QAT | 67.7 | 7.1 | – | – | 67.1 | 64.9 | 5.9 | – | – | – | – | – |
+    – |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | OmniQuant | – | – | – | – | 62.5 | – | 5.7 | 64.9 | – | 5.0 | 71.1 | –
+    | 3.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | QuIP | – | – | – | – | – | – | – | 66.7 | – | – | 69.4 | – | – |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | AQLM | – | – | – | – | 63.6 | – | – | 66.3 | – | – | 71.9 | – | – |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | QuIP# | – | – | – | – | 63.9 | – | – | 67.1 | – | – | 71.8 | – | – |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | AWQ | – | – | – | – | – | – | 6.2 | – | – | 5.1 | – | – | – |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | GPTQ | 66.5 | 7.2 | 35.7 | 1e5 | 66.6 | 64.5 | 11.3 | 67.0 | 64.7 | 5.6
+    | 75.0 | 71.9 | 3.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | QuaRot* | 66.2 | 7.5 | 57.2 | 41.6 | 64.5 | 62.4 | 6.9 | 69.3 | 67.1 |
+    5.5 | 74.6 | 71.8 | 3.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | QuaRot | 68.4 | 6.4 | 70.3 | 7.9 | 67.6 | 65.8 | 5.6 | 70.3 | 68.3 | 5.0
+    | 75.2 | 72.2 | 3.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | SpinQuant* | 67.6 | 6.5 | 71.4 | 3.9 | 66.7 | 64.6 | 5.5 | 69.6 | 67.4
+    | 4.9 | 74.9 | 72.2 | 3.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | SpinQuant | 68.5 | 6.4 | 71.6 | 4.8 | 67.7 | 65.9 | 5.6 | 70.5 | 68.5
+    | 5.0 | 75.4 | 72.6 | 3.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \hdashline 4-4-16 | RTN | 38.5 | 9e2 | 35.6 | 1e5 | 37.3 | 35.6 | 2e3 | 37.9
+    | 35.3 | 7e3 | 37.2 | 35.1 | 2e5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | SmoothQuant | 40.3 | 8e2 | 55.3 | 18.0 | 44.2 | 41.8 | 2e2 | 46.4 | 44.9
+    | 34.5 | 46.8 | 64.6 | 57.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | LLM-QAT | 44.9 | 42.9 | – | – | 48.8 | 47.8 | 12.9 | – | – | – | – | –
+    | – |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | OmniQuant | – | – | – | – | – | – | 14.3 | – | – | 12.3 | – | – | – |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | GPTQ | 37.0 | 9e2 | 35.3 | 1e5 | 38.3 | 36.8 | 8e3 | 37.7 | 35.3 | 5e3
+    | 37.8 | 35.5 | 2e6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | QuaRot* | 59.5 | 10.4 | 41.5 | 91.2 | 60.9 | 59.0 | 8.2 | 66.9 | 64.8
+    | 6.1 | 72.6 | 69.7 | 4.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | QuaRot | 63.8 | 7.9 | 65.4 | 20.4 | 65.6 | 63.5 | 6.1 | 68.5 | 66.7 |
+    5.4 | 72.9 | 70.4 | 3.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | SpinQuant* | 64.6 | 7.7 | 70.1 | 4.1 | 63.6 | 61.8 | 6.1 | 67.7 | 65.8
+    | 5.4 | 73.5 | 71.1 | 3.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | SpinQuant | 65.8 | 7.1 | 69.5 | 5.5 | 65.9 | 64.1 | 5.9 | 69.3 | 67.2
+    | 5.2 | 73.5 | 71.0 | 3.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \hdashline 4-4-4 | RTN | 38.2 | 1e3 | 35.2 | 1e5 | 38.2 | 37.1 | 2e3 | 37.2
+    | 35.4 | 7e3 | 37.4 | 35.0 | 2e5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | SmoothQuant | 38.7 | 1e3 | 52.4 | 22.1 | 40.1 | 39.0 | 6e2 | 42.7 | 40.5
+    | 56.6 | 58.8 | 55.9 | 10.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | LLM-QAT | 43.2 | 52.5 | – | – | 45.5 | 44.9 | 14.9 | – | – | – | – | –
+    | – |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | GPTQ | 37.1 | 1e3 | 35.1 | 1e5 | 38.1 | 36.8 | 9e3 | 37.4 | 35.2 | 5e3
+    | 37.8 | 35.6 | 1e6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | QuaRot* | 58.6 | 10.9 | 41.3 | 92.4 | 60.5 | 58.7 | 8.2 | 66.5 | 64.4
+    | 6.2 | 72.2 | 69.5 | 4.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | QuaRot | 63.3 | 8.0 | 65.1 | 20.2 | 64.4 | 62.5 | 6.4 | 68.1 | 66.2 |
+    5.4 | 73.0 | 70.3 | 3.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | SpinQuant* | 64.1 | 7.8 | 70.1 | 4.1 | 63.2 | 61.5 | 6.2 | 67.7 | 65.5
+    | 5.4 | 73.2 | 70.5 | 3.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | SpinQuant | 65.2 | 7.3 | 69.3 | 5.5 | 66.0 | 64.0 | 5.9 | 68.9 | 66.9
+    | 5.3 | 73.7 | 71.2 | 3.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Our primary comparison metric is accuracy in challenging 4-bit quantization
+    scenarios, which include weight quantization, activation quantization, and KV-cache
+    quantization. We use RTN to map weights, activations, and KV-cache to integers
+    for inference, after applying the Cayley-optimized $R$. We compare SpinQuant to
+    state-of-the-art quantization methods on LLaMA-2 and LLaMA-3 in Table [4.2](#S4.SS2
+    "4.2 Main results ‣ 4 Experiments ‣ ​SpinQuant: LLM Quantization with Learned
+    Rotations​"), where we represent the number of bits for weight, activation, and
+    KV-cache as W-A-KV. We compare our proposed method against other PTQ methods including,
+    GPTQ [[14](#bib.bib14)], SmoothQuant [[43](#bib.bib43)], QuIP [[7](#bib.bib7)],
+    QuIP# [[41](#bib.bib41)], OmniQuant [[35](#bib.bib35)], AQLM [[12](#bib.bib12)],
+    as well as a quantization-aware training (QAT) method, LLM-QAT [[25](#bib.bib25)].
+    We also compare our results to a concurrent work QuaRot [[5](#bib.bib5)].'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the most challenging 4-4-4 quantization setting, SpinQuant significantly
+    surpasses LLM-QAT, by 19.1 points on the LLaMA-2 7B models, thereby reducing the
+    gap to the corresponding full-precision network to a mere 2.9 points, respectively.
+    This is measured in terms of the average accuracy across eight zero-shot tasks.
+    This represents a significant advancement, given the difficulties previous work
+    encountered in generating meaningful results in this context. Furthermore, SpinQuant
+    also outperforms QuaRot by non-negligible 1.5 points on LLaMA-2 7B models. When
+    applying SpinQuant approach to larger models, we can obtain 4-4-4 LLaMA-2 13B
+    and LLaMA-2 70B models with only 1.4 and 1.7 points gap to the corresponding full-precision
+    network, respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is noteworthy that our LLaMA-3 quantization experiences a larger degradation
+    compared to LLaMA-2\. This trend is also observed in a recent work [[15](#bib.bib15)],
+    suggesting that LLaMA-3 is generally more difficult to quantize. The previously
+    best 4-4-4 quantized model, obtained with QuaRot, had a 6.3 point gap to full
+    precision on the 8B model and an even larger drop of 9.4 points on the 70B model.
+    In contrast, SpinQuant improves the LLaMA-3 8B and 70B models by 1.9 points and
+    5.0 points respectively, reducing the gap to approximately 4.4 points for both
+    model sizes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the 4-4-16 quantization setting, SpinQuant consistently outperforms previous
+    work with a non-negligible margin. Notably, using SpinQuant for W4A4 quantization
+    yields gaps to floating point networks as small as 2.8/1.1/1.8 points averaged
+    across eight zero-shot tasks on LLaMA-2 7B/13B/70B models, respectively. In LLaMA-3
+    models, SpinQuant further narrows the accuracy gap to full precision from the
+    previous SoTA of 5.8 points to 3.8 points on the 8B model, and from 9.1 to 4.4
+    points on the 70B model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the context of 4-bit weight-only quantization, SpinQuant continues to demonstrate
+    its effectiveness in enhancing accuracy and minimizing the disparity between the
+    quantized network and full-precision network to $\sim$1 point on the average zero-shot
+    accuracy on LLaMA-3 8B and LLaMA-2 models, and shows significant improvement on
+    the LLaMA-3 70B model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 Ablation studies
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 4.3.1 Compatibility with GPTQ
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Table 2: Compatibility with GPTQ.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| #Bits${}_{\text{(W-A-KV)}}$ | Task | Cayley on 4-4-KV | Cayley on 16-4-KV
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4-4-16 | 0-shot${}^{8}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wiki | 6.7 ${}_{\pm 0.07}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4-4-4 | 0-shot${}^{8}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wiki | 6.8 ${}_{\pm 0.15}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: 'In the context where both weights and activations are quantized, we observed
+    that the Cayley-optimized rotations tend to adapt effectively to both weight and
+    activation quantization. Given that GPTQ significantly helps mitigate the errors
+    due to weight quantization, but leaves activation quantization untouched, we elect
+    to optimize the rotation matrices with respect to a network where only activations
+    are quantized. This approach allows the rotation to more efficiently manage the
+    activation quantization error, while leaving the weight quantization error to
+    be addressed by GPTQ. As shown in Table [2](#S4.T2 "Table 2 ‣ 4.3.1 Compatibility
+    with GPTQ ‣ 4.3 Ablation studies ‣ 4.2 Main results ‣ 4 Experiments ‣ ​SpinQuant:
+    LLM Quantization with Learned Rotations​"), this modification resulted in superior
+    performance in both W4A4 and W4A4KV4 settings in the LLaMA-2 7B model, which is
+    the configuration we have chosen to utilize throughout the rest of this paper.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3.2 Impact of each rotation
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Table 3: Impact of individual rotation matrices ($R_{1}$ (down projection layer
+    input rotation).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | W4A16KV16 | W4A4KV16 | W4A4KV4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 0-shot${}^{8}$ | Wiki |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Rotation | Avg.($\uparrow$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| no rotation | 63.6 | 7.2 | 35.6 | 2167.2 | 37.1 | 2382.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $R_{1}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $R_{1}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $R_{1}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $R_{1}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: We performed an ablation study to assess the influence of each rotation matrix,
+    employing round-to-nearest quantization for our evaluation. Cayley optimization
+    was used to optimize $R_{1}$, effectively restoring the accuracy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3.3 Rotation type
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Table 4: Floating-point(FP) rotation vs Hadamard rotation'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| #Bits |  | No Cayley + RTN | Cayley + RTN |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (W-A-KV) | Task | FP | Hadamard | FP init. | Hadamard init. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4-16-16 | 0-shot${}^{8}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wiki($\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4-4-16 | 0-shot${}^{8}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wiki($\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4-4-4 | 0-shot${}^{8}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wiki($\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: 'In Table [4](#S4.T4 "Table 4 ‣ 4.3.3 Rotation type ‣ 4.3 Ablation studies ‣
+    4.2 Main results ‣ 4 Experiments ‣ ​SpinQuant: LLM Quantization with Learned Rotations​"),
+    we evaluate the impact of random orthogonal floating-point rotation matrices and
+    random Hadamard matrices on quantization accuracy, utilizing round-to-nearest
+    quantization for our analysis. Prior to the application of Cayley optimization,
+    the Hadamard matrices yield better quantized network performance compared to floating-point
+    rotation matrices. However, after Cayley optimization, the initial choice of rotation,
+    whether floating-point or Hadamard, becomes less significant. This is likely due
+    to the Cayley optimization’s ability to locate an optimal local minima that effectively
+    minimizes quantization error, thereby enhancing robustness to varying types of
+    rotation initialization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Quantization Neural network quantization has been demonstrated as an effective
+    tool for model size compression and storage reduction [[30](#bib.bib30), [19](#bib.bib19),
+    [29](#bib.bib29), [22](#bib.bib22)]. However, in large language models (LLMs),
+    quantization presents unique challenges due to the presence of numerous outliers.
+    These outliers dominate the quantization range, leaving only a few effective bits
+    for the majority of values. Various strategies have been proposed to address the
+    difficulties in LLM quantization. These include separating outliers and using
+    mixed precision [[11](#bib.bib11), [42](#bib.bib42), [18](#bib.bib18)], employing
+    Hessian-based methods to mitigate quantization difficulty [[14](#bib.bib14)],
+    trading outliers between weights and activations [[43](#bib.bib43), [23](#bib.bib23),
+    [24](#bib.bib24)] utilizing weight equalization [[29](#bib.bib29)], and even suggesting
+    architectural modifications to handle outliers during pre-training[[44](#bib.bib44)].
+    Recently two QuIP papers [[7](#bib.bib7), [41](#bib.bib41)] introduce the incoherence
+    processing using random rotation matrices and applying vector quantization on
+    the weights for compression. This does introduce extra overhead and imposes some
+    constraints on the devices the LLM is deployed to in the availability of vector
+    quantization kernels. Ashkboos et al. [[5](#bib.bib5)] recently released their
+    method QuaRot. Our work was done concurrently with theirs. The authors also introduce
+    random rotation matrices in a similar fashion as our paper. However, there are
+    some notable differences. (1) Instead of relying on random matrices, we learn
+    the rotation matrices. As seen in section [2.2](#S2.SS2 "2.2 Random rotations
+    produce large variance ‣ 2 Motivation and Preliminaries ‣ ​SpinQuant: LLM Quantization
+    with Learned Rotations​"), if accidentally randomized to a poor random matrix
+    choice could be quite detrimental to performance. (2) We introduce less extra
+    parameters in our method with the rotation matrix inside of each block as in section
+    [3.1](#S3.SS1 "3.1 Rotation parameterization ‣ 3 Method ‣ ​SpinQuant: LLM Quantization
+    with Learned Rotations​"). (3) Our pipeline gives significantly better performance
+    compared to QuaRot, as demonstrated in Section [4](#S4 "4 Experiments ‣ ​SpinQuant:
+    LLM Quantization with Learned Rotations​").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Optimization in orthonormal space The optimization of rotation matrices is carried
+    out within the Stiefel Manifold [[16](#bib.bib16)], which encompasses all orthonormal
+    matrices. Optimization while staying on this manifold can be done by e.g., parameterizing
+    a skew-symmetric matrix and applying the Cayley transformation on top of it [[31](#bib.bib31)],
+    or using a matrix exponential [[1](#bib.bib1), [20](#bib.bib20)]. However, these
+    methods rely on expensive inverse or matrix-exponential functions that are applied
+    every iteration. Instead, we follow the more efficient method named Cayley SGD [[21](#bib.bib21)],
+    which can be applied to optimize a rotation matrix $R$ for arbitrary loss functions
+    efficiently. Cayley SGD relies on an iterative approximation of the Cayley Transform
+    that is conducted solely with matrix multiplications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Conclusions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this paper, we present SpinQuant, a novel quantization technique that effectively
+    bridges the performance gap between full precision and 4-bit weight, activation,
+    and kv-cache quantization, for the LLaMA-2 7B model to within a mere 2.9 points.
+    At its core, SpinQuant leverages the rotation invariance property of LLM models
+    to insert rotation matrices that diminish outliers in the weights and intermediate
+    activations while maintaining the network’s full-precision output numerically
+    identical. Additionally, SpinQuant incorporates Cayley SGD for optimizing rotation
+    matrices to boost quantization performance further. Importantly, our method is
+    compatible with more advanced weight quantization techniques (e.g., GPTQ) and
+    demonstrates state-of-the-art performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7 Limitations and Broader Impacts
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this study, we introduce a rotation-based quantization technique designed
+    for precise low-bit quantization of LLMs. This method has the potential to reduce
+    energy consumption during LLM inference. We evaluated our model’s performance
+    in an academic context. However, real-world tasks may involve different training
+    data and activation distributions, suggesting that the model’s generalizability
+    to real-world scenarios warrants further investigation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Absil and Malick [2012] P-A Absil and Jérôme Malick. Projection-like retractions
+    on matrix manifolds. *SIAM Journal on Optimization*, 22(1):135–158, 2012.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Achiam et al. [2023] Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ahmad,
+    Ilge Akkaya, Florencia Leoni Aleman, Diogo Almeida, Janko Altenschmidt, Sam Altman,
+    Shyamal Anadkat, et al. Gpt-4 technical report. *arXiv preprint arXiv:2303.08774*,
+    2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: AI@Meta [2024] AI@Meta. Llama 3 model card. 2024. URL [https://github.com/meta-llama/llama3/blob/main/MODEL_CARD.md](https://github.com/meta-llama/llama3/blob/main/MODEL_CARD.md).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ashkboos et al. [2023a] Saleh Ashkboos, Maximilian L Croci, Marcelo Gennari
+    do Nascimento, Torsten Hoefler, and James Hensman. Slicegpt: Compress large language
+    models by deleting rows and columns. In *The Twelfth International Conference
+    on Learning Representations*, 2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ashkboos et al. [2023b] Saleh Ashkboos, Amirkeivan Mohtashami, Maximilian L.
+    Croci, Bo Li, Martin Jaggi, Dan Alistarh, Torsten Hoefler, and James Hensman.
+    Quarot: Outlier-free 4-bit inference in rotated llms. 2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bisk et al. [2020] Yonatan Bisk, Rowan Zellers, Jianfeng Gao, Yejin Choi, et al.
+    Piqa: Reasoning about physical commonsense in natural language. In *Proceedings
+    of the AAAI conference on artificial intelligence*, volume 34, pages 7432–7439,
+    2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chee et al. [2024] Jerry Chee, Yaohui Cai, Volodymyr Kuleshov, and Christopher M
+    De Sa. Quip: 2-bit quantization of large language models with guarantees. *Advances
+    in Neural Information Processing Systems*, 36, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Clark et al. [2019] Christopher Clark, Kenton Lee, Ming-Wei Chang, Tom Kwiatkowski,
+    Michael Collins, and Kristina Toutanova. Boolq: Exploring the surprising difficulty
+    of natural yes/no questions. *arXiv preprint arXiv:1905.10044*, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Clark et al. [2018] Peter Clark, Isaac Cowhey, Oren Etzioni, Tushar Khot, Ashish
+    Sabharwal, Carissa Schoenick, and Oyvind Tafjord. Think you have solved question
+    answering? try arc, the ai2 reasoning challenge. *arXiv preprint arXiv:1803.05457*,
+    2018.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Cox and Ooi [2023] Samuel Rhys Cox and Wei Tsang Ooi. Conversational interactions
+    with npcs in llm-driven gaming: Guidelines from a content analysis of player feedback.
+    In *International Workshop on Chatbot Research and Design*, pages 167–184\. Springer,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. [2022] Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer.
+    Llm.int8(): 8-bit matrix multiplication for transformers at scale. 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Egiazarian et al. [2024] Vage Egiazarian, Andrei Panferov, Denis Kuznedelev,
+    Elias Frantar, Artem Babenko, and Dan Alistarh. Extreme compression of large language
+    models via additive quantization. *arXiv preprint arXiv:2401.06118*, 2024.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Elhage et al. [2023] Nelson Elhage, Robert Lasenby, and Christopher Olah. Privileged
+    bases in the transformer residual stream. *Transformer Circuits Thread*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Frantar et al. [2022] Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan
+    Alistarh. Gptq: Accurate post-training quantization for generative pre-trained
+    transformers. *arXiv preprint arXiv:2210.17323*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Huang et al. [2024] Wei Huang, Xudong Ma, Haotong Qin, Xingyu Zheng, Chengtao
+    Lv, Hong Chen, Jie Luo, Xiaojuan Qi, Xianglong Liu, and Michele Magno. How good
+    are low-bit quantized llama3 models? an empirical study. *arXiv preprint arXiv:2404.14047*,
+    2024.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: James [1976] Ioan Mackenzie James. *The topology of Stiefel manifolds*, volume 24.
+    Cambridge University Press, 1976.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Jiang et al. [2023] Albert Q Jiang, Alexandre Sablayrolles, Arthur Mensch, Chris
+    Bamford, Devendra Singh Chaplot, Diego de las Casas, Florian Bressand, Gianna
+    Lengyel, Guillaume Lample, Lucile Saulnier, et al. Mistral 7b. *arXiv preprint
+    arXiv:2310.06825*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kim et al. [2023] Sehoon Kim, Coleman Hooper, Amir Gholami, Zhen Dong, Xiuyu
+    Li, Sheng Shen, Michael W Mahoney, and Kurt Keutzer. Squeezellm: Dense-and-sparse
+    quantization. *arXiv preprint arXiv:2306.07629*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Krishnamoorthi [2018] Raghuraman Krishnamoorthi. Quantizing deep convolutional
+    networks for efficient inference: A whitepaper. *arXiv preprint arXiv:1806.08342*,
+    2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lezcano-Casado and Martinez-Rubio [2019] Mario Lezcano-Casado and David Martinez-Rubio.
+    Cheap orthogonal constraints in neural networks: A simple parametrization of the
+    orthogonal and unitary group. 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Li et al. [2020] Jun Li, Li Fuxin, and Sinisa Todorovic. Efficient riemannian
+    optimization on the stiefel manifold via the cayley transform. *arXiv preprint
+    arXiv:2002.01113*, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. [2021] Yuhang Li, Ruihao Gong, Xu Tan, Yang Yang, Peng Hu, Qi Zhang,
+    Fengwei Yu, Wei Wang, and Shi Gu. Brecq: Pushing the limit of post-training quantization
+    by block reconstruction. In *International Conference on Learning Representations
+    (ICLR)*, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lin et al. [2023] Ji Lin, Jiaming Tang, Haotian Tang, Shang Yang, Xingyu Dang,
+    and Song Han. Awq: Activation-aware weight quantization for llm compression and
+    acceleration. *arXiv preprint arXiv:2306.00978*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. [2023a] Shih-yang Liu, Zechun Liu, Xijie Huang, Pingcheng Dong,
+    and Kwang-Ting Cheng. Llm-fp4: 4-bit floating-point quantized transformers. *arXiv
+    preprint arXiv:2310.16836*, 2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. [2023b] Zechun Liu, Barlas Oguz, Changsheng Zhao, Ernie Chang, Pierre
+    Stock, Yashar Mehdad, Yangyang Shi, Raghuraman Krishnamoorthi, and Vikas Chandra.
+    Llm-qat: Data-free quantization aware training for large language models. *arXiv
+    preprint arXiv:2305.17888*, 2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. [2024] Zechun Liu, Changsheng Zhao, Forrest Iandola, Chen Lai, Yuandong
+    Tian, Igor Fedorov, Yunyang Xiong, Ernie Chang, Yangyang Shi, Raghuraman Krishnamoorthi,
+    et al. Mobilellm: Optimizing sub-billion parameter language models for on-device
+    use cases. *arXiv preprint arXiv:2402.14905*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Merity et al. [2016] Stephen Merity, Caiming Xiong, James Bradbury, and Richard
+    Socher. Pointer sentinel mixture models. *arXiv preprint arXiv:1609.07843*, 2016.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Mihaylov et al. [2018] Todor Mihaylov, Peter Clark, Tushar Khot, and Ashish
+    Sabharwal. Can a suit of armor conduct electricity? a new dataset for open book
+    question answering. *arXiv preprint arXiv:1809.02789*, 2018.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Nagel et al. [2019] Markus Nagel, Mart van Baalen, Tijmen Blankevoort, and Max
+    Welling. Data-free quantization through weight equalization and bias correction.
+    In *Proceedings of the IEEE/CVF International Conference on Computer Vision*,
+    pages 1325–1334, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Nagel et al. [2020] Markus Nagel, Rana Ali Amjad, Mart Van Baalen, Christos
+    Louizos, and Tijmen Blankevoort. Up or down? Adaptive rounding for post-training
+    quantization. In *International Conference on Machine Learning (ICML)*, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Nishimori and Akaho [2005] Yasunori Nishimori and Shotaro Akaho. Learning algorithms
+    utilizing quasi-geodesic flows on the stiefel manifold. *Neurocomputing*, 67:106–135,
+    2005.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Roziere et al. [2023] Baptiste Roziere, Jonas Gehring, Fabian Gloeckle, Sten
+    Sootla, Itai Gat, Xiaoqing Ellen Tan, Yossi Adi, Jingyu Liu, Tal Remez, Jérémy
+    Rapin, et al. Code llama: Open foundation models for code. *arXiv preprint arXiv:2308.12950*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sakaguchi et al. [2021] Keisuke Sakaguchi, Ronan Le Bras, Chandra Bhagavatula,
+    and Yejin Choi. Winogrande: An adversarial winograd schema challenge at scale.
+    *Communications of the ACM*, 64(9):99–106, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sap et al. [2019] Maarten Sap, Hannah Rashkin, Derek Chen, Ronan LeBras, and
+    Yejin Choi. Socialiqa: Commonsense reasoning about social interactions. *arXiv
+    preprint arXiv:1904.09728*, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Shao et al. [2023] Wenqi Shao, Mengzhao Chen, Zhaoyang Zhang, Peng Xu, Lirui
+    Zhao, Zhiqian Li, Kaipeng Zhang, Peng Gao, Yu Qiao, and Ping Luo. Omniquant: Omnidirectionally
+    calibrated quantization for large language models. *arXiv preprint arXiv:2308.13137*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Su et al. [2021] Jianlin Su, Yu Lu, Shengfeng Pan, Bo Wen, and Yunfeng Liu.
+    Roformer: Enhanced transformer with rotary position embedding, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Team et al. [2023] Gemini Team, Rohan Anil, Sebastian Borgeaud, Yonghui Wu,
+    Jean-Baptiste Alayrac, Jiahui Yu, Radu Soricut, Johan Schalkwyk, Andrew M Dai,
+    Anja Hauth, et al. Gemini: a family of highly capable multimodal models. *arXiv
+    preprint arXiv:2312.11805*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Thirunavukarasu et al. [2023] Arun James Thirunavukarasu, Darren Shu Jeng Ting,
+    Kabilan Elangovan, Laura Gutierrez, Ting Fang Tan, and Daniel Shu Wei Ting. Large
+    language models in medicine. *Nature medicine*, 29(8):1930–1940, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. [2023a] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier
+    Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal,
+    Eric Hambro, Faisal Azhar, et al. Llama: Open and efficient foundation language
+    models. *arXiv preprint arXiv:2302.13971*, 2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. [2023b] Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert,
+    Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava,
+    Shruti Bhosale, et al. Llama 2: Open foundation and fine-tuned chat models. *arXiv
+    preprint arXiv:2307.09288*, 2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Tseng et al. [2024] Albert Tseng, Jerry Chee, Qingyao Sun, Volodymyr Kuleshov,
+    and Christopher De Sa. Quip#: Even better llm quantization with hadamard incoherence
+    and lattice codebooks. *arXiv preprint arXiv:2402.04396*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'van Baalen et al. [2023] Mart van Baalen, Markus Nagel Andrey Kuzmin, Peter
+    Couperus, Cedric Bastoul, Eric Mahurin, Tijmen Blankevoort, and Paul Whatmough.
+    Gptvq: The blessing of dimensionality for llm quantization. 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xiao et al. [2022] Guangxuan Xiao, Ji Lin, Mickael Seznec, Hao Wu, Julien Demouth,
+    and Song Han. Smoothquant: Accurate and efficient post-training quantization for
+    large language models. In *CVPR*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yelysei Bondarenko [2023] Tijmen Blankevoort Yelysei Bondarenko, Markus Nagel.
+    Quantizable transformers: Removing outliers by helping attention heads do nothing.
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zellers et al. [2019] Rowan Zellers, Ari Holtzman, Yonatan Bisk, Ali Farhadi,
+    and Yejin Choi. Hellaswag: Can a machine really finish your sentence? *arXiv preprint
+    arXiv:1905.07830*, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. [2022] Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe,
+    Moya Chen, Shuohui Chen, Christopher Dewan, Mona Diab, Xian Li, Xi Victoria Lin,
+    et al. Opt: Open pre-trained transformer language models. *arXiv preprint arXiv:2205.01068*,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhao et al. [2023] Yilong Zhao, Chien-Yu Lin, Kan Zhu, Zihao Ye, Lequn Chen,
+    Size Zheng, Luis Ceze, Arvind Krishnamurthy, Tianqi Chen, and Baris Kasikci. Atom:
+    Low-bit quantization for efficient and accurate llm serving. *arXiv preprint arXiv:2310.19102*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Appendix / supplemental material
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A.1 Complete results of main result table
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In Tables [A.1](#A1.SS1 "A.1 Complete results of main result table ‣ Appendix
+    A Appendix / supplemental material ‣ 7 Limitations and Broader Impacts ‣ 6 Conclusions
+    ‣ 5 Related Work ‣ 4.3.3 Rotation type ‣ 4.3 Ablation studies ‣ 4.2 Main results
+    ‣ 4 Experiments ‣ ​SpinQuant: LLM Quantization with Learned Rotations​") and  [A.1](#A1.SS1
+    "A.1 Complete results of main result table ‣ Appendix A Appendix / supplemental
+    material ‣ 7 Limitations and Broader Impacts ‣ 6 Conclusions ‣ 5 Related Work
+    ‣ 4.3.3 Rotation type ‣ 4.3 Ablation studies ‣ 4.2 Main results ‣ 4 Experiments
+    ‣ ​SpinQuant: LLM Quantization with Learned Rotations​"), we show the complete
+    results of Table [4.2](#S4.SS2 "4.2 Main results ‣ 4 Experiments ‣ ​SpinQuant:
+    LLM Quantization with Learned Rotations​"). We compare the accuracy on eight zero-shot
+    commonsense reasoning tasks including ARC-easy, ARC-challenge [[9](#bib.bib9)],
+    BoolQ [[8](#bib.bib8)], PIQA [[6](#bib.bib6)], SIQA [[34](#bib.bib34)], HellaSwag [[45](#bib.bib45)],
+    OBQA [[28](#bib.bib28)], and WinoGrande [[33](#bib.bib33)]. We compare our results
+    with previous works including SmoothQuant[[43](#bib.bib43)], LLM-QAT[[25](#bib.bib25)],
+    GPTQ [[14](#bib.bib14)], OmniQuant [[35](#bib.bib35)], AQLM [[12](#bib.bib12)],
+    ATOM [[47](#bib.bib47)], AWQ [[23](#bib.bib23)], QuIP [[7](#bib.bib7)], QuIP# [[41](#bib.bib41)],
+    and QuaRot [[5](#bib.bib5)].'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 5: Complete omparison of the perplexity score on WikiText2 and averaged
+    accuracy on Zero-shot Common Sense Reasoning tasks on LLaMA-3. We reported the
+    mean and standard deviation across six trails for SpinQuant as well as our reproduced
+    results of GPTQ and QuaRot.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | #Bits | Method | ARC-e | ARC-c | BoolQ | PIQA | SIQA | HellaS. |
+    OBQA | WinoG. | Avg. | Wiki2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W-A-KV | ($\uparrow$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8B | 16-16-16 | Full Precision | 77.6 | 57.7 | 83.3 | 80.7 | 48.7 | 79.6
+    | 55.8 | 73.7 | 69.6 | 6.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-13 | 4-16-16 | RTN | 74.7 | 49.0 | 73.0 | 77.0 | 47.6 | 76.6
+    | 53.4 | 71.4 | 65.4 | 7.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SmoothQuant | 67.6 | 41.3 | 72.6 | 74.4 | 46.7 | 70.6 | 48.0 | 67.0
+    | 61.0 | 10.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | LLM-QAT | 77.1 | 53.0 | 82.4 | 79.0 | 48.1 | 76.6 | 54.4 | 71.3 | 67.7
+    | 7.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | GPTQ | 73.5 ${}_{\pm 1.9}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot* | 73.8 ${}_{\pm 1.4}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot | 77.0 ${}_{\pm 0.8}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant* | 76.5 ${}_{\pm 1.1}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant | 77.6 ${}_{\pm 0.7}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-13 | 4-4-16 | RTN | 31.8 | 27.6 | 47.2 | 53.8 | 39.7 | 30.8 |
+    28.2 | 48.9 | 38.5 | 923.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SmoothQuant | 36.3 | 26.3 | 50.6 | 54.1 | 40.3 | 31.4 | 30.6 | 52.9
+    | 40.3 | 867.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | LLM-QAT | 44.1 | 29.7 | 58.0 | 61.5 | 42.1 | 39.9 | 33.0 | 51.3 | 44.9
+    | 42.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | GPTQ | 31.4 ${}_{\pm 0.9}$ | 955.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot* | 66.0 ${}_{\pm 1.2}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot | 72.4 ${}_{\pm 1.1}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant* | 74.1 ${}_{\pm 1.6}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant | 75.0 ${}_{\pm 1.0}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-13 | 4-4-4 | RTN | 31.9 | 26.1 | 46.2 | 52.3 | 39.9 | 29.9 |
+    28.6 | 51.0 | 38.2 | 1,118.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SmoothQuant | 33.5 | 25.1 | 49.6 | 53.1 | 40.3 | 28.8 | 29.6 | 49.6
+    | 38.7 | 1,530.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | LLM-QAT | 40.5 | 26.6 | 52.7 | 59.9 | 42.3 | 37.5 | 33.6 | 52.7 | 43.2
+    | 52.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | GPTQ | 31.0 ${}_{\pm 0.9}$ | 1,071.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot* | 65.9 ${}_{\pm 3.0}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot | 71.6 ${}_{\pm 0.9}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant* | 72.6 ${}_{\pm 1.4}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant | 74.4 ${}_{\pm 1.3}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 70B | 16-16-16 | Full Precision | 80.6 | 64.5 | 87.4 | 83.7 | 51.7 | 85.3
+    | 62.0 | 80.5 | 74.5 | 2.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-13 | 4-16-16 | RTN | 27.3 | 27.2 | 37.8 | 51.0 | 39.1 | 25.6
+    | 26.2 | 49.8 | 35.5 | 1e5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SmoothQuant | 76.7 | 45.5 | 80.6 | 81.2 | 48.7 | 81.1 | 46.2 | 75.5
+    | 66.9 | 12.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | GPTQ | 28.2 ± 1.3 | 24.7 ± 1.6 | 37.9 ± 0.1 | 50.7 ± 0.8 | 39.0 ± 0.6
+    | 26.8 ± 1.7 | 27.7 ± 3.6 | 50.5 ± 0.6 | 35.7 ± 0.6 | 1e5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot* | 65.9 ± 1.4 | 44.3 ± 2.7 | 67.0 ± 4.9 | 75.2 ± 2.0 | 44.1
+    ± 2.1 | 59.8 ± 8.6 | 42.5 ± 3.8 | 58.5 ± 2.9 | 57.2 ± 2.7 | 41.6 ± 16.76 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot | 74.4 ± 0.7 | 58.6 ± 2.6 | 86.4 ± 0.5 | 83.8 ± 0.4 | 51.9 ±
+    0.4 | 83.7 ± 0.1 | 47.7 ± 2.2 | 76.1 ± 0.6 | 70.3 ± 0.7 | 7.9 ± 0.21 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant* | 78.5 ± 2.2 | 57.9 ± 1.5 | 84.5 ± 1.0 | 82.3 ± 0.6 | 50.3
+    ± 0.6 | 82.6 ± 0.4 | 57.4 ± 5.9 | 77.5 ± 1.9 | 71.4 ± 1.5 | 3.9 ± 0.47 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant | 78.0 ± 2.7 | 59.1 ± 0.9 | 85.2 ± 1.1 | 82.8 ± 1.0 | 50.6
+    ± 0.6 | 83.5 ± 0.2 | 54.8 ± 6.6 | 78.5 ± 1.6 | 71.6 ± 1.1 | 4.8 ± 1.97 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-13 | 4-4-16 | RTN | 27.6 | 27.0 | 38.2 | 50.1 | 38.5 | 26.0 |
+    28.4 | 49.1 | 35.6 | 1e5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SmoothQuant | 59.5 | 35.7 | 62.4 | 70.3 | 44.3 | 61.7 | 44.2 | 63.9
+    | 55.3 | 18.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | GPTQ | 27.0 ± 0.4 | 26.1 ± 1.5 | 39.1 ± 1.2 | 50.4 ± 0.4 | 38.9 ± 0.4
+    | 25.7 ± 0.2 | 25.7 ± 1.7 | 49.6 ± 0.9 | 35.3 ± 0.2 | 1e5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot* | 40.8 ± 4.8 | 26.2 ± 2.8 | 52.4 ± 3.8 | 58.4 ± 3.5 | 40.0
+    ± 0.9 | 33.8 ± 3.9 | 30.0 ± 3.6 | 50.2 ± 1.7 | 41.5 ± 2.5 | 91.2 ± 24.05 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot | 72.4 ± 1.5 | 52.2 ± 1.6 | 78.5 ± 2.4 | 78.9 ± 0.8 | 49.0 ±
+    1.1 | 78.5 ± 0.9 | 45.2 ± 1.9 | 68.2 ± 3.0 | 65.4 ± 1.3 | 20.4 ± 3.23 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant* | 77.2 ± 0.9 | 55.9 ± 1.1 | 81.7 ± 1.7 | 80.9 ± 0.6 | 49.0
+    ± 0.5 | 80.9 ± 0.4 | 58.7 ± 1.9 | 76.2 ± 0.8 | 70.1 ± 0.4 | 4.1 ± 0.02 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant | 76.7 ± 1.9 | 55.6 ± 2.1 | 82.3 ± 1.3 | 80.6 ± 1.1 | 49.8
+    ± 0.9 | 81.0 ± 1.6 | 55.4 ± 6.3 | 74.5 ± 3.9 | 69.5 ± 2.1 | 5.5 ± 2.56 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-13 | 4-4-4 | RTN | 27.0 | 24.1 | 38.5 | 50.4 | 38.8 | 25.8 |
+    25.2 | 51.8 | 35.2 | 1e5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SmoothQuant | 55.0 | 34.9 | 62.2 | 66.8 | 43.1 | 59.4 | 39.8 | 58.0
+    | 52.4 | 22.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | GPTQ | 27.1 ± 0.3 | 24.8 ± 1.7 | 38.8 ± 0.7 | 50.8 ± 0.6 | 39.0 ± 0.4
+    | 25.5 ± 0.2 | 24.8 ± 2.9 | 49.8 ± 0.6 | 35.1 ± 0.2 | 1e5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot* | 40.5 ± 4.9 | 25.7 ± 3.7 | 50.9 ± 4.5 | 57.7 ± 3.3 | 39.9
+    ± 0.8 | 33.9 ± 3.9 | 31.0 ± 2.6 | 51.0 ± 1.6 | 41.3 ± 2.6 | 92.4 ± 24.18 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot | 72.3 ± 1.9 | 51.6 ± 1.0 | 77.5 ± 2.0 | 78.9 ± 1.1 | 49.0 ±
+    1.0 | 78.2 ± 0.9 | 45.5 ± 1.7 | 67.8 ± 2.6 | 65.1 ± 1.1 | 20.2 ± 3.12 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant* | 77.3 ± 1.0 | 56.0 ± 1.1 | 81.8 ± 1.7 | 80.8 ± 0.4 | 49.3
+    ± 0.5 | 80.9 ± 0.3 | 58.7 ± 0.7 | 76.4 ± 0.3 | 70.1 ± 0.5 | 4.1 ± 0.01 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant | 76.8 ± 2.1 | 55.8 ± 2.6 | 82.2 ± 1.7 | 81.0 ± 0.8 | 49.5
+    ± 1.0 | 81.2 ± 1.3 | 53.8 ± 6.3 | 74.2 ± 3.8 | 69.3 ± 2.2 | 5.5 ± 2.59 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 6: Complete omparison of the perplexity score on WikiText2 and averaged
+    accuracy on Zero-shot Common Sense Reasoning tasks on LLaMA-2. We reported the
+    mean and standard deviation across six trails for SpinQuant as well as our reproduced
+    results of GPTQ and QuaRot.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | #Bits | Method | ARC-e | ARC-c | BoolQ | PIQA | SIQA | HellaS. |
+    OBQA | WinoG. | Avg. | Wiki2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W-A-KV | ($\uparrow$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 7B | 16-16-16 | Full Precision | 75.0 | 50.8 | 77.3 | 78.9 | 48.5 | 76.0
+    | 59.3 | 69.5 | 66.9 | 5.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-13 | 4-16-16 | RTN | 71.3 | 46.0 | 73.5 | 76.9 | 47.2 | 72.5
+    | 54.2 | 66.9 | 63.6 | 7.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SmoothQuant | 66.2 | 42.5 | 67.4 | 75.8 | 44.1 | 67.2 | 44.6 | 64.6
+    | 59.1 | 7.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | LLM-QAT | 73.3 | 48.6 | 73.2 | 78.2 | 48.8 | 73.6 | 55.0 | 68.4 | 64.9
+    | 5.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | OmniQuant | 67.8 | 37.9 | – | 77.1 | – | – | – | 67 | – | 5.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | AQLM | 68.9 | 40.3 | – | 77.7 | – | – | – | 67.3 | – | – |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuIP# | 69.1 | 40.5 | – | 78.4 | – | – | – | 67.6 | – | – |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | GPTQ | 72.6 ${}_{\pm 0.3}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot* | 69.5 ${}_{\pm 1.9}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot | 74.2 ${}_{\pm 0.4}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant* | 72.2 ${}_{\pm 0.9}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant | 73.8 ${}_{\pm 0.4}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-13 | 4-4-16 | RTN | 26.6 | 22.1 | 44.3 | 50.9 | 38.9 | 26.2 |
+    26.6 | 49.4 | 35.6 | 2,167.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SmoothQuant | 37.8 | 27.1 | 51.9 | 59.4 | 40.2 | 34.3 | 31.6 | 52.4
+    | 41.8 | 254.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | LLM-QAT | 46.2 | 32.4 | 61.8 | 62.0 | 41.3 | 47.6 | 36.1 | 54.7 | 47.8
+    | 12.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | GPTQ | 27.6 ${}_{\pm 1.0}$ | 8,949.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot* | 65.3 ${}_{\pm 2.1}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot | 71.8 ${}_{\pm 1.2}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant* | 67.7 ${}_{\pm 0.5}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant | 72.1 ${}_{\pm 0.9}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-13 | 4-4-4 | RTN | 27.1 | 24.4 | 44.8 | 51.4 | 39.4 | 26.7 |
+    33.0 | 50.0 | 37.1 | 2,382.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SmoothQuant | 31.4 | 24.8 | 51.4 | 54.1 | 39.4 | 29.1 | 31.9 | 50.0
+    | 39.0 | 698.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | LLM-QAT | 42.0 | 27.7 | 59.5 | 58.9 | 41.0 | 43.1 | 33.5 | 53.3 | 44.9
+    | 14.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | GPTQ | 27.6 ${}_{\pm 1.1}$ | 9,253.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot* | 65.3 ${}_{\pm 1.6}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot | 70.1 ${}_{\pm 0.8}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant* | 68.1 ${}_{\pm 0.9}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant | 72.6 ${}_{\pm 0.9}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 13B | 16-16-16 | Full Precision | 75.3 | 51.4 | 79.8 | 80.4 | 50.5 | 79.8
+    | 56.8 | 72.5 | 68.3 | 5.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-13 | 4-16-16 | RTN | 63.7 | 40.3 | 69.5 | 74.0 | 46.5 | 60.4
+    | 47.0 | 61.4 | 57.9 | 6.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SmoothQuant | 72.0 | 45.6 | 71.4 | 78.4 | 46.8 | 72.9 | 51.0 | 68.4
+    | 63.3 | 6.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | OmniQuant | 70.2 | 43.1 | – | 78.4 | – | – | – | 67.8 | – | – |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuIP | 73.3 | 44.9 | – | 79 | – | – | – | 69.7 | – | – |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | AQLM | 72.2 | 43.9 | – | 78.6 | – | – | – | 70.4 | – | – |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuIP# | 73.9 | 45.5 | – | 78.9 | – | – | – | 69.9 | – | – |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | GPTQ | 73.2 ${}_{\pm 1.4}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot* | 75.3 ${}_{\pm 1.3}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot | 76.3 ${}_{\pm 0.6}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant* | 76.3 ${}_{\pm 0.8}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant | 77.0 ${}_{\pm 0.5}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-13 | 4-4-16 | RTN | 26.0 | 26.0 | 40.6 | 49.7 | 38.7 | 26.0 |
+    25.4 | 49.9 | 35.3 | 7,216.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SmoothQuant | 45.2 | 27.1 | 55.4 | 62.5 | 40.5 | 44.3 | 33.4 | 50.8
+    | 44.9 | 34.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | GPTQ | 26.6 ${}_{\pm 0.5}$ | 5,245.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot* | 72.5 ${}_{\pm 1.3}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot | 74.4 ${}_{\pm 1.1}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant* | 73.7 ${}_{\pm 1.1}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant | 75.9 ${}_{\pm 0.8}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-13 | 4-4-4 | RTN | 26.1 | 24.3 | 40.3 | 48.7 | 39.6 | 25.8 |
+    29.2 | 49.6 | 35.4 | 7,428.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SmoothQuant | 36.9 | 24.8 | 49.4 | 57.2 | 39.6 | 33.3 | 31.2 | 51.7
+    | 40.5 | 56.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | GPTQ | 26.6 ${}_{\pm 0.5}$ | 5,237.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot* | 72.4 ${}_{\pm 1.7}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot | 74.0 ${}_{\pm 0.7}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant* | 73.8 ${}_{\pm 1.4}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant | 75.7 ${}_{\pm 1.0}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 70B | 16-16-16 | Full Precision | 80.2 | 60.5 | 85.1 | 82.8 | 50.8 | 84.3
+    | 59.0 | 80.6 | 72.9 | 3.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-13 | 4-16-16 | RTN | 77.7 | 54.6 | 82.7 | 81.5 | 47.7 | 78.4
+    | 56.2 | 75.2 | 69.2 | 4.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SmoothQuant | 79.7 | 56.7 | 81.3 | 81.4 | 50.2 | 81.4 | 54.8 | 76.4
+    | 70.2 | 4.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | OMNIQ | 77.9 | 49.8 | – | 80.7 | – | – | – | 75.8 | – | – |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuIP | 74.3 | 47 | – | 80.3 | – | – | – | 76 | – | – |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | AQLM | 78.1 | 51 | – | 81.4 | – | – | – | 76.9 | – | – |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuIP# | 78.1 | 50.6 | – | 81.4 | – | – | – | 77.1 | – | – |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | GPTQ | 80.1 ${}_{\pm 0.2}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot* | 79.5 ${}_{\pm 0.7}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot | 79.4 ${}_{\pm 0.7}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant* | 79.8 ${}_{\pm 0.6}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant | 79.7 ${}_{\pm 0.6}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-13 | 4-4-16 | RTN | 26.0 | 23.2 | 43.5 | 48.9 | 37.0 | 26.0 |
+    25.6 | 50.5 | 35.1 | 2e5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SmoothQuant | 9.5 | 71.7 | 29.0 | 66.6 | 73.1 | 45.1 | 67.4 | 39.4
+    | 64.6 | 57.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | GPTQ | 25.3 ${}_{\pm 0.5}$ | 2e6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot* | 77.9 ${}_{\pm 0.8}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot | 78.1 ${}_{\pm 0.6}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant* | 79.2 ${}_{\pm 0.8}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant | 78.4 ${}_{\pm 0.4}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| \cdashline2-13 | 4-4-4 | RTN | 25.5 | 24.5 | 43.2 | 50.2 | 36.7 | 26.6 |
+    24.2 | 49.3 | 35.0 | 2e5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SmoothQuant | 68.1 | 31.9 | 65.8 | 72.0 | 43.5 | 64.2 | 38.2 | 63.1
+    | 55.9 | 10.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | GPTQ | 26.1 ${}_{\pm 1.0}$ | 1e6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot* | 77.8 ${}_{\pm 0.6}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | QuaRot | 78.4 ${}_{\pm 1.0}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant* | 78.7 ${}_{\pm 0.8}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | SpinQuant | 78.3 ${}_{\pm 0.3}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: A.2 Cayley optimization choice
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Table 7: Ablation study on Number of training samples and iterations in Cayley
+    SGD optimization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| #Bits | Task | # Training sample | # Training iterations |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (W-A-KV) | 128 | 800 | 10 | 25 | 50 | 100 | 200 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4-4-4 | Wiki ($\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: 'In Table [7](#A1.T7 "Table 7 ‣ A.2 Cayley optimization choice ‣ A.1 Complete
+    results of main result table ‣ Appendix A Appendix / supplemental material ‣ 7
+    Limitations and Broader Impacts ‣ 6 Conclusions ‣ 5 Related Work ‣ 4.3.3 Rotation
+    type ‣ 4.3 Ablation studies ‣ 4.2 Main results ‣ 4 Experiments ‣ ​SpinQuant: LLM
+    Quantization with Learned Rotations​"), we evaluate the impact of varying the
+    number of samples and iterations used in Cayley optimization. Given the relatively
+    small number of trainable parameters in the rotation matrix compared to the original
+    weight parameters, and considering it as a constraint optimization, we only need
+    a minimal amount of calibration data and iterations to enhance the rotation for
+    improved quantization. The findings indicate that rotation optimization is resilient
+    to modifications in the number of samples. Even though we used 800 samples in
+    our experiments, reducing this to 128 samples does not lead to a significant change
+    in the perplexity. Furthermore, we examined the optimal number of iterations and
+    found that the wiki perplexity ceases to decrease and stabilizes at 100 iterations.
+    Consequently, we chose to use 100 iterations in all our experiments.'
+  prefs: []
+  type: TYPE_NORMAL

@@ -1,0 +1,2615 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:48:57'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: Outliers and Calibration Sets have Diminishing Effect on Quantization of Modern
+    LLMs
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2405.20835](https://ar5iv.labs.arxiv.org/html/2405.20835)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Davide Paglieri
+  prefs: []
+  type: TYPE_NORMAL
+- en: University College London
+  prefs: []
+  type: TYPE_NORMAL
+- en: Saurabh Dash
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cohere
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tim Rocktäschel
+  prefs: []
+  type: TYPE_NORMAL
+- en: University College London
+  prefs: []
+  type: TYPE_NORMAL
+- en: Jack Parker-Holder
+  prefs: []
+  type: TYPE_NORMAL
+- en: University College London d.paglieri@cs.ucl.ac.uk
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Post-Training Quantization (PTQ) enhances the efficiency of Large Language Models
+    (LLMs) by enabling faster operation and compatibility with more accessible hardware
+    through reduced memory usage, at the cost of small performance drops. We explore
+    the role of calibration sets in PTQ, specifically their effect on hidden activations
+    in various notable open-source LLMs. Calibration sets are crucial for evaluating
+    activation magnitudes and identifying outliers, which can distort the quantization
+    range and negatively impact performance. Our analysis reveals a marked contrast
+    in quantization effectiveness across models. The older OPT model, upon which much
+    of the quantization literature is based, shows significant performance deterioration
+    and high susceptibility to outliers with varying calibration sets. In contrast,
+    newer models like Llama-2 7B, Llama-3 8B, Command-R 35B, and Mistral 7B demonstrate
+    strong robustness, with Mistral 7B showing near-immunity to outliers and stable
+    activations. These findings suggest a shift in PTQ strategies might be needed.
+    As advancements in pre-training methods reduce the relevance of outliers, there
+    is an emerging need to reassess the fundamentals of current quantization literature.
+    The emphasis should pivot towards optimizing inference speed, rather than primarily
+    focusing on outlier preservation, to align with the evolving characteristics of
+    state-of-the-art LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Transformer-based Large Language Models (LLMs) have shown remarkable performance
+    which correlates with the number of parameters (Kaplan et al., [2020](#bib.bib22);
+    Chowdhery et al., [2023](#bib.bib6); Hoffmann et al., [2022](#bib.bib19); Zhang
+    et al., [2022](#bib.bib36)). The growth trend of LLMs memory requirements has
+    far outpaced the increase of VRAM in modern day GPUs (Rajbhandari et al., [2021](#bib.bib28)).
+    As we grow LLMs further to improve their capabilities, this gap is bound to increase.
+    The massive scale of these models hinders their widespread use on easily accessible
+    mobile devices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In response to this, there has been a recent wave of smaller open-source high-performing
+    models such as Llama, Mistral and Phi (Touvron et al., [2023a](#bib.bib30), [b](#bib.bib31);
+    AI@Meta, [2024](#bib.bib2); Jiang et al., [2023](#bib.bib20); Li et al., [2023](#bib.bib24)).
+    Their smaller sizes have facilitated broader usage, highlighting the demand for
+    more compact models among machine learning practitioners. Furthermore, a growing
+    field of research deals with compressing pre-trained LLMs into smaller sizes to
+    facilitate their use. Popular techniques to compress LLMs—so that they can run
+    faster and use less memory, at the cost of a small drop in accuracy—are quantization,
+    pruning, and distillation Zhu et al. ([2023](#bib.bib37)). Applying these techniques
+    on already smaller Language Models enables them to be run on widely available
+    hardware.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this paper we specifically consider Post Training Quantization (PTQ) methods,
+    which aim to quantize the weights of pre-trained models, usually from BF16 or
+    FP16 to INT8 or INT4\. PTQ methods are categorized into zero-shot methods, which
+    quantize weights without activation data, and one-shot methods, which use a calibration
+    set to better understand how to quantize weights while maintaining performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Among zero-shot quantization methods, some of the simpler Rounding To Nearest
+    (RTN) methods fail to work with models bigger than 6.7B on older pre-trained models
+    when quantizing both weights and activations (Dettmers et al., [2022](#bib.bib11)).
+    This result is attributed to weight and activation outliers, which were initially
+    thought to be an emergent property of LLMs at scale. Newer research indicates
+    that these outliers are byproducts of training choices common in older LLMs such
+    as OPT (Zhang et al., [2022](#bib.bib36)), and the Cohere models should be more
+    robust and perform well with simpler quantization techniques (Ahmadian et al.,
+    [2023](#bib.bib1)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Closely related to outliers is the use of a calibration set, which is run through
+    the model to measure the activation values, and thus quantize more accurately
+    by estimating the importance of weights on the activations values, and spotting
+    outlier features (Frantar et al., [2022](#bib.bib15); Lin et al., [2023](#bib.bib25);
+    Wei et al., [2022](#bib.bib33); Dettmers et al., [2023b](#bib.bib13)). Calibration
+    data is usually sampled randomly from web text or from pre-training datasets;
+    recently Williams and Aletras ([2023](#bib.bib34)) have investigated the effect
+    of the calibration set on downstream task performance, claiming that performance
+    can somewhat vary based on the split of the calibration set chosen.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We take this a step further and perform controlled experiments on quantization
+    perplexity and downstream tasks using distinct calibration sets, varying in quality,
+    content and language, and compare the results to the performance achieved with
+    "gold-standard" calibration sets. We show that modern open-source LLMs like Llama-2
+    7B (Touvron et al., [2023b](#bib.bib31)), Llama-3 8B (AI@Meta, [2024](#bib.bib2)),
+    Mistral 7B Jiang et al. ([2023](#bib.bib20)) and bigger Command R 35B (C4AI, [2024](#bib.bib4)),
+    when quantized both weight-only and weight-and-activations are significantly more
+    robust to the choice of calibration set compared to OPT 6.7B Zhang et al. ([2022](#bib.bib36)).
+    In summary our contributions are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We show that modern LLMs are notably less affected by the quality, content and
+    language of the calibration set compared to an older LLM such as OPT 6.7B.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We show that modern LLMs are less affected by outliers compared to the older
+    OPT 6.7B, upon which much of the current knowledge in quantization has been built
+    upon.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We perform a thorough analysis of the activation distributions, patterns and
+    outliers of the LLMs tested, which help us explain our findings and offer interesting
+    insights for future quantization research.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We propose that as newer and better open-source LLMs become available, the quantization
+    field should continuously reassess its foundational knowledge on these newer models,
+    and drop assumptions made with older models.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 2 Background
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Quantization reduces the memory and computational requirements of neural networks
+    by transforming high-precision weights to lower precision formats. LLMs are usually
+    trained using FP16 precision or more recently in BF16 (Kalamkar et al., [2019](#bib.bib21)),
+    and are typically quantized to INT8, INT4 or INT3 precisions (Dettmers et al.,
+    [2022](#bib.bib11); Frantar et al., [2022](#bib.bib15)), with 4bit found to be
+    the sweet spot (Dettmers and Zettlemoyer, [2023](#bib.bib10)). Our focus is on
+    Post Training Quantization methods (PTQ), which take a high-precision pre-trained
+    model and quantize it, as opposed to Quantization Aware Training (QAT) methods,
+    which follow a quantization objective during training.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quantization can be either weight-only (e.g. W4A16) or weight-and-activation
+    quantization (e.g. W8A8). Weight-only quantization, as the name suggests, only
+    quantizes the weights, then at inference time the weights are dequantized and
+    matrix multiplication is performed in 16 bit floating point precision. Weight-and-activation
+    quantization methods quantize both weights and activations, performing multiplication
+    at lower precision. Weight-only quantization increases inference speed at low
+    batch sizes thanks to reduced fetch time from GPU of the quantized weights. Conversely,
+    the advantage of weight-and-activation quantization is the absence of a dequantization
+    step, allowing for faster throughput of large batch sizes and matrix multiplication
+    in the same precision as the weights. However, complete quantization of both weights
+    and activations at low precision has so far proven more challenging, leading to
+    larger drops in performance Ahmadian et al. ([2023](#bib.bib1)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dettmers et al. ([2022](#bib.bib11)) first observed the emergence of extreme
+    outliers in the feature dimensions during inference of the range of OPT models
+    bigger than 6.7B parameters (Zhang et al., [2022](#bib.bib36)). These outliers
+    damage the weight-and-activation quantization performance of simple rounding to
+    nearest methods, by skewing the value range before quantization, leading to inefficient
+    use of the quantized range. Conversely, weigh-only quantization finds larger models
+    easier to quantized than smaller models at low precision (Frantar et al., [2022](#bib.bib15)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Numerous high-performing weight-only and weight-and-activation quantization
+    methods, aim to mitigate the impact of extreme outliers to maintain high performance
+    of the quantized model (Dettmers et al., [2022](#bib.bib11), [2023b](#bib.bib13);
+    Lin et al., [2023](#bib.bib25); Kim et al., [2023](#bib.bib23)). Dettmers et al.
+    ([2022](#bib.bib11)) for example keep the outlier activations in 16-bit floating
+    point precision, while SmoothQuant (Xiao et al., [2023](#bib.bib35)), a W8A8 method,
+    and AWQ (Lin et al., [2023](#bib.bib25)), a W4A16 method, move the quantization
+    difficulty from the activation to the weights, scaling down the activations and
+    scaling up the weights in order to make outlier quantization more manageable.
+    GPTQ is another prominent weight-only quantization method (Frantar et al., [2022](#bib.bib15))
+    that adjusts weights based on activation values using second-order information.
+    Several other quantization techniques build on similar concepts as GPTQ (Dettmers
+    et al., [2023b](#bib.bib13); Chee et al., [2024](#bib.bib5); Tseng et al., [2024](#bib.bib32)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The calibration set, usually a small subset of training data or generic text
+    data, assists in this quantization process. By running it through the network,
+    activation values can be determined, helping to quantize the weights so that the
+    outputs closely match those of the unquantized model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Experimental setup
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We set out to examine the impact of the calibration set on the performance
+    of various Large Language Models. Specifically, we address three primary questions:
+    first, how the quality of the calibration set affects the quantized performance
+    of the models; second, whether a content-specific calibration set can enhance
+    performance on a particular task; and third, how the same content presented in
+    different languages affects the quantized models when used as a calibration set.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We evaluate six distinct LLMs: OPT 6.7B (Zhang et al., [2022](#bib.bib36)),
+    Llama-1 7B (Touvron et al., [2023a](#bib.bib30)) Llama-2 7B (Touvron et al., [2023b](#bib.bib31)),
+    Llama-3 8B (AI@Meta, [2024](#bib.bib2)), Mistral 7B (Jiang et al., [2023](#bib.bib20))
+    and the larger Command-R 35B (C4AI, [2024](#bib.bib4)), to determine their responses
+    to varying calibration sets.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We test three different one-shot quantization methods: two weight-only quantization
+    methods, GPTQ W4A16 with a group size of 128 (Frantar et al., [2022](#bib.bib15))
+    and AWQ W4A16 with a group size of 128 (Lin et al., [2023](#bib.bib25)); and SmoothQuant
+    W8A8, a weight-and-activation quantization method (Xiao et al., [2023](#bib.bib35)).
+    Model performance is measured by evaluating perplexity on WikiText2 (Merity et al.,
+    [2016](#bib.bib26)) and downstream zero-shot accuracy on ARC-Challenge (Clark
+    et al., [2018](#bib.bib7)), PiQa (Bisk et al., [2020](#bib.bib3)), and Winogrande
+    (Sakaguchi et al., [2021](#bib.bib29)), three popular benchmarks that assess abstract
+    and common sense reasoning capabilities. Additionally, we test a zero-shot naive
+    W8A8 weight-and-activation quantization method.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Impact of the Calibration Set Quality on Quantization Effectiveness
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In the first part of our study, we investigate whether the quality of content,
+    particularly vocabulary, in the calibration set significantly affects quantization
+    quality. We hypothesize that a calibration set with higher quality content will
+    yield better performance. To test this, we compare a calibration set sampled from
+    RedPajama Computer ([2023](#bib.bib8))—an open-source replica of Llama’s training
+    corpus—against a set composed of random ASCII punctuation characters (sample text
+    in [Appendix A](#A1 "Appendix A Nonsensical Calibration Set Example ‣ Outliers
+    and Calibration Sets have Diminishing Effect on Quantization of Modern LLMs")).
+    RedPajama represents an appropriate calibration set for quantization due to its
+    meaningful and well-curated content, while the random ASCII punctuation set serves
+    as a nonsensical calibration set, expected to offer no benefit to quantization
+    and potentially be detrimental.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Impact of Content-Specific Calibration Sets on Specific Downstream Tasks
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We explore the potential benefits of using content-specific calibration sets
+    for performance enhancement. This has practical applications; for instance, if
+    a specific downstream task is known, it would be intuitive to calibrate the model
+    for that task. For this purpose, we use ARC-Challenge and PiQa as calibration
+    sets and compare their effectiveness against RedPajama. Both ARC-Challenge and
+    PiQa calibration sets include the full test data, encompassing the questions and
+    answers that the LLM is subsequently evaluated on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Impact of Different Languages as Calibration Sets on Quantization Effectiveness
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We extend our analysis to assess how different languages in calibration sets
+    impact English perplexity on WikiText2 and downstream accuracy on ARC-Challenge,
+    PiQa, and Winogrande. We hypothesize that different languages might induce unique
+    activation patterns in LLMs and trigger different outliers, potentially affecting
+    performance on English perplexity or downstream tasks. Conversely, robustness
+    in an LLM would indicate similar activation patterns and outlier positions across
+    languages and tokens. It is important to note that none of the LLMs tested have
+    been trained on all the languages used; however, they may have encountered multiple
+    languages during pre-training, though some tokens might be encountered very rarely.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For this analysis, we utilize the FLORES+ dataset (Costa-jussà et al., [2022](#bib.bib9);
+    Goyal et al., [2022](#bib.bib17); Guzmán et al., [2019](#bib.bib18); Doumbouya
+    et al., [2023](#bib.bib14); Gala et al., [2023](#bib.bib16)), a multi-language
+    dataset comprising 2009 sentences translated into 205 different languages across
+    30 alphabets. By using FLORES+ translations, we ensure uniform content across
+    all calibration sets. Given the computational demands of quantizing with numerous
+    calibration sets, we tokenize the FLORES+ corpus of each language but limit usage
+    to the first 32 sequences of 2048 tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Results and Analysis
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 4.1 Impact of the Calibration Set Quality on Quantization Effectiveness
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Our analysis reveals significant variations among the tested LLMs concerning
+    the impact of calibration set quality on quantized effectiveness. In particular,
+    OPT 6.7B demonstrates a markedly worse perplexity in WikiText2 as shown in [Figure 19](#A2.F19
+    "Figure 19 ‣ Appendix B Calibration Set Quality Results ‣ Outliers and Calibration
+    Sets have Diminishing Effect on Quantization of Modern LLMs"), and average downstream
+    accuracy over ARC-Challenge and PIQA ([Figure 19](#A2.F19 "Figure 19 ‣ Appendix
+    B Calibration Set Quality Results ‣ Outliers and Calibration Sets have Diminishing
+    Effect on Quantization of Modern LLMs")) when quantized using a nonsensical calibration
+    set, as opposed to the standard RedPajama. Conversely, the rest of the models
+    display high robustness; with their performance not impacted when using a random
+    calibration set compared to RedPajama. We show results with AWQ and SmoothQuant
+    quantization in [Appendix B](#A2 "Appendix B Calibration Set Quality Results ‣
+    Outliers and Calibration Sets have Diminishing Effect on Quantization of Modern
+    LLMs").
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/90211493fbeb6063c0fec6c5be649d08.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: WikiText2 perplexity with GPTQ 4-bit quantization, using as calibration
+    sets RedPajama (Computer, [2023](#bib.bib8)) and a nonsensical calibration set
+    [Appendix A](#A1 "Appendix A Nonsensical Calibration Set Example ‣ Outliers and
+    Calibration Sets have Diminishing Effect on Quantization of Modern LLMs"). Results
+    normalized to RedPajama score. Lower is better.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/4669cf6d4c7c73c2cf607a022023c809.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Average ARC-Challenge and PIQA accuracy with GPTQ 4-bit quantization,
+    using as calibration sets RedPajama (Computer, [2023](#bib.bib8)) and a nonsensical
+    calibration set [Appendix A](#A1 "Appendix A Nonsensical Calibration Set Example
+    ‣ Outliers and Calibration Sets have Diminishing Effect on Quantization of Modern
+    LLMs"). Results normalized to RedPajama score. Higher is better. Error bars represent
+    standard error.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The pronounced performance drop observed in OPT 6.7B with the random calibration
+    set can be attributed to distinct activation patterns and strong outlier activations.
+    We analyze this further in [subsection 4.5](#S4.SS5 "4.5 Activations and outliers
+    comparison ‣ 4 Results and Analysis ‣ Outliers and Calibration Sets have Diminishing
+    Effect on Quantization of Modern LLMs").
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This leads us to the following finding:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '<svg id="S4.SS1.p4.pic1" class="ltx_picture" height="41.9" overflow="visible"
+    version="1.1" width="600"><g transform="translate(0,41.9) matrix(1 0 0 -1 0 0)"
+    fill="#000000" stroke="#000000" stroke-width="0.4pt"><g fill-opacity="1.0" transform="matrix(1.0
+    0.0 0.0 1.0 13.39 6.5)"><foreignobject width="573.23" height="28.9" transform="matrix(1
+    0 0 -1 0 16.6)" overflow="visible" color="#000000">Finding 1: The calibration
+    set’s quality does not significantly affect quantized performance of modern Large
+    Language Models.</foreignobject></g></g></svg>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Impact of Content-Specific Calibration Set on Quantization Effectiveness
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Considering content-specific calibration sets, we find no statistically significant
+    difference in downstream accuracies for all models tested compared to RedPajama
+    calibration, as shown in [Figure 4](#S4.F4 "Figure 4 ‣ 4.2 Impact of Content-Specific
+    Calibration Set on Quantization Effectiveness ‣ 4 Results and Analysis ‣ Outliers
+    and Calibration Sets have Diminishing Effect on Quantization of Modern LLMs")
+    and [Figure 4](#S4.F4 "Figure 4 ‣ 4.2 Impact of Content-Specific Calibration Set
+    on Quantization Effectiveness ‣ 4 Results and Analysis ‣ Outliers and Calibration
+    Sets have Diminishing Effect on Quantization of Modern LLMs"). Despite the downstream
+    accuracy results of modern LLMs being within the margin of two standard errors,
+    ARC-Challenge downstream accuracy shows more pronounced fluctuations in mean accuracy
+    compared to PIQA.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/6c5d6e9b35d2e71e8ea4cc4862e2d8f2.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: ARC-Challenge accuracy with GPTQ 4-bit quantization over calibration
+    sets. Results normalized to RedPajama score. Error bars represent standard error.
+    Higher is better.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/0f0dbe934060cda13e8f7ce55cf1142f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: PIQA accuracy with GPTQ 4-bit quantization over calibration sets.
+    Results normalized to RedPajama score. Error bars represent standard error. Higher
+    is better.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '<svg id="S4.SS2.p2.pic1" class="ltx_picture" height="55.44" overflow="visible"
+    version="1.1" width="600"><g transform="translate(0,55.44) matrix(1 0 0 -1 0 0)"
+    fill="#000000" stroke="#000000" stroke-width="0.4pt"><g fill-opacity="1.0" transform="matrix(1.0
+    0.0 0.0 1.0 13.39 6.5)"><foreignobject width="573.23" height="42.45" transform="matrix(1
+    0 0 -1 0 16.6)" overflow="visible" color="#000000">Finding 2: Content-specific
+    calibration sets do not show statistically significant improvements to quantized
+    model performance on specific downstream tasks compared to content-generic calibration
+    sets.</foreignobject></g></g></svg>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 Effect of Different Languages in Calibration Sets on Quantization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/bb0b28a7206021710f6788a469927dbc.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: GPTQ W4A16, FP16-Normalized average accuracy (ARC-Challenge, PIQA,
+    WinoGrande) of various LLMs, using as calibration sets a selection of languages
+    and alphabets. Results sorted by normalized scores of OPT 6.7B. Error bars represent
+    standard error'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/3361c5cfcc22a179456ab38a4f1814e9.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: AWQ W4A16, FP16-Normalized average accuracy (ARC-Challenge, PIQA,
+    WinoGrande) of various LLMs, using as calibration sets a selection of languages
+    and alphabets. Results sorted by normalized scores of OPT 6.7B. Error bars represent
+    standard error'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e16767717ca0568b8e418188b596501e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7: SmoothQuant W8A8, FP16-Normalized average accuracy (ARC-Challenge,
+    PIQA, WinoGrande) of various LLMs, using as calibration sets a selection of languages
+    and alphabets. Results sorted by normalized scores of OPT 6.7B. Error bars represent
+    standard error'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We now analyze the results of different languages as calibration sets. We normalize
+    the results to 1.0, representing the FP16 result, and visualize the results across
+    a selection of languages and alphabets using average downstream task accuracy
+    (ARC-Challenge, PIQA and WinoGrande), using GPTQ W4A16 in [Figure 5](#S4.F5 "Figure
+    5 ‣ 4.3 Effect of Different Languages in Calibration Sets on Quantization ‣ 4
+    Results and Analysis ‣ Outliers and Calibration Sets have Diminishing Effect on
+    Quantization of Modern LLMs"), AWQ W4A16 in [Figure 6](#S4.F6 "Figure 6 ‣ 4.3
+    Effect of Different Languages in Calibration Sets on Quantization ‣ 4 Results
+    and Analysis ‣ Outliers and Calibration Sets have Diminishing Effect on Quantization
+    of Modern LLMs") and SmoothQuant W8A8 in [Figure 7](#S4.F7 "Figure 7 ‣ 4.3 Effect
+    of Different Languages in Calibration Sets on Quantization ‣ 4 Results and Analysis
+    ‣ Outliers and Calibration Sets have Diminishing Effect on Quantization of Modern
+    LLMs"). OPT 6.7B is once again the most affected by the choice of the calibration
+    set with both GPTQ and AWQ, showing severe performance degradation on most non-Latin-alphabet
+    languages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, the rest of the more modern models tested exhibit significantly
+    better resilience. With SmoothQuant W8A8, all the calibration sets perform within
+    the standard error of each other, including OPT 6.7B, likely because it uses 8
+    bits for weight quantization instead of 4 bits, which is not a particularly challenging
+    quantization scheme despite also quantizing the activations. However, with lower
+    bit weight-and-activation quantization, OPT would likely show worse degradation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '<svg id="S4.SS3.p3.pic1" class="ltx_picture" height="41.9" overflow="visible"
+    version="1.1" width="600"><g transform="translate(0,41.9) matrix(1 0 0 -1 0 0)"
+    fill="#000000" stroke="#000000" stroke-width="0.4pt"><g fill-opacity="1.0" transform="matrix(1.0
+    0.0 0.0 1.0 13.39 6.5)"><foreignobject width="573.23" height="28.9" transform="matrix(1
+    0 0 -1 0 16.6)" overflow="visible" color="#000000">Finding 3: Different languages
+    from English as calibration sets do not affect quantized performance of modern
+    Large Language Models.</foreignobject></g></g></svg>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4 Results with Naive W8A8 Quantization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Lastly, we replicate the experiment from Dettmers et al. ([2022](#bib.bib11))
+    which showed degradation when naively performing weight-and-activation quantization
+    of OPT models of size 6.7B and bigger due to extreme outliers. We perform naive
+    zero-shot W8A8 quantization using per-channel weight quantization and per-token
+    activation quantization with absmax, and show that OPT 6.7B is the only model
+    of the ones tested whose extreme outliers degrade its performance, while even
+    the bigger Command-R 35B (C4AI, [2024](#bib.bib4)) shows close to no performance
+    degradation. This confirms the results from Ahmadian et al. ([2023](#bib.bib1)),
+    which showed they could naively quantize W8A8 newly trained Cohere models all
+    the way up to 50B parameters, and points to the fact that outliers are not necessarily
+    an emergent-property at scale, but rather a by-product of training. We discuss
+    what kind of training decision may have led to these differences in [section 5](#S5
+    "5 Discussion and Related Work ‣ Outliers and Calibration Sets have Diminishing
+    Effect on Quantization of Modern LLMs").
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/b14b3c89062b92cca4828f7a67d33c3b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8: WikiText2 perplexity with naive W8A8 quantization. Results normalized
+    by FP16 value. Lower is better.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/446164e88713333647ade76c33da8d24.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 9: Average accuracy (ARC-C, PIQA, WinoGrande) with W8A8 naive quantization.
+    Results normalized by FP16 value. Error bars represent standard error. Higher
+    is better.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.5 Activations and outliers comparison
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/fca7ac7b717fd3d7ef4d82aeb35ab4a3.png)![Refer to caption](img/4257273517a8d6216fa64d508f759fd6.png)![Refer
+    to caption](img/72276b6437ad8154f9d7137bbaa60d6e.png)![Refer to caption](img/226c34c85acd508394dbdba0e79219c8.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '![Refer to caption](img/58b21ce88f4c2437066e9ae9818c87db.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 10: Average activation distribution of all the attention output projection
+    layers and last mlp layers for OPT6.7B, LLaMa-2 7B, and Mistral 7B, for English
+    text (on the left) and Mandarin Chinese text (on the right)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/ac5146353466dad0d56c8eff51f38b51.png)![Refer to caption](img/98637bab6b4d584e7f5b8950cee33f3e.png)![Refer
+    to caption](img/79a56a1357108fed534e9d0f2add72a1.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 11: Visualisation of the top and bottom 1% of the activation values
+    of attention output projection layers and last fully connected layers of OPT 6.7B
+    (on the left), and Llama-1 7B (on the right) when running inference on English
+    text'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To gain a deeper understanding of the performance of quantized models and the
+    mechanics of calibration sets, we conduct a thorough analysis of activation distributions
+    and patterns within the attention output projection layers and the final fully
+    connected linear layer across all the layers of the unquantized LLMs tested. This
+    analysis is performed using RedPajama, the nonsensical calibration set, ARC-Challenge,
+    PiQA, and the entire FLORES+ corpus for each language, utilizing sequences of
+    2048 tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, we analyze the activation distributions over a small range around 0\.
+    Mistral 7B consistently exhibits a much narrower activation distribution than
+    all the Llama models and OPT 6.7B in all languages tested. The larger Command-R
+    35B model shows a wider base distribution than the rest of the models. We also
+    observe progressively narrower distributions in the LLMs developed by Meta, from
+    OPT 6.7B to LLaMa-1, LLaMa-2, and LLaMa-3 being the most well-behaved. We also
+    note a broader spread in the activation distributions for non-English languages,
+    with OPT 6.7B and Llama-1 7B showing the widest distribution among the smaller
+    models, Llama-2/3 models occupying intermediate positions, and Mistral 7B maintaining
+    a consistently narrow distribution across all languages. In [Figure 10](#S4.F10
+    "Figure 10 ‣ 4.5 Activations and outliers comparison ‣ 4 Results and Analysis
+    ‣ Outliers and Calibration Sets have Diminishing Effect on Quantization of Modern
+    LLMs"), we compare the activation distributions of English and Mandarin Chinese.
+    Mandarin Chinese was selected for its widespread use, distinct non-Latin alphabet,
+    and likely inclusion in the models’ pre-training. A more comprehensive list of
+    distributions is shown in [Appendix E](#A5 "Appendix E Activation Distributions
+    Plots ‣ Outliers and Calibration Sets have Diminishing Effect on Quantization
+    of Modern LLMs").
+  prefs: []
+  type: TYPE_NORMAL
+- en: We then further inspect the activation patterns of the aforementioned layer
+    of the unquantized OPT, LLaMa, Mistral and Command-R models. Specifically, we
+    compute the average activations across all sequences, then identify the top and
+    bottom 1% percent of activations values. Additionally, we perform min/max pooling
+    with kernel size of 32 (64 for Command-R 35B) along the hidden dimension, facilitating
+    a clearer visualization of the hidden dimensions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We compare the activation patterns of English text across all the models in
+    [Figure 11](#S4.F11 "Figure 11 ‣ 4.5 Activations and outliers comparison ‣ 4 Results
+    and Analysis ‣ Outliers and Calibration Sets have Diminishing Effect on Quantization
+    of Modern LLMs"), [Figure 12](#S4.F12 "Figure 12 ‣ 4.5 Activations and outliers
+    comparison ‣ 4 Results and Analysis ‣ Outliers and Calibration Sets have Diminishing
+    Effect on Quantization of Modern LLMs"), and [Figure 13](#S4.F13 "Figure 13 ‣
+    4.5 Activations and outliers comparison ‣ 4 Results and Analysis ‣ Outliers and
+    Calibration Sets have Diminishing Effect on Quantization of Modern LLMs"). Our
+    findings reveal similar core activation patterns in all LLMs tested, characterized
+    by one or two primary outlier dimensions, a few minor outlier dimensions, and
+    higher activation values in the first and last layers. The activation patterns
+    of all the models with various languages, RedPajama, nonsensical text, ARC-Challenge,
+    and PiQa are visualized in [Appendix D](#A4 "Appendix D Activations and Outlier
+    Patterns Plots ‣ Outliers and Calibration Sets have Diminishing Effect on Quantization
+    of Modern LLMs").
+  prefs: []
+  type: TYPE_NORMAL
+- en: Overall, we find that OPT 6.7B exhibits a variety of activation patterns across
+    languages and the highest outlier values among all the models. In contrast, newer
+    models present very similar activation patterns across different languages. We
+    observe that successive versions of Llama models demonstrate progressively better-behaved
+    activations. Mistral 7B has the smallest maximum outliers. Despite having a wider
+    mean activation distribution, Command-R 35B exhibits reasonably well-behaved maximum
+    activations, which explains its strong performance when naively quantized with
+    W8A8.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/401220bf867576122f751e36f447ed5f.png)![Refer to caption](img/3191fa1e705ffab4aaa5751d1994fe53.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 12: Visualisation of the top and bottom 1% of the activation values
+    of attention output projection layers and last fully connected layers of Llama-2
+    7B (on the left), and Llama-3 8B (on the right) when running inference on English
+    text'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7f19008e7271a7f85da72e2b3e19c807.png)![Refer to caption](img/7263ddf1df31c17656531596f4acfe11.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 13: Visualisation of the top and bottom 1% of the activation values
+    of attention output projection layers and last fully connected layers of Mistral
+    7B (on the left), and Command-R 35B (on the right) when running inference on English
+    text'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Discussion and Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Recent advancements in quantization methodologies for Large Language Models
+    (LLMs) have shifted our understanding of the role of outliers in these models.
+    Outliers were originally thought to be an emerging property of LLMs at scale (Dettmers
+    et al., [2022](#bib.bib11)). This view, however, has been challenged by the findings
+    of Ahmadian et al. ([2023](#bib.bib1)), which suggested that such outliers are
+    not intrinsic emergent properties, but rather by-products of specific pre-training
+    methodologies. Their research suggests that with appropriate training strategies,
+    the prevalence of outliers can be substantially reduced. Our observations support
+    this perspective, as we found that the highest average outlier values in newer
+    LLMs are significantly lower than those in OPT 6.7B. Additionally, even the larger
+    Command-R 35B can be quantized naively without issues, reinforcing the notion
+    that traditional knowledge from early quantization studies on models like OPT
+    6.7B may not apply to modern LLMs pre-trained with newer strategies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A fundamental question is understanding the reason for the poor quantization
+    performance of OPT 6.7B. Ahmadian et al. ([2023](#bib.bib1)) demonstrated that
+    outliers in their Cohere models could be controlled by employing higher weight
+    decay, lower dropout, gradient clipping, and using bfloat16 (Kalamkar et al.,
+    [2019](#bib.bib21)) instead of FP16\. We hypothesize that the high occurrence
+    of extreme outliers in OPT 6.7B is primarily due to its use of FP16 rather than
+    bfloat16 (as disclosed in Metaseq ([2022](#bib.bib27))), while the other models
+    we tested were trained with bfloat16, which was found to be a more robust data
+    type than FP16 (Kalamkar et al., [2019](#bib.bib21)) and has seen widespread adoption
+    in recent years.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Williams and Aletras ([2023](#bib.bib34)) conducted the first empirical study
+    on influence of calibration sets on LLM quantization, suggesting that the calibration
+    data impacts the effectiveness of pruning and quantization techniques. Their findings
+    seem to indicate variations in Llama-1 7B (Touvron et al., [2023a](#bib.bib30))
+    downstream task performance based on calibration data used. Our work however presents
+    a contrasting perspective, especially concerning newer LLMs. We observed that
+    models like Mistral 7B (Jiang et al., [2023](#bib.bib20)) and Llama-2/3 7B/8B
+    (Touvron et al., [2023b](#bib.bib31); AI@Meta, [2024](#bib.bib2)) exhibit a significantly
+    lower sensitivity to the nature of the calibration set compared to OPT 6.7B (Zhang
+    et al., [2022](#bib.bib36)). Furthermore, it is worth noting that the performance
+    variations reported by Williams and Aletras ([2023](#bib.bib34)) with different
+    sampled calibration sets mostly fall within two standard deviations of each other,
+    questioning the statistical significance of their results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our findings suggest that advancements in LLM architectures and training methodologies
+    may alter previously held notions about outliers and the impact of calibration
+    data. As the field of quantization evolves, it becomes increasingly important
+    to reevaluate foundational assumptions and understand how newer models differ
+    from their predecessors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Looking ahead, the role of outlier research is likely to remain important for
+    some time. Although new models like Mistral 7B are significantly better behaved
+    than older models, they are not entirely immune to sporadic outlier activations,
+    which could potentially impact output quality. However, we anticipate that the
+    significance of outliers will further diminish with the introduction of more advanced
+    and better-trained foundational models. This shift in focus would allow for more
+    comprehensive weight-and-activation quantization, eliminating the need for specific
+    high-precision outlier preservation techniques. Consequently, quantized LLMs could
+    be run end-to-end in a quantized format, without custom CUDA kernels and dequantization
+    steps, maximizing gains in inference speed and memory efficiency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Limitations and Future Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The main limitation of our study stems from the constrained scope of our experiments,
+    which were restricted to a select range of LLMs and excluded larger models due
+    to limited computational resources; most of our experiments were conducted on
+    four L4 GPUs (24GB VRAM each). Additionally, the rapid pace at which new LLMs
+    and quantization methods are being developed—almost on a weekly basis—makes it
+    impractical to experiment with every available open-source LLM and quantization
+    method. Consequently, we limited our study to some of the most popular LLMs and
+    quantization techniques, while striving to be as comprehensive as possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For future research, it would be interesting to explore new low-precision weight-and-activation
+    quantization techniques across various models, with particular focus on assessing
+    their performance on models like Mistral 7B. Additionally, it would be interesting
+    to test Round To Nearest techniques utilizing the new 4-bit Normal Float (NF4)
+    format proposed in QLoRa (Dettmers et al., [2023a](#bib.bib12)), for both weight-and-activation
+    quantization with Mistral 7B, given its well-behaved activations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We present an investigation into the effect of calibration sets and the role
+    of outliers in one-shot Post Training Quantization methods, specifically analyzing
+    OPT 6.7B, Llama-1/2/3 (7B/7B/8B), Mistral 7B, and Command R 35B. Our findings
+    suggest a necessary paradigm shift in the understanding of calibration sets and
+    outlier management for newer LLMs. Notably, while the older OPT 6.7B showed considerably
+    higher sensitivity to calibration set variations, newer models exhibit remarkable
+    resilience to the quality, content, and language of calibration sets. Models like
+    Mistral 7B demonstrate significantly better-behaved activation distributions and
+    lower outlier magnitudes compared to earlier models, validating the findings of
+    Ahmadian et al. ([2023](#bib.bib1)) that outliers are not intrinsic properties
+    of LLMs at scale but by-products of training methods. Our research indicates the
+    need to reevaluate foundational knowledge of quantization methods in light of
+    newer models, potentially paving the way for more effective weight-and-activation
+    quantization techniques that could substantially speed up inference and reduce
+    the memory requirements of LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Ahmadian et al. (2023) Arash Ahmadian, Saurabh Dash, Hongyu Chen, Bharat Venkitesh,
+    Stephen Gou, Phil Blunsom, Ahmet Üstün, and Sara Hooker. Intriguing properties
+    of quantization at scale. *arXiv preprint arXiv:2305.19268*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: AI@Meta (2024) AI@Meta. Llama 3 model card. 2024. URL [https://github.com/meta-llama/llama3/blob/main/MODEL_CARD.md](https://github.com/meta-llama/llama3/blob/main/MODEL_CARD.md).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bisk et al. (2020) Yonatan Bisk, Rowan Zellers, Jianfeng Gao, Yejin Choi, et al.
+    Piqa: Reasoning about physical commonsense in natural language. In *Proceedings
+    of the AAAI conference on artificial intelligence*, volume 34, pages 7432–7439,
+    2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: C4AI (2024) C4AI. Model card for c4ai command-r. 2024. URL [https://huggingface.co/CohereForAI/c4ai-command-r-v01](https://huggingface.co/CohereForAI/c4ai-command-r-v01).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chee et al. (2024) Jerry Chee, Yaohui Cai, Volodymyr Kuleshov, and Christopher M
+    De Sa. Quip: 2-bit quantization of large language models with guarantees. *Advances
+    in Neural Information Processing Systems*, 36, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chowdhery et al. (2023) Aakanksha Chowdhery, Sharan Narang, Jacob Devlin, Maarten
+    Bosma, Gaurav Mishra, Adam Roberts, Paul Barham, Hyung Won Chung, Charles Sutton,
+    Sebastian Gehrmann, et al. Palm: Scaling language modeling with pathways. *Journal
+    of Machine Learning Research*, 24(240):1–113, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Clark et al. (2018) Peter Clark, Isaac Cowhey, Oren Etzioni, Tushar Khot, Ashish
+    Sabharwal, Carissa Schoenick, and Oyvind Tafjord. Think you have solved question
+    answering? try arc, the ai2 reasoning challenge. *arXiv preprint arXiv:1803.05457*,
+    2018.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Computer (2023) Together Computer. Redpajama: an open dataset for training
+    large language models, 2023. URL [https://github.com/togethercomputer/RedPajama-Data](https://github.com/togethercomputer/RedPajama-Data).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Costa-jussà et al. (2022) Marta R Costa-jussà, James Cross, Onur Çelebi, Maha
+    Elbayad, Kenneth Heafield, Kevin Heffernan, Elahe Kalbassi, Janice Lam, Daniel
+    Licht, Jean Maillard, et al. No language left behind: Scaling human-centered machine
+    translation. *arXiv preprint arXiv:2207.04672*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers and Zettlemoyer (2023) Tim Dettmers and Luke Zettlemoyer. The case
+    for 4-bit precision: k-bit inference scaling laws. In *International Conference
+    on Machine Learning*, pages 7750–7774\. PMLR, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. (2022) Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer.
+    Llm. int8 (): 8-bit matrix multiplication for transformers at scale. *arXiv preprint
+    arXiv:2208.07339*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. (2023a) Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, and Luke
+    Zettlemoyer. Qlora: Efficient finetuning of quantized llms. *arXiv preprint arXiv:2305.14314*,
+    2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. (2023b) Tim Dettmers, Ruslan Svirschevski, Vage Egiazarian,
+    Denis Kuznedelev, Elias Frantar, Saleh Ashkboos, Alexander Borzunov, Torsten Hoefler,
+    and Dan Alistarh. Spqr: A sparse-quantized representation for near-lossless llm
+    weight compression. *arXiv preprint arXiv:2306.03078*, 2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Doumbouya et al. (2023) Moussa Doumbouya, Baba Mamadi Diané, Solo Farabado
+    Cissé, Djibrila Diané, Abdoulaye Sow, Séré Moussa Doumbouya, Daouda Bangoura,
+    Fodé Moriba Bayo, Ibrahima Sory 2\. Condé, Kalo Mory Diané, Chris Piech, and Christopher
+    Manning. Machine translation for nko: Tools, corpora, and baseline results. In
+    *Proceedings of the Eighth Conference on Machine Translation*, pages 312–343,
+    Singapore, 2023\. Association for Computational Linguistics. URL [https://aclanthology.org/2023.wmt-1.34](https://aclanthology.org/2023.wmt-1.34).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Frantar et al. (2022) Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan
+    Alistarh. Gptq: Accurate post-training quantization for generative pre-trained
+    transformers. *arXiv preprint arXiv:2210.17323*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Gala et al. (2023) Jay Gala, Pranjal A. Chitale, Raghavan AK, Sumanth Doddapaneni,
+    Varun Gumma, Aswanth Kumar, Janki Nawale, Anupama Sujatha, Ratish Puduppully,
+    Vivek Raghavan, Pratyush Kumar, Mitesh M. Khapra, Raj Dabre, and Anoop Kunchukuttan.
+    Indictrans2: Towards high-quality and accessible machine translation models for
+    all 22 scheduled indian languages. 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Goyal et al. (2022) Naman Goyal, Cynthia Gao, Vishrav Chaudhary, Peng-Jen Chen,
+    Guillaume Wenzek, Da Ju, Sanjana Krishnan, Marc’Aurelio Ranzato, Francisco Guzmán,
+    and Angela Fan. The Flores-101 evaluation benchmark for low-resource and multilingual
+    machine translation. *Transactions of the Association for Computational Linguistics*,
+    10, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Guzmán et al. (2019) Francisco Guzmán, Peng-Jen Chen, Myle Ott, Juan Pino,
+    Guillaume Lample, Philipp Koehn, Vishrav Chaudhary, and Marc’Aurelio Ranzato.
+    The FLORES evaluation datasets for low-resource machine translation: Nepali–English
+    and Sinhala–English. In *Proceedings of the 2019 Conference on Empirical Methods
+    in Natural Language Processing and the 9th International Joint Conference on Natural
+    Language Processing (EMNLP-IJCNLP)*, pages 6098–6111, Hong Kong, China, 2019\.
+    Association for Computational Linguistics. URL [https://aclanthology.org/D19-1632](https://aclanthology.org/D19-1632).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hoffmann et al. (2022) Jordan Hoffmann, Sebastian Borgeaud, Arthur Mensch, Elena
+    Buchatskaya, Trevor Cai, Eliza Rutherford, Diego de Las Casas, Lisa Anne Hendricks,
+    Johannes Welbl, Aidan Clark, et al. Training compute-optimal large language models.
+    *arXiv preprint arXiv:2203.15556*, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Jiang et al. (2023) Albert Q Jiang, Alexandre Sablayrolles, Arthur Mensch, Chris
+    Bamford, Devendra Singh Chaplot, Diego de las Casas, Florian Bressand, Gianna
+    Lengyel, Guillaume Lample, Lucile Saulnier, et al. Mistral 7b. *arXiv preprint
+    arXiv:2310.06825*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kalamkar et al. (2019) Dhiraj Kalamkar, Dheevatsa Mudigere, Naveen Mellempudi,
+    Dipankar Das, Kunal Banerjee, Sasikanth Avancha, Dharma Teja Vooturi, Nataraj
+    Jammalamadaka, Jianyu Huang, Hector Yuen, et al. A study of bfloat16 for deep
+    learning training. *arXiv preprint arXiv:1905.12322*, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kaplan et al. (2020) Jared Kaplan, Sam McCandlish, Tom Henighan, Tom B Brown,
+    Benjamin Chess, Rewon Child, Scott Gray, Alec Radford, Jeffrey Wu, and Dario Amodei.
+    Scaling laws for neural language models. *arXiv preprint arXiv:2001.08361*, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kim et al. (2023) Sehoon Kim, Coleman Hooper, Amir Gholami, Zhen Dong, Xiuyu
+    Li, Sheng Shen, Michael W Mahoney, and Kurt Keutzer. Squeezellm: Dense-and-sparse
+    quantization. *arXiv preprint arXiv:2306.07629*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. (2023) Yuanzhi Li, Sébastien Bubeck, Ronen Eldan, Allie Del Giorno,
+    Suriya Gunasekar, and Yin Tat Lee. Textbooks are all you need ii: phi-1.5 technical
+    report. *arXiv preprint arXiv:2309.05463*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lin et al. (2023) Ji Lin, Jiaming Tang, Haotian Tang, Shang Yang, Xingyu Dang,
+    and Song Han. Awq: Activation-aware weight quantization for llm compression and
+    acceleration. *arXiv preprint arXiv:2306.00978*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Merity et al. (2016) Stephen Merity, Caiming Xiong, James Bradbury, and Richard
+    Socher. Pointer sentinel mixture models. *arXiv preprint arXiv:1609.07843*, 2016.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Metaseq (2022) Metaseq. Metaseq github issue, 2022. URL [https://github.com/facebookresearch/metaseq/issues/213](https://github.com/facebookresearch/metaseq/issues/213).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Rajbhandari et al. (2021) Samyam Rajbhandari, Olatunji Ruwase, Jeff Rasley,
+    Shaden Smith, and Yuxiong He. Zero-infinity: Breaking the gpu memory wall for
+    extreme scale deep learning. In *Proceedings of the International Conference for
+    High Performance Computing, Networking, Storage and Analysis*, pages 1–14, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sakaguchi et al. (2021) Keisuke Sakaguchi, Ronan Le Bras, Chandra Bhagavatula,
+    and Yejin Choi. Winogrande: An adversarial winograd schema challenge at scale.
+    *Communications of the ACM*, 64(9):99–106, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023a) Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier
+    Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal,
+    Eric Hambro, Faisal Azhar, et al. Llama: Open and efficient foundation language
+    models. *arXiv preprint arXiv:2302.13971*, 2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023b) Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert,
+    Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava,
+    Shruti Bhosale, et al. Llama 2: Open foundation and fine-tuned chat models. *arXiv
+    preprint arXiv:2307.09288*, 2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Tseng et al. (2024) Albert Tseng, Jerry Chee, Qingyao Sun, Volodymyr Kuleshov,
+    and Christopher De Sa. Quip#: Even better llm quantization with hadamard incoherence
+    and lattice codebooks. *arXiv preprint arXiv:2402.04396*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wei et al. (2022) Xiuying Wei, Yunchen Zhang, Xiangguo Zhang, Ruihao Gong,
+    Shanghang Zhang, Qi Zhang, Fengwei Yu, and Xianglong Liu. Outlier suppression:
+    Pushing the limit of low-bit transformer language models. *Advances in Neural
+    Information Processing Systems*, 35:17402–17414, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Williams and Aletras (2023) Miles Williams and Nikolaos Aletras. How does calibration
+    data affect the post-training pruning and quantization of large language models?
+    *arXiv preprint arXiv:2311.09755*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xiao et al. (2023) Guangxuan Xiao, Ji Lin, Mickael Seznec, Hao Wu, Julien Demouth,
+    and Song Han. Smoothquant: Accurate and efficient post-training quantization for
+    large language models. In *International Conference on Machine Learning*, pages
+    38087–38099\. PMLR, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. (2022) Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe,
+    Moya Chen, Shuohui Chen, Christopher Dewan, Mona Diab, Xian Li, Xi Victoria Lin,
+    et al. Opt: Open pre-trained transformer language models. *arXiv preprint arXiv:2205.01068*,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Zhu et al. (2023) Xunyu Zhu, Jian Li, Yong Liu, Can Ma, and Weiping Wang. A
+    survey on model compression for large language models. *arXiv preprint arXiv:2308.07633*,
+    2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Nonsensical Calibration Set Example
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Generated by sampling from a uniform distribution of ASCII punctuation and whitespace.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Appendix B Calibration Set Quality Results
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/90211493fbeb6063c0fec6c5be649d08.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 14: WikiText2 perplexity with GPTQ W4A16 quantization, using as calibration
+    sets RedPajama (Computer, [2023](#bib.bib8)) and a nonsensical calibration set
+    [Appendix A](#A1 "Appendix A Nonsensical Calibration Set Example ‣ Outliers and
+    Calibration Sets have Diminishing Effect on Quantization of Modern LLMs"). Results
+    normalized to RedPajama score. Lower is better.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/4669cf6d4c7c73c2cf607a022023c809.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 15: Average ARC-Challenge and PIQA accuracy with GPTQ W4A16 quantization,
+    using as calibration sets RedPajama (Computer, [2023](#bib.bib8)) and a nonsensical
+    calibration set [Appendix A](#A1 "Appendix A Nonsensical Calibration Set Example
+    ‣ Outliers and Calibration Sets have Diminishing Effect on Quantization of Modern
+    LLMs"). Results normalized to RedPajama score. Error bars represent standard error.
+    Higher is better.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/c8946e1fad3e6a8ab3bc5fff597dc3f5.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 16: WikiText2 perplexity with AWQ W4A16 quantization, using as calibration
+    sets RedPajama (Computer, [2023](#bib.bib8)) and a nonsensical calibration set
+    [Appendix A](#A1 "Appendix A Nonsensical Calibration Set Example ‣ Outliers and
+    Calibration Sets have Diminishing Effect on Quantization of Modern LLMs"). Results
+    normalized to RedPajama score. Lower is better.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/47f5b76d7f167cbb594e2a37d264e0ac.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 17: Average ARC-Challenge and PIQA accuracy with AWQ W4A16 quantization,
+    using as calibration sets RedPajama (Computer, [2023](#bib.bib8)) and a nonsensical
+    calibration set [Appendix A](#A1 "Appendix A Nonsensical Calibration Set Example
+    ‣ Outliers and Calibration Sets have Diminishing Effect on Quantization of Modern
+    LLMs"). Results normalized to RedPajama score. Error bars represent standard error.
+    Higher is better.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/fa2e5c86897fa4793110e793444e7ad0.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 18: WikiText2 perplexity with SmoothQuant W8A8 quantization, using as
+    calibration sets RedPajama (Computer, [2023](#bib.bib8)) and a nonsensical calibration
+    set [Appendix A](#A1 "Appendix A Nonsensical Calibration Set Example ‣ Outliers
+    and Calibration Sets have Diminishing Effect on Quantization of Modern LLMs").
+    Results normalized to RedPajama score. Lower is better.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e4ccf14938a01e758b591b2dd7634917.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 19: Average ARC-Challenge and PIQA accuracy with GPTQ 4-bit quantization,
+    using as calibration sets RedPajama (Computer, [2023](#bib.bib8)) and a nonsensical
+    calibration set [Appendix A](#A1 "Appendix A Nonsensical Calibration Set Example
+    ‣ Outliers and Calibration Sets have Diminishing Effect on Quantization of Modern
+    LLMs"). Results normalized to RedPajama score. Error bars represent standard error.
+    Higher is better.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: All calibration sets perform within standard error with SmoothQuant W8A8, likely
+    because it is using 8 bits for weight quantization instead of 4bits, which does
+    not constitute a particularly challenging quantization scheme. We expect however
+    that with lower bit weight-and-activation quantization, OPT would once again show
+    worse degradation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix C Calibration Sets Content Results
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/6c5d6e9b35d2e71e8ea4cc4862e2d8f2.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 20: PIQA accuracy with GPTQ 4-bit quantization over calibration sets.
+    Results normalized to RedPajama score. Error bars represent standard error. Higher
+    is better.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/0f0dbe934060cda13e8f7ce55cf1142f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 21: ARC-Challenge accuracy with GPTQ 4-bit quantization over calibration
+    sets. Results normalized to RedPajama score. Error bars represent standard error.
+    Higher is better.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/af43e2ef36123a45d8c563d0d7edb562.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 22: PIQA accuracy with AWQ 4-bit quantization over calibration sets.
+    Results normalized to RedPajama score. Error bars represent standard error. Higher
+    is better.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8a072aeddea0a15099ea55351e744078.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 23: ARC-Challenge accuracy with AWQ 4-bit quantization over calibration
+    sets. Results normalized to RedPajama score. Error bars represent standard error.
+    Higher is better.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/856f29dc0265ef2d71b1c9c6986582f3.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 24: PIQA accuracy with SmoothQuant W8A8 quantization over calibration
+    sets. Results normalized to RedPajama score. Error bars represent standard error.
+    Higher is better.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8f2e97e1db80165f6e9da39c107ba321.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 25: ARC-Challenge accuracy with SmoothQuant W8A8 quantization over calibration
+    sets. Results normalized to RedPajama score. Error bars represent standard error.
+    Higher is better.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix D Activations and Outlier Patterns Plots
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![[Uncaptioned image]](img/ac5146353466dad0d56c8eff51f38b51.png)![[Uncaptioned
+    image]](img/98637bab6b4d584e7f5b8950cee33f3e.png)![[Uncaptioned image]](img/401220bf867576122f751e36f447ed5f.png)![[Uncaptioned
+    image]](img/79a56a1357108fed534e9d0f2add72a1.png)![[Uncaptioned image]](img/3191fa1e705ffab4aaa5751d1994fe53.png)![[Uncaptioned
+    image]](img/7f19008e7271a7f85da72e2b3e19c807.png)![[Uncaptioned image]](img/7263ddf1df31c17656531596f4acfe11.png)![[Uncaptioned
+    image]](img/495ae32556e231b7505b8fe9a9763c9f.png)![[Uncaptioned image]](img/2f1409caca496ec6aa0797100028eaee.png)![[Uncaptioned
+    image]](img/2f530775517f3eef85f56144604a7001.png)![[Uncaptioned image]](img/edd46003e490a8fc3edd9a48bc216617.png)![[Uncaptioned
+    image]](img/3497cfeb2cb01d237b5438a4f73b8289.png)![[Uncaptioned image]](img/33f609699bbc67393ba611080e8e2599.png)![[Uncaptioned
+    image]](img/a9661af5c5365bee0f391c8907d43735.png)![[Uncaptioned image]](img/27fc924115727323ffc23c22ee50624d.png)![[Uncaptioned
+    image]](img/730873b18ab2dece006872d4f71e0def.png)![[Uncaptioned image]](img/910c88277316e47c27786856b8427ff5.png)![[Uncaptioned
+    image]](img/5ae6e43afef67862fcb8b2d5db126d24.png)![[Uncaptioned image]](img/03d671e2a7a4719c30b24c8b2339ee97.png)![[Uncaptioned
+    image]](img/70a45e9c67cc88e0d34e69e6b3bfe4ac.png)![[Uncaptioned image]](img/8a25e58fdf530457ed008a998d71e734.png)![[Uncaptioned
+    image]](img/2ff679db0fa388916e2707514c652d3b.png)![[Uncaptioned image]](img/f42d7c9075e0cb8cbb05ae68a8e8a393.png)![[Uncaptioned
+    image]](img/3db42773c622f7f8f00390937128d751.png)![[Uncaptioned image]](img/f2ff0a50437caa44511df11abe9d913c.png)![[Uncaptioned
+    image]](img/e3c0551a78151ed98a4591b869de4146.png)![[Uncaptioned image]](img/8c4d68d845650c9fc3cb5d65ba66f0eb.png)![[Uncaptioned
+    image]](img/2b8e5a8dbe014bc1f4922b7a54d247f5.png)![[Uncaptioned image]](img/dc5d7a6618abe4ef26f4a1fac67024b1.png)![[Uncaptioned
+    image]](img/7341bf6d6e1598a2e7edcbf18cc6a793.png)![[Uncaptioned image]](img/12193c01f1066925466489ec82f3cce5.png)![[Uncaptioned
+    image]](img/cfb955cc8d4cac10bf136b8f98841f34.png)![[Uncaptioned image]](img/9f12abfa949d405dd75fb976b988ae5d.png)![[Uncaptioned
+    image]](img/cac498cb9f56b830785778064948431d.png)![[Uncaptioned image]](img/b942a15cc7d5ae2df9abb52141b5c268.png)![[Uncaptioned
+    image]](img/759152129258a937ca7587d9333caad0.png)![[Uncaptioned image]](img/25fdbcba80f9f95ed2154682d26a94e7.png)![[Uncaptioned
+    image]](img/d5e12b3296a5b71c05c21114d994f96a.png)![[Uncaptioned image]](img/3584b9a0fbeded44ba2a23cf0e23739f.png)![[Uncaptioned
+    image]](img/b058179d26cf9044004e9cc16ca8559d.png)![[Uncaptioned image]](img/a52fc3c3594962907ddfa86b9040a78e.png)![[Uncaptioned
+    image]](img/fcafb3743422194b47bae73f2d997352.png)![[Uncaptioned image]](img/716a53145c1feec20b98d3b52b1dda4d.png)![[Uncaptioned
+    image]](img/157b87eb99764bdd135585b85c9baca7.png)![[Uncaptioned image]](img/b04c2d6a1ab3429148a3a20a6de14bb5.png)![[Uncaptioned
+    image]](img/e432bdaf070745f3a6c1df78d918eac3.png)![[Uncaptioned image]](img/e728fe76daae6414ba400af04917696b.png)![[Uncaptioned
+    image]](img/51d1bb282db304e51b89999435c1ddad.png)![[Uncaptioned image]](img/268c8f87bec68673a2bd5806554e3117.png)![[Uncaptioned
+    image]](img/f4cc2011df29e0a81fb84951d5afe5f9.png)![[Uncaptioned image]](img/2c0a77b2849d10126e4312cf892ef89e.png)![[Uncaptioned
+    image]](img/980183fcf650e9a90bd1bf5b03576166.png)![[Uncaptioned image]](img/4a79c3a08f6c8e3f718df623172c9e2a.png)![[Uncaptioned
+    image]](img/c17d4637ad50c41eb6f20213d2073191.png)![[Uncaptioned image]](img/643156cd92b3871143ee2afb0a79e565.png)![[Uncaptioned
+    image]](img/64980fb0cff5528438aae5cc0874e1ad.png)![[Uncaptioned image]](img/eac398a2f6da3e03958a9cfd1bd1606f.png)![[Uncaptioned
+    image]](img/1b2fb8b221f13e65afb83c7349dad493.png)![[Uncaptioned image]](img/3f7752800df2b2856c9a9402be0b3564.png)![[Uncaptioned
+    image]](img/ab9dffb8fcd6320b34da288c9c75c297.png)![[Uncaptioned image]](img/2758e248bba9ad30402a990e9c4e83f3.png)![[Uncaptioned
+    image]](img/d92f271e8e49942c3b7beffe024ab77a.png)![[Uncaptioned image]](img/cbfee3b0e858aa9ee402385d383ec7b5.png)![[Uncaptioned
+    image]](img/5bb02e0ca46d2848c4b075d533be4b63.png)![[Uncaptioned image]](img/277a5fa6f3e3926b5a25200c6eaf9d1a.png)![[Uncaptioned
+    image]](img/2a11820bebacc960b755230e830d6a3c.png)![[Uncaptioned image]](img/c6936c210d6f1bd687f3c4d909968d97.png)![[Uncaptioned
+    image]](img/ee35b9e358810a4262fb3f7dc421c3b9.png)![[Uncaptioned image]](img/5348b6215f22949ac89ed950cd3906ce.png)![[Uncaptioned
+    image]](img/03e68310aa0d4504397ef05f7ceb9d34.png)![[Uncaptioned image]](img/518d15366dd92d0c3d6f92f9a3c1ff70.png)![[Uncaptioned
+    image]](img/752bf50a1e90d35b9d63d9be92255285.png)![[Uncaptioned image]](img/5eda6030fdeec0d1a4f5673d8fcf99f9.png)![[Uncaptioned
+    image]](img/7d2aa82314d2314a5ae0d0d142afbab8.png)![[Uncaptioned image]](img/86ad149cc0f2af05b4523155aceb5ae1.png)![[Uncaptioned
+    image]](img/d77d0cab80288d6edc42dd9624d2a059.png)![[Uncaptioned image]](img/0853393d256ab54f76a705e53c42b2a9.png)![[Uncaptioned
+    image]](img/78e3f727bcd0e4e61ede9ee6bb0d45b7.png)![[Uncaptioned image]](img/0a4101f78a6c677c0510e4b4268dc50d.png)![[Uncaptioned
+    image]](img/30e1ec4a2ab1b499130f994abdb15524.png)![[Uncaptioned image]](img/fb259e6d40306eae25c6f0a3258e301b.png)![[Uncaptioned
+    image]](img/dce1df9fbed273814237b31e01e5cfef.png)![[Uncaptioned image]](img/0d1422821cdfaa7cd8cc0aa042f96005.png)![[Uncaptioned
+    image]](img/498c87155379f0497c9f6d24680a9fc2.png)![[Uncaptioned image]](img/dd2cc9dcac6973e47bad58cbf5537c7b.png)![[Uncaptioned
+    image]](img/cb0725528dcd7b51f809e4381f520d6f.png)![[Uncaptioned image]](img/c12bf57750bfe1653d9db4ee02a5efd9.png)![[Uncaptioned
+    image]](img/bd4d92db7ed07037242f638c322c8d88.png)![[Uncaptioned image]](img/dd8405c0225e1db2cc09606e04fac34f.png)![[Uncaptioned
+    image]](img/44bb6e12c022999f43c9fee2914064fd.png)![[Uncaptioned image]](img/e589577d0d7bd29e53aa2376e453c35e.png)![[Uncaptioned
+    image]](img/5d3fed5414259dd073a9ba4c531cba92.png)![[Uncaptioned image]](img/0937abf73a41025f31f30344365b5553.png)![[Uncaptioned
+    image]](img/7d32b3a107d98ea96939af82bb9f566e.png)![[Uncaptioned image]](img/8097c7bf20724027155e34cec91290e7.png)![[Uncaptioned
+    image]](img/9e473192a30001f19a939b7235073320.png)![[Uncaptioned image]](img/6db186f34be4328c40a545ad1ab05828.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Appendix E Activation Distributions Plots
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![[Uncaptioned image]](img/fca7ac7b717fd3d7ef4d82aeb35ab4a3.png)![[Uncaptioned
+    image]](img/4257273517a8d6216fa64d508f759fd6.png)![[Uncaptioned image]](img/f2f5db4e215f10b6231a99a1246db439.png)![[Uncaptioned
+    image]](img/ddc040cc67affb5900b51c1af6e54c5f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '![[Uncaptioned image]](img/58b21ce88f4c2437066e9ae9818c87db.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '![[Uncaptioned image]](img/c62f44319ff3964f0f2826176edf98a2.png)![[Uncaptioned
+    image]](img/289b6c6e7236d327889d6ee58ac96cad.png)![[Uncaptioned image]](img/c1023418fc1bc984efd14c0923deaf50.png)![[Uncaptioned
+    image]](img/962dd799dbde35143f0bea803fde3266.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '![[Uncaptioned image]](img/58b21ce88f4c2437066e9ae9818c87db.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '![[Uncaptioned image]](img/13793fb45a2ed232f16b0e6093e47e01.png)![[Uncaptioned
+    image]](img/387d38c0b9c97c2efb26202a97fd0321.png)![[Uncaptioned image]](img/72276b6437ad8154f9d7137bbaa60d6e.png)![[Uncaptioned
+    image]](img/226c34c85acd508394dbdba0e79219c8.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '![[Uncaptioned image]](img/58b21ce88f4c2437066e9ae9818c87db.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '![[Uncaptioned image]](img/8690eedf438b80038e8d6561c4a6fb72.png)![[Uncaptioned
+    image]](img/e8e9bb877fb0135b3b401d6de916b1eb.png)![[Uncaptioned image]](img/52c224a37dd5b5dbc053ff853da7c83e.png)![[Uncaptioned
+    image]](img/e5825192d2604d4b26ef16ed4e86a6fc.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '![[Uncaptioned image]](img/58b21ce88f4c2437066e9ae9818c87db.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '![[Uncaptioned image]](img/3a3d8ffe7b6dd6b8db129d6ad6446ae4.png)![[Uncaptioned
+    image]](img/6e138b90280800198a969adcc5ec69dd.png)![[Uncaptioned image]](img/27d67151235dc0430cd063e9b479d2d8.png)![[Uncaptioned
+    image]](img/e08d21e86f04a4950bcf2017eb6791d4.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '![[Uncaptioned image]](img/58b21ce88f4c2437066e9ae9818c87db.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '![[Uncaptioned image]](img/56fee78dfa21606224f5592417b36ef8.png)![[Uncaptioned
+    image]](img/dd4a8e50a256b866584baceead8c8d38.png)![[Uncaptioned image]](img/08099abaa53988d99ce678c730574693.png)![[Uncaptioned
+    image]](img/3406c8b51468f45b2b901d737b3ff95d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '![[Uncaptioned image]](img/58b21ce88f4c2437066e9ae9818c87db.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '![[Uncaptioned image]](img/c6e033cd04c66678b5de67b7f9b8949b.png)![[Uncaptioned
+    image]](img/6e9b3b4ac267de712dc662d8236538c4.png)![[Uncaptioned image]](img/fd7275089938d565e3c60b6253cb393c.png)![[Uncaptioned
+    image]](img/ccb27f03b1a4ff0541161d0e2e785c13.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '![[Uncaptioned image]](img/58b21ce88f4c2437066e9ae9818c87db.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '![[Uncaptioned image]](img/59aed2da7841205a4641f114c80de9b3.png)![[Uncaptioned
+    image]](img/2340442a1a0d87a2e77bb2e4ad3f7730.png)![[Uncaptioned image]](img/1d9686faa7b21cd2fd76d450d92b6188.png)![[Uncaptioned
+    image]](img/e0dbfbfa90ef6685c1570f91f3167e53.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '![[Uncaptioned image]](img/58b21ce88f4c2437066e9ae9818c87db.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: NeurIPS Paper Checklist
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Claims
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Question: Do the main claims made in the abstract and introduction accurately
+    reflect the paper’s contributions and scope?'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Answer: [Yes]'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Justification: The claims made in the abstract and introduction are accurately
+    reflect the contributions of the paper.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Guidelines:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The answer NA means that the abstract and introduction do not include the claims
+    made in the paper.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The abstract and/or introduction should clearly state the claims made, including
+    the contributions made in the paper and important assumptions and limitations.
+    A No or NA answer to this question will not be perceived well by the reviewers.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The claims made should match theoretical and experimental results, and reflect
+    how much the results can be expected to generalize to other settings.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: It is fine to include aspirational goals as motivation as long as it is clear
+    that these goals are not attained by the paper.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Limitations
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Question: Does the paper discuss the limitations of the work performed by the
+    authors?'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Answer: [Yes]'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Justification: The limitation section adequately addressed the limitations
+    of the paper known by the authors.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Guidelines:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The answer NA means that the paper has no limitation while the answer No means
+    that the paper has limitations, but those are not discussed in the paper.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The authors are encouraged to create a separate "Limitations" section in their
+    paper.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The paper should point out any strong assumptions and how robust the results
+    are to violations of these assumptions (e.g., independence assumptions, noiseless
+    settings, model well-specification, asymptotic approximations only holding locally).
+    The authors should reflect on how these assumptions might be violated in practice
+    and what the implications would be.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The authors should reflect on the scope of the claims made, e.g., if the approach
+    was only tested on a few datasets or with a few runs. In general, empirical results
+    often depend on implicit assumptions, which should be articulated.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The authors should reflect on the factors that influence the performance of
+    the approach. For example, a facial recognition algorithm may perform poorly when
+    image resolution is low or images are taken in low lighting. Or a speech-to-text
+    system might not be used reliably to provide closed captions for online lectures
+    because it fails to handle technical jargon.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The authors should discuss the computational efficiency of the proposed algorithms
+    and how they scale with dataset size.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If applicable, the authors should discuss possible limitations of their approach
+    to address problems of privacy and fairness.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: While the authors might fear that complete honesty about limitations might be
+    used by reviewers as grounds for rejection, a worse outcome might be that reviewers
+    discover limitations that aren’t acknowledged in the paper. The authors should
+    use their best judgment and recognize that individual actions in favor of transparency
+    play an important role in developing norms that preserve the integrity of the
+    community. Reviewers will be specifically instructed to not penalize honesty concerning
+    limitations.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '3.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Theory Assumptions and Proofs
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Question: For each theoretical result, does the paper provide the full set
+    of assumptions and a complete (and correct) proof?'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Answer: [N/A]'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Justification: The paper’s results are mostly empirical, thus no proofs are
+    needed.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Guidelines:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The answer NA means that the paper does not include theoretical results.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: All the theorems, formulas, and proofs in the paper should be numbered and cross-referenced.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: All assumptions should be clearly stated or referenced in the statement of any
+    theorems.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The proofs can either appear in the main paper or the supplemental material,
+    but if they appear in the supplemental material, the authors are encouraged to
+    provide a short proof sketch to provide intuition.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Inversely, any informal proof provided in the core of the paper should be complemented
+    by formal proofs provided in appendix or supplemental material.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Theorems and Lemmas that the proof relies upon should be properly referenced.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '4.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Experimental Result Reproducibility
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Question: Does the paper fully disclose all the information needed to reproduce
+    the main experimental results of the paper to the extent that it affects the main
+    claims and/or conclusions of the paper (regardless of whether the code and data
+    are provided or not)?'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Answer: [Yes]'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Justification: The authors made a significant effort ensuring that all the
+    details for reproducing the experiments are included.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Guidelines:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The answer NA means that the paper does not include experiments.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'If the paper includes experiments, a No answer to this question will not be
+    perceived well by the reviewers: Making the paper reproducible is important, regardless
+    of whether the code and data are provided or not.'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If the contribution is a dataset and/or model, the authors should describe the
+    steps taken to make their results reproducible or verifiable.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Depending on the contribution, reproducibility can be accomplished in various
+    ways. For example, if the contribution is a novel architecture, describing the
+    architecture fully might suffice, or if the contribution is a specific model and
+    empirical evaluation, it may be necessary to either make it possible for others
+    to replicate the model with the same dataset, or provide access to the model.
+    In general. releasing code and data is often one good way to accomplish this,
+    but reproducibility can also be provided via detailed instructions for how to
+    replicate the results, access to a hosted model (e.g., in the case of a large
+    language model), releasing of a model checkpoint, or other means that are appropriate
+    to the research performed.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: While NeurIPS does not require releasing code, the conference does require all
+    submissions to provide some reasonable avenue for reproducibility, which may depend
+    on the nature of the contribution. For example
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: (a)
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: If the contribution is primarily a new algorithm, the paper should make it clear
+    how to reproduce that algorithm.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: (b)
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: If the contribution is primarily a new model architecture, the paper should
+    describe the architecture clearly and fully.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: (c)
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: If the contribution is a new model (e.g., a large language model), then there
+    should either be a way to access this model for reproducing the results or a way
+    to reproduce the model (e.g., with an open-source dataset or instructions for
+    how to construct the dataset).
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: (d)
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We recognize that reproducibility may be tricky in some cases, in which case
+    authors are welcome to describe the particular way they provide for reproducibility.
+    In the case of closed-source models, it may be that access to the model is limited
+    in some way (e.g., to registered users), but it should be possible for other researchers
+    to have some path to reproducing or verifying the results.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '5.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Open access to data and code
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Question: Does the paper provide open access to the data and code, with sufficient
+    instructions to faithfully reproduce the main experimental results, as described
+    in supplemental material?'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Answer: [No]'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Justification: We have not provided the code to run our experiments, but intend
+    to do so upon acceptance.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Guidelines:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The answer NA means that paper does not include experiments requiring code.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Please see the NeurIPS code and data submission guidelines ([https://nips.cc/public/guides/CodeSubmissionPolicy](https://nips.cc/public/guides/CodeSubmissionPolicy))
+    for more details.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: While we encourage the release of code and data, we understand that this might
+    not be possible, so “No” is an acceptable answer. Papers cannot be rejected simply
+    for not including code, unless this is central to the contribution (e.g., for
+    a new open-source benchmark).
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The instructions should contain the exact command and environment needed to
+    run to reproduce the results. See the NeurIPS code and data submission guidelines
+    ([https://nips.cc/public/guides/CodeSubmissionPolicy](https://nips.cc/public/guides/CodeSubmissionPolicy))
+    for more details.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The authors should provide instructions on data access and preparation, including
+    how to access the raw data, preprocessed data, intermediate data, and generated
+    data, etc.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The authors should provide scripts to reproduce all experimental results for
+    the new proposed method and baselines. If only a subset of experiments are reproducible,
+    they should state which ones are omitted from the script and why.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: At submission time, to preserve anonymity, the authors should release anonymized
+    versions (if applicable).
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Providing as much information as possible in supplemental material (appended
+    to the paper) is recommended, but including URLs to data and code is permitted.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '6.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Experimental Setting/Details
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Question: Does the paper specify all the training and test details (e.g., data
+    splits, hyperparameters, how they were chosen, type of optimizer, etc.) necessary
+    to understand the results?'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Answer: [Yes]'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Justification: The paper specifies the hyperparameters used to run and evaluate
+    the experiments.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Guidelines:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The answer NA means that the paper does not include experiments.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The experimental setting should be presented in the core of the paper to a level
+    of detail that is necessary to appreciate the results and make sense of them.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The full details can be provided either with the code, in appendix, or as supplemental
+    material.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '7.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Experiment Statistical Significance
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Question: Does the paper report error bars suitably and correctly defined or
+    other appropriate information about the statistical significance of the experiments?'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Answer: [Yes]'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Justification: The paper uses standard error as appropriate.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Guidelines:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The answer NA means that the paper does not include experiments.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The authors should answer "Yes" if the results are accompanied by error bars,
+    confidence intervals, or statistical significance tests, at least for the experiments
+    that support the main claims of the paper.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The factors of variability that the error bars are capturing should be clearly
+    stated (for example, train/test split, initialization, random drawing of some
+    parameter, or overall run with given experimental conditions).
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The method for calculating the error bars should be explained (closed form formula,
+    call to a library function, bootstrap, etc.)
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The assumptions made should be given (e.g., Normally distributed errors).
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: It should be clear whether the error bar is the standard deviation or the standard
+    error of the mean.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: It is OK to report 1-sigma error bars, but one should state it. The authors
+    should preferably report a 2-sigma error bar than state that they have a 96% CI,
+    if the hypothesis of Normality of errors is not verified.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For asymmetric distributions, the authors should be careful not to show in tables
+    or figures symmetric error bars that would yield results that are out of range
+    (e.g. negative error rates).
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If error bars are reported in tables or plots, The authors should explain in
+    the text how they were calculated and reference the corresponding figures or tables
+    in the text.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '8.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Experiments Compute Resources
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Question: For each experiment, does the paper provide sufficient information
+    on the computer resources (type of compute workers, memory, time of execution)
+    needed to reproduce the experiments?'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Answer: [Yes]'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Justification: The paper states the compute resources used.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Guidelines:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The answer NA means that the paper does not include experiments.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The paper should indicate the type of compute workers CPU or GPU, internal cluster,
+    or cloud provider, including relevant memory and storage.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The paper should provide the amount of compute required for each of the individual
+    experimental runs as well as estimate the total compute.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The paper should disclose whether the full research project required more compute
+    than the experiments reported in the paper (e.g., preliminary or failed experiments
+    that didn’t make it into the paper).
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '9.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Code Of Ethics
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Question: Does the research conducted in the paper conform, in every respect,
+    with the NeurIPS Code of Ethics [https://neurips.cc/public/EthicsGuidelines](https://neurips.cc/public/EthicsGuidelines)?'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Answer: [Yes]'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Justification: The paper confirms to NeurIPS Code of Ethics in every aspecct.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Guidelines:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The answer NA means that the authors have not reviewed the NeurIPS Code of Ethics.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If the authors answer No, they should explain the special circumstances that
+    require a deviation from the Code of Ethics.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The authors should make sure to preserve anonymity (e.g., if there is a special
+    consideration due to laws or regulations in their jurisdiction).
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '10.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Broader Impacts
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Question: Does the paper discuss both potential positive societal impacts and
+    negative societal impacts of the work performed?'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Answer: [N/A]'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Justification: The paper aims to advance our understanding in machine learning,
+    and does not have any direct negative applications.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Guidelines:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The answer NA means that there is no societal impact of the work performed.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If the authors answer NA or No, they should explain why their work has no societal
+    impact or why the paper does not address societal impact.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Examples of negative societal impacts include potential malicious or unintended
+    uses (e.g., disinformation, generating fake profiles, surveillance), fairness
+    considerations (e.g., deployment of technologies that could make decisions that
+    unfairly impact specific groups), privacy considerations, and security considerations.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The conference expects that many papers will be foundational research and not
+    tied to particular applications, let alone deployments. However, if there is a
+    direct path to any negative applications, the authors should point it out. For
+    example, it is legitimate to point out that an improvement in the quality of generative
+    models could be used to generate deepfakes for disinformation. On the other hand,
+    it is not needed to point out that a generic algorithm for optimizing neural networks
+    could enable people to train models that generate Deepfakes faster.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The authors should consider possible harms that could arise when the technology
+    is being used as intended and functioning correctly, harms that could arise when
+    the technology is being used as intended but gives incorrect results, and harms
+    following from (intentional or unintentional) misuse of the technology.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If there are negative societal impacts, the authors could also discuss possible
+    mitigation strategies (e.g., gated release of models, providing defenses in addition
+    to attacks, mechanisms for monitoring misuse, mechanisms to monitor how a system
+    learns from feedback over time, improving the efficiency and accessibility of
+    ML).
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '11.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Safeguards
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Question: Does the paper describe safeguards that have been put in place for
+    responsible release of data or models that have a high risk for misuse (e.g.,
+    pretrained language models, image generators, or scraped datasets)?'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Answer: [N/A]'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Justification: The paper is not releasing any data, models or datasets.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Guidelines:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The answer NA means that the paper poses no such risks.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Released models that have a high risk for misuse or dual-use should be released
+    with necessary safeguards to allow for controlled use of the model, for example
+    by requiring that users adhere to usage guidelines or restrictions to access the
+    model or implementing safety filters.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Datasets that have been scraped from the Internet could pose safety risks. The
+    authors should describe how they avoided releasing unsafe images.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We recognize that providing effective safeguards is challenging, and many papers
+    do not require this, but we encourage authors to take this into account and make
+    a best faith effort.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '12.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Licenses for existing assets
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Question: Are the creators or original owners of assets (e.g., code, data,
+    models), used in the paper, properly credited and are the license and terms of
+    use explicitly mentioned and properly respected?'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Answer: [Yes]'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Justification: The paper credits the creators of the models, code and data
+    that were used in it.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Guidelines:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The answer NA means that the paper does not use existing assets.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The authors should cite the original paper that produced the code package or
+    dataset.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The authors should state which version of the asset is used and, if possible,
+    include a URL.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The name of the license (e.g., CC-BY 4.0) should be included for each asset.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For scraped data from a particular source (e.g., website), the copyright and
+    terms of service of that source should be provided.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If assets are released, the license, copyright information, and terms of use
+    in the package should be provided. For popular datasets, [paperswithcode.com/datasets](paperswithcode.com/datasets)
+    has curated licenses for some datasets. Their licensing guide can help determine
+    the license of a dataset.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For existing datasets that are re-packaged, both the original license and the
+    license of the derived asset (if it has changed) should be provided.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If this information is not available online, the authors are encouraged to reach
+    out to the asset’s creators.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '13.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: New Assets
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Question: Are new assets introduced in the paper well documented and is the
+    documentation provided alongside the assets?'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Answer: [N/A]'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Justification: The paper is not releasing new assets.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Guidelines:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The answer NA means that the paper does not release new assets.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Researchers should communicate the details of the dataset/code/model as part
+    of their submissions via structured templates. This includes details about training,
+    license, limitations, etc.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The paper should discuss whether and how consent was obtained from people whose
+    asset is used.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: At submission time, remember to anonymize your assets (if applicable). You can
+    either create an anonymized URL or include an anonymized zip file.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '14.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Crowdsourcing and Research with Human Subjects
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Question: For crowdsourcing experiments and research with human subjects, does
+    the paper include the full text of instructions given to participants and screenshots,
+    if applicable, as well as details about compensation (if any)?'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Answer: [N/A]'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Justification: The paper does not involve crowdsourcing nor research with human
+    subjects.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Guidelines:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The answer NA means that the paper does not involve crowdsourcing nor research
+    with human subjects.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Including this information in the supplemental material is fine, but if the
+    main contribution of the paper involves human subjects, then as much detail as
+    possible should be included in the main paper.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: According to the NeurIPS Code of Ethics, workers involved in data collection,
+    curation, or other labor should be paid at least the minimum wage in the country
+    of the data collector.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '15.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Institutional Review Board (IRB) Approvals or Equivalent for Research with Human
+    Subjects
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Question: Does the paper describe potential risks incurred by study participants,
+    whether such risks were disclosed to the subjects, and whether Institutional Review
+    Board (IRB) approvals (or an equivalent approval/review based on the requirements
+    of your country or institution) were obtained?'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Answer: [N/A]'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Justification: The paper does not involve crowdsourcing nor research with human
+    subjects.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Guidelines:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The answer NA means that the paper does not involve crowdsourcing nor research
+    with human subjects.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Depending on the country in which research is conducted, IRB approval (or equivalent)
+    may be required for any human subjects research. If you obtained IRB approval,
+    you should clearly state this in the paper.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We recognize that the procedures for this may vary significantly between institutions
+    and locations, and we expect authors to adhere to the NeurIPS Code of Ethics and
+    the guidelines for their institution.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For initial submissions, do not include any information that would break anonymity
+    (if applicable), such as the institution conducting the review.
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL

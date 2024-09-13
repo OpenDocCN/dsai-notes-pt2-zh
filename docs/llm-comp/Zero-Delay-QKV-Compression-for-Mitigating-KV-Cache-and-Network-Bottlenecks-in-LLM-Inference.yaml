@@ -1,0 +1,2010 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:51:53'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: Zero-Delay QKV Compression for Mitigating KV Cache and Network Bottlenecks in
+    LLM Inference
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2408.04107](https://ar5iv.labs.arxiv.org/html/2408.04107)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Zeyu Zhang
+  prefs: []
+  type: TYPE_NORMAL
+- en: University of Virginia    Haiying Shen
+  prefs: []
+  type: TYPE_NORMAL
+- en: University of Virginia
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In large-language models, memory constraints in the key-value cache (KVC) pose
+    a challenge during inference, especially with long prompts. In this work, we observed
+    that compressing KV values is more effective than compressing the model regarding
+    accuracy and job completion time (JCT). However, quantizing KV values and dropping
+    less-important tokens incur significant runtime computational time overhead, delaying
+    JCT. These methods also cannot reduce computation time or high network communication
+    time overhead in sequence-parallelism (SP) frameworks for long prompts. To tackle
+    these issues, based on our insightful observations from experimental analysis,
+    we propose ZDC, a Zero-delay QKV Compression system that eliminates time overhead
+    and even reduces computation and communication time of the model operations. ZDC
+    innovatively embeds compression and decompression operations within model operations
+    and adaptively determines compression ratios at a hybrid layer-token level. Further,
+    it enables a communication-efficient SP inference framework. Trace-driven experiments
+    demonstrate that ZDC achieves up to 80% lower average JCT, 35% lower average perplexity,
+    and 2.8× higher throughput with the same latency compared to state-of-the-art
+    compression methods. ZDC also reduces the average JCT of current LLM serving systems
+    by up to 91% with the constraint of 0.1 perplexity increase. We open-sourced the
+    code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Generative large language models (LLMs) [[1](#bib.bib1), [2](#bib.bib2), [3](#bib.bib3),
+    [4](#bib.bib4), [5](#bib.bib5), [6](#bib.bib6)] have transformed natural language
+    processing (NLP), showcasing remarkable performance across various tasks like
+    text completion [[7](#bib.bib7)], dialogue generation [[8](#bib.bib8)], code synthesis
+    [[9](#bib.bib9)], language translation [[10](#bib.bib10)], text summarization
+    [[11](#bib.bib11), [12](#bib.bib12), [13](#bib.bib13)], and document classification
+    [[14](#bib.bib14), [15](#bib.bib15)]. The LLM models are primarily inspired by
+    the transformer architecture [[16](#bib.bib16)], which employs self-attention
+    to capture long-range dependencies in sequences.
+  prefs: []
+  type: TYPE_NORMAL
+- en: During LLM inference, text generation starts with providing an initial input,
+    known as a prompt, which can vary from a book to just a few words. LLM generates
+    the first token via prompt processing, followed by text generation to generate
+    new tokens. LLMs typically consist of multiple transformer layers, where each
+    layer receives an embedding matrix $E$) components for each token, serving as
+    inputs to the self-attention layer. The KV values of newly generated tokens are
+    stored in the key-value cache (KVC) to avoid redundant computations. During token
+    generation, the KV values of previous tokens are fetched from the KVC and fed
+    into the attention layer. The resulting self-attention output guides token generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The primary challenge of LLM inference is memory constraints within KVC. Alongside
+    storing the model and activations, LLMs often require substantial memory for KV
+    values. These constraints limit GPU utilization and consequently decrease throughput.
+    The issue is exacerbated by long prompts, which can contain more than 4K tokens
+    [[17](#bib.bib17)], particularly in applications such as coding assistance [[9](#bib.bib9)],
+    book summarization [[11](#bib.bib11), [12](#bib.bib12), [13](#bib.bib13)] and
+    document classification [[14](#bib.bib14), [15](#bib.bib15)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: To address KVC constraints, various model compression methods have been proposed
+    [[18](#bib.bib18), [19](#bib.bib19), [20](#bib.bib20), [21](#bib.bib21), [22](#bib.bib22),
+    [23](#bib.bib23), [24](#bib.bib24)]. In our study, we made an observation that
+    compressing KV values offers more benefits in terms of accuracy and job completion
+    time (JCT) compared to compressing the model itself (O[1](#Thmobs1 "O 1 ‣ 3.1
+    Advantages of QKV Compression Compared to Model Compression ‣ 3 Experimental Analysis
+    ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network Bottlenecks in
+    LLM Inference")). Existing methods compress KV values using quantization [[25](#bib.bib25),
+    [26](#bib.bib26), [27](#bib.bib27)]. Another approach is KVC eviction, which involves
+    dropping less-important tokens [[28](#bib.bib28), [29](#bib.bib29), [30](#bib.bib30)].
+    However, both approaches incur significant runtime computational time overhead,
+    resulting in notable delays in JCT (O[2](#Thmobs2 "O 2 ‣ 3.2 Time Overhead of
+    Current and Potential Compression Methods ‣ 3 Experimental Analysis ‣ Zero-Delay
+    QKV Compression for Mitigating KV Cache and Network Bottlenecks in LLM Inference")).
+    This is primarily due to the time-consuming decompression operations and identification
+    of less-important tokens. Consequently, these methods are unsuitable for online
+    LLM applications such as coding assistance and dialogue generation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Furthermore, for long prompts, relying solely on compression methods proves
+    insufficient. For instance, compressing a 64K prompt by 75% still results in a
+    size that cannot be accommodated in a GPU memory. To tackle this issue, sequence
+    parallelism (SP) employing multiple GPUs can process sequence partitions in parallel.
+    However, it leads to high network communication overhead for aggregating all QKV
+    values across GPUs. Unfortunately, existing compression approaches fail to mitigate
+    this high communication time overhead (O[5](#Thmobs5 "O 5 ‣ 3.4 High Communication
+    Time in SP ‣ 3 Experimental Analysis ‣ Zero-Delay QKV Compression for Mitigating
+    KV Cache and Network Bottlenecks in LLM Inference")) or computation time because
+    they only compress KV values after transmission and computation since decompressed
+    data is required for computation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To tackle these issues, we leverage insights from our experimental analysis
+    and propose ZDC, a Zerod-delay QKV Compression system that not only eliminates
+    the compression time overhead but also reduces computation and communication time.
+    It comprises three key components as below.
+  prefs: []
+  type: TYPE_NORMAL
+- en: SVD-based zero-delay compression. Based on LLM model operations, we establish
+    two lemmas indicating conditions to eliminate 1) compression matrix computation
+    time, 2) compression time, and 3) decompression time. We find that the Singular
+    Value Decomposition (SVD) compression method meets these conditions. Consequently,
+    ZDC utilizes SVD to derive compression matrices for each head of every transformer
+    layer offline to achieve 1). ZDC seamlessly integrates compression and decompression
+    operations on $Q$ into model inference operations. Consequently, the delays associated
+    with compression and decompression are concealed within the model operation. Specifically,
+    to achieve 2), the compression matrices for the QKV matrices are embedded within
+    the model’s parameters. To achieve 3), ZDC uses the matrix multiplication of compressed
+    matrices to directly yield an approximation of the result obtained by multiplying
+    their uncompressed counterparts in model operations. This way, ZDC compresses
+    the QKV data before computation and network communication in SP, thus significantly
+    reducing both latencies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adaptive hybrid compression ratio determination. Based on our observations that
+    closer model layers share more important and unimportant tokens, and shallower
+    layers contain more unimportant tokens (O[3](#Thmobs3 "O 3 ‣ 3.3 Token Importance
+    Features in Layers ‣ 3 Experimental Analysis ‣ Zero-Delay QKV Compression for
+    Mitigating KV Cache and Network Bottlenecks in LLM Inference") and O[4](#Thmobs4
+    "O 4 ‣ 3.3 Token Importance Features in Layers ‣ 3 Experimental Analysis ‣ Zero-Delay
+    QKV Compression for Mitigating KV Cache and Network Bottlenecks in LLM Inference")),
+    to improve the trade-off between the effectiveness of QKV compression and accuracy
+    decrease, ZDC adaptively determines the compression ratios in a hybrid layer-token
+    manner with low overhead. First, it offline determines layers that have the same
+    important and unimportant token sets. Second, it determines different compression
+    ratios for important and unimportant tokens in each layer and selects more tokens
+    as important tokens in deeper layers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Communication-efficient sequence parallelism. It is the first communication-efficient
+    sequence parallelism system for long prompt inference, incorporating a sequence
+    parallelism framework and reducing its communication overhead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In summary, our work has the following contributions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We derive insightful observations from our experimental analysis, laying the
+    groundwork for ZDC.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We propose ZDC as the first solution to not only achieve zero delay but also
+    reduce computation time and communication time in SP for long prompts, while also
+    minimizing data volume in KVC.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Comprehensive experiments demonstrate that ZDC achieves up to 80% lower JCT
+    and 35% lower perplexity compared to state-of-the-art method methods. ZDC also
+    reduces the average JCT of current LLM serving systems by up to 91% with the constraint
+    of 0.1 perplexity increase.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Note that ZDC is orthogonal to and can complement the existing KV quantization
+    and KV eviction methods, reducing their time overhead while maintaining accuracy.
+    We open-sourced the code of ZDC [[31](#bib.bib31)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Background
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 2.1 Attention Mechanism of Transformers
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8a4f1ae91ed6580f3bc71ace4582203f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: The overview of a typical transformer layer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A typical transformer-based LLM comprises multiple identical transformer layers,
+    as depicted in Fig.[1](#S2.F1 "Figure 1 ‣ 2.1 Attention Mechanism of Transformers
+    ‣ 2 Background ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network
+    Bottlenecks in LLM Inference"). Each transformer layer mainly consists of a multi-layer
+    perceptron (MLP) and a multi-head attention mechanism, which encompasses three
+    main parts, as highlighted in red. The mechanism enables the model to evaluate
+    the interdependencies among all tokens in a sentence across different aspects
+    represented by different attention heads. Within head $h$ through QKV generation
+    ( <svg id="S2.SS1.p1.6.pic1" class="ltx_picture" height="13.74" overflow="visible"
+    version="1.1" width="13.74"><g transform="translate(0,13.74) matrix(1 0 0 -1 0
+    0) translate(6.87,0) translate(0,6.87)" fill="#000000" stroke="#000000" stroke-width="0.4pt"><g
+    transform="matrix(1.0 0.0 0.0 1.0 -3.46 -4.46)" fill="#000000" stroke="#000000"><foreignobject
+    width="6.92" height="8.92" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible">1</foreignobject></g></g></svg>):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $Q^{h}=EW_{Q}^{h}\mbox{, ~{}}K^{h}=EW_{K}^{h}\mbox{, ~{}}V^{h}=EW_{V}^{h},\vspace{-0.05in}$
+    |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $W_{Q}^{h}$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $O^{h}=\mbox{Softmax}(\frac{Q^{h}(K^{h})^{T}}{\sqrt{d_{h}}})V^{h}=P^{h}V^{h}.\vspace{-0.05in}$
+    |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'The softmax function operates row-wise on the input matrix $[a_{i,j}]$ as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\frac{exp(a_{i,j})}{\sum_{k=1}^{t_{i}}exp(a_{i,k})},\vspace{-0in}$ |  |
+    (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $t_{i}$ to produce the linear layer output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $O_{L}=[O^{1},O^{2},...,O^{N_{h}}]W_{L}=OW_{L}.\vspace{-0.05in}$ |  |
+    (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: Table [1](#S2.T1 "Table 1 ‣ 2.2 Singular Value Decomposition ‣ 2 Background
+    ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network Bottlenecks in
+    LLM Inference") lists the primary notations used in the paper.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2 Singular Value Decomposition
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/486ad58392df3ce3a145fe100fdb93fa.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: SVD for data compression.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: SVD is widely used for dimensionality reduction in datasets, aiming to retain
+    as much original information as possible. Given a matrix $A$ as the compression
+    matrix, as depicted in Fig. [2](#S2.F2 "Figure 2 ‣ 2.2 Singular Value Decomposition
+    ‣ 2 Background ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network
+    Bottlenecks in LLM Inference").
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| $d$ | The number of heads |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $N_{l}$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $E$ | Query matrix |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $K$ | Value matrix |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $g$ | Rotation matrix |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $p$ | Parameter matrix |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 1: Notations used in the paper.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Experimental Analysis
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '| Trace | Input length | Output length | Arrival rate (req/s) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | avg | min | max | avg | min | max |'
+  prefs: []
+  type: TYPE_TB
+- en: '| The Pile | 2.5K | 184 | 19.2K | 446 | 252 | 1.1K | 32 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ShareGPT | 161 | 16 | 3.2K | 338 | 19 | 991 | 128 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: Trace properties and experiment settings.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the experimental analysis, unless otherwise specified, we utilized Meta Llama-2
+    [[6](#bib.bib6)] with a model size of 13B and a dataset combined from "The Pile"
+    [[33](#bib.bib33)] and ShareGPT [[34](#bib.bib34)]. “The Pile” is a dataset collected
+    from 22 topics (e.g., GitHub, ArXiv, and Wikipedia) by EleutherAI [[33](#bib.bib33)]
+    and used to train LLM. As it does not provide output sequences, we fed its input
+    sequences into Llama-2 [[6](#bib.bib6)] to obtain the ground-truth output. Table [2](#S3.T2
+    "Table 2 ‣ 3 Experimental Analysis ‣ Zero-Delay QKV Compression for Mitigating
+    KV Cache and Network Bottlenecks in LLM Inference") lists the features of the
+    datasets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We employed two AWS p4de.24xlarge instances [[35](#bib.bib35)] located in two
+    servers. Each instance is equipped with 8 NVIDIA A100 GPUs (each with 80 GiB memory),
+    96 vCPUs, and 1152 GiB host memory. Long prompts were partitioned into 2K-token
+    segments and processed using SP since 2K typically is the maximum number of input
+    tokens permitted for a single iteration in an LLM [[36](#bib.bib36)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: As in [[37](#bib.bib37)], we executed 16 concurrent clients to dispatch requests
+    from a single dataset. The requests and partitioned requests were allocated to
+    the 16 GPUs in a round-robin manner. If there were insufficient GPUs available
+    to process a long prompt length, the request would be queued until the requisite
+    GPU resources became available. Our system was built on FastGen [[37](#bib.bib37)],
+    which builds upon and outperforms vLLM [[38](#bib.bib38)]. FastGen enhances upon
+    vLLM’s capabilities by segmenting long prompts into chunks and consolidating each
+    chunk with other token generation tasks within a single iteration to maximize
+    throughput. We used Ulysses [[39](#bib.bib39)], originally designed for training,
+    as the SP framework for inference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Advantages of QKV Compression Compared to Model Compression
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'To compress model parameters (including activations) and QKV, we employed 4-bit
+    quantization. For QKV compression, we employed two methods: 1) compressing QKV
+    before step <svg id="S3.SS1.p1.1.m1.1.1.pic1" class="ltx_picture ltx_markedasmath"
+    height="13.74" overflow="visible" version="1.1" width="13.74"><g fill="#000000"
+    stroke="#000000" stroke-width="0.4pt" transform="translate(0,13.74) matrix(1 0
+    0 -1 0 0) translate(6.87,0) translate(0,6.87)"><g fill="#000000" stroke="#000000"
+    transform="matrix(1.0 0.0 0.0 1.0 -3.46 -4.46)"><foreignobject height="8.92" overflow="visible"
+    transform="matrix(1 0 0 -1 0 16.6)" width="6.92">1</foreignobject></g></g></svg>,
+    necessitating decompression before softmax computation, and 2) compressing QKV
+    only after step <svg id="S3.SS1.p1.2.m2.1.1.pic1" class="ltx_picture ltx_markedasmath"
+    height="13.74" overflow="visible" version="1.1" width="13.74"><g fill="#000000"
+    stroke="#000000" stroke-width="0.4pt" transform="translate(0,13.74) matrix(1 0
+    0 -1 0 0) translate(6.87,0) translate(0,6.87)"><g fill="#000000" stroke="#000000"
+    transform="matrix(1.0 0.0 0.0 1.0 -3.46 -4.46)"><foreignobject height="8.92" overflow="visible"
+    transform="matrix(1 0 0 -1 0 16.6)" width="6.92">2</foreignobject></g></g></svg>,
+    thereby avoiding additional computation time. Fig. [3(a)](#S3.F3.sf1 "Figure 3(a)
+    ‣ Figure 3 ‣ 3.1 Advantages of QKV Compression Compared to Model Compression ‣
+    3 Experimental Analysis ‣ Zero-Delay QKV Compression for Mitigating KV Cache and
+    Network Bottlenecks in LLM Inference") compares the average perplexity for requests
+    with sequence length (the sum of input and output lengths) within a specified
+    range. QKV compression of methods 1 and 2 exhibits 12-32% and 15-36% lower average
+    perplexity compared to model compression. This discrepancy arises because QKV
+    compression only sacrifices precision at attention layers, whereas model compression
+    incurs precision loss at both attention and MLP layers. QKV of method 1 has 2-5%
+    higher average perplexity than method 2 because it has compression and decompression
+    of QKV for communication, leading to precision loss.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d5fb51fa816fa1d5f57a388ff9106a90.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Perplexity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/ffa5de202b0c647f700a77ef0169e41a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) JCT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 3: 4-bit quantization on the model and QKV.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fig. [3(b)](#S3.F3.sf2 "Figure 3(b) ‣ Figure 3 ‣ 3.1 Advantages of QKV Compression
+    Compared to Model Compression ‣ 3 Experimental Analysis ‣ Zero-Delay QKV Compression
+    for Mitigating KV Cache and Network Bottlenecks in LLM Inference") compares the
+    average JCT decomposed into different components, where “Compression” includes
+    the time for quantization and dequantization. QKV compression of methods 1 and
+    2 exhibits 28-51% and 15-52% lower average JCT than model compression overall.
+    Additionally, they demonstrate 17-83% and 43-85% lower average time overhead than
+    model compression because the amount of a request’s KV data in every iteration
+    is smaller than the number of model parameters. Moreover, method 1 showcases a
+    65-79% lower average communication time than model compression and method 2 for
+    long prompts utilizing SP because method 1’s QKV compression reduces the amount
+    of QKV data to be transferred. Finally, all methods exhibit similar attention
+    and non-attention computation times because these operations are performed on
+    the original decompressed data. Method 1 underperforms Method 2 for short prompts
+    due to its additional decompression time but outperforms method 2 for long prompts
+    because of the saved communication time in SP.
+  prefs: []
+  type: TYPE_NORMAL
+- en: O 1
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Compressing QKV results in lower perplexity and lower JCT compared to compressing
+    model parameters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Time Overhead of Current and Potential Compression Methods
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/034545649d03e093b47cd1a0e718c2ae.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: Average JCT.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We compared a KV eviction method (H2O [[28](#bib.bib28)]) and a KV compression
+    method (GEAR [[25](#bib.bib25)]). Fig. [4](#S3.F4 "Figure 4 ‣ 3.2 Time Overhead
+    of Current and Potential Compression Methods ‣ 3 Experimental Analysis ‣ Zero-Delay
+    QKV Compression for Mitigating KV Cache and Network Bottlenecks in LLM Inference")
+    shows the average JCT versus the sequence lengths within specific ranges. The
+    compression/eviction time and communication time of H2O amount to 17-28% and 0-27%
+    of the average JCT, respectively; those of GEAR are 20-26% and 0-23%. It is noteworthy
+    that 28% of JCT equals 7s. These metrics tend to increase as sequence lengths
+    grow due to the processing and transfer of more tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/bde3555e04731c1c53201bd65c58c2c1.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: JCT decomposition.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We then study employing SVD using the traditional compression methodology (as
+    explained in [§ 2.1](#S2.SS1 "2.1 Attention Mechanism of Transformers ‣ 2 Background
+    ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network Bottlenecks in
+    LLM Inference")) for QKV compression online. Its time overhead mainly stems from
+    several stages, including rotation matrix $R$, compression, and decompression
+    overhead account for 45-62%, 19-30%, 9-13%, and 10%-12% of JCT, respectively,
+    increasing as the sequence length increases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: O 2
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Both current KVC compression methods and SVD significantly increase JCT (e.g.,
+    55% of JCT) due to their inherent time overhead and their inability to reduce
+    communication overhead in SP.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Token Importance Features in Layers
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We investigate the distribution of attention scores in each layer of the model.
+    Varying parameters of different models may lead to different attention scores.
+    Therefore, we conducted additional tests on the OPT 13B model [[40](#bib.bib40)].
+    Figure [6](#S3.F6 "Figure 6 ‣ 3.3 Token Importance Features in Layers ‣ 3 Experimental
+    Analysis ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network Bottlenecks
+    in LLM Inference") illustrates the cumulative distribution function (CDF) of layers
+    versus attention scores. We observe that for both OPT and Llama-2, the numerical
+    range of the attention scores gradually narrows down from the shallow layer 1
+    to the deep layer 40\. Specifically, the range of OPT decreases from [-92, 95]
+    to [-4, 5], while that of Llama-2 decreases from [-106, 101] to [-6, 4]. This
+    suggests that after converting scores into probabilities via the softmax function,
+    probabilities in shallow layers become highly polarized towards 0 and 1, with
+    many being extremely close to zero and some nearing 1\. In contrast, probabilities
+    in deep layers tend to be close to each other and contribute similarly to the
+    attention output. Therefore, we make an observation that:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: O 3
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Shallower layers tend to have more unimportant tokens compared to deep layers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/addcca655160664325a16fc2c08766c6.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) OPT 13B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7cc353b8e933727a3740861db7a5c689.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Llama-2 13B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 6: CDF of attention scores among different layers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e7e332c78a9fbb3f87557238dd215728.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) OPT 13B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/54cef5a9dfdc8850e564e26175b05bdb.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Llama-2 13B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 7: CDF of layer pairs v.s. unimportant token repetition ratio for different
+    layer distances $\Delta$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/1eba0224090c4087e12eac4a73431f0a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) OPT 13B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/6b95eedffecad8b067feffb55ac43246.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Llama-2 13B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 8: CDF of layer pairs v.s. important token repetition ratio for different
+    layer distances $\Delta$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/ae3b54759fa6e1f567c157cdf004e096.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 9: The JCT of sequences w/ and w/o SP.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To determine whether different layers share the same unimportant tokens, we
+    recorded 35% of tokens with the lowest average scores in each layer. Then, we
+    calculated the repetition ratio of those low-score tokens between a layer and
+    other layers. We use $\Delta$. We can make the same observations as Fig. [7](#S3.F7
+    "Figure 7 ‣ 3.3 Token Importance Features in Layers ‣ 3 Experimental Analysis
+    ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network Bottlenecks in
+    LLM Inference").
+  prefs: []
+  type: TYPE_NORMAL
+- en: O 4
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Closer model layers tend to share more the same important and unimportant tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.4 High Communication Time in SP
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Without SP, a long prompt is processed on one GPU many times sequentially. Fig. [9](#S3.F9
+    "Figure 9 ‣ 3.3 Token Importance Features in Layers ‣ 3 Experimental Analysis
+    ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network Bottlenecks in
+    LLM Inference") shows the average JCT for sequences within a specific length range
+    w/ and w/o SP. The average JCT with SP is 46-85% lower than that w/o SP. It reduces
+    the average JCT for 18-20K sequence length from 76s to 17s. The communication
+    time for SP accounts for 19-45% of its average JCT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: O 5
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: SP drastically reduces JCT, yet network communication remains a substantial
+    component (e.g., 45%) of JCT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Rationales of the Design of ZDC
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'O[2](#Thmobs2 "O 2 ‣ 3.2 Time Overhead of Current and Potential Compression
+    Methods ‣ 3 Experimental Analysis ‣ Zero-Delay QKV Compression for Mitigating
+    KV Cache and Network Bottlenecks in LLM Inference") underscores the importance
+    of minimizing compression time overhead to avoid adverse effects on JCT. In the
+    pursuit of reducing data volume transferred in the network for ML training and
+    inference services, quantization techniques [[41](#bib.bib41), [42](#bib.bib42),
+    [22](#bib.bib22), [43](#bib.bib43)] are commonly employed, albeit introducing
+    additional time for compression and decompression. Even with methods mitigating
+    these overheads by performing computation directly on compressed data [[41](#bib.bib41)],
+    compression and decompression time remains. We present three questions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Can we eliminate compression time?
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Can we eliminate decompression time?
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Can we eliminate the compression matrix computation time?
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Given that attention computation entails matrix multiplications, a feasible
+    strategy involves embedding the compression matrix into model parameters ([§ 4.1](#S4.SS1
+    "4.1 Eliminating Compression Time ‣ 4 Rationales of the Design of ZDC ‣ Zero-Delay
+    QKV Compression for Mitigating KV Cache and Network Bottlenecks in LLM Inference")).
+    Consequently, the compressed matrix can be derived directly from input-parameter
+    multiplication. Subsequently, when the compressed data is multiplied with other
+    compressed data, we can simultaneously obtain the product of uncompressed matrix
+    data ([§ 4.2](#S4.SS2 "4.2 Eliminating Decompression Time ‣ 4 Rationales of the
+    Design of ZDC ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network
+    Bottlenecks in LLM Inference")). Additionally, we will design an offline approach
+    for computing the compression matrices [§ 4.3](#S4.SS3 "4.3 Eliminate Compression
+    Matrix Computation Time and Suitability of SVD ‣ 4 Rationales of the Design of
+    ZDC ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network Bottlenecks
+    in LLM Inference"). Further details are elucidated in the ensuing subsections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Eliminating Compression Time
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We illustrate this rationale using $Q$ is not compressed before being utilized
+    for computation to avoid the decompression prior to computation. Decompression
+    happens when KV data is fetched from KVC (as shown in the bottom of Fig. [1](#S2.F1
+    "Figure 1 ‣ 2.1 Attention Mechanism of Transformers ‣ 2 Background ‣ Zero-Delay
+    QKV Compression for Mitigating KV Cache and Network Bottlenecks in LLM Inference")).
+    This method cannot save communication time in SP or computation time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/dfa7d7ebe2bdde6d21b84e42af1ca673.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 10: An example of eliminating compression.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To design a compression method devoid of compression time overhead, we can leverage
+    the associativity inherent in matrix multiplication. We could pre-multiply $W_{Q}$
+    before the self-attention layer, it reduces both the communication time in SP
+    and the computation time of the model operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lemma 1
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Leveraging the associativity of matrix multiplication can eliminate the compression
+    time overhead with a pre-determined compression matrix.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Eliminating Decompression Time
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Given the compressed vectors $Q^{\prime}$ with some degree of accuracy loss.
+    However, this introduces additional time overhead as indicated by O[2](#Thmobs2
+    "O 2 ‣ 3.2 Time Overhead of Current and Potential Compression Methods ‣ 3 Experimental
+    Analysis ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network Bottlenecks
+    in LLM Inference"). To tackle this challenge, we leverage the matrix multiplication
+    inherent in model operations to eliminate these decompression operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since rotating row vectors of two matrices in Euclidean space preserves the
+    relative relationships between vectors, it does not alter the multiplication result
+    of one matrix and the transpose of the other matrix. If we have a square rotation
+    matrix $R$ and the decompression operation are concurrently conducted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Recall that given the self-attention output matrix $[P^{1}V^{1},...,P^{N_{h}}V^{N_{h}}]$
+    for compression.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unlike the online generation of $Q$ (based on Eq. ([4](#S2.E4 "Equation 4 ‣
+    2.1 Attention Mechanism of Transformers ‣ 2 Background ‣ Zero-Delay QKV Compression
+    for Mitigating KV Cache and Network Bottlenecks in LLM Inference"))).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lemma 2
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: We can directly multiply compressed matrices without introducing decompression
+    overhead to obtain the original product of uncompressed matrices if we can find
+    a common rotation matrix $R$ for them in which the rotated vectors have many near-zero
+    dimensions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/4635bed8ce89479af172c930727ebbe5.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 11: Illustration of ZDC’s zero-delay compression.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 Eliminate Compression Matrix Computation Time and Suitability of SVD
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To address the challenge of eliminating rotation matrix computation time, we
+    propose finding a common $R$ for dimension reduction. At the same time, we will
+    check if SVD satisfies the conditions in both Lemma[1](#Thmlem1 "Lemma 1 ‣ 4.1
+    Eliminating Compression Time ‣ 4 Rationales of the Design of ZDC ‣ Zero-Delay
+    QKV Compression for Mitigating KV Cache and Network Bottlenecks in LLM Inference")
+    and Lemma[2](#Thmlem2 "Lemma 2 ‣ 4.2 Eliminating Decompression Time ‣ 4 Rationales
+    of the Design of ZDC ‣ Zero-Delay QKV Compression for Mitigating KV Cache and
+    Network Bottlenecks in LLM Inference").
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finding common rotation matrix offline. Different heads capture varying information
+    about words [[44](#bib.bib44)], implying that $Q$ pair within each head.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We use historical data of $Q$ pair.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a203e9245f40fb56b02f13aac7eb1a74.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 12: Finding $R$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To verify the effectiveness of this method, we used “The Pile” dataset with
+    around 10G prompt and output tokens and Llama-2 13B to conduct an experiment.
+    We use 50% of the tokens for deriving the common $R$s can be a common rotation
+    matrix in Lemma [2](#Thmlem2 "Lemma 2 ‣ 4.2 Eliminating Decompression Time ‣ 4
+    Rationales of the Design of ZDC ‣ Zero-Delay QKV Compression for Mitigating KV
+    Cache and Network Bottlenecks in LLM Inference") and if they are effective for
+    other tokens received online as implied in Lemma [1](#Thmlem1 "Lemma 1 ‣ 4.1 Eliminating
+    Compression Time ‣ 4 Rationales of the Design of ZDC ‣ Zero-Delay QKV Compression
+    for Mitigating KV Cache and Network Bottlenecks in LLM Inference").
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/af8ba9c5d28f7b3686db2eb9dbab906a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) QK.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/833e44411a28fe0273964066a964e073.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) V$W_{L}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 13: Singular values for QK and V$W_{L}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/129ec344c41d3b14af79b8c46de91afd.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) QK.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7653784715a071d0278fa29bfdcf01d6.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) V$W_{L}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 14: Applicability of $R$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We use $A$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lemma 3
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: SVD satisfies the conditions in Lemma[1](#Thmlem1 "Lemma 1 ‣ 4.1 Eliminating
+    Compression Time ‣ 4 Rationales of the Design of ZDC ‣ Zero-Delay QKV Compression
+    for Mitigating KV Cache and Network Bottlenecks in LLM Inference") and Lemma[2](#Thmlem2
+    "Lemma 2 ‣ 4.2 Eliminating Decompression Time ‣ 4 Rationales of the Design of
+    ZDC ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network Bottlenecks
+    in LLM Inference") for being the zero-delay compression method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Design of ZDC
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 5.1 SVD-based Zero-Delay Compression
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Fig. [11](#S4.F11 "Figure 11 ‣ 4.2 Eliminating Decompression Time ‣ 4 Rationales
+    of the Design of ZDC ‣ Zero-Delay QKV Compression for Mitigating KV Cache and
+    Network Bottlenecks in LLM Inference") demonstrates the workflow of how ZDC performs
+    the zero-delay compression. It consists of 1) Offline rotation matrix computation
+    ([§ 5.1](#S5.SS1 "5.1 SVD-based Zero-Delay Compression ‣ 5 Design of ZDC ‣ Zero-Delay
+    QKV Compression for Mitigating KV Cache and Network Bottlenecks in LLM Inference")),
+    2) QK compression and decompression ([fig. 15](#S5.F15 "In 5.1 SVD-based Zero-Delay
+    Compression ‣ 5 Design of ZDC ‣ Zero-Delay QKV Compression for Mitigating KV Cache
+    and Network Bottlenecks in LLM Inference")) and 3) V$W_{L}$ compression and decompression
+    ([§ 5.1](#S5.SS1 "5.1 SVD-based Zero-Delay Compression ‣ 5 Design of ZDC ‣ Zero-Delay
+    QKV Compression for Mitigating KV Cache and Network Bottlenecks in LLM Inference")),
+    as explained in the following sections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Offline rotation matrix computation. The offline rotation matrix computation,
+    depicted as <svg id="S5.SS1.p2.1.m1.1.1.pic1" class="ltx_picture ltx_markedasmath"
+    height="13.74" overflow="visible" version="1.1" width="13.74"><g fill="#000000"
+    stroke="#000000" stroke-width="0.4pt" transform="translate(0,13.74) matrix(1 0
+    0 -1 0 0) translate(6.87,0) translate(0,6.87)"><g fill="#000000" stroke="#000000"
+    transform="matrix(1.0 0.0 0.0 1.0 -3.46 -4.46)"><foreignobject height="8.92" overflow="visible"
+    transform="matrix(1 0 0 -1 0 16.6)" width="6.92">1</foreignobject></g></g></svg>
+    in Fig. [11](#S4.F11 "Figure 11 ‣ 4.2 Eliminating Decompression Time ‣ 4 Rationales
+    of the Design of ZDC ‣ Zero-Delay QKV Compression for Mitigating KV Cache and
+    Network Bottlenecks in LLM Inference"), is explained in [§ 4.3](#S4.SS3 "4.3 Eliminate
+    Compression Matrix Computation Time and Suitability of SVD ‣ 4 Rationales of the
+    Design of ZDC ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network
+    Bottlenecks in LLM Inference"). Due to its resource- and time-consuming nature,
+    we propose employing pruning and K-means clustering to address this challenge.
+    K-means is a common quantization technique that consolidates vectors within each
+    cluster by averaging them into a single vector.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We first prune data within the same topic of the sequences, under the rationale
+    that similar or duplicated data samples may not significantly enhance overall
+    accuracy [[45](#bib.bib45)]. In our previous experiment (for Fig. [13](#S4.F13
+    "Figure 13 ‣ 4.3 Eliminate Compression Matrix Computation Time and Suitability
+    of SVD ‣ 4 Rationales of the Design of ZDC ‣ Zero-Delay QKV Compression for Mitigating
+    KV Cache and Network Bottlenecks in LLM Inference")), we observed that randomly
+    dropping 50% of sequences in each topic before running K-means produces a set
+    of QK vectors with similar singular values to those obtained from directly running
+    K-means on all tokens’ QK vectors, as shown in Fig. [15](#S5.F15 "Figure 15 ‣
+    5.1 SVD-based Zero-Delay Compression ‣ 5 Design of ZDC ‣ Zero-Delay QKV Compression
+    for Mitigating KV Cache and Network Bottlenecks in LLM Inference"). The same observation
+    was made for V$W_{L}$s.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/b69eaff4bb02f55b1bfca08c3407d5cd.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 15: Average singular value.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: QK compression and decompression. In the offline procedure, we perform $W_{Q}^{R,h}=W_{Q}^{h}R^{h}$
+    based on Lemma[2](#Thmlem2 "Lemma 2 ‣ 4.2 Eliminating Decompression Time ‣ 4 Rationales
+    of the Design of ZDC ‣ Zero-Delay QKV Compression for Mitigating KV Cache and
+    Network Bottlenecks in LLM Inference") without necessitating specific decompression
+    operations (<svg id="S5.SS1.p4.14.m14.1.1.pic1" class="ltx_picture ltx_markedasmath"
+    height="13.74" overflow="visible" version="1.1" width="13.74"><g fill="#000000"
+    stroke="#000000" stroke-width="0.4pt" transform="translate(0,13.74) matrix(1 0
+    0 -1 0 0) translate(6.87,0) translate(0,6.87)"><g fill="#000000" stroke="#000000"
+    transform="matrix(1.0 0.0 0.0 1.0 -3.46 -4.46)"><foreignobject height="8.92" overflow="visible"
+    transform="matrix(1 0 0 -1 0 16.6)" width="6.92">3</foreignobject></g></g></svg>).
+  prefs: []
+  type: TYPE_NORMAL
+- en: V$W_{L}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.2 Adaptive Hybrid Compression Ratio Determination
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e512dce410fcf1a72e285b7ada7d1b94.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 16: Adaptive hybrid compression ratio.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Model layers contribute differently to the output [[16](#bib.bib16)], and the
+    same applies to the sequence tokens within a layer [[46](#bib.bib46)]. However,
+    the importance of generated tokens cannot be determined in advance. Therefore,
+    instead of setting the compression ratio $p$). Further, we select more tokens
+    as important tokens in deeper layers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/0dd4d9484c384fe45483281c1794664c.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 17: Average score summation time ratio over JCT.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When evaluating token importance, existing methods typically utilize the sum
+    of scores [[28](#bib.bib28), [29](#bib.bib29), [30](#bib.bib30)]: $\sum_{h=1}^{N_{h}}\sum_{k=1}^{t_{i}}s_{k}^{h}$
+    proportion of tokens from the top are classified as important tokens while the
+    remaining tokens are classified as unimportant tokens. Fig. [17](#S5.F17 "Figure
+    17 ‣ 5.2 Adaptive Hybrid Compression Ratio Determination ‣ 5 Design of ZDC ‣ Zero-Delay
+    QKV Compression for Mitigating KV Cache and Network Bottlenecks in LLM Inference")
+    compares the average score summation time ratio over JCT using the two methods.
+    As the sequence length increases, the average JCT ratio of the previous method
+    increases from 3.3-6.5%, while our method always keeps close to 0.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: O[4](#Thmobs4 "O 4 ‣ 3.3 Token Importance Features in Layers ‣ 3 Experimental
+    Analysis ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network Bottlenecks
+    in LLM Inference") suggests that neighboring model layers often share similar
+    sets of important and unimportant tokens. Therefore, these classifications can
+    be extended to the adjacent layers once we identify the important and unimportant
+    token sets within a layer. However, determining which adjacent layers share similar
+    sets presents a challenge. To overcome this obstacle, we offline identify layers
+    that have the same important and unimportant token sets (i.e., repetition ratio
+    <math id="S5.SS2.p3.1.m1.1" class="ltx_Math" alttext="></math> 95%).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Accuracy-oriented Compression Ratio Determination. When no compression ratio
+    is used ($p=0$. The problem of determining the compression ratio can be formulated
+    as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'subject to:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: In addition to the $T_{Q_{d}}$ pair.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because the time the model spends on attention calculation, QKV transmission,
+    and loading KV data from memory is positively correlated with the compression
+    ratio, our objective is to maximize the compression ratios without falling below
+    the required $Q_{d}$ requirement, we enumerate through different solutions and
+    find a near-optimal combination.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.3 Communication-Efficient SP
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Long-prompt applications, like coding assistance, demand prompt responses. To
+    address this challenge, SP can be employed. Surprisingly, although SP is utilized
+    in training systems like Megatron [[36](#bib.bib36)] and Ulysses [[39](#bib.bib39)],
+    no inference systems leveraging SP have been proposed to our knowledge. Given
+    that Ulysses outperforms Megatron by up to 3x in throughput [[39](#bib.bib39)],
+    we propose an SP-based inference framework built upon Ulysses, incorporating ZDC
+    to alleviate network communication overhead. We hope for widespread adoption of
+    this framework for LLM inference, as it addresses the network bottleneck hindering
+    prompt response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure [18](#S5.F18 "Figure 18 ‣ 5.3 Communication-Efficient SP ‣ 5 Design of
+    ZDC ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network Bottlenecks
+    in LLM Inference") illustrates this framework. This architecture of an attention
+    block parallelizes a sequence (i.e., token embeddings) into four partitions, each
+    to one GPU. There are four attention heads in the example. Each sequence partition
+    undergoes linear projection to form Q, K, and V tensors. Subsequently, the four
+    GPUs execute an all-to-all operation to gather tokens along the sequence dimension
+    and distribute heads, ensuring each GPU has Q, K, and V tensors for one head (e.g.,
+    GPU 0 for head 0). Attention [[16](#bib.bib16)] computation $Attention(Q,K,V)$
+    in Eq. ([2](#S2.E2 "Equation 2 ‣ 2.1 Attention Mechanism of Transformers ‣ 2 Background
+    ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network Bottlenecks in
+    LLM Inference")) is then performed. The resulting tensors undergo a second all-to-all
+    operation to gather heads and sequence partitions, enabling each GPU to obtain
+    the tensors for its token partition across all four heads. Then, the second projection
+    (i.e., post-self-attention linear) is triggered. Leveraging ZDC, Q, K, and V are
+    compressed during the projection operation when they are calculated. Consequently,
+    transmitting compressed Q, K, and V tensors in the first all-to-all communication
+    significantly reduces communication time overhead. Subsequently, the attention
+    operation and the subsequent projection concurrently decompress Q, K, and V tensors,
+    yielding approximate original results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7c37326905c9f02b5df39efc2827f9ca.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 18: Data flow of the attention mechanism in sequence parallelism framework.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Performance Evaluation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 6.1 Implementation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We implemented ZDC on FastGen using PyTorch and developed our custom OPT and
+    Llama-2 model classes for the ease of modifying attention layers to enable SP.
+    Leveraging pre-trained models from Hugging Face [[47](#bib.bib47)], we customized
+    their parameters by dumping and loading them into our model classes. To enable
+    SP, we integrated part of the distributed attention code from DeepSpeed-Ulysses [[39](#bib.bib39)],
+    particularly the communication code for all-to-all operations. We developed custom
+    CUDA kernel functions for QKV generation and post-self-attention linear layer
+    with dimension dropping. Additionally, we modified the softmax kernel function
+    to facilitate lightweight determination of token importance by reusing softmax
+    denominators. For request handling, we developed a client module for sending requests
+    and a server front-end for request reception. To manage resource allocation, a
+    proxy load balancer was implemented in Python. The load balancer allocates requests
+    and partitioned requests to the 16 GPUs in a round-robin manner if GPU resources
+    are available.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.2 Compared Methods
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We compared ZDC with H2O [[28](#bib.bib28)] and the GEAR [[25](#bib.bib25)]
+    (the only archived paper we found so far). We also include Oracle which is ZDC
+    that uses the optimal solution for Eq. ([5](#S5.E5 "Equation 5 ‣ 5.2 Adaptive
+    Hybrid Compression Ratio Determination ‣ 5 Design of ZDC ‣ Zero-Delay QKV Compression
+    for Mitigating KV Cache and Network Bottlenecks in LLM Inference")). To show the
+    effectiveness of ZDC in complementing existing KVC compression and eviction methods,
+    we also tested on H2O-ZDC and GEAR-ZDC, which use ZDC to compress data in model
+    operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.3 Experimental Setup
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In the evaluation, we used the same server setting as in Sec. [3](#S3 "3 Experimental
+    Analysis ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network Bottlenecks
+    in LLM Inference") unless otherwise specified. We tested OPT with 13B, 66B, and
+    175B parameters [[40](#bib.bib40)] and Llama-2 with 7B, 13B, and 70B parameters [[6](#bib.bib6)].
+    Each model used “The Pile” and ShareGPT. Using tensor parallelism [[48](#bib.bib48)],
+    we partitioned the 66B and 70B model to 4 GPUs and the 175B model to 8 GPUs. All
+    rotation matrices were computed from 50% of the “The Pile” with a data pruning
+    ratio of 50% and $k=1$M for K-means.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When comparing JCT and the normalized latency (s/tokens) [[49](#bib.bib49),
+    [38](#bib.bib38)], to ensure all methods maintain ${Q_{d}}=0.1$, and the parameter
+    settings for other methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.4 Overall Performance
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Fig. [19](#S6.F19 "Figure 19 ‣ 6.4 Overall Performance ‣ 6 Performance Evaluation
+    ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network Bottlenecks in
+    LLM Inference") shows the average JCT over requests for all methods on all models.
+    ZDC has 58-76% and 62-80% lower average JCT than H2O and GEAR, respectively, on
+    two datasets. ZDC outperforms H2O and GEAR because it eliminates the compression
+    and decompression overhead and reduces the attention computation time and communication
+    time of $Q$. In addition, ZDC has the adaptive hybrid compression ratio determination
+    method to maximize the compression degree while maintaining the perplexity. H2O
+    and GEAR generate high compression delay and cannot reduce the computation or
+    communication time. H2O-ZDC and GEAR-ZDC improve H2O and GEAR by 23-47% and 29-51%,
+    respectively, because SVD further compresses the hidden dimension without losing
+    much data information. ZDC has only 2-4% higher average JCT than Oracle on two
+    datasets, demonstrating its regression-based prediction achieves the near-optimal.
+    This time overhead is negligible. ZDC’s time overhead also includes the lightweight
+    token determination, which is also negligible, as shown in Fig. [17](#S5.F17 "Figure
+    17 ‣ 5.2 Adaptive Hybrid Compression Ratio Determination ‣ 5 Design of ZDC ‣ Zero-Delay
+    QKV Compression for Mitigating KV Cache and Network Bottlenecks in LLM Inference").
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e00fd98a77cca8323d3d70edfcf7caf8.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) The Pile.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/dd2fa82e8ca1c064e92a64af540a205e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) ShareGPT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 19: Average JCT of requests.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/44ed860748e7c4251952549150455a32.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) The Pile.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/cabecc83756311efb3a65d849886a6df.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) ShareGPT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 20: Average perplexity of requests.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/02d57ed0170534a361b6874e063445c6.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Llama-2 7B (The Pile).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/1f32a741c30ef77cdec34d72988d59ce.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Llama-2 13B (The Pile).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/9aaff83f64b696ed51a5416e9e1b5b45.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (c) Llama-2 70B (The Pile).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f2723119b8b68fc13eda4cb21f8fb5ee.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (d) OPT 13B (The Pile).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/6c010fbddb7a662d9906baa3f2758e2a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (e) OPT 66B (The Pile).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/81f2a9ff4aa1de9ed787ce084c3cba65.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (f) OPT 175B (The Pile).
+  prefs: []
+  type: TYPE_NORMAL
+- en: (g) Llama-2 7B (ShareGPT).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/512dade2f9b0ae4453b1869774f4f1b3.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (h) Llama-2 13B (ShareGPT).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/3a09c87bd4e0fbcd31c354d95a81156e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (i) Llama-2 70B (ShareGPT).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/43f2cffe8cacd1f18a344bfb74ef0563.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (j) OPT 13B (ShareGPT).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e9af3036d90b3610550a0cd14cacf654.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (k) OPT 66B (ShareGPT).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/afb17b2b9a3523cdfa1f9533b4bb08b8.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (l) OPT 175B (ShareGPT).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 21: Normalized latency v.s. request rate.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fig. [20](#S6.F20 "Figure 20 ‣ 6.4 Overall Performance ‣ 6 Performance Evaluation
+    ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network Bottlenecks in
+    LLM Inference") shows the average perplexity over requests for those methods.
+    Achieving the same average JCT, ZDC has 25-32% and 27-35% lower average perplexity
+    than H2O and GEAR, respectively, on the two datasets. ZDC outperforms H2O and
+    GEAR because they have a higher eviction ratio and compression ratio to achieve
+    a lower JCT, increasing the perplexity. H2O-ZDC and GEAR-ZDC improve H2O and GEAR
+    by 7-13% and 6-16%, respectively, due to the same reasons above.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fig. [21](#S6.F21 "Figure 21 ‣ 6.4 Overall Performance ‣ 6 Performance Evaluation
+    ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network Bottlenecks in
+    LLM Inference") shows the normalized latency versus request rates for those methods
+    on each model and dataset. As the request rate rises, the latency initially escalates
+    gradually but then suddenly surges. This phenomenon occurs when the request rate
+    exceeds the capacity of the serving system, leading to an infinite growth in the
+    queue length and subsequent latency increase for the requests. For “The Pile”,
+    ZDC can sustain 1.6×–1.9× and 1.7×–2.2× higher request rates compared to H2O and
+    GEAR for OPT 175B and sustain 1.8×-2.4× and 1.9×-2.8× higher request rates for
+    other models, while sustaining the same latency. For ShareGPT, ZDC can sustain
+    1.3×–1.6× and 1.5×–1.9× higher request rates compared to H2O and GEAR for OPT
+    175B and sustain 1.5×-2× and 1.7×-2.3× higher request rates for other models.
+    The reasons for the superior performance of ZDC are the same as in Fig. [19](#S6.F19
+    "Figure 19 ‣ 6.4 Overall Performance ‣ 6 Performance Evaluation ‣ Zero-Delay QKV
+    Compression for Mitigating KV Cache and Network Bottlenecks in LLM Inference").
+  prefs: []
+  type: TYPE_NORMAL
+- en: ZDC’s benefit on ShareGPT is lower than “The Pile” dataset by 19-31%. This is
+    because “The Pile” has long prompts, posing a much more severe burden on the KVC
+    and communication bandwidth, while requests in ShareGPT are unlikely to use SP.
+    We notice that as the model size becomes 175B, ZDC’s benefit diminishes by 17-25%
+    on average. This is because the models run on multiple GPUs, mitigating the burden
+    on the KVC. As we used two servers in this experiment, the communication bottleneck
+    may not be as severe as the KVC bottleneck. Our experiment on more servers later
+    shows that when more servers are used, the communication bottleneck is more severe
+    than the KVC bottleneck, and then the benefit of ZDC is higher in the big model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We observe that the request rate that ZDC can sustain while maintaining similar
+    latency is only 2-4% lower than Oracle. The results indicate that the regression
+    model can provide high accuracy in determining the compression ratios.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In addition, when ZDC complements H2O and GEAR, it can improve their throughput
+    by 37-46% and improve their latency by 41-55%, indicating its complementary nature.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.5 Ablation Testing
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We also tested the variants of ZDC as follows to evaluate the effectiveness
+    of each individual method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: ZDC/ZO is ZDC without zero overhead (/ZO). It performs compression and decompression
+    online.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: ZDC/OC is ZDC without Offline rotation matrix Computation (/OC). It uses SVD
+    to compute the $R$s online.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: ZDC/DT is ZDC without using Different compression ratios on the important and
+    unimportant Tokens (/DT). We set the same drop ratio for all tokens, which is
+    0.35 for $Q_{d}=0.1$.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: ZDC/DL is ZDC without using different ratios of important tokens on Different
+    Layers (/DL). We set the same ratio $g=0.5$.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: $\bullet$
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: ZDC/LT is ZDC without the Lightweight Token determination (/LT). We compute
+    the sum of attention scores for every layer online as in [[28](#bib.bib28), [29](#bib.bib29),
+    [30](#bib.bib30)].
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a73ee2bafeb8c3f83a12b1bb5885067d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) The Pile.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/129a2d798315e6b98b6778538cdc2b06.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) ShareGPT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 22: Average JCT of requests for individual methods.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/adb061a853e82286cf1357a5592ab419.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) The Pile.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8e1c0fb7e30e9f2b3abc79ae7728fb3b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) ShareGPT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 23: Avg perplexity of requests for individual methods.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fig. [22](#S6.F22 "Figure 22 ‣ 6.5 Ablation Testing ‣ 6 Performance Evaluation
+    ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network Bottlenecks in
+    LLM Inference") shows the average JCT over requests for those individual methods.
+    ZDC/OC, ZDC/DL, ZDC/DT, ZDC/ZO, and ZDC/LT have 85-117%, 28-47%, 22-37%, 18-29%,
+    and 15-19% higher average JCT than ZDC. The result means that the offline rotation
+    matrix computation contributes the most in reducing JCT; the method to set different
+    ratios of important tokens in different layers contributes the second, followed
+    by the method that sets different compression ratios for important and unimportant
+    tokens. The SVD-based zero-delay compression is the next, and the lightweight
+    token determination contributes the least. The results indicate that each method
+    is effective in reducing JCT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fig. [23](#S6.F23 "Figure 23 ‣ 6.5 Ablation Testing ‣ 6 Performance Evaluation
+    ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network Bottlenecks in
+    LLM Inference") shows the average perplexity over requests for these methods when
+    they have the same average JCT. ZDC/OC, ZDC/DL, ZDC/DT, ZDC/ZO, and ZDC/LT have
+    49-69%, 10-22%, 10-18%, 9-15%, and 8-14% higher average perplexity than ZDC. ZDC
+    has lower perplexity than others because other methods need to increase the compression
+    ratios to have the same average JCT as ZDC, increasing the perplexity. The contribution
+    level of each method is consistent with the previous ones.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.6 Sensitivity Testing
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To understand how different $g$, while ShareGPT has 49-56% JCT increase. This
+    is because the former has much longer sequence lengths and poses a more severe
+    burden on the KVC and communication bandwidth in SP.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/78acf9889acb49a35e1bef23b4db0f14.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 24: Different $g$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fig. [25](#S6.F25 "Figure 25 ‣ 6.6 Sensitivity Testing ‣ 6 Performance Evaluation
+    ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network Bottlenecks in
+    LLM Inference") shows the average perplexity and average JCT with different $p$
+    do not have a wide range between the highest value and the lowest value to allow
+    a high dimension drop ratio, as shown in Fig. [13](#S4.F13 "Figure 13 ‣ 4.3 Eliminate
+    Compression Matrix Computation Time and Suitability of SVD ‣ 4 Rationales of the
+    Design of ZDC ‣ Zero-Delay QKV Compression for Mitigating KV Cache and Network
+    Bottlenecks in LLM Inference").
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/bc8e8e2a05f99bc2de4e47ea9253d05d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Llama-2 13B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/0d6393e05d248dcbb71a415bd316dc2f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Llama-2 70B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 25: Different $p$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/c2ce4a7e6767a423d4f0d850b1d01a3a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Different data pruning ratios.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/5de36abf0b9e66e32500d6b5644bcea1.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Different K in k-means method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 26: Different data pruning ratios and $k$ in K-means.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fig. [26(a)](#S6.F26.sf1 "Figure 26(a) ‣ Figure 26 ‣ 6.6 Sensitivity Testing
+    ‣ 6 Performance Evaluation ‣ Zero-Delay QKV Compression for Mitigating KV Cache
+    and Network Bottlenecks in LLM Inference") shows the average perplexity over requests
+    and the rotation matrix computing time with different data pruning ratios. We
+    set $p=0.4$. We used "The Pile" to compute rotation matrices because ShareGPT
+    does not have topic categories on which we can prune data in each topic. As the
+    pruning ratio increases from 0.1 to 0.8, the average perplexities on 13B increase
+    from 16.7 to 25.6 and that of 70B increases from 14.12 to 29.04 on “The Pile”;
+    they increase from 21.2 to 34.21 and from 18.96 to 46.37 on ShareGPT. The perplexity
+    increases little until the pruning ratio exceeds 0.6 for 13B and 70B on both datasets.
+    70B experiences more accuracy decrease because it has more layers and heads and
+    is sensitive to the quality of rotation matrices. Further, ShareGPT experiences
+    more accuracy decrease because the rotation matrices it used were computed offline
+    based on ”The Pile”. The rotation matrix computing time for 13B decreases from
+    82.2min to 7.8min, and that for 70B decreases from 238min to 27.6min when the
+    pruning ratio increases from 0.1 to 0.8\. This is because a lower pruning ratio
+    leaves more data to compute. In addition, since 70B has more matrices, its computing
+    time is more affected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fig. [26(b)](#S6.F26.sf2 "Figure 26(b) ‣ Figure 26 ‣ 6.6 Sensitivity Testing
+    ‣ 6 Performance Evaluation ‣ Zero-Delay QKV Compression for Mitigating KV Cache
+    and Network Bottlenecks in LLM Inference") shows the average perplexity over requests
+    and the computing time for finding all rotation matrices with different $k$ increase
+    won’t affect the accuracy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.7 Scalability Testing
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We built 2, 4, 6, and 8 servers, each with 8, 4, 2, and 2 GPUs, respectively,
+    to test the scalability when the number of servers increases. We tested Llama-2
+    70B and 175B with “The Pile”. Fig. [27](#S6.F27 "Figure 27 ‣ 6.7 Scalability Testing
+    ‣ 6 Performance Evaluation ‣ Zero-Delay QKV Compression for Mitigating KV Cache
+    and Network Bottlenecks in LLM Inference") shows the throughput (req/s) of the
+    three methods with different numbers of servers for the two models. For 70B, when
+    the number of servers increases from 2 to 8, the throughput of ZDC decreases by
+    13%, 34%, and 43%; H2O decreases by 43%, 70%, and 84%; GEAR decreases by 41%,
+    78%, and 87%. For 175B, ZDC decreases by 16%, 39, and 47%; H2O decreases by 61%,
+    83%, and 95%; GEAR decreases by 64%, 89%, and 96%. ZDC’s performance decrease
+    is 48% and 51% lower than H2O and GEAR when the number of servers is 8 for 70B.
+    For 175B, ZDC has 77% and 86% lower performance decrease than H2O and GEAR. It
+    is because ZDC reduces the communication overhead among servers, especially when
+    the model is large. Therefore, ZDC is more scalable than the comparison methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8d01c4245b3b5d6932d35a93a4346d53.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Llama-2 70B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/97c4133d99a9edeb7a8fa8636f476f68.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Llama-2 175B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 27: Throughput for two models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.8 Comparison with vLLM and FastGen
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We also built ZDC on vLLM (ZDC-vLLM) and compared ZDC and ZDC-vLLM with vLLM
+    and FastGen. Fig. [28](#S6.F28 "Figure 28 ‣ 6.8 Comparison with vLLM and FastGen
+    ‣ 6 Performance Evaluation ‣ Zero-Delay QKV Compression for Mitigating KV Cache
+    and Network Bottlenecks in LLM Inference") shows the average JCT over requests
+    of them for all models. ZDC and ZDC-vLLM use the same parameter setting as before
+    to satisfy $Q_{d}=0.1$. For “The Pile”, ZDC outperforms FastGen by 84-89%, and
+    ZDC-vLLM outperforms vLLM by 85-91%. It is because “The Pile” has many long sequences,
+    and vLLM and FastGen conduct prompt processing in multiple iterations without
+    SP. For ShareGPT, ZDC outperforms FastGen by 47-57%, and ZDC-vLLM outperforms
+    vLLM by 45-60%. The benefit decreases compared to “The Pile” because ShareGPT
+    has short sequences. Therefore, ZDC is applicable to different LLM systems to
+    enhance their performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/125839e73a231cc2332568cc1668647c.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) The Pile.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/16a8a6cd22c586e6d038f86d382e9c98.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) ShareGPT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 28: Average JCT.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.9 Attention and Communication Improvement
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Fig. [29](#S6.F29 "Figure 29 ‣ 6.9 Attention and Communication Improvement ‣
+    6 Performance Evaluation ‣ Zero-Delay QKV Compression for Mitigating KV Cache
+    and Network Bottlenecks in LLM Inference") shows the average time ratio of attention
+    computation and communication over JCT for Llama-2 using “The Pile” with different
+    $p$ increases from 0.3 to 0.7, it can save attention time from 21-28% to 62-64%
+    and communication time from 28% to 72%.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a922f79fbde9e8dc91107a03b47715db.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a) Attention.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/5d48acdb098946bc9d05374adbd70844.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (b) Communication.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 29: Average time ratio over JCT.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7 Limitations and Future Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Compression ratio and important-token determination. In this study, we utilize
+    a regression model to determine these settings. Our experiments reveal that factors
+    such as model size and data characteristics influence these determinations, and
+    there remains a gap compared to the Oracle solution. In future work, we aim to
+    investigate the feasibility of employing more accurate approaches, such as reinforcement
+    learning-based methods, for these determinations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Communication among more servers. In our study, we only tested 8 servers maximally,
+    which proved adequate for managing the workload. However, in practical scenarios,
+    prompts with significantly longer lengths may necessitate additional servers,
+    resulting in increased communication overhead. We will assess the efficacy of
+    ZDC in mitigating communication overhead for such extended prompts and heavier
+    workloads and further refine ZDC to accommodate this scenario.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Job scheduling among servers. In our study, we distributed requests to servers
+    in a round-robin manner. In future work, we aim to investigate optimal job scheduling
+    strategies among different servers to maximize overall system performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 8 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'KVC compression. KVC compression methods fall into two categories: KVC eviction [[28](#bib.bib28),
+    [30](#bib.bib30), [29](#bib.bib29)] and KVC quantization [[25](#bib.bib25), [26](#bib.bib26),
+    [27](#bib.bib27)]. H2O [[28](#bib.bib28)], Scissorhands [[29](#bib.bib29)], and
+    adaptive KV eviction [[30](#bib.bib30)] identify important tokens based on attention
+    scores, retaining those with high scores in KVC. Adaptive KV eviction additionally
+    considers correlations between nearby tokens, preserving special tokens and punctuation.
+    GEAR [[25](#bib.bib25)], Kivi [[26](#bib.bib26)], and CacheGen [[27](#bib.bib27)]
+    quantize KV data and adapt the quantization level to meet different compression
+    degrees. However, these methods incur extra compression and decompression overhead,
+    leading to a significant increase in JCT.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Model compression. Compression finds wide application in model training and
+    inference tasks. Zero++[[50](#bib.bib50)] and THC[[41](#bib.bib41)] compress model
+    gradients with reduced overhead for training tasks using quantization. Various
+    quantization approaches [[18](#bib.bib18), [19](#bib.bib19), [20](#bib.bib20),
+    [24](#bib.bib24)] have been proposed to compress model parameters post-training,
+    aiming to shrink model size. Additionally, other methods [[21](#bib.bib21), [22](#bib.bib22),
+    [23](#bib.bib23)] quantize model activations alongside parameters for inference.
+    PIT [[51](#bib.bib51)] leverages Permutation Invariant Transformation to transform
+    sparsely located micro-tiles into GPU-efficient dense tiles without altering computation
+    results to enhance computation efficiency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sequence parallelism and job scheduling. To handle long sequences in training,
+    SP [[36](#bib.bib36), [52](#bib.bib52), [39](#bib.bib39)] was proposed. Other
+    recent studies [[53](#bib.bib53), [54](#bib.bib54), [55](#bib.bib55), [56](#bib.bib56),
+    [57](#bib.bib57), [58](#bib.bib58), [59](#bib.bib59), [60](#bib.bib60), [61](#bib.bib61),
+    [62](#bib.bib62), [63](#bib.bib63), [64](#bib.bib64), [65](#bib.bib65), [66](#bib.bib66)]
+    proposed transformer variants to handle long sequences in training. However, previous
+    methods do not focus on inference. To handle long prompts in inference, some methods
+    (e.g., FastGen [[37](#bib.bib37)] and SARATHI [[67](#bib.bib67)]) were proposed
+    to chunk a long prompt and batch the chunks with token generation tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 9 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this paper, we introduce the ZDC compression system, the first work that
+    achieves zero delay in response time for LLM inference while simultaneously reducing
+    data volume in both KV cache, computation time, and network communication within
+    the SP framework for long prompts. Drawing insights from trace-based experimental
+    measurements, ZDC incorporates SVD-based zero-delay compression, adaptive hybrid
+    compression ratio determination, and a communication-efficient sequence parallelism
+    framework. Our trace-based real experiments show that ZDC outperforms previous
+    methods by reducing up to 80% JCT and 35% perplexity. Moreover, ZDC achieves optimality
+    within 4% of the Oracle, which has full knowledge of the optimal parameter settings.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[1] Alec Radford, Karthik Narasimhan, Tim Salimans, Ilya Sutskever, et al.
+    Improving language understanding by generative pre-training. 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[2] Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. BERT:
+    pre-training of deep bidirectional transformers for language understanding. CoRR,
+    abs/1810.04805, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[3] Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, Ilya Sutskever,
+    et al. Language models are unsupervised multitask learners. OpenAI blog, 1(8):9,
+    2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[4] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan,
+    Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell,
+    Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan, Rewon Child,
+    Aditya Ramesh, Daniel Ziegler, Jeffrey Wu, Clemens Winter, Chris Hesse, Mark Chen,
+    Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack Clark, Christopher
+    Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario Amodei. Language
+    models are few-shot learners. In H. Larochelle, M. Ranzato, R. Hadsell, M.F. Balcan,
+    and H. Lin, editors, Advances in Neural Information Processing Systems, volume 33,
+    pages 1877–1901\. Curran Associates, Inc., 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[5] Timo Schick, Jane Dwivedi-Yu, Roberto Dessi, Roberta Raileanu, Maria Lomeli,
+    Luke Zettlemoyer, Nicola Cancedda, and Thomas Scialom. Toolformer: Language models
+    can teach themselves to use tools, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[6] Meta llama-2 models. [https://huggingface.co/models?sort=trending&search=meta+Llama-2](https://huggingface.co/models?sort=trending&search=meta+Llama-2),
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[7] Textsynth: Text completion. [https://textsynth.com/completion.html](https://textsynth.com/completion.html).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[8] Openai: ChatGPT. [https://chat.openai.com/](https://chat.openai.com/),
+    [Accessed in Aug. 2023].'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[9] GitHub Copilot. [https://github.com/features/copilot/](https://github.com/features/copilot/),
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[10] Speaking your language: The transformer in machine translation. [https://blog.huawei.com/2022/02/01/speaking-your-language-transformer-machine-translation/](https://blog.huawei.com/2022/02/01/speaking-your-language-transformer-machine-translation/).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[11] Elozino Egonmwan and Yllias Chali. Transformer-based model for single
+    documents neural summarization. In Proceedings of the 3rd Workshop on Neural Generation
+    and Translation, pages 70–79, Hong Kong, November 2019\. Association for Computational
+    Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[12] Zi Gong, Cuiyun Gao, Yasheng Wang, Wenchao Gu, Yun Peng, and Zenglin Xu.
+    Source code summarization with structural relative position guided transformer.
+    In 2022 IEEE International Conference on Software Analysis, Evolution and Reengineering
+    (SANER), pages 13–24, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[13] Haopeng Zhang, Xiao Liu, and Jiawei Zhang. HEGEL: Hypergraph transformer
+    for long document summarization, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[14] Ashutosh Adhikari, Achyudh Ram, Raphael Tang, and Jimmy Lin. Docbert:
+    BERT for document classification. CoRR, abs/1904.08398, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[15] Xiang Dai, Ilias Chalkidis, Sune Darkner, and Desmond Elliott. Revisiting
+    transformer-based models for long document classification, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[16] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones,
+    Aidan N Gomez, Ł ukasz Kaiser, and Illia Polosukhin. Attention is all you need.
+    In I. Guyon, U. Von Luxburg, S. Bengio, H. Wallach, R. Fergus, S. Vishwanathan,
+    and R. Garnett, editors, Advances in Neural Information Processing Systems, volume 30\.
+    Curran Associates, Inc., 2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[17] Aydar Bulatov, Yuri Kuratov, and Mikhail S. Burtsev. Scaling transformer
+    to 1m tokens and beyond with rmt. ArXiv, abs/2304.11062, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[18] Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan Alistarh. Gptq:
+    Accurate post-training quantization for generative pre-trained transformers. arXiv
+    preprint arXiv:2210.17323, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[19] Zhewei Yao, Reza Yazdani Aminabadi, Minjia Zhang, Xiaoxia Wu, Conglong
+    Li, and Yuxiong He. Zeroquant: Efficient and affordable post-training quantization
+    for large-scale transformers. In S. Koyejo, S. Mohamed, A. Agarwal, D. Belgrave,
+    K. Cho, and A. Oh, editors, Advances in Neural Information Processing Systems,
+    volume 35, pages 27168–27183\. Curran Associates, Inc., 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[20] Tim Dettmers and Luke Zettlemoyer. The case for 4-bit precision: k-bit
+    inference scaling laws. In Andreas Krause, Emma Brunskill, Kyunghyun Cho, Barbara
+    Engelhardt, Sivan Sabato, and Jonathan Scarlett, editors, Proceedings of the 40th
+    International Conference on Machine Learning, volume 202 of Proceedings of Machine
+    Learning Research, pages 7750–7774\. PMLR, 23–29 Jul 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[21] Zhewei Yao, Cheng Li, Xiaoxia Wu, Stephen Youn, and Yuxiong He. A comprehensive
+    study on post-training quantization for large language models. arXiv preprint
+    arXiv:2303.08302, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[22] Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer. Gpt3.int8():
+    8-bit matrix multiplication for transformers at scale. In S. Koyejo, S. Mohamed,
+    A. Agarwal, D. Belgrave, K. Cho, and A. Oh, editors, Advances in Neural Information
+    Processing Systems, volume 35, pages 30318–30332\. Curran Associates, Inc., 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[23] Guangxuan Xiao, Ji Lin, Mickael Seznec, Hao Wu, Julien Demouth, and Song
+    Han. Smoothquant: Accurate and efficient post-training quantization for large
+    language models. In International Conference on Machine Learning, pages 38087–38099\.
+    PMLR, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[24] Gunho Park, Baeseong Park, Minsub Kim, Sungjae Lee, Jeonghoon Kim, Beomseok
+    Kwon, Se Jung Kwon, Byeongwook Kim, Youngjoo Lee, and Dongsoo Lee. LUT-GEMM: Quantized
+    matrix multiplication based on LUTs for efficient inference in large-scale generative
+    language models, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[25] Hao Kang, Qingru Zhang, Souvik Kundu, Geonhwa Jeong, Zaoxing Liu, Tushar
+    Krishna, and Tuo Zhao. GEAR: An efficient KV cache compression recipe for near-lossless
+    generative inference of LLM. arXiv preprint arXiv:2403.05527, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[26] Zirui Liu, Jiayi Yuan, Hongye Jin, Shaochen Zhong, Zhaozhuo Xu, Vladimir
+    Braverman, Beidi Chen, and Xia Hu. KIVI : Plug-and-play 2bit kv cache quantization
+    with streaming asymmetric quantization. arXiv preprint arXiv:2402.02750, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[27] Yuhan Liu, Hanchen Li, Yihua Cheng, Siddhant Ray, Yuyang Huang, Qizheng
+    Zhang, Kuntai Du, Jiayi Yao, Shan Lu, Ganesh Ananthanarayanan, Michael Maire,
+    Henry Hoffmann, Ari Holtzman, and Junchen Jiang. Cachegen: Kv cache compression
+    and streaming for fast large language model serving. In Proceedings of the ACM
+    SIGCOMM 2024 Conference, ACM SIGCOMM ’24, page 38–56, New York, NY, USA, 2024\.
+    Association for Computing Machinery.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[28] Zhenyu Zhang, Ying Sheng, Tianyi Zhou, Tianlong Chen, Lianmin Zheng, Ruisi
+    Cai, Zhao Song, Yuandong Tian, Christopher Ré, Clark Barrett, Zhangyang "Atlas"
+    Wang, and Beidi Chen. H2o: Heavy-hitter oracle for efficient generative inference
+    of large language models. In A. Oh, T. Neumann, A. Globerson, K. Saenko, M. Hardt,
+    and S. Levine, editors, Advances in Neural Information Processing Systems, volume 36,
+    pages 34661–34710\. Curran Associates, Inc., 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[29] Zichang Liu, Aditya Desai, Fangshuo Liao, Weitao Wang, Victor Xie, Zhaozhuo
+    Xu, Anastasios Kyrillidis, and Anshumali Shrivastava. Scissorhands: Exploiting
+    the persistence of importance hypothesis for llm kv cache compression at test
+    time. In A. Oh, T. Neumann, A. Globerson, K. Saenko, M. Hardt, and S. Levine,
+    editors, Advances in Neural Information Processing Systems, volume 36, pages 52342–52364\.
+    Curran Associates, Inc., 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[30] Suyu Ge, Yunan Zhang, Liyuan Liu, Minjia Zhang, Jiawei Han, and Jianfeng
+    Gao. Model tells you what to discard: Adaptive kv cache compression for llms.
+    arXiv preprint arXiv:2310.01801, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[31] ZeroC code. [https://anonymous.4open.science/r/ZeroC](https://anonymous.4open.science/r/ZeroC),
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[32] Singular value decomposition solver from scipy. [https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.svd.html](https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.svd.html),
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[33] Leo Gao, Stella Biderman, Sid Black, Laurence Golding, Travis Hoppe, Charles
+    Foster, Jason Phang, Horace He, Anish Thite, Noa Nabeshima, Shawn Presser, and
+    Connor Leahy. The Pile: An 800gb dataset of diverse text for language modeling.
+    arXiv preprint arXiv:2101.00027, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[34] ShareGPT team. [https://sharegpt.com/](https://sharegpt.com/), 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[35] Amazon EC2 P4 instances. [https://aws.amazon.com/ec2/instance-types/p4/](https://aws.amazon.com/ec2/instance-types/p4/).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[36] Deepak Narayanan, Mohammad Shoeybi, Jared Casper, Patrick LeGresley, Mostofa
+    Patwary, Vijay Korthikanti, Dmitri Vainbrand, Prethvi Kashinkunti, Julie Bernauer,
+    Bryan Catanzaro, Amar Phanishayee, and Matei Zaharia. Efficient large-scale language
+    model training on gpu clusters using megatron-lm. In Proceedings of the International
+    Conference for High Performance Computing, Networking, Storage and Analysis, SC
+    ’21, New York, NY, USA, 2021\. Association for Computing Machinery.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[37] Connor Holmes, Masahiro Tanaka, Michael Wyatt, Ammar Ahmad Awan, Jeff
+    Rasley, Samyam Rajbhandari, Reza Yazdani Aminabadi, Heyang Qin, Arash Bakhtiari,
+    Lev Kurilenko, and Yuxiong He. Deepspeed-fastgen: High-throughput text generation
+    for llms via mii and deepspeed-inference. arXiv preprint arXiv:2401.08671, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[38] Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao
+    Yu, Joseph Gonzalez, Hao Zhang, and Ion Stoica. Efficient memory management for
+    large language model serving with pagedattention. In Proceedings of the 29th Symposium
+    on Operating Systems Principles, SOSP ’23, page 611–626, New York, NY, USA, 2023\.
+    Association for Computing Machinery.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[39] Sam Ade Jacobs, Masahiro Tanaka, Chengming Zhang, Minjia Zhang, Shuaiwen Leon
+    Song, Samyam Rajbhandari, and Yuxiong He. Deepspeed ulysses: System optimizations
+    for enabling training of extreme long sequence transformer models, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[40] Facebook opt models. [https://huggingface.co/models?sort=trending&search=facebook+opt](https://huggingface.co/models?sort=trending&search=facebook+opt),
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[41] Minghao Li, Ran Ben Basat, Shay Vargaftik, ChonLam Lao, Kevin Xu, Michael
+    Mitzenmacher, and Minlan Yu. THC: Accelerating distributed deep learning using
+    tensor homomorphic compression. In 21st USENIX Symposium on Networked Systems
+    Design and Implementation (NSDI 24), pages 1191–1211, Santa Clara, CA, April 2024.
+    USENIX Association.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[42] Davis Blalock and John Guttag. Multiplying matrices without multiplying.
+    In Marina Meila and Tong Zhang, editors, Proceedings of the 38th International
+    Conference on Machine Learning, volume 139 of Proceedings of Machine Learning
+    Research, pages 992–1004\. PMLR, 18–24 Jul 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[43] Yongkweon Jeon, Baeseong Park, Se Jung Kwon, Byeongwook Kim, Jeongin Yun,
+    and Dongsoo Lee. Biqgemm: matrix multiplication with lookup table for binary-coding-based
+    quantized dnns. SC ’20\. IEEE Press, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[44] Alessandro Raganato and Jörg Tiedemann. An analysis of encoder representations
+    in transformer-based machine translation. In Tal Linzen, Grzegorz Chrupała, and
+    Afra Alishahi, editors, Proceedings of the 2018 EMNLP Workshop BlackboxNLP: Analyzing
+    and Interpreting Neural Networks for NLP, pages 287–297, Brussels, Belgium, November
+    2018\. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[45] Angelos Katharopoulos and François Fleuret. Not all samples are created
+    equal: Deep learning with importance sampling. In International conference on
+    machine learning, pages 2525–2534\. PMLR, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[46] Sehoon Kim, Sheng Shen, David Thorsley, Amir Gholami, Woosuk Kwon, Joseph
+    Hassoun, and Kurt Keutzer. Learned token pruning for transformers. In Proceedings
+    of the 28th ACM SIGKDD Conference on Knowledge Discovery and Data Mining, KDD
+    ’22, page 784–794, New York, NY, USA, 2022. Association for Computing Machinery.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[47] Hugging Face: The AI community building the future. [https://huggingface.co/](https://huggingface.co/),
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[48] Mohammad Shoeybi, Mostofa Patwary, Raul Puri, Patrick LeGresley, Jared
+    Casper, and Bryan Catanzaro. Megatron-lm: Training multi-billion parameter language
+    models using model parallelism. CoRR, abs/1909.08053, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[49] Gyeong-In Yu, Joo Seong Jeong, Geon-Woo Kim, Soojeong Kim, and Byung-Gon
+    Chun. Orca: A distributed serving system for Transformer-Based generative models.
+    In 16th USENIX Symposium on Operating Systems Design and Implementation (OSDI
+    22), pages 521–538, Carlsbad, CA, July 2022\. USENIX Association.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[50] Guanhua Wang, Heyang Qin, Sam Ade Jacobs, Connor Holmes, Samyam Rajbhandari,
+    Olatunji Ruwase, Feng Yan, Lei Yang, and Yuxiong He. Zero++: Extremely efficient
+    collective communication for giant model training. arXiv preprint arXiv:2306.10209,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[51] Ningxin Zheng, Huiqiang Jiang, Quanlu Zhang, Zhenhua Han, Lingxiao Ma,
+    Yuqing Yang, Fan Yang, Chengruidong Zhang, Lili Qiu, Mao Yang, and Lidong Zhou.
+    PIT: Optimization of dynamic sparse deep learning models via permutation invariant
+    transformation. In Proceedings of the 29th Symposium on Operating Systems Principles,
+    SOSP ’23, page 331–347, New York, NY, USA, 2023\. Association for Computing Machinery.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[52] Shenggui Li, Fuzhao Xue, Yongbin Li, and Yang You. Sequence parallelism:
+    Long sequence training from system perspective. CoRR, abs/2105.13120, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[53] Sinong Wang, Belinda Z. Li, Madian Khabsa, Han Fang, and Hao Ma. Linformer:
+    Self-attention with linear complexity. CoRR, abs/2006.04768, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[54] Genta Indra Winata, Samuel Cahyawijaya, Zhaojiang Lin, Zihan Liu, and
+    Pascale Fung. Lightweight and efficient end-to-end speech recognition using low-rank
+    transformer. In ICASSP 2020 - 2020 IEEE International Conference on Acoustics,
+    Speech and Signal Processing (ICASSP), pages 6144–6148, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[55] Angelos Katharopoulos, Apoorv Vyas, Nikolaos Pappas, and François Fleuret.
+    Transformers are rnns: Fast autoregressive transformers with linear attention.
+    CoRR, abs/2006.16236, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[56] Krzysztof Choromanski, Valerii Likhosherstov, David Dohan, Xingyou Song,
+    Andreea Gane, Tamás Sarlós, Peter Hawkins, Jared Davis, Afroz Mohiuddin, Lukasz
+    Kaiser, David Belanger, Lucy J. Colwell, and Adrian Weller. Rethinking attention
+    with performers. CoRR, abs/2009.14794, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[57] Zhen Qin, XiaoDong Han, Weixuan Sun, Dongxu Li, Lingpeng Kong, Nick Barnes,
+    and Yiran Zhong. The devil in linear transformer, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[58] Juho Lee, Yoonho Lee, Jungtaek Kim, Adam Kosiorek, Seungjin Choi, and
+    Yee Whye Teh. Set transformer: A framework for attention-based permutation-invariant
+    neural networks. In Kamalika Chaudhuri and Ruslan Salakhutdinov, editors, Proceedings
+    of the 36th International Conference on Machine Learning, volume 97 of Proceedings
+    of Machine Learning Research, pages 3744–3753\. PMLR, 09–15 Jun 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[59] Andrew Jaegle, Felix Gimeno, Andy Brock, Oriol Vinyals, Andrew Zisserman,
+    and Joao Carreira. Perceiver: General perception with iterative attention. In
+    Marina Meila and Tong Zhang, editors, Proceedings of the 38th International Conference
+    on Machine Learning, volume 139 of Proceedings of Machine Learning Research, pages
+    4651–4664\. PMLR, 18–24 Jul 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[60] Xuezhe Ma, Xiang Kong, Sinong Wang, Chunting Zhou, Jonathan May, Hao Ma,
+    and Luke Zettlemoyer. Luna: Linear unified nested attention. In M. Ranzato, A. Beygelzimer,
+    Y. Dauphin, P.S. Liang, and J. Wortman Vaughan, editors, Advances in Neural Information
+    Processing Systems, volume 34, pages 2441–2453\. Curran Associates, Inc., 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[61] Zihang Dai, Zhilin Yang, Yiming Yang, Jaime G. Carbonell, Quoc V. Le,
+    and Ruslan Salakhutdinov. Transformer-xl: Attentive language models beyond a fixed-length
+    context. CoRR, abs/1901.02860, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[62] Aydar Bulatov, Yuri Kuratov, and Mikhail S. Burtsev. Scaling transformer
+    to 1m tokens and beyond with rmt, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[63] Yuhuai Wu, Markus N. Rabe, DeLesley Hutchins, and Christian Szegedy. Memorizing
+    transformers, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[64] Weizhi Wang, Li Dong, Hao Cheng, Xiaodong Liu, Xifeng Yan, Jianfeng Gao,
+    and Furu Wei. Augmenting language models with long-term memory, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[65] Jiayu Ding, Shuming Ma, Li Dong, Xingxing Zhang, Shaohan Huang, Wenhui
+    Wang, Nanning Zheng, and Furu Wei. Longnet: Scaling transformers to 1,000,000,000
+    tokens, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[66] Mandy Guo, Joshua Ainslie, David Uthus, Santiago Ontanon, Jianmo Ni, Yun-Hsuan
+    Sung, and Yinfei Yang. Longt5: Efficient text-to-text transformer for long sequences.
+    arXiv preprint arXiv:2112.07916, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[67] Amey Agrawal, Ashish Panwar, Jayashree Mohan, Nipun Kwatra, Bhargav S.
+    Gulavani, and Ramachandran Ramjee. Sarathi: Efficient llm inference by piggybacking
+    decodes with chunked prefills. ArXiv, abs/2308.16369, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

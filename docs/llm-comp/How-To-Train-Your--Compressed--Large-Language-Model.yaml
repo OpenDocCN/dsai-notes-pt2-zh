@@ -1,0 +1,1406 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 19:04:14'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: How To Train Your (Compressed) Large Language Model
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2305.14864](https://ar5iv.labs.arxiv.org/html/2305.14864)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Ananya Harsh Jha^∗, Tom Sherborne^⋄, Evan Pete Walsh^∗,
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dirk Groeneveld^∗, Emma Strubell^(†∗), Iz Beltagy^∗
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^∗Allen Institute for Artificial Intelligence
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^⋄Institute for Language, Cognition and Computation, University of Edinburgh
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^†Language Technologies Institute, Carnegie Mellon University
+  prefs: []
+  type: TYPE_NORMAL
+- en: ananyaj@allenai.org
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: With the increase in the size of large language models (LLMs), we need compression
+    methods that can reduce the model size while preserving the generality and zero-shot
+    promptability of the model. This goal is more ambitious than the typical compression
+    setup, which reduces the model’s size at the expense of specializing it to a specific
+    end-task. To study this, we develop a task-agnostic compression pipeline with
+    a large-scale evaluation comprising language modeling perplexity and 12 zero-shot
+    end-tasks. Our results show that a simple layer-wise pruning followed by continued
+    language model pretraining matches or outperforms three existing state-of-the-art
+    baselines while being 1.5x more computationally efficient. However, unlike typical
+    task-specialized compression, our best-compressed model significantly underperforms
+    a similar-sized model trained from scratch. We posit the half-sized pretrained
+    model as an upper bound for task-agnostic compression and call for future work
+    to bridge this gap under a reasonable token budget. Our findings highlight the
+    inadequacy of existing compression methods for LLMs and establish a requirement
+    for new methods that preserve a model’s generality and zero-shot promptability
+    under compression. We release our code and evaluation setup to facilitate reproducibility
+    and help iterate on method design.¹¹1[https://github.com/anonymous](https://github.com/anonymous)
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Large language models (LLMs) have evolved considerably in size, architecture,
+    and usage patterns since the introduction of ELMo (Peters et al., [2018](#bib.bib37)),
+    BERT (Devlin et al., [2019](#bib.bib16)), and RoBERTa (Liu et al., [2019](#bib.bib32)).
+    BERT-style pretrained LLMs allow for rapid specialization to different tasks via
+    supervised finetuning but often contain minimal zero-shot capability. Conversely,
+    modern LLMs such as GPT-3 (Brown et al., [2020](#bib.bib5)), PaLM (Chowdhery et al.,
+    [2022](#bib.bib9)), and LLaMA (Zhang et al., [2023](#bib.bib61)) are challenging
+    to exploit for task-specific finetuning but have proven highly capable at gradient-free
+    specialization, e.g., in-context learning with zero- or few-shot data. Such practice
+    is now the norm for using contemporary LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While language models have grown in size, scale, and zero-shot capability, techniques
+    for compressing such artifacts to smaller and more efficient models have not kept
+    pace. Most works on compressing models via *pruning* (Sajjad et al., [2020](#bib.bib42);
+    Voita et al., [2019](#bib.bib54); Chen et al., [2020b](#bib.bib8), [a](#bib.bib6))
+    or *knowledge distillation* Sanh et al. ([2019](#bib.bib44)); Wang et al. ([2020b](#bib.bib57));
+    Liang et al. ([2023](#bib.bib31)) show success only for BERT-style models requiring
+    task-specific finetuning. Whether these techniques can be adapted to contemporary
+    GPT-style LLMs and evaluated with zero-shot prompting remains an open question.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The pipeline for compressing larger models should preserve the generality and
+    zero-shot promptability of the original and avoid any task-specific finetuning.
+    Intuitively, this is a more challenging goal because task-specific compression
+    often works at the expense of a model’s generality. In contrast, our goal is to
+    preserve the larger model’s abilities. It is unclear if the methods designed for
+    the former are also suitable for the latter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this work, we consider the open question of how to distill GPT-style large
+    language models. We study the efficacy of state-of-the-art task-agnostic distillation
+    methods with zero-shot evaluation on 12 diverse tasks. Results show that our simple
+    teacher-free approach with continued pretraining matches or outperforms existing
+    baselines while being 1.5x more computationally efficient.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In further experiments, we compare our best-compressed model to an equally-sized
+    model trained from scratch. Our zero-shot evaluation shows that the compressed
+    model underperforms compared to a model trained from scratch. This opposes the
+    trend from task-specialized compression, where training large then compressing
+    is preferred over training a smaller model from scratch. Here we club together
+    task-specific and task-agnostic compression with end-task finetuning under task-specialized
+    compression. We offer analysis and explanation for this phenomenon rooted in how
+    much data is available for pretraining or finetuning stages. Our contributions
+    are:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A characterization of how the benefits of distillation poorly transfer to a
+    zero-shot setup.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A simple alternative compression method which is both performant (on perplexity
+    and end-tasks) and efficient (1.5x faster training) at the LLM scale.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Insight into how typical compression techniques transfer poorly at scale with
+    promising new angles for future methods to consider.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: We argue that LLM compression methods should focus on zero-shot evaluation to
+    encourage the development of new methods that maintain model generality. Our findings
+    highlight that existing compression methods transfer poorly to large-scale general
+    compression settings, and there is a larger gap between current methods and upper-bound
+    performance. We advocate for the future development of compression methods for
+    LLMs to close this gap and promote model reuse and training efficiency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Pruning
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'seeks to identify sub-networks within larger models which yield equivalent
+    performance with increased computational efficiency. The parts of the model are
+    can be pruned using a heuristic or scoring function (Sanh et al., [2020](#bib.bib45);
+    Li et al., [2021a](#bib.bib28)). Pruning can be described in three steps: (i)
+    model initialization; (ii) training to specialize for relevant data; (iii) evaluation
+    against the initial model. Pruning literature can broadly be divided between structured
+    and unstructured methods.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Structured pruning approaches (Fan et al., [2019](#bib.bib19); Kao et al., [2022](#bib.bib26))
+    aim to prune larger blocks within a model while considering architecture nuances
+    for improving inference speed. Structured pruning can be coarse- or fine-grained.
+    Coarse-grained pruning removes entire model layers (Fan et al., [2019](#bib.bib19)).
+    In the case of LMs, fine-grain pruning methods prunes atomic components like attention-heads (Voita
+    et al., [2019](#bib.bib54); Michel et al., [2019](#bib.bib34); Li et al., [2021b](#bib.bib29))
+    or hidden layers (Hou et al., [2020](#bib.bib24); Chen et al., [2020b](#bib.bib8);
+    McCarley et al., [2019](#bib.bib33)). Another line of structured-pruning approach (Kao
+    et al., [2022](#bib.bib26)) aims to prune two out of every four weights in a matrix
+    for 2:4 sparsity speedups on A100s. Unstructured pruning follows the lottery ticket
+    hypothesis (Chen et al., [2020a](#bib.bib6)), where the weights of a network are
+    iteratively pruned without concern for structure-based speedups.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The other classification approach for pruning is based on task-agnostic vs.
+    task-specific pruning. Task-agnostic pruning approaches (Chen et al., [2020b](#bib.bib8);
+    Fan et al., [2019](#bib.bib19)) prune a model on pretraining data and then add
+    task specialization as a second step. Task-specific pruning (Voita et al., [2019](#bib.bib54);
+    McCarley et al., [2019](#bib.bib33); Michel et al., [2019](#bib.bib34)) methods
+    specialize their models on end-task data during the pruning process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We acknowledge a related line of work in quantization (Dettmers et al., [2022](#bib.bib15),
+    *inter alia*) for model compression; however, quantization methods are orthogonal
+    to our approach and can be applied after a model has been compressed using our
+    method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Knowledge Distillation
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: can be similarly divided between task-specific (Sun et al., [2019](#bib.bib49);
+    Turc et al., [2019](#bib.bib52); Mukherjee et al., [2021](#bib.bib36); Tang et al.,
+    [2019](#bib.bib51); Xia et al., [2022](#bib.bib59)) and task-agnostic methods (Sanh
+    et al., [2019](#bib.bib44); Jiao et al., [2019](#bib.bib25); Sun et al., [2020](#bib.bib50);
+    Wang et al., [2020b](#bib.bib57), [a](#bib.bib56); Liang et al., [2023](#bib.bib31)).
+    For existing distillation literature on BERT-style models, we use task-specialized
+    distillation for both methods. The reason for this is apparent in the case of
+    task-specific methods, which distill task information from a teacher model into
+    the student. However, even task-agnostic methods are specialized on end-tasks
+    by finetuning following distillation on pretraining data, and hence the classification
+    term for both categories.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are methods that follow pruning with a distillation phase (Hou et al.,
+    [2020](#bib.bib24); McCarley et al., [2019](#bib.bib33)). More recently, methods
+    like Co-Fi (Xia et al., [2022](#bib.bib59)) and Homotopic-distillation (Liang
+    et al., [2023](#bib.bib31)) combine the pruning phase with distillation by applying
+    distillation losses during the pruning process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Training (Compressed) LLMs
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We focus on commonly available distillation methodologies to study how standard
+    practices (Sanh et al., [2019](#bib.bib44), *inter alia*) apply to our setting
+    of compressing decoder-only LLMs. Unlike prior work, our compressed model is evaluated
+    with zero-shot tasks without any end-task finetuning. This setting presents a
+    more challenging situation than previously explored by distillation literature,
+    wherein the methods benefit from the final stage of supervised task-specific finetuning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When it’s assumed that supervised finetuning follows compression, the standard
+    for compressed model quality can be much lower. For task-specialized compression (Jiao
+    et al., [2019](#bib.bib25); Sun et al., [2020](#bib.bib50); Liang et al., [2023](#bib.bib31);
+    Sanh et al., [2019](#bib.bib44)), reduced model capacity is needed compared to
+    when models need to maintain generality. Also, parameters updated during the finetuning
+    phase can compensate for task-specific information lost during compression. When
+    optimizing for in-context learning, zero-shot evaluations will likely be more
+    sensitive to removing parameters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our principal research question is: *How can we effectively compress GPT-style
+    models to maintain zero-shot promptability?* Within this question, we study the
+    efficacy of distillation without finetuning for our class of models (described
+    in Section [4](#S4 "4 Experimental Setup ‣ How To Train Your (Compressed) Large
+    Language Model")). We consider how to initialize, prune, and distill a student
+    model from an LLM. We describe our initialization strategies, distillation and
+    language modeling objectives, and our straightforward methodology for learning
+    a compressed model with continued pretraining.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Language Modeling Objective
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Let $X$. A language model computes the probability of the sequence by factorizing
+    over the probability of each next token prediction given the prior context tokens:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $p(X)=\prod_{i=1}^{N}p\left(x_{i}&#124;x_{1},x_{2},...,x_{i-1}\right)$
+    |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: We limit the scope of our work to causal auto-regressive decoders Radford et al.
+    ([2018](#bib.bib38)), composed of Transformer decoder layers Vaswani et al. ([2017](#bib.bib53)).
+    This model, parameterized by $\theta$ context tokens Bengio et al. ([2003](#bib.bib2)).
+    Equation [2](#S3.E2 "In 3.1 Language Modeling Objective ‣ 3 Training (Compressed)
+    LLMs ‣ How To Train Your (Compressed) Large Language Model") defines this learning
+    objective.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathcal{L}_{\rm LM}=\log p_{\theta}(X)=\sum_{i=1}^{N}p(x_{i}&#124;x_{i-k},...,x_{i-1};\theta)$
+    |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: 3.2 Distillation Objectives
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Task-agnostic distillation literature for “BERT-style” models Sanh et al. ([2019](#bib.bib44));
+    Wang et al. ([2020b](#bib.bib57)); Jiao et al. ([2019](#bib.bib25)) begins with
+    a single-step layer-pruned initialization of the student. Following this, knowledge
+    distillation uses one or more distillation objectives to align the output and/or
+    intermediate states between the student and teacher. We first evaluate a “vanilla”
+    distillation technique as a baseline, training a student with the language modeling
+    objective combined with the distillation objective in Equation [3](#S3.E3 "In
+    3.2 Distillation Objectives ‣ 3 Training (Compressed) LLMs ‣ How To Train Your
+    (Compressed) Large Language Model"). $\mathcal{L}_{\rm distill}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathcal{L}_{\rm distill}~{}=~{}{\rm KL}\left(f_{s}\left(x_{i}\right),~{}f_{t}\left(x_{i}\right)\right)$
+    |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: We consider the ideas introduced in miniLM (Wang et al., [2020b](#bib.bib57))
+    and miniLMv2 (Wang et al., [2020a](#bib.bib56)) for our second distillation baseline.
+    Using the idea of relation transfer between $Q$ is the dimensionality of each
+    model. Using only two relation transfers follows the memory-performance tradeoff
+    from miniLMv2, and we adapt it to a causal-decoder setup by masking. The final
+    loss function for this baseline contains the LM objective, the distillation objective
+    from Eq. [3](#S3.E3 "In 3.2 Distillation Objectives ‣ 3 Training (Compressed)
+    LLMs ‣ How To Train Your (Compressed) Large Language Model"), and the two relation
+    transfer KL-divergence terms.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathcal{L}_{QK}={\rm KL}\left({\rm softmax}\left(\frac{Q_{s}K_{s}}{\sqrt{d_{s}}}\right),{\rm
+    softmax}\left(~{}\frac{Q_{t}K_{t}}{\sqrt{d_{t}}}\right)\right)$ |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: Our third and final baseline draws from tinyBERT (Jiao et al., [2019](#bib.bib25))
+    and homotopic distillation (Liang et al., [2023](#bib.bib31)). This baseline aligns
+    the intermediate states ($\mathcal{L}_{\rm hid}$ are the respective embedding
+    tables. Since we do not prune in the hidden dimensions of the student, there is
+    no need to learn a projection to match the dimensionality between the models.
+    Equation [8](#S3.E8 "In 3.2 Distillation Objectives ‣ 3 Training (Compressed)
+    LLMs ‣ How To Train Your (Compressed) Large Language Model") is the complete loss
+    function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathcal{L}_{\rm hid}\left(\theta_{s},\theta_{t}\right)$
+    |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\mathcal{L}_{\rm emb}\left(\theta_{s},\theta_{t}\right)$
+    |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\mathcal{L}_{\rm att}\left(\theta_{s},\theta_{t}\right)$
+    |  | (7) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\mathcal{L}_{\Sigma}=\mathcal{L}_{\rm LM}$ |  | (8) |'
+  prefs: []
+  type: TYPE_TB
+- en: 3.3 Truncated Initialization Strategy
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/b166ad33986cce4e31592b2351458064.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Truncated initialization configurations for layer pruning in a decoder-only
+    language model. Highlighted layers (green) are removed. Our method and distillation
+    baselines remove half of the layers according to each configuration. We retain
+    the first and last layer as these layers interact with the embedding table.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The goal of initialization in a compression pipeline is choosing a subset of
+    larger model parameters to retain maximum information about the data. We follow
+    conventional distillation work (Sanh et al., [2019](#bib.bib44)) in using a layer-level
+    pruning strategy. This produces a *truncated initialization* of a subset of teacher
+    layers for the student. Choosing *where* and *when* to prune layers is a critical
+    design decision to maximize performance recovery after pruning. Figure [1](#S3.F1
+    "Figure 1 ‣ 3.3 Truncated Initialization Strategy ‣ 3 Training (Compressed) LLMs
+    ‣ How To Train Your (Compressed) Large Language Model") outlines the configurations
+    we consider studying *where* to prune half the model layers. Considering *when*
+    to enact pruning primarily concerns either pruning all layers at initialization
+    or incrementally removing layers periodically during continued pretraining (described
+    in Section [3.4](#S3.SS4 "3.4 Continued Pretraining ‣ 3 Training (Compressed)
+    LLMs ‣ How To Train Your (Compressed) Large Language Model")). Our intuition here
+    is that incremental layer removal yields improved training stability. We present
+    results and ablations for these two questions in Section [5](#S5 "5 Compression
+    Results ‣ How To Train Your (Compressed) Large Language Model").
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.4 Continued Pretraining
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: While we explore distillation in our setup, the study of introducing additional
+    student-teacher alignment is somewhat saturated. Unlike prior work, we observe
+    that the additional distillation signals (outlined above) do not significantly
+    contribute to the student learning process. In fact, in some instances, they prove
+    to be detrimental. We hypothesize that this supervision *over-constrains* the
+    student to be unable to adequately model the data and recover performance lost
+    during layer pruning. Therefore, we consider the alternative, continued pretraining
+    of the student *without teacher supervision*. We remove all distillation objectives
+    and instead continue pretraining the student, initialized with a truncated subset
+    of layers, with the same corpus and objective as the teacher model. Our proposal
+    resembles *domain adaptive pretraining* (Gururangan et al., [2020](#bib.bib21));
+    however, our goal of task-agnostic compression requires domain-agnostic continued
+    pretraining to maintain model generality. Section [5](#S5 "5 Compression Results
+    ‣ How To Train Your (Compressed) Large Language Model") highlights that this strategy
+    is superior to distillation objectives given a limited token budget.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experimental Setup
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 4.1 Base Models
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Params Dim Heads Layers Batch Size LR Token Budget 180M 1024 16 12 2M 6.0e-4
+     160B 300M 1024 16 24 2M 3.0e-4  160B 610M 2048 16 12 2M 2.5e-4  160B 1.1B 2048
+    16 24 2M 2.0e-4  160B
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: Configuration for Decoder-only Transformers. Each is trained on C4
+    as pretraining baseline. The 2M token batch size follows Biderman et al. ([2023](#bib.bib3)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We pretrain our own baseline models for exact control over token budgets and
+    model configurations²²2We have confirmed that our baseline models achieve similar
+    zero-shot performance to existing pretrained models.. However, our proposed compression
+    method can be applied to any publicly available decoder-only model checkpoint
+    e.g., Zhang et al. ([2022](#bib.bib62), [2023](#bib.bib61)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: We follow the PaLM architecture (Chowdhery et al., [2022](#bib.bib9)) owing
+    to improved throughput efficiency. Specifically, the attention and feed-forward
+    network (FFN) modules are parallel instead of sequential (Radford et al., [2019](#bib.bib39)).
+    SwiGLU activation (Shazeer, [2020](#bib.bib46)) is used in the FFN module. Multi-head
+    attention uses the equivalent Flash-Attention (Dao et al., [2022](#bib.bib12),
+    FA) implementation. The first layer of the FFN module and the layers generating
+    attention query, key, and value are fused. Similarly, the second layer of the
+    FFN module and the feed-forward layer after the attention operation are fused.
+    The LayerNorm (Ba et al., [2016](#bib.bib1)) is before the first fused feed-forward
+    layer. The query and the key vectors are passed through additional layer normalization
+    layers for increased training stability following Dehghani et al. ([2023](#bib.bib14)).
+    This block structure is repeated with skip connections to form our decoder-only
+    Transformer architecture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using the language modeling objective, we train two core baselines with 300
+    million (M) and 1.1 billion (B) parameters. We also consider additional baseline
+    models containing half the number of layers (180M and 610M parameters). We use
+    Lion optimizer (Chen et al., [2023](#bib.bib7)) in all our pretraining experiments
+    with $\beta$ but is omitted for bias and normalization parameters.³³3We follow
+    default hyper-parameters suggested by Composer [https://www.mosaicml.com/composer](https://www.mosaicml.com/composer)
+    We schedule learning rate warm-up from the start to 2000 steps (4B tokens) and
+    then use a cosine decay schedule until training stops. The final learning rate
+    is 10% of the peak value. Table [1](#S4.T1 "Table 1 ‣ 4.1 Base Models ‣ 4 Experimental
+    Setup ‣ How To Train Your (Compressed) Large Language Model") summarizes all baseline
+    model configurations and their respective pretraining token budgets. For pretraining,
+    we use the C4 dataset (Raffel et al., [2020](#bib.bib40)) of  160B web-crawled
+    tokens. Pretrained models of all sizes are trained for 1 epoch on the C4 dataset.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Compression and Distillation Baselines
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To simulate the typical practice of a compressed model continuing to train with
+    a pretrained optimizer state, we seed the model with training for 1B additional
+    tokens to “warm-start” the optimizer. This seed phase includes a linear warm-up
+    of the learning rate for 400 steps (800M tokens). After this, we begin layer pruning
+    according to the truncation configuration, controlling when and where we prune
+    layers from the model. A layer that needs to be removed in the future is frozen
+    from the start of the optimization process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We use the Lion optimizer with the same batch size, weight decay, and $\beta$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For distillation baselines, we use the same truncated initialization strategy
+    for student models as our compression method. Each loss component of the total
+    distillation loss is normalized such that the total magnitude for distillation
+    loss matches the cross-entropy loss. We note that some forms of knowledge distillation
+    cannot exploit recent modeling optimizations, such as flash-attention. Aligning
+    $QK^{T}$ matrix products, significantly slowing down training.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 Downstream Evaluation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '| Category | Task | Metric |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Common Sense Reasoning | PIQA (Bisk et al., [2019](#bib.bib4)) | ACC (LN)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Hellaswag (Zellers et al., [2019](#bib.bib60)) | ACC (LN) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Winogrande (Sakaguchi et al., [2019](#bib.bib43)) | ACC |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BoolQ (Clark et al., [2019](#bib.bib10)) | ACC (LN) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Science Question Answering | OpenBookQA (Mihaylov et al., [2018](#bib.bib35))
+    | ACC (LN) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SciQ (Welbl et al., [2017](#bib.bib58)) | ACC |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Arc-Easy (Clark et al., [2018](#bib.bib11)) | ACC |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Arc-Challenge (Clark et al., [2018](#bib.bib11)) | PMI-DC |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Natural Language Inference | RTE (Wang et al., [2018](#bib.bib55)) | ACC
+    (LN) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Commitment Bank (de Marneffe et al., [2019](#bib.bib13)) | ACC |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Causal Reasoning | COPA (Roemmele et al., [2011](#bib.bib41)) | ACC |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Paraphrase Identification | MRPC (Dolan and Brockett, [2005](#bib.bib18))
+    | F1 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: Downstream tasks for evaluating our compressed models and baselines.
+    Each task reports a different metric: ‘ACC’: accuracy, ‘ACC (LN)’: length normalized
+    accuracy, ‘F1’: F1 score, ‘PMI-DC’: domain-conditioned pointwise mutual information.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We evaluate our model on 12 tasks from 5 categories: common sense reasoning,
+    science question answering, causal reasoning, natural language inference, and
+    paraphrase identification. All tasks are evaluated in a zero-shot setting by providing
+    the language model with a prompt from Eleuther-AI evaluation harness (Gao et al.,
+    [2021](#bib.bib20)) and a possible completion. We score the model output for each
+    completion. The completion with the highest likelihood is the prediction to compute
+    task accuracy. The completion likelihood can be normalized by either the character
+    count in the completion (Gao et al., [2021](#bib.bib20), length normalized accuracy)
+    or by the probability of completion conditioned on the domain premise (Holtzman
+    et al., [2021](#bib.bib22); Brown et al., [2020](#bib.bib5), domain conditional
+    point-wise mutual information). In Table [2](#S4.T2 "Table 2 ‣ 4.3 Downstream
+    Evaluation ‣ 4 Experimental Setup ‣ How To Train Your (Compressed) Large Language
+    Model"), we list tasks in each evaluation category and respective metrics.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Method | PIQA | Hellaswag | Winogrande | BoolQ | OBQA | SciQ | Arc-e
+    | Arc-c | COPA | RTE | CB | MRPC | Avg $\left(\uparrow\right)$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---
+    | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Pre-compression | 71.0 | 45.8 | 52.3 | 61.1 | 32.0 | 81.7 | 52.6 | 23.4
+    | 73.0 | 53.8 | 41.1 | 81.2 | 55.8 | 16.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Vanilla-KD | 66.6 | 34.9 | 49.7 | 62.1 | 30.6 | 76.4 | 47.2 | 25.8 | 69.0
+    | 55.6 | 39.3 | 80.5 | 53.1 | 22.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | miniLM-KD | 66.1 | 34.6 | 49.8 | 62.2 | 29.4 | 75.2 | 45.6 | 22.7 | 69.0
+    | 56.7 | 39.3 | 81.0 | 52.6 | 23.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Homotopic-KD | 63.6 | 32.4 | 50.7 | 62.2 | 28.4 | 74.4 | 42.8 | 27.4 |
+    68.0 | 57.4 | 41.1 | 81.0 | 52.4 | 27.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 300M-160B | Ours | 66.8 | 35.1 | 49.8 | 62.0 | 29.2 | 76.7 | 47.9 | 27.1
+    | 68.0 | 56.0 | 39.3 | 80.3 | 53.2 | 23.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Pre-compression | 74.4 | 56.8 | 55.2 | 62.5 | 34.4 | 85.1 | 57.0 | 29.1
+    | 77.0 | 54.9 | 50.0 | 81.1 | 59.8 | 13.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Vanilla-KD | 70.6 | 44.4 | 50.9 | 62.2 | 30.0 | 81.7 | 53.3 | 27.1 | 70.0
+    | 53.4 | 41.1 | 80.8 | 55.5 | 17.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | miniLM-KD | 70.6 | 43.7 | 52.4 | 62.2 | 28.2 | 81.0 | 50.9 | 26.1 | 70.0
+    | 54.2 | 41.1 | 81.3 | 55.1 | 17.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Homotopic-KD | 68.7 | 40.9 | 51.6 | 62.0 | 29.8 | 79.4 | 49.3 | 23.1 |
+    69.0 | 54.9 | 37.5 | 81.2 | 53.9 | 19.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1.1B-160B | Ours | 70.5 | 44.3 | 51.6 | 62.2 | 29.4 | 80.9 | 51.4 | 25.1
+    | 71.0 | 52.7 | 41.1 | 80.9 | 55.1 | 17.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 3: Results for our model and distillation baselines from Sec. [3.2](#S3.SS2
+    "3.2 Distillation Objectives ‣ 3 Training (Compressed) LLMs ‣ How To Train Your
+    (Compressed) Large Language Model") for language model perplexity and all tasks
+    outlined in Table [2](#S4.T2 "Table 2 ‣ 4.3 Downstream Evaluation ‣ 4 Experimental
+    Setup ‣ How To Train Your (Compressed) Large Language Model"). All models are
+    evaluated zero-shot with no finetuning. For extrinsic tasks, higher is better,
+    while lower is better for perplexity (ppl.). “Pre-compression” is the larger teacher
+    model evaluated on the same task suite. Our method yields superior perplexity
+    compared to distillation and is competitive on most tasks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Compression Results
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 5.1 Compression for generality and zero-shot promptability
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'This section compares our method against the distillation baselines mentioned
+    in Section [3.2](#S3.SS2 "3.2 Distillation Objectives ‣ 3 Training (Compressed)
+    LLMs ‣ How To Train Your (Compressed) Large Language Model"). We show perplexity
+    results on C4 validation set and zero-shot performance on 12 end-tasks. All baselines
+    and our method are applied to two core model baselines mentioned in Section [4.1](#S4.SS1
+    "4.1 Base Models ‣ 4 Experimental Setup ‣ How To Train Your (Compressed) Large
+    Language Model"): a 300M parameter model and a 1.1B parameter model, both trained
+    until 160B tokens. In addition, we provide the end-task performance of the checkpoints
+    themselves for comparison against distillation baselines and our method. All compression
+    methods in this section remove 12/24 layers in the decoder-only base models. All
+    methods are trained on additional 20B tokens from the C4 corpus. As shown in Table [3](#S4.T3
+    "Table 3 ‣ 4.3 Downstream Evaluation ‣ 4 Experimental Setup ‣ How To Train Your
+    (Compressed) Large Language Model"), our method matches the best distillation
+    baseline on perplexity and remains competitive on most end-tasks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table [4](#S5.T4 "Table 4 ‣ 5.1 Compression for generality and zero-shot promptability
+    ‣ 5 Compression Results ‣ How To Train Your (Compressed) Large Language Model")
+    summarizes training statistics like computation required by each method in terms
+    of FLOPs or the wall-clock time consumed. This result shows that our method is
+    at par with the distillation baselines in our implementation with significantly
+    less compute and wall-clock time. Section [7](#S7 "7 Discussion ‣ How To Train
+    Your (Compressed) Large Language Model") discusses our hypothesis on why we expect
+    our distillation-free method to work well despite being trained on a less-informative
+    training signal without a teacher.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Method | FLOPs | FLOPs Ratio | Wall-clock Time | Wall-clock Ratio
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 300M-160B | Vanilla-KD | 33.31e18 | 1.6x | 47 hrs | 1.8x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| miniLM-KD | 33.31e18 | 1.6x | 72 hrs | 2.7x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Homotopic-KD | 33.31e18 | 1.6x | 204 hrs | 7.7x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 21.22e18 | 1x | 26.5 hrs | 1x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1.1B-160B | Vanilla-KD | 116.76e18 | 1.6x | 51 hrs | 1.6x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| miniLM-KD | 116.76e18 | 1.6x | 63 hrs | 1.9x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Homotopic-KD | 116.76e18 | 1.6x | 300 hrs | 9x |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 72.52e18 | 1x | 33 hrs | 1x |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 4: Training statistics for each model and baseline. The 300M models train
+    using 4xA100 80GB GPUs and the 1.1B models use 8xA100 80GB GPUs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.2 Where to Prune a Model?
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Our baseline models contain 24 decoder layers. To determine which layers we
+    should prune for the best compression performance, we define five layer pruning
+    configurations shown in Figure [1](#S3.F1 "Figure 1 ‣ 3.3 Truncated Initialization
+    Strategy ‣ 3 Training (Compressed) LLMs ‣ How To Train Your (Compressed) Large
+    Language Model"), each removing 12 out of the 24 decoder layers of the 300M and
+    1.1B models. In all these pruning configurations, we always keep the first and
+    the last layers because they interact with the embedding table. We made this design
+    choice based on early experiments. Table [5](#S5.T5 "Table 5 ‣ 5.2 Where to Prune
+    a Model? ‣ 5 Compression Results ‣ How To Train Your (Compressed) Large Language
+    Model") summarizes the results of this ablation. We report the perplexity score
+    on the C4 validation set and the average task accuracy across 12 tasks in our
+    evaluation suite (Table [2](#S4.T2 "Table 2 ‣ 4.3 Downstream Evaluation ‣ 4 Experimental
+    Setup ‣ How To Train Your (Compressed) Large Language Model")).
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the base 300M model, pruning configurations of *max-gap* and *both* perform
+    the best out of the five possible configurations. For the 1.1B model, pruning
+    layers from the *input* configuration yielded the best results for both reported
+    metrics. The *output* pruning configuration resulted in the worst performance
+    across model sizes, suggesting that pruning layers towards the output side of
+    the model should be avoided. Given these results, we use the pruning configuration
+    of *max-gap* for all our 300M model experiments and the configuration of *input*
+    for all our 1.1B model experiments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Token Budget | Task Metric | max-gap | input | output | middle |
+    both | Pre-compression |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 300M-160B | 20B | ppl $\left(\downarrow\right)$ | 23.0 | 24.5 | 25.6 | 24.0
+    | 23.0 | 16.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 300M-160B | 20B | avg acc $\left(\uparrow\right)$ | 53.2 | 52.9 | 51.6 |
+    52.9 | 53.2 | 55.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1.1B-160B | 20B | ppl $\left(\downarrow\right)$ | 18.1 | 17.3 | 22.0 | 18.6
+    | 18.6 | 13.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1.1B-160B | 20B | avg acc $\left(\uparrow\right)$ | 54.8 | 55.1 | 53.1 |
+    54.7 | 53.8 | 59.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 5: Influence on average task performance and C4 validation perplexity
+    of different truncated initialization strategies from Figure [1](#S3.F1 "Figure
+    1 ‣ 3.3 Truncated Initialization Strategy ‣ 3 Training (Compressed) LLMs ‣ How
+    To Train Your (Compressed) Large Language Model") for models of size 300M and
+    1.1B. The average task performance score is across 12 tasks listed in Table [2](#S4.T2
+    "Table 2 ‣ 4.3 Downstream Evaluation ‣ 4 Experimental Setup ‣ How To Train Your
+    (Compressed) Large Language Model"), and higher numbers are better. For perplexity
+    scores, lower is better.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.3 When to Prune a Model?
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'To answer the question of when we should prune layers from our model while
+    continuing to train it with language modeling loss, we can decide in one of two
+    ways: either remove selected layers at once or remove them one by one, each after
+    a fixed number of training tokens. We run this experiment in four configurations
+    to see if increasing the gap between each layer pruning increases training stability
+    or model performance. The four configurations are: dropping all layers at once
+    (0M token gap between pruning each layer) or pruning them after 100M, 500M, and
+    1B training tokens each. We run this experiment for the 300M and 1.1B model sizes.
+    We prune 12/24 layers from our decoder-only models for this ablation, each at
+    a training token gap mentioned in one of the four configurations above. The result
+    of this experiment is summarized in Figure [2](#S5.F2 "Figure 2 ‣ 5.4 Upweighting
+    Distillation Loss ‣ 5 Compression Results ‣ How To Train Your (Compressed) Large
+    Language Model"). Pruning layers one by one with an increasing token budget between
+    each layer pruning does not benefit the average task accuracy or C4 validation
+    perplexity. In fact, there is a marginal preference to prune layers as early into
+    the training as possible. Hence, we decided to prune all 12/24 layers simultaneously
+    for other experiments.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.4 Upweighting Distillation Loss
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/b3bdb3c47c5d35f8ed040e02dd0743fd.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Average task accuracy across 12 tasks (Table [2](#S4.T2 "Table 2
+    ‣ 4.3 Downstream Evaluation ‣ 4 Experimental Setup ‣ How To Train Your (Compressed)
+    Large Language Model")) and perplexity on the C4 validation set for model sizes
+    300M and 1.1B comparing schedules for *when* to prune layers during continued
+    pretraining. We find a marginal performance degradation as we remove layers one
+    by one further apart during continued pretraining.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our vanilla distillation baseline described in Section [3.2](#S3.SS2 "3.2 Distillation
+    Objectives ‣ 3 Training (Compressed) LLMs ‣ How To Train Your (Compressed) Large
+    Language Model") performs at par with our proposed approach of model pruning,
+    followed by continued pretraining. Any distillation setup adds a teacher and a
+    distillation loss component at the minimum to the compression pipeline. Because
+    of this, the vanilla distillation baseline is at least 1.6x slower than our proposed
+    method in terms of theoretical FLOPs and wall-clock time (Table [4](#S5.T4 "Table
+    4 ‣ 5.1 Compression for generality and zero-shot promptability ‣ 5 Compression
+    Results ‣ How To Train Your (Compressed) Large Language Model")). To justify the
+    additional compute requirements of a distillation setup, we want to verify further
+    the importance of the teacher and the distillation loss component.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We maintain the setup from our vanilla distillation baseline for this experiment
+    and append a coefficient to the KL-divergence loss term. The new loss function
+    for distillation becomes $\mathcal{L}_{\Sigma}=\mathcal{L}_{\rm LM}+\lambda*\mathcal{L}_{\rm
+    distill}$ results in a decrease in the end-task performance and an increase in
+    C4 perplexity. Thus, this experiment highlights the importance of the language
+    modeling component in our vanilla distillation baseline and strengthens the argument
+    that appending the continued pretraining setup with a distillation component to
+    get similar performance is redundant.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/76ed223463df82f3c221702403ee60ed.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: We ablate different coefficients on the KL-divergence distillation
+    loss component of the vanilla distillation baseline (Sec. [3.2](#S3.SS2 "3.2 Distillation
+    Objectives ‣ 3 Training (Compressed) LLMs ‣ How To Train Your (Compressed) Large
+    Language Model")) for model size 1.1B. We report the average task score across
+    12 tasks in our evaluation suite (Table [2](#S4.T2 "Table 2 ‣ 4.3 Downstream Evaluation
+    ‣ 4 Experimental Setup ‣ How To Train Your (Compressed) Large Language Model"))
+    and C4 validation perplexity.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.5 Removing Language Modeling
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Our other two distillation baselines described in Section [3.2](#S3.SS2 "3.2
+    Distillation Objectives ‣ 3 Training (Compressed) LLMs ‣ How To Train Your (Compressed)
+    Large Language Model") constrain the teacher-teacher setup in more ways than just
+    using a KL-divergence term for distillation. The miniLM-KD (Wang et al., [2020b](#bib.bib57))
+    baseline adds constraints on the attention map and intermediate representations
+    of the final layer between the teacher and the student model on top of the loss
+    terms in the vanilla distillation setup. The homotopic-KD (Liang et al., [2023](#bib.bib31))
+    baseline takes a step further and adds constraints on each layer between the teacher
+    and the student on attention maps and intermediate representations. These setups
+    are well designed to align student outputs to the teacher perfectly; thus, we
+    ablate on whether they even require the language modeling component for the student.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this experiment, we maintain the same setup of our miniLM and homotopic distillation
+    baselines without the language modeling loss term. We show the results in Figure
+    [4](#S5.F4 "Figure 4 ‣ 5.5 Removing Language Modeling ‣ 5 Compression Results
+    ‣ How To Train Your (Compressed) Large Language Model") for our 1.1B model. Both
+    distillation baselines lose some end-task performance by removing the language
+    modeling loss term. However, the language modeling task performance on the C4
+    validation set suffers significantly without the language modeling loss term on
+    the student.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/2304e6095118419a5cf807d69c792b1d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: Experiment demonstrating the effectiveness of language modeling loss
+    component in compound loss functions of miniLM-KD (Sec. [3.2](#S3.SS2 "3.2 Distillation
+    Objectives ‣ 3 Training (Compressed) LLMs ‣ How To Train Your (Compressed) Large
+    Language Model")) and homotopic-KD distillation (Sec. [3.2](#S3.SS2 "3.2 Distillation
+    Objectives ‣ 3 Training (Compressed) LLMs ‣ How To Train Your (Compressed) Large
+    Language Model")) baselines. We report the average task performance across 12
+    tasks (Table [2](#S4.T2 "Table 2 ‣ 4.3 Downstream Evaluation ‣ 4 Experimental
+    Setup ‣ How To Train Your (Compressed) Large Language Model")) and perplexity
+    on the C4 validation set.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Train Large then Compress, or Not
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/054f309d4ff1cc30de3641e4905a19c0.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: Comparing compressed models against pretraining an equivalent model
+    from scratch with the training budget of only continued pretraining (20B tokens)
+    or the full pretraining stage (max budget).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Existing literature Li et al. ([2020](#bib.bib30)) suggests that training a
+    large model and then compressing it usually works better than training a smaller
+    model from scratch. In this section, we study this observation in the context
+    of zero-shot evaluation of the compressed model. As mentioned in Section [4.1](#S4.SS1
+    "4.1 Base Models ‣ 4 Experimental Setup ‣ How To Train Your (Compressed) Large
+    Language Model"), in addition to our 300M/1.1B baselines, we train two half-sized
+    models (180M/610M) from scratch on the same pretraining token budget as their
+    larger counterparts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure [5](#S6.F5 "Figure 5 ‣ 6 Train Large then Compress, or Not ‣ How To Train
+    Your (Compressed) Large Language Model") compares the performance of our source
+    LLM models (“full @ max-budget”), half-sized pretrained models to the same token
+    budget (“half @ max-budget”), compressed models from the source LLM with a token
+    budget of 20B (“compressed @ 20B”) and half-sized pretrained models with the token
+    budget of our compression method (“half @ 20B”). Our compressed models outperform
+    the half-sized models pretrained from scratch when the token budget is fixed at
+    the level of the compression budget. As we further pretrain our half-sized models,
+    they overtake the comparable compressed model in both zero-shot task evaluation
+    and language modeling perplexity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure [6](#S6.F6 "Figure 6 ‣ 6 Train Large then Compress, or Not ‣ How To Train
+    Your (Compressed) Large Language Model") shows how a billion-sized compressed
+    model starts to flatten and is overtaken by a pretrained half-sized model. This
+    suggests that while continued pretraining is a good way to recover some of the
+    model’s zero-shot abilities, truncated initialization due to layer pruning is
+    not very effective at preserving these abilities in the first place.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The ideal truncated initialization method should satisfy two requirements:
+    (1) loss after truncation is the same (or as close as possible) to the loss before
+    truncation, (2) as we continue training the truncated model, its learning curve
+    continues improving at the same rate as if it was trained from scratch. Using
+    the terminogloy from Shen et al. ([2022](#bib.bib47)), it should be “loss-preserving”
+    and “training-dynamics-preserving”. Although achieving both requirements might
+    not be possible, they define the upper bound. We continue to explore the space
+    of pruning strategies for future work.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e0c7dc7316acb4d6ecb8ea552317671e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: Evaluation perplexity curves for our compressed model trained for
+    20B tokens and the “oracle” smaller model trained for the maximum token budget.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7 Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The results in sections [5](#S5 "5 Compression Results ‣ How To Train Your (Compressed)
+    Large Language Model") and [6](#S6 "6 Train Large then Compress, or Not ‣ How
+    To Train Your (Compressed) Large Language Model") showed that existing methods
+    for task-specialized compression are not necessarily the best in the zero-shot
+    evaluation setting. We found that simple continued pretraining outperforms student/teacher
+    distillation and that training a smaller model from scratch is better than training
+    a larger model and then compressing. This section summarizes a few hypotheses
+    explaining these findings and discusses why zero-shot evaluation favors different
+    compression methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Non-ideal truncated initialization
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: To preserve a model’s zero-shot promptability, we need a truncated initialization
+    method that’s both loss-preserving and training-dynamics preserving Shen et al.
+    ([2022](#bib.bib47)). However, the results in section [6](#S6 "6 Train Large then
+    Compress, or Not ‣ How To Train Your (Compressed) Large Language Model") show
+    that the truncated initialization methods cause the compressed model to lose too
+    much of its zero-shot abilities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Size of training data
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We hypothesize that the reason distillation does not lead to improved zero-shot
+    performance is related to the training data size. In task-specific finetuning
+    setup, where the task data is relatively limited, the larger model can learn more
+    generalizable representations from the data and can provide a more informative
+    training signal to the smaller student model, compared to what the student model
+    can learn itself from data. In contrast, in the zero-shot evaluation setup, where
+    we have unlimited pretraining data, distilling from a larger model does not provide
+    much advantage when we continue to learn from billions of tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Aligning the pretraining objective
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Distillation uses a collection of training objectives that constrain the smaller
+    model in various ways. This is a reasonable setup when the goal is to imitate
+    the larger model as much as possible. However, in an infinite data regime with
+    the goal of training a zero-shot model, a single language modeling objective is
+    better aligned with the goal. It is more capable of eliciting zero-shot behavior
+    compared to distillation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 8 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We examine compression techniques to preserve the zero-shot promptability of
+    large language models. We proposed a task-agnostic compression methodology, with
+    no teacher, using pruning for truncated initialization of the compressed model,
+    and continued pretraining as an alternative to end-task finetuning. On a diverse
+    zero-shot evaluation suite and perplexity, our method is comparable in performance
+    to a range of distillation baselines while offering 1.5$\times$ compute efficient
+    training. We also compare compression to an “oracle” setup of an equally sized
+    model pretrained for the same token budget as the larger teacher model. We highlight
+    that a broad range of compression methods underperform compared to an uncompressed
+    model with more training. This surprising result that distillation is not the
+    “silver bullet” here, as it has been in prior works, leads us to call for future
+    research into closing this gap. We release our code and evaluation setup to encourage
+    future research and discussion on improved compression strategies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Limitations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: While our work is in the spirit of reducing model size and improving efficiency
+    — we require significant computational resources for our experiments demanding
+    both high energy usage and processing power. Experiments such as the teacher model
+    pretraining and “oracle” student model upper-bound demand upto 5 days of training
+    time using 32xA100 GPUs with a high bandwidth interconnect. Therefore, reproducing
+    our experiments are only reasonably tractable with commensurate GPU resources
+    which may be infeasible for some researchers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Additionally, we demonstrate our findings compared to a ‘vanilla’ distillation
+    approach and recently published alternatives in our decoder-only setup. We take
+    this approach to report how the most typical distillation strategy can be ported
+    to a contemporary LLM. Our findings do not indicate that distillation is potentially
+    fruitful for GPT-style models, however, our work is limited in that there may
+    exist *some atypical* distillation strategy with even better performance. We encourage
+    future work and discussion of how these methods can be improved in this regard.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Ethics Statement
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We report all pretraining experiments with the widely used C4 corpus. This corpus
+    has been found to contain harmful artifacts and biases (Dodge et al., [2021](#bib.bib17))
+    which our models may inherit, however, the study of this phenomena is outside
+    of the scope of our work but may inform future study. Model compression has been
+    linked to increased bias and toxicity in a model (Hooker et al., [2020](#bib.bib23))
+    but it is currently unclear how such effects extend to our setting; particularly
+    as we expose the student to the same corpus as the teacher. Further study is needed
+    in this area to examine how compression influences biases in increasingly large
+    language models (Solaiman et al., [2023](#bib.bib48)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Ba et al. (2016) Jimmy Ba, Jamie Ryan Kiros, and Geoffrey E. Hinton. 2016. Layer
+    normalization. *ArXiv*, abs/1607.06450.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Bengio et al. (2003) Yoshua Bengio, Réjean Ducharme, Pascal Vincent, and Christian
+    Janvin. 2003. A neural probabilistic language model. *J. Mach. Learn. Res.*, 3:1137–1155.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Biderman et al. (2023) Stella Biderman, Hailey Schoelkopf, Quentin Anthony,
+    Herbie Bradley, Kyle O’Brien, Eric Hallahan, Mohammad Aflah Khan, Shivanshu Purohit,
+    USVSN Sai Prashanth, Edward Raff, Aviya Skowron, Lintang Sutawika, and Oskar van der
+    Wal. 2023. [Pythia: A suite for analyzing large language models across training
+    and scaling](http://arxiv.org/abs/2304.01373).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bisk et al. (2019) Yonatan Bisk, Rowan Zellers, Ronan Le Bras, Jianfeng Gao,
+    and Yejin Choi. 2019. Piqa: Reasoning about physical commonsense in natural language.
+    In *AAAI Conference on Artificial Intelligence*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Brown et al. (2020) Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D
+    Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda
+    Askell, Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan,
+    Rewon Child, Aditya Ramesh, Daniel Ziegler, Jeffrey Wu, Clemens Winter, Chris
+    Hesse, Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack
+    Clark, Christopher Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario
+    Amodei. 2020. [Language models are few-shot learners](https://proceedings.neurips.cc/paper_files/paper/2020/file/1457c0d6bfcb4967418bfb8ac142f64a-Paper.pdf).
+    In *Advances in Neural Information Processing Systems*, volume 33, pages 1877–1901\.
+    Curran Associates, Inc.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chen et al. (2020a) Tianlong Chen, Jonathan Frankle, Shiyu Chang, Sijia Liu,
+    Yang Zhang, Zhangyang Wang, and Michael Carbin. 2020a. The lottery ticket hypothesis
+    for pre-trained bert networks. *ArXiv*, abs/2007.12223.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chen et al. (2023) Xiangning Chen, Chen Liang, Da Huang, Esteban Real, Kaiyuan
+    Wang, Yao Liu, Hieu Pham, Xuanyi Dong, Thang Luong, Cho-Jui Hsieh, Yifeng Lu,
+    and Quoc V. Le. 2023. Symbolic discovery of optimization algorithms. *ArXiv*,
+    abs/2302.06675.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chen et al. (2020b) Xiaohan Chen, Yu Cheng, Shuohang Wang, Zhe Gan, Zhangyang
+    Wang, and Jingjing Liu. 2020b. Earlybert: Efficient bert training via early-bird
+    lottery tickets. In *Annual Meeting of the Association for Computational Linguistics*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chowdhery et al. (2022) Aakanksha Chowdhery, Sharan Narang, Jacob Devlin, Maarten
+    Bosma, Gaurav Mishra, Adam Roberts, Paul Barham, Hyung Won Chung, Charles Sutton,
+    Sebastian Gehrmann, Parker Schuh, Kensen Shi, Sasha Tsvyashchenko, Joshua Maynez,
+    Abhishek Rao, Parker Barnes, Yi Tay, Noam M. Shazeer, Vinodkumar Prabhakaran,
+    Emily Reif, Nan Du, Benton C. Hutchinson, Reiner Pope, James Bradbury, Jacob Austin,
+    Michael Isard, Guy Gur-Ari, Pengcheng Yin, Toju Duke, Anselm Levskaya, Sanjay
+    Ghemawat, Sunipa Dev, Henryk Michalewski, Xavier García, Vedant Misra, Kevin Robinson,
+    Liam Fedus, Denny Zhou, Daphne Ippolito, David Luan, Hyeontaek Lim, Barret Zoph,
+    Alexander Spiridonov, Ryan Sepassi, David Dohan, Shivani Agrawal, Mark Omernick,
+    Andrew M. Dai, Thanumalayan Sankaranarayana Pillai, Marie Pellat, Aitor Lewkowycz,
+    Erica Moreira, Rewon Child, Oleksandr Polozov, Katherine Lee, Zongwei Zhou, Xuezhi
+    Wang, Brennan Saeta, Mark Díaz, Orhan Firat, Michele Catasta, Jason Wei, Kathleen S.
+    Meier-Hellstern, Douglas Eck, Jeff Dean, Slav Petrov, and Noah Fiedel. 2022. Palm:
+    Scaling language modeling with pathways. *ArXiv*, abs/2204.02311.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Clark et al. (2019) Christopher Clark, Kenton Lee, Ming-Wei Chang, Tom Kwiatkowski,
+    Michael Collins, and Kristina Toutanova. 2019. Boolq: Exploring the surprising
+    difficulty of natural yes/no questions. *ArXiv*, abs/1905.10044.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Clark et al. (2018) Peter Clark, Isaac Cowhey, Oren Etzioni, Tushar Khot, Ashish
+    Sabharwal, Carissa Schoenick, and Oyvind Tafjord. 2018. Think you have solved
+    question answering? try arc, the ai2 reasoning challenge. *ArXiv*, abs/1803.05457.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dao et al. (2022) Tri Dao, Dan Fu, Stefano Ermon, Atri Rudra, and Christopher
+    Ré. 2022. [Flashattention: Fast and memory-efficient exact attention with io-awareness](https://proceedings.neurips.cc/paper_files/paper/2022/file/67d57c32e20fd0a7a302cb81d36e40d5-Paper-Conference.pdf).
+    In *Advances in Neural Information Processing Systems*, volume 35, pages 16344–16359\.
+    Curran Associates, Inc.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'de Marneffe et al. (2019) Marie-Catherine de Marneffe, Mandy Simons, and Judith
+    Tonhauser. 2019. The commitmentbank: Investigating projection in naturally occurring
+    discourse.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Dehghani et al. (2023) Mostafa Dehghani, Josip Djolonga, Basil Mustafa, Piotr
+    Padlewski, Jonathan Heek, Justin Gilmer, Andreas Steiner, Mathilde Caron, Robert
+    Geirhos, Ibrahim M. Alabdulmohsin, Rodolphe Jenatton, Lucas Beyer, Michael Tschannen,
+    Anurag Arnab, Xiao Wang, Carlos Riquelme, Matthias Minderer, Joan Puigcerver,
+    Utku Evci, Manoj Kumar, Sjoerd van Steenkiste, Gamaleldin F. Elsayed, Aravindh
+    Mahendran, Fisher Yu, Avital Oliver, Fantine Huot, Jasmijn Bastings, Mark Collier,
+    Alexey A. Gritsenko, Vighnesh Birodkar, Cristina Nader Vasconcelos, Yi Tay, Thomas
+    Mensink, Alexander Kolesnikov, Filip Paveti’c, Dustin Tran, Thomas Kipf, Mario
+    Luvci’c, Xiaohua Zhai, Daniel Keysers, Jeremiah Harmsen, and Neil Houlsby. 2023.
+    Scaling vision transformers to 22 billion parameters. *ArXiv*, abs/2302.05442.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. (2022) Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer.
+    2022. [Gpt3.int8(): 8-bit matrix multiplication for transformers at scale](https://proceedings.neurips.cc/paper_files/paper/2022/file/c3ba4962c05c49636d4c6206a97e9c8a-Paper-Conference.pdf).
+    In *Advances in Neural Information Processing Systems*, volume 35, pages 30318–30332\.
+    Curran Associates, Inc.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Devlin et al. (2019) Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina
+    Toutanova. 2019. Bert: Pre-training of deep bidirectional transformers for language
+    understanding. *ArXiv*, abs/1810.04805.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dodge et al. (2021) Jesse Dodge, Maarten Sap, Ana Marasović, William Agnew,
+    Gabriel Ilharco, Dirk Groeneveld, Margaret Mitchell, and Matt Gardner. 2021. [Documenting
+    large webtext corpora: A case study on the colossal clean crawled corpus](https://doi.org/10.18653/v1/2021.emnlp-main.98).
+    In *Proceedings of the 2021 Conference on Empirical Methods in Natural Language
+    Processing*, pages 1286–1305, Online and Punta Cana, Dominican Republic. Association
+    for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Dolan and Brockett (2005) William B. Dolan and Chris Brockett. 2005. Automatically
+    constructing a corpus of sentential paraphrases. In *International Joint Conference
+    on Natural Language Processing*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Fan et al. (2019) Angela Fan, Edouard Grave, and Armand Joulin. 2019. Reducing
+    transformer depth on demand with structured dropout. *ArXiv*, abs/1909.11556.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Gao et al. (2021) Leo Gao, Jonathan Tow, Stella Biderman, Sid Black, Anthony
+    DiPofi, Charles Foster, Laurence Golding, Jeffrey Hsu, Kyle McDonell, Niklas Muennighoff,
+    Jason Phang, Laria Reynolds, Eric Tang, Anish Thite, Ben Wang, Kevin Wang, and
+    Andy Zou. 2021. [A framework for few-shot language model evaluation](https://doi.org/10.5281/zenodo.5371628).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Gururangan et al. (2020) Suchin Gururangan, Ana Marasović, Swabha Swayamdipta,
+    Kyle Lo, Iz Beltagy, Doug Downey, and Noah A. Smith. 2020. Don’t stop pretraining:
+    Adapt language models to domains and tasks. *ArXiv*, abs/2004.10964.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Holtzman et al. (2021) Ari Holtzman, Peter West, Vered Schwartz, Yejin Choi,
+    and Luke Zettlemoyer. 2021. Surface form competition: Why the highest probability
+    answer isn’t always right. *ArXiv*, abs/2104.08315.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hooker et al. (2020) Sara Hooker, Nyalleng Moorosi, Gregory Clark, Samy Bengio,
+    and Emily Denton. 2020. [Characterising bias in compressed models](http://arxiv.org/abs/2010.03058).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hou et al. (2020) Lu Hou, Zhiqi Huang, Lifeng Shang, Xin Jiang, and Qun Liu.
+    2020. Dynabert: Dynamic bert with adaptive width and depth. *ArXiv*, abs/2004.04037.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Jiao et al. (2019) Xiaoqi Jiao, Yichun Yin, Lifeng Shang, Xin Jiang, Xiao Chen,
+    Linlin Li, Fang Wang, and Qun Liu. 2019. Tinybert: Distilling bert for natural
+    language understanding. In *Findings*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kao et al. (2022) Sheng-Chun Kao, Amir Yazdanbakhsh, Suvinay Subramanian, Shivani
+    Agrawal, Utku Evci, and Tushar Krishna. 2022. Training recipe for n: M structured
+    sparsity with decaying pruning mask. *ArXiv*, abs/2209.07617.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kullback and Leibler (1951) Solomon Kullback and R. A. Leibler. 1951. On information
+    and sufficiency. *Annals of Mathematical Statistics*, 22:79–86.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Li et al. (2021a) Jiaoda Li, Ryan Cotterell, and Mrinmaya Sachan. 2021a. Differentiable
+    subset pruning of transformer heads. *Transactions of the Association for Computational
+    Linguistics*, 9:1442–1459.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Li et al. (2021b) Jiaoda Li, Ryan Cotterell, and Mrinmaya Sachan. 2021b. Differentiable
+    subset pruning of transformer heads. *Transactions of the Association for Computational
+    Linguistics*, 9:1442–1459.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. (2020) Zhuohan Li, Eric Wallace, Sheng Shen, Kevin Lin, Kurt Keutzer,
+    Dan Klein, and Joseph Gonzalez. 2020. Train large, then compress: Rethinking model
+    size for efficient training and inference of transformers. *ICML*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liang et al. (2023) Chen Liang, Haoming Jiang, Zheng Li, Xianfeng Tang, Bin
+    Yin, and Tuo Zhao. 2023. Homodistil: Homotopic task-agnostic distillation of pre-trained
+    transformers. *ArXiv*, abs/2302.09632.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. (2019) Yinhan Liu, Myle Ott, Naman Goyal, Jingfei Du, Mandar Joshi,
+    Danqi Chen, Omer Levy, Mike Lewis, Luke Zettlemoyer, and Veselin Stoyanov. 2019.
+    Roberta: A robustly optimized bert pretraining approach. *ArXiv*, abs/1907.11692.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'McCarley et al. (2019) J. Scott McCarley, Rishav Chakravarti, and Avirup Sil.
+    2019. Structured pruning of a bert-based question answering model. *arXiv: Computation
+    and Language*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Michel et al. (2019) Paul Michel, Omer Levy, and Graham Neubig. 2019. Are sixteen
+    heads really better than one? In *Neural Information Processing Systems*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Mihaylov et al. (2018) Todor Mihaylov, Peter Clark, Tushar Khot, and Ashish
+    Sabharwal. 2018. Can a suit of armor conduct electricity? a new dataset for open
+    book question answering. In *Conference on Empirical Methods in Natural Language
+    Processing*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Mukherjee et al. (2021) Subhabrata Mukherjee, Ahmed Hassan Awadallah, and Jianfeng
+    Gao. 2021. Xtremedistiltransformers: Task transfer for task-agnostic distillation.
+    *ArXiv*, abs/2106.04563.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Peters et al. (2018) Matthew E. Peters, Mark Neumann, Mohit Iyyer, Matt Gardner,
+    Christopher Clark, Kenton Lee, and Luke Zettlemoyer. 2018. Deep contextualized
+    word representations. In *North American Chapter of the Association for Computational
+    Linguistics*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Radford et al. (2018) Alec Radford, Karthik Narasimhan, Tim Salimans, and Ilya
+    Sutskever. 2018. Improving language understanding by generative pre-training.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Radford et al. (2019) Alec Radford, Jeff Wu, Rewon Child, David Luan, Dario
+    Amodei, and Ilya Sutskever. 2019. Language models are unsupervised multitask learners.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Raffel et al. (2020) Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee,
+    Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter J. Liu. 2020. [Exploring
+    the limits of transfer learning with a unified text-to-text transformer](http://jmlr.org/papers/v21/20-074.html).
+    *Journal of Machine Learning Research*, 21(140):1–67.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Roemmele et al. (2011) Melissa Roemmele, Cosmin Adrian Bejan, and Andrew S.
+    Gordon. 2011. Choice of plausible alternatives: An evaluation of commonsense causal
+    reasoning. In *Papers from the 2011 AAAI Spring Symposium*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sajjad et al. (2020) Hassan Sajjad, Fahim Dalvi, Nadir Durrani, and Preslav
+    Nakov. 2020. Poor man’s bert: Smaller and faster transformer models. *ArXiv*,
+    abs/2004.03844.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sakaguchi et al. (2019) Keisuke Sakaguchi, Ronan Le Bras, Chandra Bhagavatula,
+    and Yejin Choi. 2019. Winogrande: An adversarial winograd schema challenge at
+    scale. *ArXiv*, abs/1907.10641.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sanh et al. (2019) Victor Sanh, Lysandre Debut, Julien Chaumond, and Thomas
+    Wolf. 2019. Distilbert, a distilled version of bert: smaller, faster, cheaper
+    and lighter. *ArXiv*, abs/1910.01108.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sanh et al. (2020) Victor Sanh, Thomas Wolf, and Alexander M. Rush. 2020. Movement
+    pruning: Adaptive sparsity by fine-tuning. *ArXiv*, abs/2005.07683.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Shazeer (2020) Noam M. Shazeer. 2020. Glu variants improve transformer. *ArXiv*,
+    abs/2002.05202.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Shen et al. (2022) Sheng Shen, Pete Walsh, Kurt Keutzer, Jesse Dodge, Matthew E.
+    Peters, and Iz Beltagy. 2022. Staged training for transformer language models.
+    *ArXiv*, abs/2203.06211.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Solaiman et al. (2023) Irene Solaiman, Zeerak Talat, William Agnew, Lama Ahmad,
+    Dylan Baker, Su Lin Blodgett, Hal Daumé III au2, Jesse Dodge, Ellie Evans, Sara
+    Hooker, Yacine Jernite, Alexandra Sasha Luccioni, Alberto Lusoli, Margaret Mitchell,
+    Jessica Newman, Marie-Therese Png, Andrew Strait, and Apostol Vassilev. 2023.
+    [Evaluating the social impact of generative ai systems in systems and society](http://arxiv.org/abs/2306.05949).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sun et al. (2019) S. Sun, Yu Cheng, Zhe Gan, and Jingjing Liu. 2019. Patient
+    knowledge distillation for bert model compression. In *Conference on Empirical
+    Methods in Natural Language Processing*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sun et al. (2020) Zhiqing Sun, Hongkun Yu, Xiaodan Song, Renjie Liu, Yiming
+    Yang, and Denny Zhou. 2020. Mobilebert: a compact task-agnostic bert for resource-limited
+    devices. *ArXiv*, abs/2004.02984.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Tang et al. (2019) Raphael Tang, Yao Lu, Linqing Liu, Lili Mou, Olga Vechtomova,
+    and Jimmy J. Lin. 2019. Distilling task-specific knowledge from bert into simple
+    neural networks. *ArXiv*, abs/1903.12136.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Turc et al. (2019) Iulia Turc, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova.
+    2019. Well-read students learn better: On the importance of pre-training compact
+    models. *arXiv: Computation and Language*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Vaswani et al. (2017) Ashish Vaswani, Noam M. Shazeer, Niki Parmar, Jakob Uszkoreit,
+    Llion Jones, Aidan N. Gomez, Lukasz Kaiser, and Illia Polosukhin. 2017. Attention
+    is all you need. In *NIPS*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Voita et al. (2019) Elena Voita, David Talbot, F. Moiseev, Rico Sennrich, and
+    Ivan Titov. 2019. Analyzing multi-head self-attention: Specialized heads do the
+    heavy lifting, the rest can be pruned. *ArXiv*, abs/1905.09418.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wang et al. (2018) Alex Wang, Amanpreet Singh, Julian Michael, Felix Hill,
+    Omer Levy, and Samuel R. Bowman. 2018. Glue: A multi-task benchmark and analysis
+    platform for natural language understanding. *ArXiv*, abs/1804.07461.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wang et al. (2020a) Wenhui Wang, Hangbo Bao, Shaohan Huang, Li Dong, and Furu
+    Wei. 2020a. Minilmv2: Multi-head self-attention relation distillation for compressing
+    pretrained transformers. In *Findings*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wang et al. (2020b) Wenhui Wang, Furu Wei, Li Dong, Hangbo Bao, Nan Yang, and
+    Ming Zhou. 2020b. Minilm: Deep self-attention distillation for task-agnostic compression
+    of pre-trained transformers. *ArXiv*, abs/2002.10957.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Welbl et al. (2017) Johannes Welbl, Nelson F. Liu, and Matt Gardner. 2017. Crowdsourcing
+    multiple choice science questions. *ArXiv*, abs/1707.06209.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Xia et al. (2022) M. Xia, Zexuan Zhong, and Danqi Chen. 2022. Structured pruning
+    learns compact and accurate models. In *Annual Meeting of the Association for
+    Computational Linguistics*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zellers et al. (2019) Rowan Zellers, Ari Holtzman, Yonatan Bisk, Ali Farhadi,
+    and Yejin Choi. 2019. Hellaswag: Can a machine really finish your sentence? In
+    *Annual Meeting of the Association for Computational Linguistics*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. (2023) Renrui Zhang, Jiaming Han, Aojun Zhou, Xiangfei Hu, Shilin
+    Yan, Pan Lu, Hongsheng Li, Peng Gao, and Yu Jiao Qiao. 2023. Llama-adapter: Efficient
+    fine-tuning of language models with zero-init attention. *ArXiv*, abs/2303.16199.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. (2022) Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe,
+    Moya Chen, Shuohui Chen, Christopher Dewan, Mona Diab, Xian Li, Xi Victoria Lin,
+    Todor Mihaylov, Myle Ott, Sam Shleifer, Kurt Shuster, Daniel Simig, Punit Singh
+    Koura, Anjali Sridhar, Tianlu Wang, and Luke Zettlemoyer. 2022. Opt: Open pre-trained
+    transformer language models. *ArXiv*, abs/2205.01068.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

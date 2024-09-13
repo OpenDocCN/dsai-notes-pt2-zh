@@ -1,0 +1,615 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:50:07'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'QUICK: Quantization-aware Interleaving and Conflict-free Kernel for efficient
+    LLM inference'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2402.10076](https://ar5iv.labs.arxiv.org/html/2402.10076)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: \NewEnviron
+  prefs: []
+  type: TYPE_NORMAL
+- en: derivation
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\begin{split}\BODY\end{split}$ (1)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Taesu Kim       Jongho Lee       Daehyun Ahn       Sarang Kim Jiwoong Choi      
+    Minkyu Kim       Hyungjun Kim SqueezeBits Inc
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: We introduce QUICK, a group of novel optimized CUDA kernels for the efficient
+    inference of quantized Large Language Models (LLMs). QUICK addresses the shared
+    memory bank-conflict problem of state-of-the-art mixed precision matrix multiplication
+    kernels. Our method interleaves the quantized weight matrices of LLMs offline
+    to skip the shared memory write-back after the dequantization. We demonstrate
+    up to 1.91x speedup over existing kernels of AutoAWQ on larger batches and up
+    to 1.94x throughput gain on representative LLM models on various NVIDIA GPU devices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Code: https://github.com/SqueezeBits/QUICK'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Enhancing the efficiency of Large Language Models (LLMs) has become increasingly
+    crucial due to the escalating demand for deploying state-of-the-art models in
+    real-world scenarios [[2](#bib.bib2), [8](#bib.bib8), [9](#bib.bib9), [15](#bib.bib15),
+    [16](#bib.bib16)]. The improved performance of LLMs is attributed to their growing
+    size, characterized by a trend toward larger models with parameter counts exceeding
+    several hundred billion. However, the substantial size of these models has necessitated
+    the adoption of model compression techniques such as quantization and pruning
+    [[1](#bib.bib1), [4](#bib.bib4), [5](#bib.bib5), [11](#bib.bib11), [12](#bib.bib12),
+    [17](#bib.bib17)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: Among these techniques, weight-only quantization has garnered significant attention
+    for its potential to compress the memory footprint of LLMs [[6](#bib.bib6), [11](#bib.bib11),
+    [12](#bib.bib12)]. This approach aims to reduce model size and accelerate computation
+    by quantizing weights to smaller bit sizes while retaining activation tensors
+    at higher precision. Consequently, there is a growing need for fast mixed-precision
+    General Matrix Multiplication (GEMM) kernels to support such operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Despite these advancements, existing open-source kernels for mixed-precision
+    GEMM have demonstrated limitations in throughput, primarily due to the overhead
+    associated with weight dequantization. Analysis of these kernels has revealed
+    shared memory write-back bank conflicts during the dequantization process as a
+    significant bottleneck. Leveraging this insight, we introduce QUICK, a solution
+    designed to mitigate shared memory bank conflicts by reordering weight matrices
+    offline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Preliminary
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 2.1 Quantization and Dequantization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Quantization involves the reduction of precision or range of a continuous variable
+    to a discrete set of values. This process is commonly employed to decrease the
+    bit precision of tensors, thereby reducing the memory footprint of Neural Network
+    models. When supported by appropriate computation kernels, quantization enables
+    acceleration of the models with low-precision computations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Given that LLMs typically encompass billions of parameters, researchers have
+    explored quantization as a means to reduce memory usage and improve inference
+    efficiency. Specifically, weight-only quantization focuses solely on quantizing
+    the weights of the model while maintaining activations at a higher precision,
+    such as 16-bit floating point [[6](#bib.bib6), [11](#bib.bib11), [12](#bib.bib12)].
+    This strategy effectively reduces memory requirements by representing weights
+    with fewer bits while retaining activation tensors in floating point precision.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Weight-only quantization is generally recognized for dramatically reducing the
+    memory requirements and preserving the performance of LLMs. However, since activations
+    remain in higher precision, weights must undergo dequantization back to higher
+    precision before being multiplied by activations during inference. This dequantization
+    process has minimal impact on inference efficiency when the batch size is 1 since
+    the computation is mainly memory-bounded in such case. However, for larger batch
+    sizes, GEMMs are mostly computation-bounded, where mixed-precision GEMM operations
+    become slower than their floating-point counterparts due to the overhead associated
+    with dequantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2 GEMM kernel using Tensor Core
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: A substantial portion of the computational workload associated with LLMs primarily
+    comprises GEMMs. Optimizing GEMM operations plays a pivotal role in enhancing
+    the overall efficiency of LLM inference. Particularly on NVIDIA GPUs, GEMM computation
+    has relied on the tiling strategy, which is widely employed to maximize memory
+    reuse through the utilization of shared memory, thereby achieving a more favorable
+    compute-memory ratio.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/bf10619f108efbdd8b24c4e4a29c282b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Data loading pattern of ldmatrix instruction for a single $8\times
+    8$ matrix. Two half-precision elements are loaded to the destination register
+    d0 per each thread lane in a warp.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Recent advancements in NVIDIA GPUs have showcased significant performance improvements
+    in GEMM computation through the utilization of Tensor Cores. These Tensor Core-based
+    GEMMs leverage warp-level PTX instructions, namely ldmatrix and mma. The ldmatrix
+    instruction efficiently loads multiple matrices across all threads within a warp
+    from shared memory into designated registers. As illustrated in Figure [1](#S2.F1
+    "Figure 1 ‣ 2.2 GEMM kernel using Tensor Core ‣ 2 Preliminary ‣ QUICK: Quantization-aware
+    Interleaving and Conflict-free Kernel for efficient LLM inference"), this loading
+    pattern assigns small fragments of a row to each thread, facilitating warp-level
+    matrix multiply-accumulation using the subsequent mma instruction.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The mma instruction, following the ldmatrix operation, executes the matrix multiply-accumulate
+    operation at the warp level. This instruction performs the multiply-accumulate
+    operation on matrices, requiring specific data patterns for each row of the multiplicands,
+    as well as the accumulators. As previously described, loading matrices into each
+    thread from shared memory is efficiently achieved using the ldmatrix instruction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tensor Core-based GEMM computation entails repetitive calls to these instructions,
+    relying on shared memory to rearrange input tensors to align with the data access
+    pattern required by the mma instruction. Compared to CUDA Core-based GEMM computation,
+    Tensor Core-based approaches are renowned for achieving significantly higher throughput.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.3 Mixed precision GEMM kernel
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/40522adf46da7733d37ab7fbd70428b9.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Computation overview of original kernel and QUICK. Compared to original
+    kernel, QUICK bypasses 3) shared memory write-back and 4) ldmatrix operation of
+    dequantized weights by using interleaving data pattern.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mixed precision GEMM kernels find widespread application in the inference phase
+    of weight-only quantized LLMs, owing to the inherent difference in bit precision
+    between activation tensors and weight tensors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When employing weight-only quantization, it becomes necessary to dequantize
+    the quantized weights before executing the matrix multiplication operation within
+    the GEMM kernel, as recent NVIDIA GPUs’ Tensor Cores do not inherently support
+    mixed-precision GEMMs. Consequently, numerous implementations of efficient mixed-precision
+    GEMM kernels leveraging Tensor Cores adopt parallel dequantization of quantized
+    weights.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Typically, these kernels adhere to a common workflow for weight dequantization,
+    as depicted in Figure [2](#S2.F2 "Figure 2 ‣ 2.3 Mixed precision GEMM kernel ‣
+    2 Preliminary ‣ QUICK: Quantization-aware Interleaving and Conflict-free Kernel
+    for efficient LLM inference"). They fetch quantized and packed weights from global
+    memory to registers, dequantize weights using CUDA cores, and then write the dequantized
+    weights back to shared memory for the following ldmatrix instruction. The dequantization
+    process employing CUDA cores involves bitwise AND operations to extract target
+    sub-byte weights, bitwise SHIFT operations to rearrange bit positions, and parallel
+    half-precision additions and multiplications to apply zero points and scales.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Parallel dequantization involves expanding quantized weights to larger bit sizes.
+    For example, from 128-bit weight vectors consisting of 32 4-bit weights, dequantization
+    produces 512-bit weight vectors containing 32 16-bit floating-point weights. This
+    results in quantized weights that are four times larger compared to their full
+    precision counterparts under same bandwidth requirement, increasing the burden
+    of shared memory write-back. The augmented quantity of weights exacerbates shared
+    memory bank conflicts during the write-back process of dequantized weights.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e3cf0e4dbe2826e50f88b523466f39f7.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Number of bank conflicts from benchmark result using NVIDIA Nsight
+    Compute [[14](#bib.bib14)]. A matrix multiplication of shape $64\times 8192\times
+    8192(M\times N\times K)$ was used as the workload.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Given that the ldmatrix instruction requires the weight matrices to be fully
+    visible on shared memory, this significantly harms the end-to-end latency of mixed-precision
+    matrix multiplication. Benchmarks conducted on state-of-the-art mixed-precision
+    GEMM kernels using NVIDIA’s Nsight Compute [[14](#bib.bib14)] indicate a notable
+    prevalence of shared memory bank conflicts stemming from the write-back after
+    dequantization, as depicted in Figure [3](#S2.F3 "Figure 3 ‣ 2.3 Mixed precision
+    GEMM kernel ‣ 2 Preliminary ‣ QUICK: Quantization-aware Interleaving and Conflict-free
+    Kernel for efficient LLM inference"). Consequently, mixed-precision GEMM kernels
+    often struggle to achieve enhanced throughput compared to half-precision GEMM
+    kernels, particularly with larger batch sizes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Avoiding Bank Conflict
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we propose QUICK, a novel way to remove the shared memory write-back
+    bank conflicts of mixed precision matrix multiplication. To alleviate these conflicts
+    effectively, our proposal involves reordering the quantized weight matrix offline
+    to align with the load pattern required by the mma instruction without the ldmatrix
+    instruction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Skipping Shared Memory Write-back During Mixed Precision GEMM
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'As previously discussed, state-of-the-art mixed precision GEMM kernels rely
+    on a specific sequence involving dequantization, shared memory write-back, ldmatrix,
+    and mma. The ldmatrix instruction is responsible for loading operands for the
+    subsequent mma instruction, adhering to a designated pattern among the threads
+    within a warp. With this instruction, each thread in a warp loads fragments of
+    a row, as depicted in Figure [1](#S2.F1 "Figure 1 ‣ 2.2 GEMM kernel using Tensor
+    Core ‣ 2 Preliminary ‣ QUICK: Quantization-aware Interleaving and Conflict-free
+    Kernel for efficient LLM inference").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using the ldmatrix instruction to load GEMM operands to registers is a straightforward
+    approach for floating-point GEMM kernels because transferring data from global
+    memory to shared memory can be efficiently executed. From the Ampere architecture
+    and beyond, asynchronous CUDA memory copy supports pipelining the mma instruction
+    with global memory load, thereby enhancing the performance of GEMM kernels. This
+    enhancement occurs as the effective memory load overhead can be reduced to the
+    copy from shared memory to registers. However, in the case of mixed precision
+    GEMM, there exists a noticeable overhead due to shared memory write-back. This
+    is because the loaded quantized weights must be dequantized using CUDA cores,
+    and the resulting dequantized weights in registers must then be written back to
+    shared memory to serve as operands for the ldmatrix instruction. This overhead
+    is further exacerbated by numerous shared memory bank-conflict stalls, which ultimately
+    degrade the throughput of kernels.
+  prefs: []
+  type: TYPE_NORMAL
+- en: From the data loading pattern of the ldmatrix instruction, we observe that this
+    pattern can be pre-applied to the original data since the weight data remains
+    static. Considering the static nature of weight matrices throughout deployment,
+    it becomes feasible to bypass the ldmatrix instruction for quantized weight matrices
+    via suitable reordering. In this scenario, a direct load from global memory to
+    registers proves sufficient to meet the data pattern requirements essential for
+    the mma operation. Consequently, we opt to rearrange the quantized weight matrices
+    and bypass the ldmatrix instruction prior to the mma operation. Through the optimization
+    of both the weight pattern and the associated computing kernel, we can successfully
+    eliminate shared memory write-back bank conflicts, consequently improving the
+    end-to-end latency of mixed precision GEMM. Importantly, since the total amount
+    of quantized weights to be read from DRAM remains the same, the overall memory
+    bandwidth requirement can be maintained at the same level.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Interleaving Data Pattern
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/ed7d88b88ecc1a3992753c06d0b43ccd.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: ldmatrix instruction-aware weight interleaving to avoid shared memory
+    conflicts. With interleaved weight matrix, direct load from DRAM to registers
+    for each thread without ldmatrix is possible. Note that the figure is illustrating
+    a case of computing $8\times 4\times 8(M\times N\times K)$ GEMM with 32 threads
+    and its corresponding interleaving pattern.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The interleaving pattern of the quantized weight matrices corresponds to the
+    data loading pattern of the ldmatrix instruction. To bypass the ldmatrix.sync.aligned.m8n8
+    instruction of the quantized weight matrices, we rearrange the weights following
+    the data loading pattern of the instruction, as illustrated in Figure [4](#S3.F4
+    "Figure 4 ‣ 3.2 Interleaving Data Pattern ‣ 3 Avoiding Bank Conflict ‣ QUICK:
+    Quantization-aware Interleaving and Conflict-free Kernel for efficient LLM inference").
+    Since the CUDA kernels of QUICK rely on the mma.m16n8k16 with half-precision,
+    we further devise the reordering pattern to group quantized weights for two 8$\times$8
+    weight blocks. This rearrangement pattern enhances the memory locality of quantized
+    weights and eliminates shared memory write-back bank conflicts.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/b2adfa704eecfdd48912a97fc53f8480.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: Parallel i4-f16 dequantization kernel-aware weight reordering.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Moreover, QUICK implements an additional rearrangement of quantized weights
+    based on the pattern of the dequantization kernel. QUICK utilizes a modified version
+    of the parallel dequantization kernel from FasterTransformer [[13](#bib.bib13)].
+    The kernel introduces a simple interleaved pattern, as shown in Figure [5](#S3.F5
+    "Figure 5 ‣ 3.2 Interleaving Data Pattern ‣ 3 Avoiding Bank Conflict ‣ QUICK:
+    Quantization-aware Interleaving and Conflict-free Kernel for efficient LLM inference").
+    To mitigate the overhead associated with rearranging the dequantized weights and
+    further enhance data locality, an additional rearrangement pattern ensuring a
+    sequential weight pattern after dequantization is applied.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f88214b7eea820fe10130c93976f13b8.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: QUICK weight interleaving pattern. Note that the figure is illustrating
+    a case of computing $8\times 4\times 8(M\times N\times K)$ GEMM with 32 threads
+    and 32-bit packed i4-f16 dequantization kernel.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Both weight rearrangement patterns avoid shared memory write-backs and ensure
+    the sequential weight pattern after dequantization can be applied concurrently,
+    as the patterns are independent. QUICK integrates both patterns as described in
+    Figure [6](#S3.F6 "Figure 6 ‣ 3.2 Interleaving Data Pattern ‣ 3 Avoiding Bank
+    Conflict ‣ QUICK: Quantization-aware Interleaving and Conflict-free Kernel for
+    efficient LLM inference"), achieving optimal end-to-end latency while reducing
+    shared memory bank conflicts and enhancing data locality.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Tile Size Optimization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Optimizing the number of active warps per multiprocessor plays an important
+    role in improving the performance of computation kernels. Achieving higher number
+    of active warps per multiprocessor can be beneficial as it facilitates the interleaving
+    of warps and enables better latency hiding. Several factors, including the number
+    of required registers and the size of shared memory, can limit the number of active
+    warps per multiprocessor. In addition to improving throughput by eliminating shared
+    memory write-back bank conflicts, QUICK leverages the reduced shared memory usage
+    within the computation kernel to further enhance computational throughput.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Previous mixed precision GEMM kernels have utilized shared memory to store both
+    activation and weight matrices, with benchmarks indicating that the shared memory
+    size per warp exerts the greatest pressure on the number of active warps per multiprocessor.
+    In contrast, QUICK avoids allocating shared memory for the weight matrices, thereby
+    shifting the pressure from shared memory size to the number of required registers.
+    Leveraging this opportunity, QUICK increases the tile size of mixed precision
+    GEMM, further reducing DRAM accesses while maintaining similar theoretical multiprocessor
+    occupancy. With increased number of activation values processed per computation
+    tile, weight matrices need to be loaded less frequently from DRAM. This optimization
+    results in a further increase in throughput for larger batch sizes, particularly
+    those exceeding 32.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experimental Results
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we evaluate the performance improvement provided by QUICK in
+    comparison to both the baseline fp16 kernel and AutoAWQ-Kernel. We first compare
+    the efficiency of a single matrix multiplication, followed by the comparison of
+    end-to-end token generation throughput across various LLMs. Furthermore, we also
+    present the benchmark results showcasing the integration of QUICK with the vLLM [[10](#bib.bib10)]
+    framework. Note that all experiments involving AutoAWQ-Kernel and QUICK are based
+    on 4-bit weight-only quantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Matrix Multiplication Performance
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We initially evaluate the performance of QUICK with unit matrix multiplications,
+    with the matrix multiplication dimensions set to $\textit{batch size}\times 8192\times
+    8192(M\times N\times K)$1.91 times compared to AutoAWQ-Kernel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f5ce7a2118449cfb79c01eccbf2c5b65.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7: Benchmark results of matrix multiplication kernels on various GPUs.
+    The shape of matrices is set to $\textit{batch size}\times 8192\times 8192(M\times
+    N\times K)$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: With larger batch sizes, the token generation process tends to become computation-bounded,
+    making the overhead from the dequantization process more significant. As a result,
+    AutoAWQ-Kernel tends to show prominently degraded throughput compared to fp16
+    kernel when the batch size approaches 128. On the other hand, QUICK, by reducing
+    shared memory bank conflict problem, occasionally demonstrates faster speeds than
+    the fp16 kernel, even with larger batch sizes like 128.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 End-to-end Throughput
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/b304683dda936c55cbbeb48eecb1afc6.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8: End-to-end token generation throughput benchmarks of (a) Mistral-7B
+    [[8](#bib.bib8)] on RTX 4090, (b) Vicuna-13B [[3](#bib.bib3)] on RTX A6000, (c)
+    LLaMA-2-13B [[15](#bib.bib15)] on L40, and (d) LLaMA-33B [[16](#bib.bib16)] on
+    A100.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To illustrate the advantages of QUICK in the inference of quantized LLMs, we
+    further evaluate the end-to-end token generation speed of various LLMs. We conducted
+    tests on four different models across four different GPUs: Mistral-7B [[8](#bib.bib8)]
+    on RTX 4090, Vicuna-13B [[3](#bib.bib3)] on RTX A6000, LLaMA-2-13B [[15](#bib.bib15)]
+    on L40, and LLaMA-33B [[16](#bib.bib16)] on A100. The token generation throughput
+    at the decoding stage was measured in terms of tokens per second.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As the batch size increases, the memory required to store activations and the
+    KV cache also increases, leading to Out-of-Memory (OOM) problem. For example,
+    when running Mistral-7B on an RTX 4090 GPU, it is impossible to run the fp16 model
+    with batch size of 256 due to the OOM problem. Applying weight-only quantization
+    reduces the amount of memory used to store weights, thereby enabling usage of
+    more memory for storing activations and the KV cache. Consequently, larger batch
+    inference becomes possible. Even with the same RTX 4090 GPU, a 4-bit quantized
+    Mistral-7B can be operated at a batch size of 256\. Moreover, QUICK can achieve
+    up to 1.94 times higher throughput compared to AutoAWQ-Kernel. Similar to the
+    Matrix Multiplication performance mentioned in the previous section, QUICK demonstrates
+    superior performance over the fp16 case even at larger batch sizes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 vLLM Throughput
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In this section, we present the throughput benchmark results of our initial
+    version of vLLM [[10](#bib.bib10)] integrated with QUICK (Table [1](#S4.T1 "Table
+    1 ‣ 4.3 vLLM Throughput ‣ 4 Experimental Results ‣ QUICK: Quantization-aware Interleaving
+    and Conflict-free Kernel for efficient LLM inference")). Benchmarks were done
+    using the throughput benchmark script and the recommended dataset within the vLLM
+    [[10](#bib.bib10)] framework. Two models, Vicuna-13B [[3](#bib.bib3)] and Llama-2-70B
+    [[15](#bib.bib15)], were benchmarked to demonstrate scenarios where the full precision
+    model could and could not be loaded onto the GPU device. vLLM with QUICK demonstrated
+    a throughput gain of 27-29% compared to the AWQ implementation in vLLM, and a
+    33% throughput gain compared to the full precision model.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: Throughput benchmark results of Vicuna-13B [[3](#bib.bib3)] and Llama-2-70B
+    [[15](#bib.bib15)] models with vLLM [[10](#bib.bib10)] integrated with QUICK.
+    Benchmarks were conducted on a machine equipped with an i9-13900K CPU, 128GB RAM,
+    and an A6000 GPU.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | FP16 | AWQ | QUICK | Speedup | Speedup |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (tokens/s) | (tokens/s) | (tokens/s) | (FP16) | (AWQ) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Vicuna-13B | 985.2 | 1030.4 | 1308.6 | 33% | 27% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Llama-2-70B | OOM | 224.3 | 290.2 | - | 29% |'
+  prefs: []
+  type: TYPE_TB
+- en: 5 Limitation and Future Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: While the proposed QUICK technique has demonstrated enhanced throughput at larger
+    batch sizes, such as 128, enabling the utilization of weight-only quantization
+    for larger batch sizes, it still falls short of the efficiency achieved in the
+    fp16 case, particularly at even larger batch sizes (> 512). Therefore, further
+    research is needed to optimize the dequantization process further and enhance
+    the efficiency of mixed precision GEMM kernels under such circumstances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For instance, future works could focus on exploring methods to leverage the
+    unused shared memory budget resulting from the direct dequantization of quantized
+    weights at registers. Additional software optimizations, such as automated split-k
+    parameter optimization, could be explored further to ensure optimal throughput
+    considering the model, generation configuration, and the GPU device.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this work, we introduce QUICK, a suite of optimized CUDA kernels designed
+    for efficient execution of mixed precision GEMM operations. Previous implementations
+    exhibited advantages only for small batch sizes due to shared memory bank conflict
+    problem. QUICK, however, overcomes this limitation by employing an interleaving
+    data pattern, which enables superior throughput over fp16 kernels even for larger
+    batch sizes. Furthermore, QUICK has demonstrated enhanced end-to-end token generation
+    throughput in various LLM inference frameworks, including AutoAWQ and vLLM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[1] Saleh Ashkboos, Maximilian L Croci, Marcelo Gennari do Nascimento, Torsten
+    Hoefler, and James Hensman. Slicegpt: Compress large language models by deleting
+    rows and columns. arXiv preprint arXiv:2401.15024, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[2] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan,
+    Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell,
+    et al. Language models are few-shot learners. Advances in neural information processing
+    systems, 33:1877–1901, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[3] Wei-Lin Chiang, Zhuohan Li, Zi Lin, Ying Sheng, Zhanghao Wu, Hao Zhang,
+    Lianmin Zheng, Siyuan Zhuang, Yonghao Zhuang, Joseph E. Gonzalez, Ion Stoica,
+    and Eric P. Xing. Vicuna: An open-source chatbot impressing gpt-4 with 90%* chatgpt
+    quality, March 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[4] Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer. Llm.int8():
+    8-bit matrix multiplication for transformers at scale. arXiv preprint arXiv:2208.07339,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[5] Elias Frantar and Dan Alistarh. Sparsegpt: Massive language models can
+    be accurately pruned in one-shot. In International Conference on Machine Learning,
+    pages 10323–10337\. PMLR, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[6] Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan Alistarh. Gptq:
+    Accurate post-training quantization for generative pre-trained transformers. arXiv
+    preprint arXiv:2210.17323, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[7] Casper Hansen. Autoawq_kernels. https://github.com/casper-hansen/AutoAWQ_kernels,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[8] Albert Q Jiang, Alexandre Sablayrolles, Arthur Mensch, Chris Bamford, Devendra Singh
+    Chaplot, Diego de las Casas, Florian Bressand, Gianna Lengyel, Guillaume Lample,
+    Lucile Saulnier, et al. Mistral 7b. arXiv preprint arXiv:2310.06825, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[9] Albert Q Jiang, Alexandre Sablayrolles, Antoine Roux, Arthur Mensch, Blanche
+    Savary, Chris Bamford, Devendra Singh Chaplot, Diego de las Casas, Emma Bou Hanna,
+    Florian Bressand, et al. Mixtral of experts. arXiv preprint arXiv:2401.04088,
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[10] Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao
+    Yu, Joseph E. Gonzalez, Hao Zhang, and Ion Stoica. Efficient memory management
+    for large language model serving with pagedattention. In Proceedings of the ACM
+    SIGOPS 29th Symposium on Operating Systems Principles, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[11] Changhun Lee, Jungyu Jin, Taesu Kim, Hyungjun Kim, and Eunhyeok Park.
+    Owq: Outlier-aware weight quantization for efficient fine-tuning and inference
+    of large language models. arXiv preprint arXiv:2306.02272, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[12] Ji Lin, Jiaming Tang, Haotian Tang, Shang Yang, Xingyu Dang, and Song
+    Han. Awq: Activation-aware weight quantization for llm compression and acceleration.
+    arXiv preprint arXiv:2306.00978, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[13] NVIDIA. Faster transformer. https://github.com/NVIDIA/FasterTransformer,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[14] NVIDIA. Nvidia nsight compute. https://docs.nvidia.com/nsight-compute/NsightCompute/index.html,
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[15] Konstantinos I Roumeliotis, Nikolaos D Tselikas, and Dimitrios K Nasiopoulos.
+    Llama 2: Early adopters’ utilization of meta’s new open-source pretrained model.
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[16] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne
+    Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal, Eric Hambro, Faisal
+    Azhar, et al. Llama: Open and efficient foundation language models. arXiv preprint
+    arXiv:2302.13971, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[17] Guangxuan Xiao, Ji Lin, Mickael Seznec, Hao Wu, Julien Demouth, and Song
+    Han. Smoothquant: Accurate and efficient post-training quantization for large
+    language models. In International Conference on Machine Learning, pages 38087–38099\.
+    PMLR, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

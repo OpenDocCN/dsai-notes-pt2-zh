@@ -1,0 +1,1231 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:51:32'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'AWQ: Activation-aware Weight Quantization for LLM Compression and Acceleration'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2306.00978](https://ar5iv.labs.arxiv.org/html/2306.00978)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Ji Lin^(1∗) Jiaming Tang^(1,2∗) Haotian Tang¹ Shang Yang¹ Xingyu Dang³ Chuang
+    Gan¹ Song Han¹
+  prefs: []
+  type: TYPE_NORMAL
+- en: ¹MIT  ²SJTU  ³ Tsinghua University
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://github.com/mit-han-lab/llm-awq](https://github.com/mit-han-lab/llm-awq)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'Large language models (LLMs) have shown excellent performance on various tasks,
+    but the astronomical model size raises the hardware barrier for serving (memory
+    size) and slows down token generation (memory bandwidth). In this paper, we propose
+    Activation-aware Weight Quantization (AWQ), a hardware-friendly approach for LLM
+    low-bit weight-only quantization. Our method is based on the observation that
+    weights are not equally important: protecting *only 1%* of salient weights can
+    greatly reduce quantization error. We then propose to search for the optimal per-channel
+    scaling that protects the salient weights by observing the *activation, not weights*.
+    AWQ does not rely on any backpropagation or reconstruction, so it can well preserve
+    LLMs’ generalization ability on different domains and modalities, without overfitting
+    to the calibration set. AWQ outperforms existing work on various language modeling
+    and domain-specific benchmarks. Thanks to better generalization, it achieves excellent
+    quantization performance for *instruction-tuned* LMs and, for the first time,
+    *multi-modal* LMs. Alongside AWQ, we implement an efficient and flexible inference
+    framework tailored for LLMs on the edge, offering more than 3$\times$ speedup
+    over the Huggingface FP16 implementation on both desktop and mobile GPUs. It also
+    democratizes the deployment of the 70B Llama-2 model on mobile GPU (NVIDIA Jetson
+    Orin 64GB).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '^†^†footnotetext: $*$ indicates equal contributions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Large language models (LLMs) based on transformers [[40](#bib.bib40)] have shown
+    excellent performance on various benchmarks [[4](#bib.bib4), [49](#bib.bib49),
+    [38](#bib.bib38), [34](#bib.bib34)]. However, the large model size leads to the
+    high serving costs. For example, GPT-3 has 175B parameters, which is 350GB in
+    FP16, while the latest H100 GPU only has 96GB memory, let alone edge devices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Low-bit weight quantization for LLMs can save memory but is hard. Quantization-aware
+    training (QAT) is not practical due to the high training cost, while post-training
+    quantization (PTQ) suffers from large accuracy degradation under a low-bit setting.
+    The closest work is GPTQ [[14](#bib.bib14)], which uses second-order information
+    to perform error compensation. It may over-fit the calibration set during reconstruction,
+    distorting the learned features on out-of-distribution domains (Figure [6](#S3.F6
+    "Figure 6 ‣ 3.3 Analysis ‣ 3 Experiments ‣ AWQ: Activation-aware Weight Quantization
+    for LLM Compression and Acceleration")), which could be problematic since LLMs
+    are *generalist* models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this paper, we propose Activation-aware Weight Quantization (AWQ), a hardware-friendly
+    low-bit weight-only quantization method for LLMs. Our method is based on the observation
+    that *weights are not equally important* for LLMs’ performance. There is a small
+    fraction (0.1%-1%) of *salient* weights; skipping the quantization of these salient
+    weights will significantly reduce the quantization loss (Table [1](#S2.T1 "Table
+    1 ‣ 2.1 Improving LLM Quantization by Preserving 1% Salient Weights ‣ 2 AWQ: Activation-aware
+    Weight Quantization ‣ AWQ: Activation-aware Weight Quantization for LLM Compression
+    and Acceleration")). To find the salient weight channels, the insight is that
+    we should refer to the *activation* distribution instead of the *weight* distribution,
+    despite we are doing *weight-only* quantization: weight channels corresponding
+    to larger activation magnitudes are more salient since they process more important
+    features. To avoid the hardware-inefficient mixed-precision implementation, we
+    analyze the error from weight quantization and derive that *scaling up the salient
+    channels can reduce their relative quantization error* (Equation [2](#S2.E2 "In
+    2.2 Protecting Salient Weights by Activation-aware Scaling ‣ 2 AWQ: Activation-aware
+    Weight Quantization ‣ AWQ: Activation-aware Weight Quantization for LLM Compression
+    and Acceleration")). Following the intuition, we designed a per-channel scaling
+    method to automatically search for the optimal scaling that minimizes the quantization
+    error under full-weight quantization. AWQ does not rely on any backpropagation
+    or reconstruction, so it can well preserve LLMs’ generalization ability on various
+    domains and modalities without overfitting to the calibration set. Furthermore,
+    we implemented an efficient serving framework to convert theoretical memory savings
+    from AWQ to practical speedup. Our framework takes advantage of kernel fusion
+    to minimize the inference overhead (*e.g*., intermediate DRAM access and kernel
+    launch overhead), so that we can better realize the speed up from quantizing linear
+    layers (AWQ is applied to linear layers which consist most of the parameters).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Experiments show that AWQ outperforms existing work on various tasks for different
+    model families (*e.g*., LLaMA [[38](#bib.bib38)], OPT [[49](#bib.bib49)]) and
+    model sizes. Thanks to better generalization, it also achieves good quantization
+    performance for *instruction-tuned* LMs (*e.g*., Vicuna) and, for the first time,
+    *multi-modal* LMs (OpenFlamingo [[2](#bib.bib2)]). With our efficient system implementation,
+    we consistently observe a 3.2-3.3$\times$ average speedup compared to the FP16
+    implementation by Huggingface across a diverse spectrum of LLMs. Furthermore,
+    it facilitates effortless deployment of the Llama-2-70B model on a single NVIDIA
+    Jetson Orin with 64GB of memory. It also democratizes LLMs with up to 13 billion
+    parameters at an interactive pace of 30 tokens per second on a laptop RTX 4070
+    GPU with only 8GB of memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: AWQ has been widely adopted by various open-source LLM serving solutions including
+    [FastChat](https://github.com/lm-sys/FastChat/blob/main/docs/awq.md), [vLLM](https://github.com/vllm-project/vllm/blob/main/vllm/model_executor/quantization_utils/awq.py),
+    [HuggingFace TGI](https://github.com/huggingface/text-generation-inference/pull/1054),
+    [LMDeploy](https://github.com/InternLM/lmdeploy), etc.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '2 AWQ: Activation-aware Weight Quantization'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '*Quantization* maps a floating-point number into lower-bit integers. It is
+    an effective method to reduce the model size and inference costs of LLMs [[9](#bib.bib9),
+    [14](#bib.bib14), [47](#bib.bib47), [46](#bib.bib46)]. In this section, we first
+    propose a weight-only quantization method to improve accuracy *without training/regression*
+    by protecting more "important" weights. And then develop a data-driven method
+    to search for the optimal scaling that reduces quantization errors (Figure [1](#S2.F1
+    "Figure 1 ‣ 2 AWQ: Activation-aware Weight Quantization ‣ AWQ: Activation-aware
+    Weight Quantization for LLM Compression and Acceleration")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/50f7fe604e3504dbcef8d399021388b7.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: We observe that we can find 1% of the salient weights in LLMs by
+    observing the *activation distribution* (middle). Keeping the salient weights
+    in FP16 can significantly improve the quantized performance (PPL from 43.2 (left)
+    to 13.0 (middle)), but the mixed-precision format is not hardware-efficient. We
+    follow the activation-awareness principle and propose AWQ (right). AWQ performs
+    per-channel scaling to protect the salient weights, leading to reduced quantized
+    error. PPL is measured with OPT-6.7B under INT3-g128 quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.1 Improving LLM Quantization by Preserving 1% Salient Weights
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '| PPL $\downarrow$ | FP16 | RTN | FP16% (based on act.) | FP16% (based on W)
+    | FP16% (random) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (w3-g128) | 0.1% | 1% | 3% | 0.1% | 1% | 3% | 0.1% | 1% | 3% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-1.3B | 14.62 | 119.00 | 25.03 | 16.91 | 16.68 | 108.71 | 98.55 | 98.08
+    | 119.76 | 109.38 | 61.49 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-6.7B | 10.86 | 23.54 | 11.58 | 11.39 | 11.36 | 23.41 | 22.37 | 22.45
+    | 23.54 | 24.23 | 24.22 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-13B | 10.13 | 46.04 | 10.51 | 10.43 | 10.42 | 46.07 | 48.96 | 54.49 |
+    44.87 | 42.00 | 39.71 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 1: Keeping a small fraction of weights (0.1%-1%) in FP16 significantly
+    improves the performance of the quantized models over round-to-nearest (RTN).
+    It is only effective when we select the important weights in FP16 by looking at
+    *activation* distribution instead of *weight* distribution. We highlight results
+    with a decent perplexity in green. We used INT3 quantization with a group size
+    of 128 and measured the WikiText perplexity ($\downarrow$).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We observe that the weights of LLMs are *not equally important*: there is a
+    small fraction of *salient* weights that are much more important for LLMs’ performance
+    compared to others. Skipping the quantization of these salient weights can help
+    bridge the performance degradation due to the quantization loss *without* any
+    training or regression (Figure [1](#S2.F1 "Figure 1 ‣ 2 AWQ: Activation-aware
+    Weight Quantization ‣ AWQ: Activation-aware Weight Quantization for LLM Compression
+    and Acceleration")(b)). To verify the idea, we benchmark the performance of quantized
+    LLMs when skipping part of the weight channels in Table [1](#S2.T1 "Table 1 ‣
+    2.1 Improving LLM Quantization by Preserving 1% Salient Weights ‣ 2 AWQ: Activation-aware
+    Weight Quantization ‣ AWQ: Activation-aware Weight Quantization for LLM Compression
+    and Acceleration"). We measured the performance of INT3 quantized models while
+    keeping some ratios of weight channels in FP16\. A widely used method to determine
+    the importance of weights is to look at its magnitude or $L_{2}$-norm [[18](#bib.bib18),
+    [13](#bib.bib13)]. But we find skipping the weight channels with large norm (*i.e*.,
+    FP16% (based on W)) does not significantly improve the quantized performance,
+    leading to a similar marginal improvement as random selection. Interestingly,
+    selecting weights based on *activation magnitude* can significantly improve the
+    performance: keeping only 0.1%-1% of the channels corresponding to larger activation
+    significantly improves the quantized performance, even matching a strong reconstruction-based
+    method GPTQ [[14](#bib.bib14)]. We hypothesize that the input features with larger
+    magnitudes are generally more important. Keeping the corresponding weights in
+    FP16 can preserve those features, which contributes to better model performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Limitations: Despite keeping 0.1% of weights in FP16 can improve the quantized
+    performance without a noticeable increase in model size (measured in total bits),
+    such a mixed-precision data type will make the system implementation difficult.
+    We need to come up with a method to protect the important weights without actually
+    keeping them as FP16.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2 Protecting Salient Weights by Activation-aware Scaling
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We propose an alternative method to reduce the quantization error of the salient
+    weight by *per-channel scaling*, which does not suffer from the hardware inefficiency
+    issue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Analyzing the quantization error. We start by analyzing the error from weight-only
+    quantization. Consider a group/block of weight $\mathbf{w}$. Specifically, the
+    quantization function is defined as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $Q(\mathbf{w})=\Delta\cdot\text{Round}(\frac{\mathbf{w}}{\Delta}),\quad\Delta=\frac{\max(&#124;\mathbf{w}&#124;)}{2^{N-1}},$
+    |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $N$, which is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $Q(w\cdot s)\cdot\frac{x}{s}=\Delta^{{}^{\prime}}\cdot\text{Round}(\frac{ws}{\Delta})\cdot
+    x\cdot\frac{1}{s},$ |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\Delta^{{}^{\prime}}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To verify the idea, we multiply the 1% salient channels with $$s></math>), which
+    can damage the model’s overall accuracy. Therefore, we need to also consider the
+    error from the non-salient channels when protecting salient ones.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| OPT-6.7B | $s=1$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| proportion of $\Delta^{{}^{\prime}}\neq\Delta$ | 0% | 2.8% | 4.4% | 8.2%
+    | 21.2% |'
+  prefs: []
+  type: TYPE_TB
+- en: '| average $\Delta^{{}^{\prime}}/\Delta$ | 1 | 1.005 | 1.013 | 1.038 | 1.213
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| average $\frac{\Delta^{{}^{\prime}}}{\Delta}\cdot\frac{1}{s}$ (error reduction
+    rate) | 1 | 0.804 | 0.676 | 0.519 | 0.303 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Wiki-2 PPL | 23.54 | 12.87 | 12.48 | 11.92 | 12.36 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: Statistics when multiplying the 1% salient channels by <math id=$$
+    will increase the quantization error for *non-salient* channels.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| OPT / PPL$\downarrow$ | 1.3B | 2.7B | 6.7B | 13B | 30B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | - | 14.62 | 12.47 | 10.86 | 10.13 | 9.56 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| INT3 g128 | RTN | 119.47 | 298.00 | 23.54 | 46.04 | 18.80 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1% FP16 | 16.91 | 13.69 | 11.39 | 10.43 | 9.85 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $s=2$ | 18.63 | 14.94 | 11.92 | 10.80 | 10.32 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 16.32 | 13.58 | 11.39 | 10.56 | 9.77 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 3: AWQ protects salient weights and reduces quantization error by using
+    a scaling-based method. It consistently outperforms Round-to-nearest quantization
+    (RTN) and achieves comparable performance as mixed-precision (1% FP16) while being
+    more hardware-friendly.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Searching to scale. To consider both salient and non-salient weights, we choose
+    to automatically search for an optimal (per input channel) scaling factor that
+    minimizes the output difference after quantization for a certain layer. Formally,
+    we want to optimize the following objective:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathbf{s}^{*}=\operatorname*{arg\,min}_{\mathbf{s}}\mathcal{L}(\mathbf{s}),\quad\mathcal{L}(\mathbf{s})=\lVert
+    Q(\mathbf{W}\cdot\mathbf{s})(\mathbf{s^{-1}}\cdot\mathbf{X})-\mathbf{W}\mathbf{X}\rVert$
+    |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: Here $Q$, it can usually be fused into the previous operator [[44](#bib.bib44),
+    [46](#bib.bib46)]. Since the quantization function is not differentiable, we are
+    not able to directly optimize the problem with vanilla backpropagation. There
+    are some techniques relying on approximated gradients [[3](#bib.bib3), [12](#bib.bib12)],
+    which we found still suffers from unstable convergence.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To make the process more stable, we define a *search space* for the optimal
+    scale by analyzing the factors that will affect the choice of scaling factor.
+    As shown in the last section, the saliency of weight channels is actually determined
+    by the activation scale (thus “activation-awareness”). Therefore, we simply use
+    a very simple search space:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathbf{s}=\mathbf{s_{X}}^{\alpha},\quad\alpha^{*}=\operatorname*{arg\,min}_{\alpha}\mathcal{L}(\mathbf{s_{X}}^{\alpha})$
+    |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: '$\mathbf{s}$ in Equation [2](#S2.E2 "In 2.2 Protecting Salient Weights by Activation-aware
+    Scaling ‣ 2 AWQ: Activation-aware Weight Quantization ‣ AWQ: Activation-aware
+    Weight Quantization for LLM Compression and Acceleration"); thus reducing quantization
+    error. We provide an ablation study on OPT models under INT3-g128 quantization
+    in Table [3](#S2.T3 "Table 3 ‣ 2.2 Protecting Salient Weights by Activation-aware
+    Scaling ‣ 2 AWQ: Activation-aware Weight Quantization ‣ AWQ: Activation-aware
+    Weight Quantization for LLM Compression and Acceleration"); AWQ consistently outperforms
+    round-to-nearest quantization (RTN) and achieves comparable performance as mixed-precision
+    (1% FP16) while being more hardware-friendly.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Advantages. Our method does not rely on any regression [[14](#bib.bib14)] or
+    backpropagation, which is required by many quantization-aware training methods.
+    It has minimal reliance on the calibration set since we only measure the average
+    magnitude per channel, thus preventing over-fitting (Figure [6](#S3.F6 "Figure
+    6 ‣ 3.3 Analysis ‣ 3 Experiments ‣ AWQ: Activation-aware Weight Quantization for
+    LLM Compression and Acceleration")). Therefore, our method requires fewer data
+    for the quantization process and can preserve LLMs’ knowledge outside of the calibration
+    set’s distribution. See Section [3.3](#S3.SS3 "3.3 Analysis ‣ 3 Experiments ‣
+    AWQ: Activation-aware Weight Quantization for LLM Compression and Acceleration")
+    for more details.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 3.1 Settings
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Quantization.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We focus on *weight-only grouped* quantization in this work. As shown in previous
+    work [[10](#bib.bib10), [14](#bib.bib14)], grouped quantization is always helpful
+    for improving performance/model size trade-off. We used a group size of 128 throughout
+    the work, except otherwise specified. We focus on INT4/INT3 quantization since
+    they are able to mostly preserve the LLMs’ performance [[10](#bib.bib10)]. For
+    AWQ, we used a small calibration set from the Pile [[15](#bib.bib15)] dataset
+    in order not to overfit to a specific downstream domain. We used a grid size of
+    20 to search for the optimal $\alpha$ in Equation [4](#S2.E4 "In 2.2 Protecting
+    Salient Weights by Activation-aware Scaling ‣ 2 AWQ: Activation-aware Weight Quantization
+    ‣ AWQ: Activation-aware Weight Quantization for LLM Compression and Acceleration").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Models.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We benchmarked our method on LLaMA [[38](#bib.bib38)] and OPT [[49](#bib.bib49)]
+    families. There are other open LLMs like BLOOM [[34](#bib.bib34)], but they are
+    generally worse in quality, so we do not include them in our study. We further
+    benchmark an instruction-tuned model Vicuna [[6](#bib.bib6)] and visual language
+    models OpenFlamingo-9B [[2](#bib.bib2)] and LLaVA-13B [[26](#bib.bib26)] to demonstrate
+    the generability of our method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Evaluations.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Following previous literature [[9](#bib.bib9), [46](#bib.bib46), [14](#bib.bib14),
+    [10](#bib.bib10), [47](#bib.bib47)], we mainly profiled the quantized models on
+    language modeling tasks (perplexity evaluation on WikiText-2 [[27](#bib.bib27)])
+    since perplexity can stably reflect the LLM’s performance [[10](#bib.bib10)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: Baselines.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Our primary baseline is vanilla round-to-nearest quantization (RTN). It is actually
+    quite strong when using a small group size like 128 [[14](#bib.bib14), [10](#bib.bib10)].
+    We also compare with a state-of-the-art method GPTQ [[14](#bib.bib14)] for LLM
+    weight quantization. For GPTQ, we also compare with an updated version that uses
+    a “reorder” trick (denoted as GPTQ-Reorder or GPTQ-R). Other techniques like ZeroQuant [[47](#bib.bib47)],
+    AdaRound [[28](#bib.bib28)], and BRECQ [[23](#bib.bib23)] rely on backpropagation
+    to update the quantized weights, which may not easily scale up to large model
+    sizes; they also do not outperform GPTQ [[14](#bib.bib14)], thus not included
+    for study.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Evaluation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Results on LLaMA models.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We focus our study on LLaMA models (LLaMA [[38](#bib.bib38)] and Llama-2 [[39](#bib.bib39)])
+    due to their superior performance compared to other open-source LLMs [[49](#bib.bib49),
+    [34](#bib.bib34)]; it is also the foundation of many popular open-source models [[36](#bib.bib36),
+    [6](#bib.bib6)]. We evaluate the perplexity before and after quantization in Table [4](#S3.T4
+    "Table 4 ‣ Results on LLaMA models. ‣ 3.2 Evaluation ‣ 3 Experiments ‣ AWQ: Activation-aware
+    Weight Quantization for LLM Compression and Acceleration"). We can see that AWQ
+    consistently outperforms round-to-nearest (RTN) and GPTQ [[14](#bib.bib14)] (w/
+    and w/o reordering) across different model scales (7B-70B) and generations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| PPL$\downarrow$ |  | Llama-2 | LLaMA |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 7B | 13B | 70B | 7B | 13B | 30B | 65B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | - | 5.47 | 4.88 | 3.32 | 5.68 | 5.09 | 4.10 | 3.53 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| INT3 g128 | RTN | 6.66 | 5.52 | 3.98 | 7.01 | 5.88 | 4.88 | 4.24 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 6.43 | 5.48 | 3.88 | 8.81 | 5.66 | 4.88 | 4.17 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ-R | 6.42 | 5.41 | 3.86 | 6.53 | 5.64 | 4.74 | 4.21 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 6.24 | 5.32 | 3.74 | 6.35 | 5.52 | 4.61 | 3.95 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| INT4 g128 | RTN | 5.73 | 4.98 | 3.46 | 5.96 | 5.25 | 4.23 | 3.67 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 5.69 | 4.98 | 3.42 | 6.22 | 5.23 | 4.24 | 3.66 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ-R | 5.63 | 4.99 | 3.43 | 5.83 | 5.20 | 4.22 | 3.66 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 5.60 | 4.97 | 3.41 | 5.78 | 5.19 | 4.21 | 3.62 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 4: AWQ improves over round-to-nearest quantization (RTN) for different
+    model sizes and different bit-precisions. It consistently achieves better perplexity
+    than GPTQ (w/ and w/o reordering) on LLaMA & Llama-2 models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/4c6ad3427b6d640681e8b92a51d122dc.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Comparing INT3-g128 quantized Vicuna models with FP16 counterparts
+    under GPT-4 evaluation protocol [[6](#bib.bib6)]. More winning cases (in blue)
+    indicate better performance. AWQ consistently improves the quantized performance
+    compared to RTN and GPTQ [[14](#bib.bib14)], showing generalization to instruction-tuned
+    models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quantization of instruction-tuned models.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Instruction tuning can significantly improve the models’ performance and usability
+     [[42](#bib.bib42), [33](#bib.bib33), [31](#bib.bib31), [8](#bib.bib8)]. It has
+    become an essential procedure before model deployment. We further benchmark our
+    method’s performance on a popular instruction-tuned model Vicuna [[6](#bib.bib6)]
+    in Figure [2](#S3.F2 "Figure 2 ‣ Results on LLaMA models. ‣ 3.2 Evaluation ‣ 3
+    Experiments ‣ AWQ: Activation-aware Weight Quantization for LLM Compression and
+    Acceleration"). We used the GPT-4 score to evaluate the quantized models’ performance
+    against the FP16 counterpart on 80 sample questions [[6](#bib.bib6)]. We compare
+    the responses with both orders (quantized-FP16, FP16-quantized) to get rid of
+    the ordering effect (we found GPT-4 tends to increase the rating of the first
+    input), leading to 160 trials. AWQ consistently improves the INT3-g128 quantized
+    Vicuna models over RTN and GPTQ under both scales (7B and 13B), demonstrating
+    the generability to instruction-tuned models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| COCO (CIDEr $\uparrow$(32-shot)* |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | - | 63.73 | 72.18 | 76.95 | 79.74 | 81.70 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| INT4 g128 | RTN | 60.24 | 68.07 | 72.46 | 74.09 | 77.13 | -4.57 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 59.72 | 67.68 | 72.53 | 74.98 | 74.98 | -6.72 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 62.57 | 71.02 | 74.75 | 78.23 | 80.53 | -1.17 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| INT3 g128 | RTN | 46.07 | 55.13 | 60.46 | 63.21 | 64.79 | -16.91 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 29.84 | 50.77 | 56.55 | 60.54 | 64.77 | -16.93 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 56.33 | 64.73 | 68.79 | 72.86 | 74.47 | -7.23 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 5: Quantization results of a visual language model OpenFlamingo-9B [[2](#bib.bib2)]
+    on COCO Captioning datasets. AWQ outperforms existing methods under zero-shot
+    and various few-shot settings, demonstrating the generability to different modalities
+    and in-context learning workloads. AWQ reduces the quantization degradation (32-shot)
+    from 4.57 to 1.17 under INT4-g128, providing 4$\times$ model size reduction with
+    negligible performance loss.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/1c34fed9c68cca891498de03a8d75808.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Qualitative results of quantized OpenFlamingo-9B [[2](#bib.bib2)]
+    on COCO captioning dataset (4-shot, INT4-g128 quantization). Our method significantly
+    improves the captioning quality compared to the round-to-nearest (RTN) baseline.
+    We color the text to show the correct or wrong captions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quantization of multi-modal language models.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Large multi-modal models (LMMs) or visual language models (VLMs) are LLMs augmented
+    with vision inputs [[1](#bib.bib1), [22](#bib.bib22), [21](#bib.bib21), [11](#bib.bib11),
+    [48](#bib.bib48), [26](#bib.bib26)]. Such models are able to perform text generation
+    conditioned on image/video inputs. Since our method does not have the overfitting
+    issue to the calibration set, it can be directly applied to VLMs to provide accurate
+    and efficient quantization. We perform experiments with the OpenFlamingo-9B model [[2](#bib.bib2)]
+    (an open-source reproduction of [[1](#bib.bib1)]) on COCO captioning [[5](#bib.bib5)]
+    dataset (Table [5](#S3.T5 "Table 5 ‣ Quantization of instruction-tuned models.
+    ‣ 3.2 Evaluation ‣ 3 Experiments ‣ AWQ: Activation-aware Weight Quantization for
+    LLM Compression and Acceleration")). We measured the average performance of 5k
+    samples under different few-shot settings. We only quantize the language part
+    of the model since it dominates the model size. AWQ outperforms existing methods
+    under zero-shot and various few-shot settings, demonstrating the generability
+    to different modalities and in-context learning workloads. It reduces the quantization
+    degradation (32-shot) from 4.57 to 1.17 under INT4-g128, providing 4$\times$ model
+    size reduction with negligible performance loss. We further provide some qualitative
+    captioning results in Figure [3](#S3.F3 "Figure 3 ‣ Quantization of instruction-tuned
+    models. ‣ 3.2 Evaluation ‣ 3 Experiments ‣ AWQ: Activation-aware Weight Quantization
+    for LLM Compression and Acceleration") to show our advantage over RTN. Our method
+    provides a push-the-button solution for LMM/VLM quantization. It is the *first*
+    study of VLM low-bit quantization to the best of our knowledge.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/1c527b3ac8c4412741af2a7b19dd2149.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: Visual reasoning examples from LLaVA-13B model [[26](#bib.bib26)].
+    AWQ improves over the round-to-nearest (RTN) baseline, providing more reasonable
+    answers. We color the text to show the correct or wrong responses.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Visual reasoning results.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We further provide some qualitative visual reasoning examples of the LLaVA-13B [[26](#bib.bib26)]
+    model in Figure [4](#S3.F4 "Figure 4 ‣ Quantization of multi-modal language models.
+    ‣ 3.2 Evaluation ‣ 3 Experiments ‣ AWQ: Activation-aware Weight Quantization for
+    LLM Compression and Acceleration"). AWQ improves the responses compared to the
+    round-to-nearest (RTN) baseline for INT4-g128 quantization, leading to more reasonable
+    answers. In this first example, the AWQ model can understand the meme as it resembles
+    the Earth when looking from space, while RTN produces wrong descriptions (marked
+    in red). In the second example, AWQ correctly answers the question (the artist
+    of the painting), while RTN does not provide any information about the artist.
+    In the last example, RTN falsely points out a bird in the picture, while AWQ provides
+    more information by noticing the image is taken in a mountain area. AWQ improves
+    the visual reasoning ability of VLMs by reducing factual errors in the responses;
+    RTN is not good enough even for 4 bits.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| OPT / Wiki PPL$\downarrow$ | 1.3B | 2.7B | 6.7B | 13B | 30B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | - | 14.62 | 12.47 | 10.86 | 10.13 | 9.56 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| INT2 g64 | RTN | 10476 | 193210 | 7622 | 17564 | 8170 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 46.67 | 28.15 | 16.65 | 16.74 | 11.75 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ +GPTQ | 35.71 | 25.70 | 15.71 | 13.25 | 11.38 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 6: Our method is orthogonal to GPTQ: it further closes the performance
+    gap under extreme low-bit quantization (INT2-g64) when combined with GPTQ. Results
+    are WikiText-2 perplexity of OPT models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Extreme low-bit quantization.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We further quantize LLM to INT2 to accommodate limited device memory (Table [6](#S3.T6
+    "Table 6 ‣ Visual reasoning results. ‣ 3.2 Evaluation ‣ 3 Experiments ‣ AWQ: Activation-aware
+    Weight Quantization for LLM Compression and Acceleration")). RTN completely fails,
+    and AWQ brings significant perplexity improvement on top of GPTQ, though there
+    is still a performance gap compared to FP16. Our method is orthogonal to GPTQ.
+    We can combine our method with GPTQ to further improve the INT2 quantization performance,
+    making it a more practical setting.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/2a57318ca677f553252a211d8e246af5.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: AWQ provides a turn-key solution to transform the theoretical memory
+    footprint reduction into a quantifiable speedup. As a result, AWQ is up to 3.9$\times$
+    faster than the FP16 implementation from Huggingface on 4090 (desktop GPU) and
+    Orin (mobile GPU), respectively. AWQ also democratizes Llama-2-13B deployment
+    on laptop GPUs (4070) with merely 8GB memory.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Speedup Evaluation.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'In Figure [5](#S3.F5 "Figure 5 ‣ Extreme low-bit quantization. ‣ 3.2 Evaluation
+    ‣ 3 Experiments ‣ AWQ: Activation-aware Weight Quantization for LLM Compression
+    and Acceleration"), we demonstrate the system acceleration results for AWQ. We
+    optimize both linear layers and layers that do not have quantized weights. We
+    conduct benchmarking experiments on RTX 4090 (desktop GPU), RTX 4070 (laptop GPU)
+    and Jetson Orin (mobile GPU). We perform batch size = 1 inference for all LLMs
+    using a fixed prompt length of 4 tokens. We generate 200 tokens for each inference
+    run and calculate the median latency as the final result. As in Figure [5](#S3.F5
+    "Figure 5 ‣ Extreme low-bit quantization. ‣ 3.2 Evaluation ‣ 3 Experiments ‣ AWQ:
+    Activation-aware Weight Quantization for LLM Compression and Acceleration")(a),
+    our system brings 2.7-3.9$\times$ speedup to three families of LLMs (Llama-2,
+    MPT and Falcon) on 4090 compared with the Huggingface FP16 implementation. Notably,
+    on the laptop 4070 GPU with only 8GB memory, we are still able to run Llama-2-13B
+    models at 33 tokens / second, while the FP16 implementation cannot fit 7B models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our system also exhibits promising performance on the NVIDIA Jetson Orin (32GB).
+    As shown in Figure [5](#S3.F5 "Figure 5 ‣ Extreme low-bit quantization. ‣ 3.2
+    Evaluation ‣ 3 Experiments ‣ AWQ: Activation-aware Weight Quantization for LLM
+    Compression and Acceleration")(b), our system achieves an interactive processing
+    rate of 33 tokens per second when running Llama-2 models. Thanks to AWQ, even
+    larger models such as MPT-30B can operate smoothly on this resource-constrained
+    edge device, delivering a processing speed of 7.8 tokens per second. It’s worth
+    noting that we implement the forward pass for all AWQ models using native PyTorch
+    APIs, and this code is reused across various GPU architectures. Consequently,
+    our system provides the best of both worlds: state-of-the-art inference speed
+    and exceptional extensibility.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Analysis
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/fcdb3e9443adc9c4339495c46ef0df1d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: Left: AWQ needs a much smaller calibration set to reach a good quantized
+    performance. It can achieve better perplexity using 10$\times$ smaller calibration
+    set compared to GPTQ. Right: Our method is more robust to the calibration set
+    distribution. Overall, using the same calibration and evaluation distribution
+    works the best (PubMed-PubMed, Enron-Enron). But when using a different calibration
+    distribution (PubMed-Enron, Enron-PubMed), AWQ only increases the perplexity by
+    0.5-0.6, while GPTQ has 2.3-4.9 worse perplexity. All experiments are done with
+    the OPT-6.7B model under INT3-g128 quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Better data-efficiency for the calibration set.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Our method requires a smaller calibration set since we do not rely on regression/backpropagation;
+    we only measure the average activation scale from the calibration set, which is
+    data-efficient. To demonstrate the idea, we compare the perplexity of the OPT-6.7B
+    model with INT3-g128 quantization in Figure [6](#S3.F6 "Figure 6 ‣ 3.3 Analysis
+    ‣ 3 Experiments ‣ AWQ: Activation-aware Weight Quantization for LLM Compression
+    and Acceleration") (a). AWQ needs a much smaller calibration to reach a good quantized
+    performance; it can achieve better perplexity using 10$\times$ smaller calibration
+    set compared to GPTQ (16 sequences *v.s.* 192 sequences).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Robust to the calibration set distributions.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Our method is less sensitive to the calibration set distribution since we only
+    measure the average activation scale from the calibration set, which is more generalizable
+    across different dataset distributions. We further benchmarked the effect of the
+    different calibration set distributions in Figure [6](#S3.F6 "Figure 6 ‣ 3.3 Analysis
+    ‣ 3 Experiments ‣ AWQ: Activation-aware Weight Quantization for LLM Compression
+    and Acceleration")(b). We took two subsets from the Pile dataset [[15](#bib.bib15)]:
+    PubMed Abstracts and Enron Emails [[20](#bib.bib20)]. We use each of the subsets
+    as the calibration set and evaluate the quantized model on both sets (the calibration
+    and evaluation sets are split with no overlapping; we used 1k samples for evaluation).
+    Overall, using the same calibration and evaluation distribution works the best
+    (PubMed-PubMed, Enron-Enron). But when using a different calibration distribution
+    (PubMed-Enron, Enron-PubMed), AWQ only increases the perplexity by 0.5-0.6, while
+    GPTQ has 2.3-4.9 worse perplexity. This demonstrates the robustness of AWQ to
+    the calibration set distribution.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Model quantization methods.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Quantization reduces the bit-precision of deep learning models [[17](#bib.bib17),
+    [19](#bib.bib19), [29](#bib.bib29), [41](#bib.bib41), [28](#bib.bib28), [25](#bib.bib25)],
+    which helps to reduce the model size and accelerate inference. Quantization techniques
+    generally fall into two categories: quantization-aware training (QAT, which relies
+    on backpropagation to update the quantized weights) [[3](#bib.bib3), [16](#bib.bib16),
+    [30](#bib.bib30), [7](#bib.bib7)] and post-training quantization [[19](#bib.bib19),
+    [29](#bib.bib29), [28](#bib.bib28)] (PTQ, usually training-free). The QAT methods
+    cannot easily scale up to large models like LLMs. Therefore, people usually use
+    PTQ methods to quantize LLMs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quantization of LLMs.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'People study two settings for LLM quantization: (1) W8A8 quantization, where
+    both activation and weights are quantized to INT8 [[9](#bib.bib9), [46](#bib.bib46),
+    [47](#bib.bib47), [45](#bib.bib45), [43](#bib.bib43)]; (2) Low-bit weight-only
+    quantization (*e.g*., W4A16), where only weights are quantized into low-bit integers [[14](#bib.bib14),
+    [10](#bib.bib10), [35](#bib.bib35), [32](#bib.bib32)]. We focus on the second
+    setting in this work since it not only reduces the hardware barrier (requiring
+    a smaller memory size) but also speeds up the token generation (remedies memory-bound
+    workload). Apart from the vanilla round-to-nearest baseline (RTN), GPTQ [[14](#bib.bib14)]
+    is the closest to our work. However, the reconstruction process of GPTQ leads
+    to an over-fitting issue to the calibration set and may not preserve the generalist
+    abilities of LLMs for other modalities and domains. It also requires a reordering
+    trick to work for some models (*e.g*., LLaMA-7B [[38](#bib.bib38)] and OPT-66B [[49](#bib.bib49)]).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: System support for low-bit quantized LLMs.
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Low-bit quantized LLMs have been a popular setting to reduce inference costs.
+    There are some system supports to achieve a practical speed-up. GPTQ [[14](#bib.bib14)]
+    provides INT3 kernels for OPT models and GPTQ-for-LLaMA extends kernel support
+    for INT4 reordered quantization with the help of Triton [[37](#bib.bib37)]. FlexGen [[35](#bib.bib35)]
+    and llama.cpp^*^**https://github.com/ggerganov/llama.cpp perform group-wise INT4
+    quantization to reduce I/O costs and offloading. FasterTransformer^†^††https://github.com/NVIDIA/FasterTransformer
+    implements FP16$\times$ speedup over the FP16 implementation from Huggingface.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this work, we propose Activation-aware Weight Quantization (AWQ), a simple
+    yet effective method for low-bit weight-only LLM compression AWQ is based on the
+    observation that weights are not equally important in LLMs and performs per-channel
+    scaling to reduce the quantization loss of salient weights. AWQ does not over-fit
+    the calibration set and preserves the generalist abilities of LLMs in various
+    domains and modalities. It outperforms existing work on language modeling and
+    can be applicable to instruction-tuned LMs and multi-modal LMs. Our system implementation
+    further translates the theoretical memory savings achieved by AWQ into 3.2-3.3$\times$
+    measured speedups over the FP16 implementations from Huggingface on desktop and
+    mobile GPUs, democratizing LLM deployment on the edge.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Acknowledgements
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We thank MIT AI Hardware Program, National Science Foundation, NVIDIA Academic
+    Partnership Award, MIT-IBM Watson AI Lab, Amazon and MIT Science Hub, Qualcomm
+    Innovation Fellowship, Microsoft Turing Academic Program for supporting this research.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[1] Jean-Baptiste Alayrac, Jeff Donahue, Pauline Luc, Antoine Miech, Iain Barr,
+    Yana Hasson, Karel Lenc, Arthur Mensch, Katherine Millican, Malcolm Reynolds,
+    et al. Flamingo: a visual language model for few-shot learning. Advances in Neural
+    Information Processing Systems, 35:23716–23736, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[2] Anas Awadalla, Irena Gao, Joshua Gardner, Jack Hessel, Yusuf Hanafy, Wanrong
+    Zhu, Kalyani Marathe, Yonatan Bitton, Samir Gadre, Jenia Jitsev, Simon Kornblith,
+    Pang Wei Koh, Gabriel Ilharco, Mitchell Wortsman, and Ludwig Schmidt. Openflamingo,
+    March 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[3] Yoshua Bengio, Nicholas Léonard, and Aaron Courville. Estimating or propagating
+    gradients through stochastic neurons for conditional computation. arXiv preprint
+    arXiv:1308.3432, 2013.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[4] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan,
+    Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell,
+    Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan, Rewon Child,
+    Aditya Ramesh, Daniel Ziegler, Jeffrey Wu, Clemens Winter, Chris Hesse, Mark Chen,
+    Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack Clark, Christopher
+    Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario Amodei. Language
+    models are few-shot learners. In H. Larochelle, M. Ranzato, R. Hadsell, M.F. Balcan,
+    and H. Lin, editors, Advances in Neural Information Processing Systems, volume 33,
+    pages 1877–1901\. Curran Associates, Inc., 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[5] Xinlei Chen, Hao Fang, Tsung-Yi Lin, Ramakrishna Vedantam, Saurabh Gupta,
+    Piotr Dollár, and C Lawrence Zitnick. Microsoft coco captions: Data collection
+    and evaluation server. arXiv preprint arXiv:1504.00325, 2015.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[6] Wei-Lin Chiang, Zhuohan Li, Zi Lin, Ying Sheng, Zhanghao Wu, Hao Zhang,
+    Lianmin Zheng, Siyuan Zhuang, Yonghao Zhuang, Joseph E. Gonzalez, Ion Stoica,
+    and Eric P. Xing. Vicuna: An open-source chatbot impressing gpt-4 with 90%* chatgpt
+    quality, March 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[7] Jungwook Choi, Zhuo Wang, Swagath Venkataramani, Pierce I-Jen Chuang, Vijayalakshmi
+    Srinivasan, and Kailash Gopalakrishnan. Pact: Parameterized clipping activation
+    for quantized neural networks. arXiv preprint arXiv:1805.06085, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[8] Hyung Won Chung, Le Hou, Shayne Longpre, Barret Zoph, Yi Tay, William Fedus,
+    Eric Li, Xuezhi Wang, Mostafa Dehghani, Siddhartha Brahma, et al. Scaling instruction-finetuned
+    language models. arXiv preprint arXiv:2210.11416, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[9] Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer. Llm.int8():
+    8-bit matrix multiplication for transformers at scale. arXiv preprint arXiv:2208.07339,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[10] Tim Dettmers and Luke Zettlemoyer. The case for 4-bit precision: k-bit
+    inference scaling laws. arXiv preprint arXiv:2212.09720, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[11] Danny Driess, Fei Xia, Mehdi SM Sajjadi, Corey Lynch, Aakanksha Chowdhery,
+    Brian Ichter, Ayzaan Wahid, Jonathan Tompson, Quan Vuong, Tianhe Yu, et al. Palm-e:
+    An embodied multimodal language model. arXiv preprint arXiv:2303.03378, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[12] Steven K Esser, Jeffrey L McKinstry, Deepika Bablani, Rathinakumar Appuswamy,
+    and Dharmendra S Modha. Learned step size quantization. arXiv preprint arXiv:1902.08153,
+    2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[13] Jonathan Frankle and Michael Carbin. The lottery ticket hypothesis: Finding
+    sparse, trainable neural networks. arXiv preprint arXiv:1803.03635, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[14] Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan Alistarh. Gptq:
+    Accurate post-training quantization for generative pre-trained transformers. arXiv
+    preprint arXiv:2210.17323, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[15] Leo Gao, Stella Biderman, Sid Black, Laurence Golding, Travis Hoppe, Charles
+    Foster, Jason Phang, Horace He, Anish Thite, Noa Nabeshima, et al. The pile: An
+    800gb dataset of diverse text for language modeling. arXiv preprint arXiv:2101.00027,
+    2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[16] Amir Gholami, Sehoon Kim, Zhen Dong, Zhewei Yao, Michael W Mahoney, and
+    Kurt Keutzer. A survey of quantization methods for efficient neural network inference.
+    arXiv preprint arXiv:2103.13630, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[17] Song Han, Huizi Mao, and William J Dally. Deep Compression: Compressing
+    Deep Neural Networks with Pruning, Trained Quantization and Huffman Coding. In
+    ICLR, 2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[18] Song Han, Jeff Pool, John Tran, and William Dally. Learning both weights
+    and connections for efficient neural network. Advances in neural information processing
+    systems, 28, 2015.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[19] Benoit Jacob, Skirmantas Kligys, Bo Chen, Menglong Zhu, Matthew Tang,
+    Andrew Howard, Hartwig Adam, and Dmitry Kalenichenko. Quantization and training
+    of neural networks for efficient integer-arithmetic-only inference. In Proceedings
+    of the IEEE Conference on Computer Vision and Pattern Recognition, pages 2704–2713,
+    2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[20] Bryan Klimt and Yiming Yang. The enron corpus: A new dataset for email
+    classification research. In Machine Learning: ECML 2004: 15th European Conference
+    on Machine Learning, Pisa, Italy, September 20-24, 2004\. Proceedings 15, pages
+    217–226\. Springer, 2004.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[21] Jing Yu Koh, Ruslan Salakhutdinov, and Daniel Fried. Grounding language
+    models to images for multimodal generation. arXiv preprint arXiv:2301.13823, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[22] Junnan Li, Dongxu Li, Silvio Savarese, and Steven Hoi. Blip-2: Bootstrapping
+    language-image pre-training with frozen image encoders and large language models.
+    arXiv preprint arXiv:2301.12597, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[23] Yuhang Li, Ruihao Gong, Xu Tan, Yang Yang, Peng Hu, Qi Zhang, Fengwei
+    Yu, Wei Wang, and Shi Gu. Brecq: Pushing the limit of post-training quantization
+    by block reconstruction. arXiv preprint arXiv:2102.05426, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[24] Percy Liang, Rishi Bommasani, Tony Lee, Dimitris Tsipras, Dilara Soylu,
+    Michihiro Yasunaga, Yian Zhang, Deepak Narayanan, Yuhuai Wu, Ananya Kumar, et al.
+    Holistic evaluation of language models. arXiv preprint arXiv:2211.09110, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[25] Ji Lin, Wei-Ming Chen, Yujun Lin, Chuang Gan, Song Han, et al. Mcunet:
+    Tiny deep learning on iot devices. Advances in Neural Information Processing Systems,
+    33:11711–11722, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[26] Haotian Liu, Chunyuan Li, Qingyang Wu, and Yong Jae Lee. Visual instruction
+    tuning. 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[27] Stephen Merity, Caiming Xiong, James Bradbury, and Richard Socher. Pointer
+    sentinel mixture models, 2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[28] Markus Nagel, Rana Ali Amjad, Mart Van Baalen, Christos Louizos, and Tijmen
+    Blankevoort. Up or down? adaptive rounding for post-training quantization. In
+    International Conference on Machine Learning, pages 7197–7206\. PMLR, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[29] Markus Nagel, Mart van Baalen, Tijmen Blankevoort, and Max Welling. Data-free
+    quantization through weight equalization and bias correction. In Proceedings of
+    the IEEE/CVF International Conference on Computer Vision, pages 1325–1334, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[30] Markus Nagel, Marios Fournarakis, Rana Ali Amjad, Yelysei Bondarenko,
+    Mart Van Baalen, and Tijmen Blankevoort. A white paper on neural network quantization.
+    arXiv preprint arXiv:2106.08295, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[31] Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll Wainwright,
+    Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, et al.
+    Training language models to follow instructions with human feedback. Advances
+    in Neural Information Processing Systems, 35:27730–27744, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[32] Gunho Park, Baeseong Park, Se Jung Kwon, Byeongwook Kim, Youngjoo Lee,
+    and Dongsoo Lee. nuqmm: Quantized matmul for efficient inference of large-scale
+    generative language models. arXiv preprint arXiv:2206.09557, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[33] Victor Sanh, Albert Webson, Colin Raffel, Stephen H Bach, Lintang Sutawika,
+    Zaid Alyafeai, Antoine Chaffin, Arnaud Stiegler, Teven Le Scao, Arun Raja, et al.
+    Multitask prompted training enables zero-shot task generalization. arXiv preprint
+    arXiv:2110.08207, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[34] Teven Le Scao, Angela Fan, Christopher Akiki, Ellie Pavlick, Suzana Ilić,
+    Daniel Hesslow, Roman Castagné, Alexandra Sasha Luccioni, François Yvon, Matthias
+    Gallé, et al. Bloom: A 176b-parameter open-access multilingual language model.
+    arXiv preprint arXiv:2211.05100, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[35] Ying Sheng, Lianmin Zheng, Binhang Yuan, Zhuohan Li, Max Ryabinin, Daniel Y
+    Fu, Zhiqiang Xie, Beidi Chen, Clark Barrett, Joseph E Gonzalez, et al. High-throughput
+    generative inference of large language models with a single gpu. arXiv preprint
+    arXiv:2303.06865, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[36] Rohan Taori, Ishaan Gulrajani, Tianyi Zhang, Yann Dubois, Xuechen Li,
+    Carlos Guestrin, Percy Liang, and Tatsunori B. Hashimoto. Stanford alpaca: An
+    instruction-following llama model. [https://github.com/tatsu-lab/stanford_alpaca](https://github.com/tatsu-lab/stanford_alpaca),
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[37] Philippe Tillet, Hsiang-Tsung Kung, and David Cox. Triton: an intermediate
+    language and compiler for tiled neural network computations. In Proceedings of
+    the 3rd ACM SIGPLAN International Workshop on Machine Learning and Programming
+    Languages, pages 10–19, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[38] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne
+    Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal, Eric Hambro, Faisal
+    Azhar, et al. Llama: Open and efficient foundation language models. arXiv preprint
+    arXiv:2302.13971, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[39] Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi,
+    Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale,
+    et al. Llama 2: Open foundation and fine-tuned chat models. arXiv preprint arXiv:2307.09288,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[40] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones,
+    Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. Attention is all you need.
+    Advances in neural information processing systems, 30, 2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[41] Kuan Wang, Zhijian Liu, Yujun Lin, Ji Lin, and Song Han. HAQ: Hardware-Aware
+    Automated Quantization with Mixed Precision. In CVPR, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[42] Jason Wei, Maarten Bosma, Vincent Y Zhao, Kelvin Guu, Adams Wei Yu, Brian
+    Lester, Nan Du, Andrew M Dai, and Quoc V Le. Finetuned language models are zero-shot
+    learners. arXiv preprint arXiv:2109.01652, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[43] Xiuying Wei, Yunchen Zhang, Yuhang Li, Xiangguo Zhang, Ruihao Gong, Jinyang
+    Guo, and Xianglong Liu. Outlier suppression+: Accurate quantization of large language
+    models by equivalent and optimal shifting and scaling. arXiv preprint arXiv:2304.09145,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[44] Xiuying Wei, Yunchen Zhang, Xiangguo Zhang, Ruihao Gong, Shanghang Zhang,
+    Qi Zhang, Fengwei Yu, and Xianglong Liu. Outlier suppression: Pushing the limit
+    of low-bit transformer language models. arXiv preprint arXiv:2209.13325, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[45] Xiuying Wei, Yunchen Zhang, Xiangguo Zhang, Ruihao Gong, Shanghang Zhang,
+    Qi Zhang, Fengwei Yu, and Xianglong Liu. Outlier suppression: Pushing the limit
+    of low-bit transformer language models, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[46] Guangxuan Xiao, Ji Lin, Mickael Seznec, Julien Demouth, and Song Han.
+    Smoothquant: Accurate and efficient post-training quantization for large language
+    models. arXiv preprint arXiv:2211.10438, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[47] Zhewei Yao, Reza Yazdani Aminabadi, Minjia Zhang, Xiaoxia Wu, Conglong
+    Li, and Yuxiong He. Zeroquant: Efficient and affordable post-training quantization
+    for large-scale transformers, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[48] Renrui Zhang, Jiaming Han, Aojun Zhou, Xiangfei Hu, Shilin Yan, Pan Lu,
+    Hongsheng Li, Peng Gao, and Yu Qiao. Llama-adapter: Efficient fine-tuning of language
+    models with zero-init attention. arXiv preprint arXiv:2303.16199, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[49] Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe, Moya Chen, Shuohui
+    Chen, Christopher Dewan, Mona Diab, Xian Li, Xi Victoria Lin, Todor Mihaylov,
+    Myle Ott, Sam Shleifer, Kurt Shuster, Daniel Simig, Punit Singh Koura, Anjali
+    Sridhar, Tianlu Wang, and Luke Zettlemoyer. Opt: Open pre-trained transformer
+    language models, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Broader Impacts and Limitations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Broader impacts. In this paper, we propose a general technique to enable accurate
+    and efficient low-bit weight-only quantization of large language models (LLMs).
+    It makes LLMs more efficient and accessible and thus may inherit the impacts of
+    LLMs. On the positive side, quantization helps to democratize LLMs, which helps
+    to benefit more people (especially those with lower income). It reduces the costs
+    and hardware barrier of deploying LLMs and facilitates edge inference of these
+    models, addressing the data privacy issue (since we no longer need to send data
+    to the cloud). On the negative side, LLMs may be exploited by malicious users
+    to produce misinformation and manipulation. Quantization can not prevent such
+    negative effects but it does not make it worse.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Limitations. In this paper, we follow previous work [[9](#bib.bib9), [14](#bib.bib14),
+    [46](#bib.bib46), [47](#bib.bib47), [10](#bib.bib10)] to mostly benchmark the
+    quantized models on standard accuracy metrics like perplexity and accuracy. However,
+    besides accuracy, there are other important metrics for LLM benchmark like robustness,
+    fairness, bias, toxicity, helpfulness, calibration, *etc*. [[24](#bib.bib24)].
+    We think it would be helpful to perform a more holistic evaluation of quantized
+    LLMs covering these aspects, which we leave to future work. Furthermore, we only
+    study low-bit integer quantization of LLMs due to easier data type casting on
+    hardware. There might be a further improvement from changing data types (*e.g*.,
+    FP4 [[10](#bib.bib10)]), which we do not include in the study.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B Amount of Computation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We study the post-training quantization (PTQ) of LLMs in this work. The computation
+    requirement is generally modest since we do not rely on any backpropagation. We
+    used one NVIDIA A100 GPU for smaller models (<40B parameters) and 2-4 A100 GPUs
+    for larger models due to memory limits.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The quantization process is generally fast, requiring a few GPU hours (ranging
+    from 0.1 to 3, depending on the model size). The accuracy measurement time depends
+    on the model and dataset sizes: testing LLaMA-65B (the biggest model we tested
+    on multiple datasets) on 4 common sense QA tasks requires 3 GPU hours; testing
+    it on MMLU (consisting of 57 sub-datasets) requires 5 GPU hours. The GPU hours
+    would be smaller for smaller models and datasets (*e.g*., WikiText-2).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix C Limitation with No-group Quantization
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Our method searches for good scaling to protect the salient weight channels.
+    It works pretty well under grouped quantization, matching the same accuracy as
+    keeping salient weights in FP16 (Figure [1](#S2.F1 "Figure 1 ‣ 2 AWQ: Activation-aware
+    Weight Quantization ‣ AWQ: Activation-aware Weight Quantization for LLM Compression
+    and Acceleration")). However, such a scaling-based method can only protect *one*
+    salient channel for *each group*. It is not a problem for grouped quantization
+    (we only need to protect 0.1%-1% of salient channels, the group size is usually
+    small, like 128, so we need to protect fewer than 1 channel in each group on average).
+    But for no-group quantization, we can only protect one input channel for the *entire
+    weight*, which may not be enough to bridge the performance degradation. As shown
+    in Table [7](#A3.T7 "Table 7 ‣ Appendix C Limitation with No-group Quantization
+    ‣ AWQ: Activation-aware Weight Quantization for LLM Compression and Acceleration"),
+    under INT3-g128 quantization, AWQ achieves similar performance compared to keeping
+    1% salient weights in FP16\. While under INT3 no-group quantization, there is
+    still a noticeable gap. Nonetheless, we want to stress that the performance of
+    no-group quantization is still far behind grouped quantization at a similar cost.
+    Therefore, grouped quantization is a *more practical solution* for LLM compression
+    for edge deployment and AWQ can effectively improve the quantized performance
+    under this setting.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| PPL $\downarrow$ | FP16 | INT3 (group 128) | INT3 (no group) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 1% FP16 | AWQ | RTN | 1% FP16 | AWQ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-6.7B | 12.29 | 43.16 | 13.02 | 12.99 | 21160 | 14.67 | 18.11 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-7B | 9.49 | 12.10 | 10.77 | 10.82 | 50.45 | 14.06 | 20.52 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 7: AWQ can match the performance of keeping 1% salient weights in FP16
+    under grouped quantization without introducing mixed-precisions, but not for no-group
+    quantization. Nonetheless, grouped quantization has a far better performance compared
+    to no-group, making it a far more practical setting for weight-only quantization
+    of LLMs, while AWQ performs quite well under this setting. Results are perplexity
+    on the WikiText-2 dataset.'
+  prefs: []
+  type: TYPE_NORMAL

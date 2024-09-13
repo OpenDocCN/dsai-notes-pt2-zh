@@ -1,0 +1,910 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:51:26'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'ENDOR: Hardware-Friendly Sparse Format for Offloaded LLM Inference'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2406.11674](https://ar5iv.labs.arxiv.org/html/2406.11674)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Donghyeon Joo¹, Ramyad Hadidi², Soheil Feizi¹, Bahar Asgari¹ ¹Department of
+    Computer Science, University of Maryland, ²Rain AI
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{dhjoo98,bahar}@umd.edu, ramyad@rain.ai, sfeizi@cs.umd.edu'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: The increasing size of large language models (LLMs) challenges their usage on
+    resource-constrained platforms. For example, memory on modern GPUs is insufficient
+    to hold LLMs that are hundreds of Gigabytes in size. Offloading is a popular method
+    to escape this constraint by storing weights of an LLM model to host CPU memory
+    and SSD, then loading each weight to GPU before every use. In our case study of
+    offloaded inference, we found that due to the low bandwidth between storage devices
+    and GPU, the latency of transferring large model weights from its offloaded location
+    to GPU memory becomes the critical bottleneck with actual compute taking nearly
+    0% of runtime. To effectively reduce the weight transfer latency, we propose a
+    novel sparse format that compresses the unstructured sparse pattern of pruned
+    LLM weights to non-zero values with high compression ratio and low decompression
+    overhead. Endor achieves this by expressing the positions of non-zero elements
+    with a bitmap. Compared to offloaded inference using the popular Huggingface Accelerate,
+    applying Endor accelerates OPT-66B by 1.70$\times$ speedup on Llama2-70B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Large language models (LLMs) have seen an exponential increase in size to achieve
+    meta-human abilities such as complex reasoning and zero-shot tasks. However, the
+    immense size of LLMs, such as 70-billion-parameter Llama [[21](#bib.bibx21)] and
+    175-billion-parameter GPT-3 [[4](#bib.bibx4)], pose challenges to the computing
+    platform. LLM inference is often limited by the GPU memory when it cannot hold
+    the entire model. LLM practitioners often face a peculiar situation where the
+    ‘GPU-must-hold-entire-model’ rule limits inference even with enough computing
+    resources. This forces them to employ more GPUs, which is costly and illogical
+    as already-sufficient compute resources are added. Model offloading presents a
+    promising alternative. By partitioning a model into small sections and saving
+    them to host CPU memory and storage device, computing platforms can overcome the
+    limitations of GPU memory. Now comfortably fitting on GPU memory, these partitions
+    are sequentially loaded during inference time. This approach, supported by prominent
+    LLM frameworks such as Hugging Face Accelerate [[14](#bib.bibx14)] and Microsoft
+    Deepspeed [[2](#bib.bibx2)], holds great potential for LLM inference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this paper, upon analyzing offloaded inference (Section [3](#S3 "3 Case
+    Study: Offloading OPT-66B ‣ ENDOR: Hardware-Friendly Sparse Format for Offloaded
+    LLM Inference")), we identify the critical bottleneck as the weight transfer latency
+    of offloaded model weights. This overhead is significantly larger than the time
+    spent in computation, resulting in a much longer end-to-end latency than the on-GPU
+    inference. Model quantization has been a popular method in LLM deployment, decreasing
+    the memory footprint by lowering the precision of each value. Alternatively, model
+    pruning can achieve a similar level of model size reduction by removing relatively
+    unimportant weight values with minor performance degradation. However, pruning
+    methods such as SparseGPT [[11](#bib.bibx11)], which yield unstructured sparse
+    pattern in weights do not reduce the size of stored weights due to the difficulty
+    in expressing the unstructured distribution of non-zeros. When pruned, weights
+    are stored as-is, it does not contribute to reducing weight transfer latency.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To address the bottleneck of offloaded LLM inference with minimal model performance
+    degradation, we propose Endor (Section [4](#S4 "4 Endor Sparse Format and Pruning
+    ‣ ENDOR: Hardware-Friendly Sparse Format for Offloaded LLM Inference")), a novel
+    sparse format to efficiently compress the pruned unstructured sparse LLM weights.
+    Endor efficiently compresses unstructured sparse weight matrices to reduce the
+    weight transfer latency in transfer between storage device and host CPU memory,
+    and between host CPU memory and GPU. To achieve high compression rate, Endor sparse
+    format stores only the non-zero elements of the sparse LLM weights and use a bitmap
+    to express the position of these elements. Decompression of Endor sparse format
+    is highly parallelizable and shows minimal decompression overhead. Endor achieves
+    up to 2.37$\times$ speedup compared to the dense offloaded inference using Huggingface
+    Accelerate [[14](#bib.bibx14)] (Section [5](#S5 "5 Evaluation ‣ ENDOR: Hardware-Friendly
+    Sparse Format for Offloaded LLM Inference")). As Endor preserves all non-zero
+    values of pruned weights, it can be jointly applied with other methods that accelerate
+    offloaded inference, such as quantization and activation sparsity for faster offloaded
+    inference, and batch scheduling for higher throughput.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Related Works
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This section first reviews different weight size reduction methods we considered
+    and then reviews previous studies that target offloaded inference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.1 Model Pruning, Quantization, and Compression Format
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Several studies have proposed model pruning [[13](#bib.bibx13), [10](#bib.bibx10),
+    [3](#bib.bibx3), [15](#bib.bibx15), [22](#bib.bibx22)] that replaces insignificant
+    elements in a weight tensor with zeros. Applying pruning to LLMs, SparseGPT [[11](#bib.bibx11)]
+    employs an iterative pruning process with weight updates to decide the values
+    to prune. Wanda [[20](#bib.bibx20)] uses a magnitude-based sorting of products
+    between weight values and sample dataset inputs. In addition for both methods
+    to prune in unstructured pattern, they can also enforce N:M structured pattern,
+    where N elements remain in M consecutive elements, for computational speedup on
+    supported GPUs [[18](#bib.bibx18)]. However, enforcing a structured pattern comes
+    at the price of model accuracy degradation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The same limitation of accuracy degradation apply when considering a structured
+    sparse pattern to reduce the memory overhead of pruned weights. Alternatively,
+    compressing the unstructured sparse pattern is a challenging task due to the random
+    distribution of non-zero elements. If pruned weights are compressed using common
+    sparsity formats such as compressed sparse row (CSR) fromat, the addition indexing
+    data makes up for the reduction of elements. For example, the size of indexing
+    data for a 50% sparse weight is equal to the size of zero elements, a compression
+    rate of 0%. This forces pruned weights to be stored as whole dense matrices, with
+    no weight size reduction despite the reduction in the number of weight elements.
+    In our paper, we use weights pruned to 50% sparsity with the methods of Wanda [[20](#bib.bibx20)]
+    and SparseGPT [[11](#bib.bibx11)], resulting in an unstructured distribution of
+    non-zero values. Endor is applied on the pruned weights to reduce weight size
+    during offloaded inference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Model quantization [[5](#bib.bibx5), [6](#bib.bibx6), [9](#bib.bibx9), [7](#bib.bibx7),
+    [24](#bib.bibx24)] is an alternative solution that reduces both the model weight
+    size and the amount of computation by reducing the precision of each value. For
+    LLMs, SmoothQuant [[23](#bib.bibx23)] performs INT8 quantization of weights and
+    activations to achieve memory reduction and speedup. GPTQ [[12](#bib.bibx12)]
+    uses a layer-wise quantization to achieve more reduction with minimal accuracy
+    degradation. SpQR [[8](#bib.bibx8)] retains higher precision outlier values in
+    a mixed-precision scheme to minimize accuracy degradation. We design Endor sparse
+    format to be compatible with LLM quantization, as evaluated in Section [5.4](#S5.SS4
+    "5.4 Joint Application with Quantization ‣ 5 Evaluation ‣ ENDOR: Hardware-Friendly
+    Sparse Format for Offloaded LLM Inference")'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'State of the art compression formats such as LZ4 [[16](#bib.bibx16)] and Meta
+    Zstandard (ZSTD) [[26](#bib.bibx26)] encapsulate decades of effort in computing
+    compression formats, which exploit the repetition of bit-wise patterns in raw
+    data to achieve size reduction¹¹1We distinguish compression with compression format,
+    which exploits bit-wise patterns, and compression with sparse format, such as
+    CSR and Endor, that exploits the non-zeros of sparse matrices. Unless stated explicitly,
+    ‘compression’ refers to ‘compression with sparse format.’. In Section [5.1](#S5.SS1
+    "5.1 Compressed Offloaded Inference ‣ 5 Evaluation ‣ ENDOR: Hardware-Friendly
+    Sparse Format for Offloaded LLM Inference"), we evaluate the usage of ZSTD to
+    compress model weights in offloaded inference.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2 Offloaded Inference Optimization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Alizadeh et al. [[1](#bib.bibx1)] exploits the activation sparsity of the ReLU
+    function to load weights from storage selectively. They use a small predictor
+    that accurately predicts the weight rows and columns that yield non-zero ReLU
+    activation and load that subset of weights, leading to a 95% reduction of weight
+    transfer. However, their target is limited to the fully connected layers of an
+    LLM, which is, on average, 66% of the entire model weight transfer. Also, only
+    a subset of prominent LLMs such as OPT and Falcon that employs ReLU activation
+    benefit from this approach, excluding LLMs such as Llama and GPT4. Sheng et al.
+    [[19](#bib.bibx19)] employs efficient computation scheduling, tensor placement,
+    and KV cache compression to increase the throughput of offloaded inference. They
+    achieve this by establishing a search space of possible configurations given a
+    batch input of sequences. However, their work prioritizes increasing the throughput
+    of batch inputs, which is suitable for a server-scale LLM serving. We aim to reduce
+    the offloaded inference latency of a single batch input sequence, which is suitable
+    for both server-scale and edge-scale LLM serving.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '3 Case Study: Offloading OPT-66B'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 3.1 Workload Specification
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Our workload is OPT-66B [[25](#bib.bibx25)] in float16 precision. OPT-66B consists
+    of 64 OPT layers. Each OPT layer is divided into an attention sub-layer and a
+    fully-connect sub-layer. Attention sub-layer contains four linear operations:
+    key projection, query projection, value projection, and output projection with
+    weight matrix of size $9,216\times 9,216$. Linear operations are the focus of
+    our work, as their weight parameters are significantly larger than operations
+    with smaller parameters (layer normalization) and operations with no weight parameter
+    (matrix multiplication between attention score and value). With emphasis on offloaded
+    inference latency, we use single batch text generation inference for all measurement
+    and evaluation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 System Specification
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Fitting our workload on GPU would require 132GB of VRAM, far surpassing the
+    memory size of commercial GPUs. We use Hugging Face Accelerate to perform offloaded
+    inference on a CPU-GPU heterogeneous platform, which consists of an RTX 4080 GPU
+    with 16GB VRAM, 64GB host DRAM, and SK Hynix P31 NVMe 2TB SSD. Figure [1](#S3.F1
+    "Figure 1 ‣ 3.2 System Specification ‣ 3 Case Study: Offloading OPT-66B ‣ ENDOR:
+    Hardware-Friendly Sparse Format for Offloaded LLM Inference") illustrates the
+    measured bandwidth between these devices. Bandwidth between storage device and
+    host CPU DRAM is significantly smaller compared to the bandwidth between host
+    CPU DRAM and the GPU.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/ed5ed691536790919efd95ee5fe01b6e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Memory/SSD configuration including capacity and measured bandwidth.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Offloading Setup
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Offloading involves mapping each OPT layer to GPU memory, host CPU memory, or
+    storage device. OPT layer, which is the unit of offloading, refers to a group
+    of operations comprised of attention, layer normalization, and fully-connected
+    operations. GPU-mapped-layer weights are directly computed. CPU-mapped-layer weights
+    are transferred to GPU memory before computation, while storage-mapped-layer weights
+    are loaded to CPU and then to GPU before computation. To study offloaded inference,
+    we map decoder layers 0 to 4 to GPU memory, layers 5 to 12 to CPU memory, and
+    layers 13 to 63 to the SSD. Layer mapping prioritizes populating locations closer
+    to GPU while leaving enough memory for computation and intermediate operands.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/1e49ca4ca287dd5f999a34ab397306ec.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Execution time comparison of offloaded OPT layers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.4 Offloaded Inference Analysis
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Out of a single pass through OPT-66B which took 54s, Figure [2](#S3.F2 "Figure
+    2 ‣ 3.3 Offloading Setup ‣ 3 Case Study: Offloading OPT-66B ‣ ENDOR: Hardware-Friendly
+    Sparse Format for Offloaded LLM Inference") compares the execution time of a single
+    GPU-mapped, CPU-mapped, and SSD-mapped layer. The figure illustrates that the
+    overhead of weight transfer increases significantly as the offloaded region is
+    further from the GPU. The SSD-mapped layers have the slowest latency of 1 second,
+    80% of which is spent loading weight from storage to CPU, and 20% is spent in
+    DRAM to GPU loading, resulting in nearly 0% of time spent in actual computation.
+    For the the CPU-mapped layer, weight only has to be transferred from CPU DRAM
+    to GPU VRAM before computation, and thus does not include SSD to CPU transfer
+    overhead. For the GPU-mapped layer, weight can be used immediately, thus does
+    not include any weight transfer overhead.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The impact of SSD-CPU and CPU-GPU transfer times is in particular crucial in
+    the LLM generation task, which involves sequential computations of all layers
+    for every token that requires transferring weights from SSD. To explore this further,
+    Figure [3](#S3.F3 "Figure 3 ‣ 3.4 Offloaded Inference Analysis ‣ 3 Case Study:
+    Offloading OPT-66B ‣ ENDOR: Hardware-Friendly Sparse Format for Offloaded LLM
+    Inference") illustrates the timeline for an SSD-mapped OPT layer, showing how
+    weight transfer dominates the execution time. Such a proportionate weight transfer
+    latency is a result of the small CPU-SSD bandwidth shown in Figure [1](#S3.F1
+    "Figure 1 ‣ 3.2 System Specification ‣ 3 Case Study: Offloading OPT-66B ‣ ENDOR:
+    Hardware-Friendly Sparse Format for Offloaded LLM Inference"). Some offloading
+    frameworks, such as Deepspeed [[2](#bib.bibx2)], overlap computation with loading.
+    However, this has little effect as computation takes only a minute portion of
+    execution time, rendering overlapping ineffective.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/6e682e6cc8fc55890faef08def2777c1.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Timeline of an SSD-mapped OPT layer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '3.5 Overcoming Bottleneck: Unstructured Sparsity Compression'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Our two candidates for reducing the identified bottleneck weight transfer latency
+    were quantization and pruning, which can reduce the size of weight parameters.
+    In theory, reducing weight size would lead to a proportionate reduction of weight
+    transfer latency. However, weight pruned in an unstructured pattern must be stored
+    as a whole matrix, and the reduction of weight elements is not reflected in the
+    weight transfer latency. For efficient LLM deployment, this constrains pruning
+    pattern to make a structure, such as row-wise or 2:4 sparsity, which seriously
+    deteriorates model accuracy compared to an unstructured pattern. Therefore, we
+    propose a novel method to reflect the reduction of weight element to actual reduction
+    in weight size by efficiently compressing the unstructured sparsity pattern. This
+    retains the model accuracy while increasing the practicality and applicability
+    of pruning techniques. We detail our sparse format in Section [4.1](#S4.SS1 "4.1
+    Endor Sparse Format ‣ 4 Endor Sparse Format and Pruning ‣ ENDOR: Hardware-Friendly
+    Sparse Format for Offloaded LLM Inference"). As the realms of quantization and
+    pruning evolve, achieving good performance with even lower precision or with higher
+    pruning ratio, our work aims to even the comparison ground by providing a way
+    for LLM pruning to yield reduced memory footprint. We also design our method with
+    the potential for joint application of pruning and quantization in mind. We explore
+    the Endor’s effectiveness in jointly applying quantization and pruning in Section [5.4](#S5.SS4
+    "5.4 Joint Application with Quantization ‣ 5 Evaluation ‣ ENDOR: Hardware-Friendly
+    Sparse Format for Offloaded LLM Inference").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 1 The compression algorithm. From a 50% pruned weight matrix $\mathbf{W}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:Let $\mathbf{W}$ to $m$ to $n$8:              Append 1 to $\mathbf{b}_{i}$11:         end if12:     end for13:end for
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 2 The decompression algorithm. To occupy a row of decompressed weight
+    matrix $\mathbf{W}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:Let $\mathbf{W}$ is an array of non-zero elements3:Assume $\mathbf{b}$6:     for $j=1$9:              $k\leftarrow
+    k+1$10:         end if11:     end for12:end for
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Endor Sparse Format and Pruning
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 4.1 Endor Sparse Format
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/13830eeba44e5fb7283081bec4c6aaa1.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: Sparse format for offloaded model weights. Bitmap is stored as a
+    1-d vector.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our proposed method reduces the size of each layer weight, previously unexplored
+    due to the unstructured nature of sparse patterns. As Figure [4](#S4.F4 "Figure
+    4 ‣ 4.1 Endor Sparse Format ‣ 4 Endor Sparse Format and Pruning ‣ ENDOR: Hardware-Friendly
+    Sparse Format for Offloaded LLM Inference") shows, for every sparse weight matrix
+    derived from pruning, we save only the non-zero elements and express the location
+    of non-zero elements as a binary array, or a bitmap. In terms of compression ratio,
+    the bitmap is a minimal addition to the weight size that is easily amortized by
+    the much larger size reduction of removing zero-valued elements, reaching a compression
+    ratio close to pruning ratio. We pruned our workload OPT-66B to 50% sparsity with
+    pruning algorithm from Wanda [[20](#bib.bibx20)]. Each fully connected layer weight
+    is a $9,216\times 36,864$ binary matrix of size 42MB, reducing the overall weight
+    size to 56% of the original size. The reduction of weight size leads to a proportionate
+    reduction of weight transfer latency.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Compression. Algorithm [1](#alg1 "Algorithm 1 ‣ 3.5 Overcoming Bottleneck:
+    Unstructured Sparsity Compression ‣ 3 Case Study: Offloading OPT-66B ‣ ENDOR:
+    Hardware-Friendly Sparse Format for Offloaded LLM Inference") presents the compression
+    of the pruned weight matrix into the proposed sparse format. Compression of weights
+    and their placement into storage devices are performed before inference time;
+    thus, it is irrelevant to inference overhead.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Decompression. Algorithm [2](#alg2 "Algorithm 2 ‣ 3.5 Overcoming Bottleneck:
+    Unstructured Sparsity Compression ‣ 3 Case Study: Offloading OPT-66B ‣ ENDOR:
+    Hardware-Friendly Sparse Format for Offloaded LLM Inference") presents the decompression
+    of the sparse format. Decompression is performed on the GPU during inference time
+    after the weight in sparse format is loaded from storage to host CPU memory and
+    then from host CPU memory to GPU memory. We found GPU is more suitable to leverage
+    the parallel nature of the decompression algorithm at a lower latency than decompression
+    on CPU. We have studied its effect in detail in Section [5](#S5 "5 Evaluation
+    ‣ ENDOR: Hardware-Friendly Sparse Format for Offloaded LLM Inference").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Joint Application with Quantization and Activation Sparsity
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Endor sparse format for pruned LLM is orthogonal to other optimization methods
+    of offloaded inference, mainly quantization and activation sparsity. Acknowledging
+    the potential of jointly applying pruning and quantization, Endor reduces the
+    weight transfer latency of pruned LLM regardless of its bit-width. However, the
+    compression rate will decrease. For example, when an 8-bit quantization is applied,
+    a weight matrix of $9,216\times 36,864$ is naively of size 340MB. Applying Endor
+    sparse format with 50% pruning would yield the isolated non-zero values to 170MB
+    and the bitmap 42MB. Overall, the compression rate is now 62% as compared to 56%
+    in a 16-bit weight matrix. We measure the speedup of quantization with Endor sparse
+    format in Section [5.4](#S5.SS4 "5.4 Joint Application with Quantization ‣ 5 Evaluation
+    ‣ ENDOR: Hardware-Friendly Sparse Format for Offloaded LLM Inference"). Leveraging
+    activation sparsity involves a small network that predicts which neurons will
+    be non-zero after the ReLU activation function. Using this prediction, the rows
+    of up projection weight matrix and columns of down projection weight matrix is
+    selectively loaded. Because Endor preserves the non-zero values of the pruned
+    weight and expresses its position with a bitmap, a minimal bitmap processing can
+    determine the non-zero values to selectively load.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Evaluation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We used the LLM model and system configuration from Section [3.1](#S3.SS1 "3.1
+    Workload Specification ‣ 3 Case Study: Offloading OPT-66B ‣ ENDOR: Hardware-Friendly
+    Sparse Format for Offloaded LLM Inference") for evaluation. Additionally, we measure
+    the effect of Endor on Llama2-70B on Appendix [C](#A3 "Appendix C Endor on Llama2-70B
+    ‣ ENDOR: Hardware-Friendly Sparse Format for Offloaded LLM Inference").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.1 Compressed Offloaded Inference
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To evaluate Endor, we first compare Endor’s performance with baseline, decompression
+    on CPU, and ZSTD compression on a single linear operation of OPT. We then compare
+    Endor’s effect with baseline on the inference pass of entire OPT-66B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Per-Operation Speedup. Figure [5](#S5.F5 "Figure 5 ‣ 5.1 Compressed Offloaded
+    Inference ‣ 5 Evaluation ‣ ENDOR: Hardware-Friendly Sparse Format for Offloaded
+    LLM Inference") shows the offloaded execution of OPT layer’s fully-connected operation
+    using our novel sparse format compression. Compared to the baseline offloaded
+    inference using dense weight matrices, this compression method, which significantly
+    reduces the weight size, leads to a 1.67$\times$ speedup of both storage to CPU
+    and CPU to GPU weight transfer. Negligible latency added by decompression on GPU
+    is far outweighed by the reduction of weight transfer overhead. Breakdown of other
+    operations of OPT-66B for each methods are listed in Appendix [A](#A1 "Appendix
+    A Endor Per-Operation Breakdown ‣ ENDOR: Hardware-Friendly Sparse Format for Offloaded
+    LLM Inference").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/ca1097bad0b8a81a2cbf8109ca2a5732.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: Timeline of offloaded execution of fully-connected operation'
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\bullet$  Decompression on CPU vs GPU – We compare the effect of decompression
+    performed on CPU and GPU. On CPU, decompression is parallelized with multiprocessing
+    on 12 CPU cores. Identical with Endor, reduced weight size reduces the dominant
+    weight transfer overhead from storage to CPU. Even with multiprocessing, the decompression
+    overhead overshadowed the weight transfer reduction. Also, because decompression
+    is performed on CPU, there is no reduction in weight transfer overhead from CPU
+    to GPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: $\bullet$  Comparison with ZSTD – To compare Endor latency with a compression
+    format, we implemented an offloaded inference that uses offloaded weights compressed
+    with ZSTD. During inference, zstandard executable is used to perform decompression
+    on CPU. As shown on Figure 5, our sparse format compression outperforms ZSTD.
+    While ZSTD achieves a similar compression ratio by exploring bit-level patterns
+    of a pruned weight matrix (i.e., 58%), the decompression overhead itself exceeds
+    the benefit gained from reduced weight transfer overhead. On the other hand, Endor
+    sparse format can be decompressed much faster. Endor decompression overhead is
+    smaller than just the reduction of CPU-GPU transfer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'End-to-end Speedup. We measure the execution time for single pass through OPT-66B
+    during text generation. For accurate comparison with dense offloaded inference,
+    we keep the same device mapping: Layers 0 to 4 on GPU, layers 5 to 12 on CPU,
+    and layers 13 to 63 on storage. For a single pass through OPT-66B, dense offloaded
+    inference takes 54s while Endor offloaded inference takes 35.8s, an overall 1.51$\times$
+    speedup.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: SSD-mapped layers see even more speedup of 1.64$\times$ speedup to baseline
+    offloaded inference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/057131337305540a82cb1ef78729cfbf.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: Execution time comparison of dense and Endor offloaded OPT layers
+    for SSD-mapped layers (on left) and CPU-mapped layers (on right).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In Figure [7](#S5.F7 "Figure 7 ‣ 5.1 Compressed Offloaded Inference ‣ 5 Evaluation
+    ‣ ENDOR: Hardware-Friendly Sparse Format for Offloaded LLM Inference") a, we present
+    a holistic comparison of each method for one OPT layer, which consists of the
+    linear operations previously discussed. Using direct transfer, an SSD-offloaded
+    OPT layer sees a 2.03$\times$ speedup from a dense OPT layer. Figure [7](#S5.F7
+    "Figure 7 ‣ 5.1 Compressed Offloaded Inference ‣ 5 Evaluation ‣ ENDOR: Hardware-Friendly
+    Sparse Format for Offloaded LLM Inference") b shows how the cumulative speedup
+    is achieved in an offloaded Llama Layer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f876990a91cadcbaabf124e79bc61800.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7: Timeline Comparison of SSD-mapped (a) OPT Layer and (b) Llama2 Layer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.2 Direct SSD-GPU Transfer
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: As decompression is done on GPU, SSD-offloaded weights can be read directly
+    into GPU via Direct Memory Access for supported GPUs. We utilize NVIDIA GPUDirect
+    Storage to implement direct SSD-GPU transfer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/2cfe90b5bfe6edaaba357c5012b7a2a0.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8: Timeline comparison of a fully-connected operation with SSD-GPU direct
+    transfer'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As shown in Figure [8](#S5.F8 "Figure 8 ‣ 5.2 Direct SSD-GPU Transfer ‣ 5 Evaluation
+    ‣ ENDOR: Hardware-Friendly Sparse Format for Offloaded LLM Inference"), weight
+    transfer latency of an SSD-offloaded linear operation is further reduced. Instead
+    of a two step transfer from SSD to CPU then from CPU to GPU, weight is loaded
+    with a single transfer through the PCIe bus. This achieves a similar to slightly
+    faster bandwidth compared to SSD-CPU transfer, effectively removing the CPU-GPU
+    transfer latency. End-to-end, a single pass through OPT-66B took 24.2s. This is
+    a 1.29$\times$ speedup from naive offloaded inference. We include additional measurements
+    of direct SSD-GPU transfer in Appendix [B](#A2 "Appendix B Direct SSD-GPU Transfer
+    ‣ ENDOR: Hardware-Friendly Sparse Format for Offloaded LLM Inference").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.3 Accuracy
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Because Endor sparse format retains the exact non-zero values and the positions
+    of the pruned weight matrix, it preserves the performance of the utilized pruning
+    method. For our workload OPT-66B pruned with SparseGPT [[11](#bib.bibx11)], we
+    measured 9.34 perplexity on the WikiText [[17](#bib.bibx17)] validation set, which
+    was very close to 9.33 perplexity measure with the dense model. When 2:4 structured
+    sparsity is enforced, we measure the deteriorated perplexity of 10.07, highlighting
+    the value of compressing unstructured sparsity. While we employed SparseGPT [[11](#bib.bibx11)]
+    to prune OPT-66B, we use Wanda to prune Llama2-70B. Dense baseline achieved 3.12
+    perplexity on WikiText dataset. Unstructured pruning achieved 3.97 perplexity,
+    while 2:4 sparsity achieved 5.20 perplexity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.4 Joint Application with Quantization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'To validate Endor’s applicability, we jointly employ Endor on an offloaded
+    inference with SmoothQuant [[23](#bib.bibx23)] 8-bit quantization, using the pruning
+    of Wanda [[20](#bib.bibx20)]. Figure [9](#S5.F9 "Figure 9 ‣ 5.4 Joint Application
+    with Quantization ‣ 5 Evaluation ‣ ENDOR: Hardware-Friendly Sparse Format for
+    Offloaded LLM Inference") shows that Endor effectively reduces the weight transfer
+    latency to achieve a 1.48$\times$ speedup. Note that the reduction of weight transfer
+    latency is smaller compared to float16, reflecting the reduced compression ratio.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/746ffcaa7dba62252eb411fa31401d41.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 9: Timeline comparison of a fully-connected operation with INT8 quantization'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.5 Extent of Support
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The current implementation of Endor supports OPT-66B [[25](#bib.bibx25)] and
+    Llama2-70 [[21](#bib.bibx21)]. While it offers pruning implementation of SparseGPT [[11](#bib.bibx11)]
+    and  [[20](#bib.bibx20)], weight externally pruned with any pruning mechanism
+    is also supported. It supports any sparsity pattern and sparsity ratio. It can
+    be easily extended to support various LLMs available in the Huggingface Hub. We
+    plan to open source Endor to stimulate a broader usage of LLM offloaded inference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Conclusions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This work analyzed the offloaded inference of LLMs, a crucial solution to the
+    democratization of LLMs that enables execution on constrained platforms. We identified
+    the weight transfer between storage and compute elements as the bottleneck in
+    end-to-end latency. We proposed a sparse format that compressed pruned LLM weights
+    to reduce the memory footprint, effectively reducing the weight transfer overhead
+    with minimal decompression overhead. We showed that our sparse format compression
+    can be applied to existing optimization methods such as quantization and activation
+    sparsity for maximum speedup. This solution can be applied on production-level
+    constrained platforms such as phones, robots, and personal assistants. Additionally,
+    this line of work reduces the weight transfer overhead to the scale of computation,
+    therefore allowing computation and weight transfer to overlap. This paves the
+    way for a complete overlap of computation with weight transfer that will result
+    in the offloaded inference latency match a naive model-in-GPU inference latency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7 Discussion and Future Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Joint Application of Multiple Optimizations. We evaluated Endor’s compatibility
+    with different optimization methods in terms of speedup. Further studies must
+    be done to ensure that joint application of multiple optimizations retains the
+    accuracy of dense LLMs. As Endor retains the practicality of unstructured sparse
+    patterns for LLM pruning, we hope Endor stimulates robust research in efficient
+    LLM deployment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Offloading to Multiple SSDs. Weight transfer latency from SSD is constrained
+    to the read bandwidth of the SSD. While the fastest SSDs provide read bandwidths
+    up to 7000 MB/s, it is far below the achievable read bandwidth of both CPU and
+    PCIe bus even after utilizing SSD-GPU direct transfer. Higher bandwidth is achievable
+    by utilizing multiple SSDs. As Endor decompression is easily parallelizable, an
+    efficient mapping of LLM weights to multiple SSDs will significantly reduce the
+    weight transfer latency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Efficient Compute Unit. While our sparse format effectively reduces the amount
+    of data transferred, its computation on GPU is done in a full dense matrix fashion,
+    overlooking the possible reduced amount of computation. Nvidia GPUs support the
+    computation of fine-grained sparsity but lack the support for a fully unstructured
+    sparsity. When valid computations are correctly identified, the same computation
+    throughput can be achieved with a smaller number of compute elements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[1] Keivan Alizadeh et al. “Llm in a flash: Efficient large language model
+    inference with limited memory” In *arXiv preprint arXiv:2312.11514*, 2023'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[2] Reza Yazdani Aminabadi et al. “Deepspeed-Inference: Enabling Efficient
+    Inference of Transformer Models at Unprecedented Scale” In *Proceedings of the
+    International Conference on High Performance Computing, Networking, Storage and
+    Analysis*, 2022'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[3] Davis Blalock, Jose Javier Gonzalez Ortiz, Jonathan Frankle and John Guttag.
+    “What is the state of neural network pruning?” In *Proceedings of Machine Learning
+    and Systems*, 2020'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[4] Tom Brown et al. “Language models are few-shot learners.” In *arXiv preprint
+    arXiv:2307.09288*, 2020'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[5] Jungwook Choi et al. “Pact: Parameterized clipping activation for quantized
+    neural networks.” In *arXiv preprint arXiv:1805.06085*, 2018'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[6] Matthieu Courbariaux, Yoshua Bengio and Jean-Pierre David “Binaryconnect:
+    Training deep neural networks with binary weights during propagations.” In *Proceedings
+    of the 28th International Conference on Neural Information Processing Systems*,
+    2015'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[7] Tim Dettmers, Mike Lewis, Younes Belkada and Luke Zettlemoyer “LLM.int8():
+    8-bit Matrix Multiplication for Transformers at Scale.” In *Proceedings of the
+    36th International Conference on Neural Information Processing Systems*, 2022'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[8] Tim Dettmers et al. “SpQR: A Sparse-Quantized Representation for Near-Lossless
+    LLM Weight Compression” In *Proceedings of the 12th International Conference on
+    Learning Representations*, 2024'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[9] Zhen Dong et al. “Hawq: Hessian aware quantization of neural networks with
+    mixed-precision.” In *Proceedings of the IEEE/CVF International Conference on
+    Computer Vision*, 2019'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[10] Jonathan Frankle and Carbin Michael. “The lottery ticket hypothesis: Finding
+    sparse, trainable neural networks.” In *Proceedings of the 7th International Conference
+    on Learning Representations*, 2019'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[11] Elias Frantar and Dan Alistarh “Sparsegpt: Massive language models can
+    be accurately pruned in one-shot” In *Proceedings of the 40th International Conference
+    on Machine Learning*, 2023'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[12] Elias Frantar, Saleh Ashkboos, Torsten Hoefler and Dan Alistarh “GPTQ:
+    Accurate Post-Training Quantization for Generative Pre-trained Transformers” In
+    *Proceedings of the 11th International Conference on Learning Representations*,
+    2023'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[13] Song Han, Jeff Pool, John Tran and William J Dally. “Learning both weights
+    and connections for efficient neural networks.” In *Proceedings of the 28th International
+    Conference on Neural Information Processing Systems*, 2015'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[14] “Hugging Face Accelerate” [Accessed: April-28th-2024], [https://huggingface.co/docs/accelerate/en/index](https://huggingface.co/docs/accelerate/en/index)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[15] Namhoon Lee, Thalaiyasingam Ajanthan and Philip H. S. Torr. “Snip: Single-shot
+    network pruning based on connection sensitivity.” In *Proceedings of the 6th International
+    Conference on Learning Representations*, 2018'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[16] “LZ4” [Accessed: May-22th-2024], [https://lz4.org/](https://lz4.org/)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[17] Stephen Merity, Caiming Xiong, James Bradbury and Richard Socher. “Pointer
+    sentinel mixture models.” In *arXiv preprint arXiv:1609.07843*, 2016'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[18] Asit Mishra et al. “Accelerating Sparse Deep Neural Networks.” In *arXiv
+    preprint arXiv:2104.08378*, 2021'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[19] Ying Sheng et al. “FlexGen: high-throughput generative inference of large
+    language models with a single GPU” In *Proceedings of the 40th International Conference
+    on Machine Learning*, 2023'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[20] Mingjie Sun, Zhuang Liu, Anna Bair and J. Zico Kolter “A Simple and Effective
+    Pruning Approach for Large Language Models” In *Proceedings of the 12th International
+    Conference on Learning Representations*, 2024'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[21] Hugo Touvron et al. “Llama 2: Open Foundation and Fine-Tuned Chat Models.”
+    In *arXiv preprint arXiv:2307.09288*, 2023'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[22] Hanrui Wang, Zhekai Zhang and Song Han. “SpAtten: Efficient Sparse Attention
+    Architecture with Cascade Token and Head Pruning” In *Proceedings of the 27th
+    IEEE International Symposium on High-Performance Computer Architecture*, 2021'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[23] Guangxuan Xiao et al. “SmoothQuant: Accurate and efficient post-training
+    quantization for large language models” In *Proceedings of the 40th International
+    Conference on Machine Learning*, 2023'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[24] Zhewei Yao et al. “ZeroQuant: Efficient and Affordable Post-Training Quantization
+    for Large-Scale Transformers.” In *Proceedings of the 36th International Conference
+    on Neural Information Processing Systems*, 2022'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[25] Susan Zhang et al. “OPT: Open Pre-trained Transformer Language Models.”
+    In *arXiv preprint arXiv:2205.01068*, 2022'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[26] “Zstandard” [Accessed: May-22th-2024], [http://facebook.github.io/zstd/](http://facebook.github.io/zstd/)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Endor Per-Operation Breakdown
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Offloaded operations in OPT-66B can be categorized by the weight matrix shape.
+    In Section [5.1](#S5.SS1 "5.1 Compressed Offloaded Inference ‣ 5 Evaluation ‣
+    ENDOR: Hardware-Friendly Sparse Format for Offloaded LLM Inference"), we discussed
+    the speedup on fully-connected operation with weight matrix $9,216\times 36,864$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure [10](#A1.F10 "Figure 10 ‣ Appendix A Endor Per-Operation Breakdown ‣
+    ENDOR: Hardware-Friendly Sparse Format for Offloaded LLM Inference") shows the
+    offloaded inference of the SSD-mapped linear operation from the attention sub-layer.
+    Compressing the weight with Endor sparse format yields the reduction of weight
+    transfer latency near proportionate to the compression ratio with minimal decompression
+    overhead performed on GPU. Figure [11](#A1.F11 "Figure 11 ‣ Appendix A Endor Per-Operation
+    Breakdown ‣ ENDOR: Hardware-Friendly Sparse Format for Offloaded LLM Inference")
+    shows the offloaded inference of the SSD-mapped linear operation from fully-connected
+    sub-layer. Both linear operations inside the fully-connected sub-layer, each with
+    weight matrix sized $9,216\times 36,864$ shows the same latency.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e2f9e938f481f7ebca840683afea5d84.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 10: Timeline of SSD-mapped attention linear operation (weight size:
+    $9216\times 9216$).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/6efcd9c860234b30ceb9d2c7c28c7fbb.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 11: Timeline of SSD-mapped fully-connected linear operation (weight
+    size: $36864\times 9216$).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B Direct SSD-GPU Transfer
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To accompany the measurements of Section [5.2](#S5.SS2 "5.2 Direct SSD-GPU
+    Transfer ‣ 5 Evaluation ‣ ENDOR: Hardware-Friendly Sparse Format for Offloaded
+    LLM Inference"), we provide additional measurements of applying direct SSD-GPU
+    transfer on offloaded operation from the attention sub-layer. Figure [12](#A2.F12
+    "Figure 12 ‣ Appendix B Direct SSD-GPU Transfer ‣ ENDOR: Hardware-Friendly Sparse
+    Format for Offloaded LLM Inference") shows that directly loading offloaded weight
+    into GPU bypassing CPU removes the latency of CPU-GPU transfer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/9e82795e279b1501ff720bfb7cfe4657.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 12: Timeline of SSD-mapped attention linear operation using SSD-GPU
+    Transfer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix C Endor on Llama2-70B
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: C.1 Workload Specification
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We validate Endor sparse format for Llama2-70B in float16 precision. Llama2-70B
+    consists of 80 Llama layers. Each Llama layer is divided into an attention sub-layer
+    and a fully-connected sub-layer. The attention sub-layer contains four linear
+    operations: key projection, query projection, value projection, and output projection.
+    However, one difference from OPT-66B is that Llama uses group query attention.
+    While query projection and output projection uses weight matrix of size $8,192\times
+    8,192$. For offloaded inference, we mapped 6 Llama layers on GPU, 10 layers on
+    CPU, and 64 layers on SSD.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: C.2 Per-Operation Speedup
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We present Endor’s effect on the three categories of linear operations, of
+    weight matrix size $1,024\times 8,192$. This time, we present the timeline of
+    dense baseline, Endor, and Endor with direct SSD-GPU transfer. While the weight
+    latency differs with the size of weight transferred, the effect of Endor is evident
+    in all operation in both attention sub-layer (Figure [13](#A3.F13 "Figure 13 ‣
+    C.2 Per-Operation Speedup ‣ Appendix C Endor on Llama2-70B ‣ ENDOR: Hardware-Friendly
+    Sparse Format for Offloaded LLM Inference"), Figure [14](#A3.F14 "Figure 14 ‣
+    C.2 Per-Operation Speedup ‣ Appendix C Endor on Llama2-70B ‣ ENDOR: Hardware-Friendly
+    Sparse Format for Offloaded LLM Inference")) and fully-connected sub-layer (Figure [15](#A3.F15
+    "Figure 15 ‣ C.2 Per-Operation Speedup ‣ Appendix C Endor on Llama2-70B ‣ ENDOR:
+    Hardware-Friendly Sparse Format for Offloaded LLM Inference")). Endor effectively
+    tackles the dominant weight transfer latency of offloaded inference by half with
+    minimal decompression overhead. With GPU support, SSD-GPU direct transfer further
+    reduces the latency by combining the SSD-CPU and CPU-GPU weight transfer into
+    a single transaction.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/4f30c8e0c3410b4b5b51c10018bc4f01.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 13: Timeline of SSD-mapped attention linear operation (weight $1,024\times
+    8,192$).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/8ac22cc748ad62c4f770de4f03c91d31.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 14: Timeline of SSD-mapped attention linear operation (weight $8,192\times
+    8,192$).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/074fc50172a0e8ea482c9b3be0cf8406.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 15: Timeline of SSD-mapped fully-connected linear operation (weight
+    $28,672\times 8,192$).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: C.3 End-to-End Speedup
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We measured the execution time for single pass through Llama2-70B during text
+    generation. For accurate comparion with dense offloaded inference, we kept the
+    same device mapping: Layers 0 to 5 on GPU, layers 6 to 15 on CPU, and layers 16
+    to 79 on SSD.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For a single pass through Llama2-70B, dense offloaded inference took 57s while
+    Endor offloaded inference took 35.2s, an overall 1.62$\times$ speedup.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Weight compression with enables more layer weights to reside on CPU. Under the
+    same DRAM footprint, now 20 layers can be CPU-mapped. For a single pass through
+    Llama2-70B, this took 32s without direct transfer and 24s with direct transfer,
+    each an overall 1.78$\times$ speedup.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/919e755e1648b61dd8a1fdec58bacb5d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 16: Execution time comparison of dense and Endor offloaded Llama layers
+    for SSD-mapped layers (on left) and CPU-mapped layers (on right).'
+  prefs: []
+  type: TYPE_NORMAL

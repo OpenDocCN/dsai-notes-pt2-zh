@@ -1,0 +1,1087 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 19:01:50'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'UIO-LLMs: Unbiased Incremental Optimization for Long-Context LLMs'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2406.18173](https://ar5iv.labs.arxiv.org/html/2406.18173)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Wenhao Li¹, Mingbao Lin², Yunshan Zhong¹, Shuicheng Yan², Rongrong Ji¹
+  prefs: []
+  type: TYPE_NORMAL
+- en: ¹ Xiamen University ² Skywork AI
+  prefs: []
+  type: TYPE_NORMAL
+- en: wenhaoli@stu.xmu.edu.cn, linmb001@outlook.com
+  prefs: []
+  type: TYPE_NORMAL
+- en: zhongyunshan@stu.xmu.edu.cn, shuicheng.yan@kunlun-inc.com, rrji@xmu.edu.cn Corresponding
+    Author
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Managing long texts is challenging for large language models (LLMs) due to limited
+    context window sizes. This study introduces UIO-LLMs, an unbiased incremental
+    optimization approach for memory-enhanced transformers under long-context settings.
+    We initially conceptualize the process as a streamlined encoder-decoder framework
+    where the weights-shared encoder and decoder respectively encapsulate a context
+    segment into memories and leverage these memories to predict outputs of the subsequent
+    segment. Subsequently, by treating our memory-enhanced transformers as fully-connected
+    recurrent neural networks (RNNs), we refine the training process using the Truncated
+    Backpropagation Through Time (TBPTT) algorithm, which incorporates innovative
+    incremental optimization techniques. These techniques not only diminish time complexity
+    but also address the bias in gradient computation through an unbiased optimization
+    process. UIO-LLMs successfully handle long context, such as extending the context
+    window of Llama2-7b-chat from 4K to 100K tokens with minimal 2% additional parameters,
+    while keeping the inference cost nearly linear as context length increases. Our
+    project is at [https://github.com/wenhaoli-xmu/UIO-LLMs](https://github.com/wenhaoli-xmu/UIO-LLMs).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*K*eywords Context compression  $\cdot$ Long-context LLMs'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The long-context reasoning capabilities of large language models (LLMs) [[1](#bib.bib1),
+    [2](#bib.bib2), [3](#bib.bib3)] are garnering increasing interest. The context
+    window of LLMs can be likened to a computer’s memory, with a larger capacity offering
+    greater flexibility and possibilities for developers. This enables them to integrate
+    techniques such as retrieval-augmented generation (RAG) [[4](#bib.bib4)] and create
+    various downstream applications such as question answering and reading comprehension [[5](#bib.bib5)].
+    However, limited computational resources make it almost infeasible to pre-train
+    models on lengthy texts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Prevalent approach involves initially pretraining models using short texts and
+    extending their ability to handle lengthy text through fine-tuning. It has been
+    employed in LongChat [[6](#bib.bib6)], LongLora [[7](#bib.bib7)], Positional Interpolation [[8](#bib.bib8)],
+    PoSE [[9](#bib.bib9)], Yarn [[10](#bib.bib10)], *etc*. However, the quadratic
+    complexity inherent in the attention mechanism continues to pose a challenge to
+    efficiency during the inference stage when processing lengthy texts. In addition
+    to these fine-tuning-based methods, another strategy involves implementing suitable
+    modifications during the inference stage to augment the effective context window
+    size of the model. These tactics typically involve attention pruning, such as
+    Streaming LLM [[11](#bib.bib11)], which manages the number of tokens by retaining
+    only the nearest KV caches and the foremost KV caches. Nonetheless, for these
+    pruning-based methods, the information from discarded tokens becomes difficult
+    to utilize, resulting in varying degrees of performance decline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/39b509f7b84d85cd81610ed103048d4b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Overall encoder-decoder architecture of our UIO-LLMs, initially splitting
+    the text into multiple segments of length $l$-length segments, generating memory.
+    Then, we merge memory with the next segment, for further processing by the decoder.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this paper, we examine and recognize that transformer models [[12](#bib.bib12)]
+    typically maintain a complete set of historical information attributed to the
+    attention mechanism; conversely, recurrent neural networks (RNNs) are characterized
+    by their retention of distilled historical insights, a consequence of their sequential
+    data processing that emphasizes recent information in decision-making processes.
+    These two architectures exhibit contrasting features in this respect. Certain
+    techniques, such as Performer [[13](#bib.bib13)] and Linear Transformers [[14](#bib.bib14)],
+    modify the attention computation sequence by employing kernel approaches [[15](#bib.bib15),
+    [16](#bib.bib16)]. They compute the outer products of keys and values, accumulating
+    them into a large matrix for data compression. This transforms the transformer
+    into an RNN-like model that compresses all past information, weakening its ability
+    to handle long-term dependencies. Balancing between storing comprehensive (transformer)
+    and condensed (RNN) historical data is possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this study, we propose the UIO-LLMs method, as shown in Figure [1](#S1.F1
+    "Figure 1 ‣ 1 Introduction ‣ UIO-LLMs: Unbiased Incremental Optimization for Long-Context
+    LLMs"), which leverages the decoder-only LLMs as a context compressor. Specifically,
+    the context is divided into segments, each of which is appended with multiple
+    “<mem>” tokens at its end. After the forward propagation through the encoder,
+    the activation of the “<mem>” tokens have distilled contextual information, effectively
+    forming a compact and informative memory representation. This representation can
+    be transferred to the decoder as additional KV caches, via a transfer head consisting
+    of two projection matrices. To minimize the introduction of additional parameters,
+    we leverage LoRA [[17](#bib.bib17)] to fine-tune the encoder and the transfer
+    head. This results in a mere 2% increase in parameters for Llama2-7b-chat [[18](#bib.bib18)].'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Regarding optimization, the interconnection of memory segments forms a structure
+    akin to a fully-connected RNN. Consequently, Back Propagation Through Time (BPTT)
+    is essential for optimization. However, it incurs a linear time and storage overhead
+    that scales with the length of the input text. Hence, our research is centered
+    on enhancing the efficiency of the BPTT algorithm. To this end, we introduce an
+    incremental TBPTT algorithm, which is an adaptation of the Truncated BPTT method [[19](#bib.bib19)],
+    and significantly reduces the time overhead by reordering the computation process
+    in an incremental manner. Furthermore, despite the enhanced efficiency of incremental
+    TBPTT, the inherent biased gradient estimation problem associated with the localized
+    TBPTT window remains a hurdle for learning long-term dependencies. To overcome
+    this challenge, we have further developed the Unbiased Incremental Optimization
+    algorithm. This algorithm ensures unbiased gradient estimation, facilitating the
+    training on texts of up to 100K in length with a constant compression ratio.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Notably, our UIO-LLMs surpass the performance and efficiency of prior memory-enhanced
+    transformers, including RMT [[20](#bib.bib20)], AutoCompressor [[21](#bib.bib21)],
+    Gist Tokens [[22](#bib.bib22)], and Activation Beacon [[23](#bib.bib23)]. It surpasses
+    AutoCompressor on QA and summarization tasks without compromising long text generation
+    quality. As for Activation Beacon, our model reduces trainable parameters, enables
+    parallel compression, and lowers training costs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Related Works
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Memory-Enhanced Transformers. Recent studies highlight memory-enhanced transformers
+    for long text extrapolation. Pioneering work, RMT [[20](#bib.bib20)], combines
+    RNN with transformer for segment-level recurrence. AutoCompressor [[21](#bib.bib21)]
+    improves this by using a fully-connected RNN, though its LongBench [[5](#bib.bib5)]
+    performance can be enhanced. Activation Beacon [[23](#bib.bib23)] introduces two
+    key improvements of direct migration of memory activation from the encoder to
+    the decoder and a dedicated multi-head attention (MHA) module for memory. The
+    BABILong [[24](#bib.bib24)] study shows that the GPT-2 [[25](#bib.bib25)] + RMT
+    model outperforms advanced models like GPT-4 [[26](#bib.bib26)] and GPT-3.5 in
+    handling extensive contextual information, underscoring the potential of memory-enhanced
+    transformers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Context Distillation. Context distillation has emerged as an effective approach
+    for knowledge compression and transfer. Early studies, such as Wingate’s research [[27](#bib.bib27)],
+    focus on compressing prompts by replacing them with shorter learnable prompts.
+    This method laid the foundation for subsequent research. Gist Tokens [[22](#bib.bib22)]
+    advances this concept by training general-purpose summary tokens, allowing prompt
+    compression without separate training. We utilize a similar approach with learnable
+    prompts for context compression. The ICAE [[28](#bib.bib28)] model builds upon
+    Gist Tokens, incorporating LoRA fine-tuning and an auto-encoding task for training.
+    With a four-times compression ratio, ICAE demonstrates near-perfect input reconstruction
+    accuracy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unbiased BPTT Approximation. Training RNNs often relies on the resource-intensive
+    Back-Propagation Through Time method (BPTT) [[29](#bib.bib29)]. Researchers have
+    proposed unbiased approximations like NoBackTrack [[30](#bib.bib30)] and UORO [[31](#bib.bib31)]
+    to reduce memory and compute overhead, opening new possibilities for efficient
+    sequence model training. ARTBP [[32](#bib.bib32)] mitigates noise by using a flexible
+    memory approach and incorporating compensatory factors, maintaining accuracy and
+    efficiency for long sequences. While these methods have advanced sequence model
+    research, they are not directly applicable to memory-enhanced transformers due
+    to their focus on regular RNNs and lack of consideration for specific constraints
+    in memory-enhanced transformers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Methodology
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d67b14f730ffb1ac16556fc56a012355.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: We enhance the encoder’s summary ability by using LoRA fine-tuning
+    and adding a transfer head to each layer, which aligns the “<mem>” in each encoder
+    layer with its matching decoder layer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Overall Framework
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Figure [1](#S1.F1 "Figure 1 ‣ 1 Introduction ‣ UIO-LLMs: Unbiased Incremental
+    Optimization for Long-Context LLMs") showcases our proposed UIO-LLMs architecture,
+    which uses an encoder-decoder framework enhanced with “<mem>” tokens to capture
+    the preceding text’s essence. Additionally, we introduce a novel algorithm for
+    unbiased gradient estimation, enabling efficient training of memory-enhanced transformers
+    on long texts without significantly increasing parameters.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Streamlined Encoder-Decoder Architecture
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Our method features an encoder-decoder structure, allowing for independent
+    input handling by the encoder and parallel compression of lengthy texts. By partitioning
+    the long text $X$ at every layer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\begin{gathered}Q\leftarrow hW_{Q}^{\text{Lora}},\quad K\leftarrow hW_{K},\quad
+    V\leftarrow hW_{V}^{\text{Lora}},\quad O\leftarrow\text{MHA}(Q,K,V)W_{O},\end{gathered}$
+    |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $h$, which are then utilized to perform linear transformations on the
+    preserved memory activations of each layer. This process culminates in the generation
+    of the KV cache:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\begin{gathered}h_{\text{ord}},h_{\text{mem}}\leftarrow\text{split}(h),\quad
+    K_{\text{mem}}\leftarrow h_{\text{mem}}W_{K}^{\text{Lora*}},\quad V_{\text{mem}}\leftarrow
+    h_{\text{mem}}W_{V}^{\text{Lora*}}.\end{gathered}$ |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'To distinguish it from the previous notation, we employ the symbol * in Eq. ([2](#S3.E2
+    "In 3.2 Streamlined Encoder-Decoder Architecture ‣ 3 Methodology ‣ UIO-LLMs: Unbiased
+    Incremental Optimization for Long-Context LLMs")), which signifies the use of
+    a separate instance of LoRA. Subsequently, we integrate the newly obtained KV
+    cache, specifically $K_{\text{mem}}$ of the Llama2-7b-chat model [[18](#bib.bib18)],
+    contributing to an efficient and optimized system. Conversely, the Activation
+    Beacon [[23](#bib.bib23)] method significantly contributes to a more substantial
+    portion of the model’s trainable parameters, accounting for over 33% to fine-tune
+    each attention layer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the token-by-token generation stage, once the aggregate length of the generated
+    sequence $x_{k+1}^{\prime}$ to the encoder for further compression and remove
+    the associated KV caches from the decoder.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Unbiased Incremental Optimization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 3.3.1 Memory-Enhanced Transformers are Fully-Connected RNNs
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d098367c902a21da9cc41ad958086049.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Our memory-enhanced transformers can be conceptualized as fully-connected
+    RNNs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We realize, as illustrated in Figure [3](#S3.F3 "Figure 3 ‣ 3.3.1 Memory-Enhanced
+    Transformers are Fully-Connected RNNs ‣ 3.3 Unbiased Incremental Optimization
+    ‣ 3 Methodology ‣ UIO-LLMs: Unbiased Incremental Optimization for Long-Context
+    LLMs"), our memory-enhanced transformers are analogous to fully-connected RNNs,
+    the general formula of which can be defined as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $J_{t},m_{t}=f_{t}(x_{t},[m_{1},m_{2},...,m_{t-1}]\,&#124;\,\Theta),$
+    |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: where for each segment $t$, and $m_{t}$ represents all model parameters, encompassing
+    those of the encoder, decoder, and transfer head. Specifically, the decoder’s
+    parameters are frozen, while the encoder’s parameters and those of the transfer
+    head are fine-tuned using LoRA [[17](#bib.bib17)]. Notice the concept of utilizing
+    BPTT training for memory-enhanced transformers, treating them as RNNs and initially
+    focusing on the last-step memory, was pioneered in RMT [[20](#bib.bib20)]. We
+    extend by considering all prior memories, aligning more closely with fully-connected
+    RNNs that allow each time step to leverage the complete history of memories.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Optimization. To update $\Theta$, we first derive its gradient as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\nabla_{\Theta}=\sum_{t=1}^{T}{\frac{\partial J_{t}}{\partial\Theta}}=\sum_{t=1}^{T}\sum_{s=1}^{t-1}\Bigg{[}\frac{\partial
+    J_{t}}{\partial m_{s}}\cdot\frac{\partial m_{s}}{\partial\Theta}$ |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle+\sum_{\underset{\text{s.t.}\,s<s1<s2<t}{s1,s2}}\frac{\partial
+    J_{t}}{\partial m_{s2}}\cdot\frac{\partial m_{s2}}{\partial m_{s1}}\cdot\frac{\partial
+    m_{s1}}{\partial m_{s}}\cdot\frac{\partial m_{s}}{\partial\Theta}+\ldots\Bigg{]},$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: where $T$ time steps.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Accurately calculating $\frac{\partial J_{t}}{\partial\Theta}$. Thus, the gradient
+    is simplified as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Computing $\frac{\partial J_{t}}{\partial\Theta}$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: which reduces the quantity of multiplications from $t-1$, and preliminarily
+    reducing the complexity of each computational graph.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Eq. ([6](#S3.E6 "In 3.3.1 Memory-Enhanced Transformers are Fully-Connected
+    RNNs ‣ 3.3 Unbiased Incremental Optimization ‣ 3 Methodology ‣ UIO-LLMs: Unbiased
+    Incremental Optimization for Long-Context LLMs")) is conceptually straightforward
+    but faces two issues: high time complexity of $\mathcal{O}(T\cdot S)$, and an
+    unbiased increment optimization in Sec. [3.3.3](#S3.SS3.SSS3 "3.3.3 Unbiased Incremental
+    TBPTT ‣ 3.3 Unbiased Incremental Optimization ‣ 3 Methodology ‣ UIO-LLMs: Unbiased
+    Incremental Optimization for Long-Context LLMs"), to resolve the bias issue in
+    gradient estimation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3.2 Incremental TBPTT
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'After a careful observation, we realize multiplication with the term $\frac{\partial
+    m_{s}}{\partial\Theta}$ as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $I(t,s)=\begin{cases}1&amp;1\leq t\leq T,\ \text{and}\max(1,t-S)\leq s\leq
+    t-1,\\ 0&amp;\text{otherwise},\end{cases}$ |  | (7) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where the condition can be inverted and explicitly solved as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $I(t,s)=\begin{cases}1&amp;1\leq s\leq T,\ s+1\leq t\leq\min(T,s+S),\\
+    0&amp;\text{otherwise}.\end{cases}$ |  | (8) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'After applying this indicator function, we can rewrite Eq. ([6](#S3.E6 "In
+    3.3.1 Memory-Enhanced Transformers are Fully-Connected RNNs ‣ 3.3 Unbiased Incremental
+    Optimization ‣ 3 Methodology ‣ UIO-LLMs: Unbiased Incremental Optimization for
+    Long-Context LLMs")) after TBPTT as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\nabla_{\Theta}^{*}$ |  | (9) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: We relocate $\frac{\partial m_{s}}{\partial\Theta}$, thereby enhances the efficiency
+    of the overall algorithm.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/05402499bac2cbe3a6d7fdafccf88815.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: An illustration of our incremental gradient accumulation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Recalling the time step $t$, and $\frac{\partial J_{5}}{\partial m_{4}}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3.3 Unbiased Incremental TBPTT
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We continue enhancing the incremental TBPTT algorithm to achieve unbiased estimation
+    of BPTT, leveraging all historical time steps for gradient computation by cleverly
+    truncating the computational graph within a limited TBPTT window. Intuitively,
+    achieving such goal requires a streaming sampling method that ensures, for any
+    given time step $t$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (10) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $z_{t,s}^{(X_{i})}=\frac{\partial J_{t}^{(X_{i})}}{\partial m_{s}}\cdot\frac{\partial
+    m_{s}}{\partial\Theta}$, and $0$ otherwise. Therefore, the current goal becomes
+    to find a particular solution satisfying Eq. ([10](#S3.E10 "In 3.3.3 Unbiased
+    Incremental TBPTT ‣ 3.3 Unbiased Incremental Optimization ‣ 3 Methodology ‣ UIO-LLMs:
+    Unbiased Incremental Optimization for Long-Context LLMs")). Reservoir Sampling [[34](#bib.bib34)],
+    designed to uniformly extract data from a stream of unknown length, fulfills this
+    prerequisite. We arrive at the following conclusion, detail of which has been
+    showed in the supplementary material:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (11) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $S$, which can be used for the expectation of gradient estimation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle{\nabla_{\Theta}}^{(\mathbf{X})}=\mathbb{E}_{X_{i}\sim\mathbf{X}}\left[\sum_{t}\sum_{s=1}^{t-1}\mathbf{Z}_{t,s}^{(X_{i})}\right]$
+    |  | (12) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'which is equivalent to Eq. ([5](#S3.E5 "In 3.3.1 Memory-Enhanced Transformers
+    are Fully-Connected RNNs ‣ 3.3 Unbiased Incremental Optimization ‣ 3 Methodology
+    ‣ UIO-LLMs: Unbiased Incremental Optimization for Long-Context LLMs")) except
+    for a factor of $\min(1,S/(t-1))$, thereby enabling the incremental TBPTT algorithm
+    to achieve unbiased gradient estimation of Eq. ([5](#S3.E5 "In 3.3.1 Memory-Enhanced
+    Transformers are Fully-Connected RNNs ‣ 3.3 Unbiased Incremental Optimization
+    ‣ 3 Methodology ‣ UIO-LLMs: Unbiased Incremental Optimization for Long-Context
+    LLMs")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experimentation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 4.1 Evaluations and Setups
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Evaluations. We evaluate our UIO-LLMs on three key aspects: 1) Lossless compression
+    of long contexts, measured by an auto-encoding task with low reconstruction error [[28](#bib.bib28)];
+    2) Modeling of long contexts, assessed using perplexity on PG-19 [[35](#bib.bib35)]
+    and Proof-Pile [[36](#bib.bib36)] datasets; 3) Utilization of memories for downstream
+    tasks, tested on 12 datasets from LongBench [[5](#bib.bib5)], evaluating performance
+    in Single-Doc QA, Multi-Doc QA, and Summarization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setups. We use the Llama2-7b-chat model [[18](#bib.bib18)] with a context window
+    of 1K and compression ratios of 32 and 8\. A larger window improves performance
+    but raises training and inference costs. Trainable parameters include LoRA modules
+    in encoder and transfer head, plus “<mem>” tokens. All LoRA modules have a consistent
+    configuration of $r=128$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our training, upon 8 RTX 3090 GPUs, uses a combined dataset: The first, from
+    Activation Beacon [[23](#bib.bib23)], comprises RedPajama [[37](#bib.bib37)] and
+    LongAlpaca [[38](#bib.bib38)], taking up 95%. The second combines long texts from
+    LongData-Corpus [[39](#bib.bib39)] and RedPajama [[37](#bib.bib37)]. For models
+    with compression rates of 32 and 8, max token lengths are set to 100K and 25K.
+    We use unbiased incremental TBPTT with $S=2$ and store up to 3 time steps. We
+    employ Adam with a learning rate of 1e-4 and a cosine scheduler.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Performance Comparisons
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/095f9ee54c2e83a894eb46394048b9d6.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: The pipeline for the auto-encoding task.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 6: UIO-LLMs’ results on auto-encoding tasks assessed by BLEU-4 and Rouge-L
+    for evaluation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compression Ratio BLEU-4$\uparrow$ 8 0.9851 0.993 32 0.5948 0.762
+  prefs: []
+  type: TYPE_NORMAL
+- en: Auto-Encoding Task. To evaluate UIO-LLMs’ long text compression, we use the
+    ICAE auto-encoding task that compresses and reconstructs text [[28](#bib.bib28)].
+    Training details follow the standard process, except for using the MiniPile corpus [[40](#bib.bib40)]
+    as training data, filtered to 10K 1K-token samples.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The training pipeline, as depicted in Figure [6](#S4.F6 "Figure 6 ‣ 4.2 Performance
+    Comparisons ‣ 4 Experimentation ‣ UIO-LLMs: Unbiased Incremental Optimization
+    for Long-Context LLMs"), involves encoding the 1K-token samples, producing memory
+    representation, and reconstructing the 1K-token inputs. We assess reconstruction
+    accuracy on a 100-sample test set using BLEU-4 and Rouge-L metrics. Table [6](#S4.F6
+    "Figure 6 ‣ 4.2 Performance Comparisons ‣ 4 Experimentation ‣ UIO-LLMs: Unbiased
+    Incremental Optimization for Long-Context LLMs") reports the results. The model
+    performs well, with Rouge-L scores of 0.993 and 0.762 for compression ratios of
+    8 and 32, respectively. To obtain a more visually comprehensive understanding
+    of the reconstruction results, we chose the first sample from the test set and
+    displayed the reconstruction outcomes using compression ratios of $8$ in Figure [7](#S4.F7
+    "Figure 7 ‣ 4.2 Performance Comparisons ‣ 4 Experimentation ‣ UIO-LLMs: Unbiased
+    Incremental Optimization for Long-Context LLMs"). We can see that our method mostly
+    recover the original context, demonstrating the capability of our method for lossless
+    compression of long contexts. This significant reconstruction performance lays
+    the foundation for utilizing memory to inference.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e526ff540eed77f28fb5f5291305c1ed.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7: A case study of the auto-encoding task shows near-lossless compression
+    at a ratio of 8\. Even with a ratio of 32, reconstructed paragraphs retained meaning
+    with minor wording changes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: Perplexity results on PG19 and Proof-Pile show UIO-LLMs’ strong long-context
+    modeling. Context window sizes are 1K or 2K. * marks original paper results. “OOM”
+    stands for Out-of-Memory error, which we’ve encountered upon 8 RTX 3090 GPUs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Compression Ratio | PG19$\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4K | 16K | 25K | 32K | 100K | 4K | 16K | 25K | 32K | 100K |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Streaming LLM | 1 | 9.50 | 9.83 | 9.88 | 9.89 | 9.89 | 6.47 | 5.13 | 4.62
+    | 4.44 | 3.94 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LongChat-7B | 9.93 | 9.49 | OOM | OOM | - | 5.65 | 3.90 | OOM | OOM | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LongAlpaca-7B | 9.96 | 9.75 | OOM | OOM | - | 6.31 | 3.97 | OOM | OOM | -
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Beacon-2K | 32 | 8.67 | 8.41 | 8.42 | 8.41 | 9.24 | 5.70 | 4.13 | 3.67 |
+    3.50 | 4.23 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Beacon-1K | 8.56 | 8.54 | 8.58 | 8.59 | 8.83 | 5.79 | 4.33 | 3.86 | 3.70
+    | 3.33 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| UIO-LLMs | 8.51 | 8.32 | 8.30 | 8.30 | 8.28 | 5.78 | 4.26 | 3.72 | 3.53 |
+    3.19 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Beacon-2K | 8 | 8.52 | 8.13 | 9.31 | - | - | 5.52 | 3.87 | 4.44 | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Beacon-1K | 8.26 | 8.13 | 8.16 | - | - | 5.41 | 3.91 | 3.47 | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| UIO-LLMs | 8.27 | 8.09 | 8.09 | - | - | 5.43 | 3.84 | 3.41 | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Long-Context Language Modeling. We report UIO-LLMs’ long text language modeling
+    using PG19 [[35](#bib.bib35)] and a sampled subset of Proof-pile [[36](#bib.bib36)]
+    in Table [1](#S4.T1 "Table 1 ‣ 4.2 Performance Comparisons ‣ 4 Experimentation
+    ‣ UIO-LLMs: Unbiased Incremental Optimization for Long-Context LLMs"). We test
+    compression rates of 8 and 32 with a 1K context window. Compared baselines include
+    LongChat-7B-v1.5-32K [[6](#bib.bib6)], LongAlpaca-7B-32K [[7](#bib.bib7)], Streaming
+    LLM [[11](#bib.bib11)], and Activation Beacon [[23](#bib.bib23)]. Compared to
+    training-free Streaming LLM, UIO-LLMs benefit from longer contexts with a continuous
+    decrease in perplexity. Versus Activation Beacon, UIO-LLMs achieve lower perplexity.
+    Activation Beacon’s performance declines at 100K tokens, but UIO-LLMs maintain
+    strong performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 2: Results on three LongBench tasks: Single-Doc QA (NarrativeQA, QASper,
+    MultiFieldQA-en/zh, denoted as 1-1 to 1-4), Multi-Doc QA (HotpotQA, 2WikiMQA,
+    Musique, DuReader, denoted as 2-1 to 2-4), and Summarization (GovReport, QMSum,
+    Multi-News, VCSUM, denoted as 3-1 to 3-4). Results for Llama2-7b-chat-4K, LongChat-7B,
+    and LongAlpaca-7B are from paper [[38](#bib.bib38)].'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Ratio | Single-Doc QA$\uparrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1-1 | 1-2 | 1-3 | 1-4 | 2-1 | 2-2 | 2-3 | 2-4 | 3-1 | 3-2 | 3-3 | 3-4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Llama2-7B-chat-4K | 1 | 18.7 | 19.2 | 36.8 | 11.9 | 25.4 | 32.8 | 9.4 | 5.2
+    | 27.3 | 20.8 | 25.8 | 0.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LongChat-7B | 16.9 | 27.7 | 41.4 | 29.1 | 31.5 | 20.6 | 9.7 | 19.5 | 30.8
+    | 22.7 | 26.4 | 9.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LongAlpaca-7B | 19.8 | 29.1 | 37.15 | 8.48 | 37.01 | 30.26 | 17.14 | 15.25
+    | 31.53 | 24.13 | 27.74 | 0.46 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Beacon | 32 | 21.03 | 17.12 | 21.74 | 19.80 | 34.92 | 26.76 | 14.96 | 16.10
+    | 21.33 | 22.01 | 23.06 | 11.73 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| UIO-LLMs | 20.10 | 18.90 | 21.83 | 23.03 | 32.80 | 31.16 | 15.53 | 17.05
+    | 21.57 | 21.41 | 22.08 | 9.66 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Beacon | 8 | 9.6 | 24.46 | 28.25 | 25.02 | 39.09 | 31.07 | 17.38 | 13.48
+    | 24.26 | 21.95 | 24.32 | 12.06 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| UIO-LLMs | 7.64 | 26.84 | 30.12 | 25.45 | 39.35 | 33.57 | 18.03 | 12.65 |
+    24.89 | 20.34 | 25.34 | 11.21 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Average Length | 18,409 | 3,619 | 4,559 | 6,707 | 9,151 | 4,887 | 11,214
+    | 15,768 | 8,734 | 10,614 | 2,113 | 15,380 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Downstream Long-Text Tasks. We compare the performance of our UIO-LLMs on long-context
+    tasks from LongBench with several Llama2-7b/Llama2-7b-chat [[18](#bib.bib18)]
+    based long-context models, including RoPE extrapolation based methods LongChat-7B-v1.5-32K [[6](#bib.bib6)]
+    and LongAlpaca-7B-32K [[7](#bib.bib7)], as well as Activation Beacon [[23](#bib.bib23)],
+    which shares a similar architecture to our models. UIO-LLMs and Activation Beacon
+    use a 1K context window and compression ratios of 8 and 32. Table [2](#S4.T2 "Table
+    2 ‣ 4.2 Performance Comparisons ‣ 4 Experimentation ‣ UIO-LLMs: Unbiased Incremental
+    Optimization for Long-Context LLMs") shows UIO-LLMs’ merits from extra context,
+    competitive results with 32K methods using only 1K, and improved performance with
+    lower compression. 1) UIO-LLMs excel compared to Llama2-7b-chat-4K and Streaming
+    LLM due to their additional context, highlighting the efficacy of our memory mechanism.
+    2) Despite a 1K context window, UIO-LLMs achieve competitive results with RoPE-based
+    LongChat-7B and LongAlpaca-7B, utilizing a 32K window. 3) UIO-LLMs benefit from
+    a reduced compression ratio, showing efficient use of finer-grained memory and
+    ability to extract information. Notice UIO-LLMs show comparable results to Beacon
+    but with only 2% parameters increase, which contrast sharply with Beacon’s 33%.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 Ablation Studies
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Analysis on Incremental TBPTT. Since incremental TBPTT offers the same gradient
+    computation results as TBPTT, our experiments prioritize evaluating its time and
+    memory efficiency. To speed up the process, we use a smaller context window of
+    16 with a 4$\times$ compression ratio, significantly reducing computational overhead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 9: Time and memory overhead of our incremental TBPTT compared to TBPTT.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We train on a text paragraph with 2048 tokens, divided into 128 segments, matching
+    our context window size. To simplify, we limit iterations to 10\. We present results
+    in Figure [9](#S4.F9 "Figure 9 ‣ 4.3 Ablation Studies ‣ 4 Experimentation ‣ UIO-LLMs:
+    Unbiased Incremental Optimization for Long-Context LLMs"). Figure LABEL:fig:time_cost
+    shows that incremental TBPTT’s time overhead remains steady as the TBPTT window
+    size increases, indicating minimal impact on time complexity. Both incremental
+    TBPTT and TBPTT show a linear memory increase with the window size in Figure LABEL:fig:mem_cost.
+    However, incremental TBPTT consistently uses half the memory due to our optimized
+    implementation, which retains only the encoder’s computational graph. This optimization
+    significantly reduces memory usage, making it more feasible for large TBPTT windows.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Analysis on Unbiased Incremental TBPTT. To assess the accuracy of unbiased incremental
+    TBPTT in gradient estimation, we compare its gradients with vanilla TBPTT’s. We
+    expect high similarity, indicating our method’s accuracy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 3: A statistical analysis compares the L2 norm ratios of gradients from
+    two algorithms. Key findings: 1) The compensation factor is vital for accurate
+    gradient estimation. 2) Variance decreases with increasing window size $S$, enhancing
+    estimation accuracy.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Statistics | w/o Factor | w/ Factor |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $S=1$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Mean | 0.676 | 0.818 | 0.935 | 1.000 | 0.994 | 0.980 | 1.024 | 0.999 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Variance | 0.112 | 0.041 | 0.008 | 3e-5 | 0.039 | 0.038 | 0.009 | 4e-5 |'
+  prefs: []
+  type: TYPE_TB
+- en: We use a context window of 128, compression ratio of 8, and compute gradients
+    for parameters $\Theta$ for accurate gradient estimation. Even with a TBPTT window
+    of 1, using this factor gives more accurate gradients than a larger window, aligning
+    with our theoretical findings.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Limitation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Our proposed UIO-LLMs excels in long-context language modeling and achieves
+    lossless compression at a ratio of 8\. However, its performance on downstream
+    tasks like NarrativeQA doesn’t improve despite compression ratio reduction, suggesting
+    a memory utilization issue. Future work could involve fine-tuning the decoder
+    to better utilize memories. Additionally, UIO-LLMs has a limit on context length
+    due to memory occupation. Moreover, unbiased incremental TBPTT requires memory
+    independence for accurate gradient estimation. If this condition is violated,
+    the algorithm can still run but may result in significant gradient estimation
+    errors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To enhance the ability of LLMs on processing long texts, We proposed UIO-LLMs,
+    which employs a streamlined encoder-decoder framework where the weights-shared
+    encoder and decoder respectively encapsulate a context segment into memories and
+    leverage these memories to predict outputs of the subsequent segment. In order
+    to accelerate the training process, we proposed incremental TBPTT, which is an
+    efficient optimizing technique dedicated to memory-enhanced transformers and reduces
+    the complexity of traditional TBPTT. Based on incremental TBPTT, we further proposed
+    its unbiased version, an innovative optimizing technique that ensures unbiased
+    gradient approximation of BPTT. Equipped with unbiased incremental TBPTT, UIO-LLMs
+    can be trained on texts of 100K tokens, resulting in a strong performance on language
+    modeling tasks and comparable performance on downstream tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[1] Anthropic. Introducing 100k context windows, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[2] OpenAI. Function calling and other api updates (longer context)., 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[3] Nelson F. Liu, Kevin Lin, John Hewitt, Ashwin Paranjape, Michele Bevilacqua,
+    Fabio Petroni, and Percy Liang. Lost in the middle: How language models use long
+    contexts. TACL, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[4] Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir
+    Karpukhin, Naman Goyal, Heinrich Küttler, Mike Lewis, Wen-tau Yih, Tim Rocktäschel,
+    Sebastian Riedel, and Douwe Kiela. Retrieval-augmented generation for knowledge-intensive
+    nlp tasks. In NeurIPS, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[5] Yushi Bai, Xin Lv, Jiajie Zhang, Hongchang Lyu, Jiankai Tang, Zhidian Huang,
+    Zhengxiao Du, Xiao Liu, Aohan Zeng, Lei Hou, Yuxiao Dong, Jie Tang, and Juanzi
+    Li. Longbench: A bilingual, multitask benchmark for long context understanding.
+    arXiv, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[6] Dacheng Li*, Rulin Shao*, Anze Xie, Ying Sheng, Lianmin Zheng, Joseph E.
+    Gonzalez, Ion Stoica, Xuezhe Ma, , and Hao Zhang. How long can open-source llms
+    truly promise on context length?, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[7] Yukang Chen, Shengju Qian, Haotian Tang, Xin Lai, Zhijian Liu, Song Han,
+    and Jiaya Jia. Longlora: Efficient fine-tuning of long-context large language
+    models. arXiv, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[8] Shouyuan Chen, Sherman Wong, Liangjian Chen, and Yuandong Tian. Extending
+    context window of large language models via positional interpolation, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[9] Dawei Zhu, Nan Yang, Liang Wang, Yifan Song, Wenhao Wu, Furu Wei, and Sujian
+    Li. Pose: Efficient context window extension of llms via positional skip-wise
+    training, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[10] Bowen Peng, Jeffrey Quesnelle, Honglu Fan, and Enrico Shippole. YaRN:
+    Efficient context window extension of large language models. In ICLR, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[11] Guangxuan Xiao, Yuandong Tian, Beidi Chen, Song Han, and Mike Lewis. Efficient
+    streaming language models with attention sinks. arXiv, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[12] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones,
+    Aidan N Gomez, Ł ukasz Kaiser, and Illia Polosukhin. Attention is all you need.
+    In NeurIPS, 2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[13] Krzysztof Choromanski, Valerii Likhosherstov, David Dohan, Xingyou Song,
+    Andreea Gane, Tamás Sarlós, Peter Hawkins, Jared Davis, Afroz Mohiuddin, Lukasz
+    Kaiser, David Belanger, Lucy Colwell, and Adrian Weller. Rethinking attention
+    with performers. In ICLR, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[14] A. Katharopoulos, A. Vyas, N. Pappas, and F. Fleuret. Transformers are
+    rnns: Fast autoregressive transformers with linear attention. In ICML, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[15] Ali Rahimi and Benjamin Recht. Random features for large-scale kernel
+    machines. In NeurIPS, 2007.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[16] Krzysztof Choromanski, Mark Rowland, and Adrian Weller. The unreasonable
+    effectiveness of structured random orthogonal embeddings. In NeurIPS, 2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[17] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li,
+    Shean Wang, Lu Wang, and Weizhu Chen. LoRA: Low-rank adaptation of large language
+    models. In ICLR, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[18] Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi,
+    Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale,
+    Dan Bikel, Lukas Blecher, Cristian Canton Ferrer, Moya Chen, Guillem Cucurull,
+    David Esiobu, Jude Fernandes, Jeremy Fu, Wenyin Fu, Brian Fuller, Cynthia Gao,
+    Vedanuj Goswami, Naman Goyal, Anthony Hartshorn, Saghar Hosseini, Rui Hou, Hakan
+    Inan, Marcin Kardas, Viktor Kerkez, Madian Khabsa, Isabel Kloumann, Artem Korenev,
+    Punit Singh Koura, Marie-Anne Lachaux, Thibaut Lavril, Jenya Lee, Diana Liskovich,
+    Yinghai Lu, Yuning Mao, Xavier Martinet, Todor Mihaylov, Pushkar Mishra, Igor
+    Molybog, Yixin Nie, Andrew Poulton, Jeremy Reizenstein, Rashi Rungta, Kalyan Saladi,
+    Alan Schelten, Ruan Silva, Eric Michael Smith, Ranjan Subramanian, Xiaoqing Ellen
+    Tan, Binh Tang, Ross Taylor, Adina Williams, Jian Xiang Kuan, Puxin Xu, Zheng
+    Yan, Iliyan Zarov, Yuchen Zhang, Angela Fan, Melanie Kambadur, Sharan Narang,
+    Aurelien Rodriguez, Robert Stojnic, Sergey Edunov, and Thomas Scialom. Llama 2:
+    Open foundation and fine-tuned chat models, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[19] Ronald J. Williams and Jing Peng. An Efficient Gradient-Based Algorithm
+    for On-Line Training of Recurrent Network Trajectories. Neural Computation, 1990.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[20] Aydar Bulatov, Yuri Kuratov, and Mikhail Burtsev. Recurrent memory transformer.
+    In NeurIPS, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[21] Alexis Chevalier, Alexander Wettig, Anirudh Ajith, and Danqi Chen. Adapting
+    language models to compress contexts. In EMNLP, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[22] Jesse Mu, Xiang Lisa Li, and Noah Goodman. Learning to compress prompts
+    with gist tokens. In NeurIPS, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[23] Peitian Zhang, Zheng Liu, Shitao Xiao, Ninglu Shao, Qiwei Ye, and Zhicheng
+    Dou. Soaring from 4k to 400k: Extending llm’s context with activation beacon,
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[24] Yuri Kuratov, Aydar Bulatov, Petr Anokhin, Dmitry Sorokin, Artyom Sorokin,
+    and Mikhail Burtsev. In search of needles in a 10m haystack: Recurrent memory
+    finds what llms miss, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[25] Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, Ilya
+    Sutskever, et al. Language models are unsupervised multitask learners. 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[26] OpenAI. Gpt-4 technical report, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[27] David Wingate, Mohammad Shoeybi, and Taylor Sorensen. Prompt compression
+    and contrastive conditioning for controllability and toxicity reduction in language
+    models. In EMNLP, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[28] Tao Ge, Hu Jing, Lei Wang, Xun Wang, Si-Qing Chen, and Furu Wei. In-context
+    autoencoder for context compression in a large language model. In ICLR, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[29] Michael C. Mozer. A focused backpropagation algorithm for temporal pattern
+    recognition. Complex Systems, 1989.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[30] Yann Ollivier, Corentin Tallec, and Guillaume Charpiat. Training recurrent
+    networks online without backtracking, 2015.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[31] Corentin Tallec and Yann Ollivier. Unbiased online recurrent optimization.
+    In ICLR, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[32] Corentin Tallec and Yann Ollivier. Unbiasing truncated backpropagation
+    through time, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[33] Michael Mozer. A focused backpropagation algorithm for temporal pattern
+    recognition. Complex Systems, 1995.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[34] Jeffrey S. Vitter. Random sampling with a reservoir. TOMS, 1985.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[35] Jack W Rae, Anna Potapenko, Siddhant M Jayakumar, Chloe Hillier, and Timothy P
+    Lillicrap. Compressive transformers for long-range sequence modelling. arXiv,
+    2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[36] Zhangir Azerbayev, Edward Ayers, and B.P. Proof-pile, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[37] Together Computer. Redpajama: An open source recipe to reproduce llama
+    training dataset, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[38] Yukang Chen, Shaozuo Yu, Shengju Qian, Haotian Tang, Xin Lai, Zhijian
+    Liu, Song Han, and Jiaya Jia. Long alpaca: Long-context instruction-following
+    models, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[39] Yuyi Jiong. Longdata-corpus, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[40] Jean Kaddour. The minipile challenge for data-efficient language models.
+    arXiv, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A PyTorch Implementation of Incremental TBPTT
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The incremental TBPTT algorithm performs backpropagation for only two nodes
+    at each time step, leading to a computational cost that is independent of the
+    TBPTT window size $S$. This streamlined approach significantly reduces the computational
+    burden compared to traditional backpropagation methods. Below is an illustrative
+    example of how our incremental TBPTT algorithm can be implemented in PyTorch,
+    showcasing its efficiency and simplicity:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[⬇](data:text/plain;base64,ZGVmIGluY3JlbWVudGFsX3RicHR0KG1vZGVsOiB0b3JjaC5Nb2R1bGUsIHg6IExpc3RbdG9yY2guVGVuc29yXSwgUzogaW50KToKCiAgICBtZW0gPSBbXQogICAgbWVtX2RldGFjaCA9IFtdCgogICAgZm9yIHhpZCwgeGkgaW4gZW51bWVyYXRlKHgpOgogICAgICAgICMgZm9yd2FyZCBwcm9wYWdhdGlvbgogICAgICAgIGxvc3NfaSwgbWVtX2kgPSBtb2RlbC5mb3J3YXJkKHhpLCBtZW1fZGV0YWNoKQoKICAgICAgICAjIGZpcnN0IGJhY2t3YXJkIHByb3BhZ2F0aW9uCiAgICAgICAgbG9zc19pLmJhY2t3YXJkKHJldHJhaW5fZ3JhcGg9VHJ1ZSkKCiAgICAgICAgbWVtX2lfZGV0YWNoID0gbWVtX2kuZGV0YWNoKCkKICAgICAgICBtZW1faV9kZXRhY2gucmVxdXJpZXNfZ3JhZF8oVHJ1ZSkKCiAgICAgICAgbWVtLmFwcGVuZChtZW1faSkKICAgICAgICBtZW1fZGV0YWNoLmFwcGVuZChtZW1faV9kZXRhY2gpCgogICAgICAgIGVsaW1faWQgPSB4aWQgLSBTCiAgICAgICAgaWYgZWxpbV9pZCA+PSAwOgogICAgICAgICAgICAjIHNlY29uZCBiYWNrd2FyZCBwcm9wYWdhdGlvbgogICAgICAgICAgICBncmFkaWVudCA9IG1lbV9kZXRhY2hbZWxpbV9pZF0uZ3JhZAogICAgICAgICAgICBtZW1bZWxpbV9pZF0uYmFja3dhcmQoZ3JhZGllbnQ9Z3JhZGllbnQuZGF0YSkKCiAgICBmb3IgZWxpbV9pZCBpbiByYW5nZShtYXgoMCwgbGVuKHgpIC0gUyksIGxlbih4KSAtIDEpOgogICAgICAgIGdyYWRpZW50ID0gbWVtX2RldGFjaFtlbGltX2lkXS5ncmFkCiAgICAgICAgaWYgZ3JhZGllbnQgaXMgbm90IE5vbmU6CiAgICAgICAgICAgIG1lbVtlbGltX2lkLmJhY2t3YXJkKGdyYWRpZW50PWdyYWRpZW50LmRhdGEp)1def  incremental_tbptt(model:  torch.Module,  x:  List[torch.Tensor],  S:  int):23  mem  =  []4  mem_detach  =  []56  for  xid,  xi  in  enumerate(x):7  #  forward  propagation8  loss_i,  mem_i  =  model.forward(xi,  mem_detach)910  #  first  backward  propagation11  loss_i.backward(retrain_graph=True)1213  mem_i_detach  =  mem_i.detach()14  mem_i_detach.requries_grad_(True)1516  mem.append(mem_i)17  mem_detach.append(mem_i_detach)1819  elim_id  =  xid  -  S20  if  elim_id  >=  0:21  #  second  backward  propagation22  gradient  =  mem_detach[elim_id].grad23  mem[elim_id].backward(gradient=gradient.data)2425  for  elim_id  in  range(max(0,  len(x)  -  S),  len(x)  -  1):26  gradient  =  mem_detach[elim_id].grad27  if  gradient  is  not  None:28  mem[elim_id.backward(gradient=gradient.data)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the provided implementation, at each time step, the generated memory is detached
+    and flagged for gradient computation. This crucial step effectively disconnects
+    the computational graphs associated with distinct time steps, preventing unwanted
+    dependencies. Once computations for all time steps have been completed, it becomes
+    imperative to initiate a dedicated backpropagation pass for any remaining time
+    steps within the TBPTT window. This additional step diverges from the standard
+    TBPTT methodology and is essential for maintaining the accuracy of the training
+    process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B PyTorch Implementation of Unbiased Incremental TBPTT
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Our unbiased incremental TBPTT distinguishes itself from the incremental TBPTT
+    by integrating the Reservoir Sampling technique. This integration ensures that
+    all historical time steps are preserved with equal probability, rather than solely
+    focusing on the most recent ones. Furthermore, the introduction of a compensatory
+    factor within our method allows for an unbiased estimation of gradients, enhancing
+    the accuracy of the model’s learning process. Additionally, the PyTorch implementation
+    of unbiased incremental TBPTT closely resembles that of its incremental counterpart,
+    with the key difference lying in the incorporation of the unbiased estimation
+    mechanism. The following is an example of how our unbiased incremental TBPTT can
+    be implemented in PyTorch:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[⬇](data:text/plain;base64,ZGVmIHJlbW92ZShyZXNlcnZvaXIsIGNodW5rX2lkKToKICAgIGlmIGNodW5rX2lkIGluIHJlc2Vydm9pcjoKICAgICAgICByZXNlcnZvaXIucmVtb3ZlKGNodW5rX2lkKQogICAgcmV0dXJuIHJlc2Vydm9pcgoKCmRlZiBkZXN0cm95X2dyYXBoKG1lbTogTGlzdCwgbWVtX2RldGFjaDogTGlzdCwgZWxpbV9pZCk6CiAgICAjIHNlY29uZCBiYWNrd2FyZCBwcm9nYWdhdGlvbgogICAgbWVtW2VsaW1faWRdLmJhY2t3YXJkKGdyYWRpZW50PW1lbV9kZXRhY2hbZWxpbV9pZF0uZ3JhZC5kYXRhKQogICAgICAgIG0uZ3JhZCA9IG0uZ3JhZCAqIGZhY3RvciArIGdkCgogICBtZW1faV9kZXRhY2ggPSBtZW1faS5kZXRhY2goKQogICBtZW1faV9kZXRhY2gucmVxdWlyZXNfZ3JhZF8oVHJ1ZSkKCiAgIG1lbS5hcHBlbmQobWVtX2kpCiAgIG1lbV9kZXRhY2guYXBwZW5kKG1lbV9pX2RldGFjaCkKCgpkZWYgdW5iaWFzZWRfaW5jcmVtZW50YWxfdGJwdHQobW9kZWw6IHRvcmNoLk1vZHVsZSwgeDogTGlzdFt0b3JjaC5UZW5zb3JdLCBTOmludCk6CiAgICBtZW0gPSBbXQogICAgbWVtX2RldGFjaCA9IFtdCiAgICByZXNlcnZvaXIgPSBbXQoKICAgIGZvciB4aWQsIHhpIGluIGVudW1lcmF0ZSh4KToKICAgICAgICAjIGZvcndhcmQgcHJvcGFnYXRpb24KICAgICAgICBsb3NzX2ksIG1lbV9pID0gbW9kZWwuZm9yd2FyZCh4aSwgbWVtX2RldGFjaCkKCiAgICAgICAgZ3JhZHMgPSBbXQogICAgICAgIGZvciBtIGluIG1lbV9kZXRhY2g6CiAgICAgICAgICAgIGdyYWRzLmFwcGVuZChtLmdyYWQpCiAgICAgICAgICAgIG0uZ3JhZCA9IE5vbmUKCiAgICAgICAgIyBmaXJzdCBiYWNrd2FyZCBwcm9nYWdhdGlvbgogICAgICAgIGxvc3NfaS5iYWNrd2FyZChyZXRhaW5fZ3JhcGg9VHJ1ZSkKCiAgICAgICAgZm9yIGdkLCBtIGluIHppcChncmFkcywgbWVtX2RldGFjaCk6CiAgICAgICAgICAgIGZhY3RvciA9IG1heCh4aWQgLyBTLCAxKQogICAgICAgICAgICBtLmdyYWQgPSBtLmdyYWQgKiBmYWN0b3IgKyBnZAoKICAgICAgICBtZW1faV9kZXRhY2ggPSBtZW1faS5kZXRhY2goKQogICAgICAgIG1lbV9pX2RldGFjaC5yZXF1aXJlc19ncmFkXyhUcnVlKQoKICAgICAgICBtZW0uYXBwZW5kKG1lbV9pKQogICAgICAgIG1lbV9kZXRhY2guYXBwZW5kKG1lbV9pX2RldGFjaCkKCiAgICAgICAgaWYgeGlkIDwgUzoKICAgICAgICAgICAgcmVzZXJ2b2lyLmFwcGVuZCh4aWQpCiAgICAgICAgZWxzZToKICAgICAgICAgICAgaiA9IHJhbmRvbS5yYW5kaW50KDAsIGNodW5rX2lkKQogICAgICAgICAgICBpZiBqIDwgUzoKICAgICAgICAgICAgICAgIGVsaW1faWQgPSByZXNlcnZvaXJbal0KICAgICAgICAgICAgICAgIHJlc2Vydm9pcltqXSA9IHhpZAogICAgICAgICAgICAgICAgZGVzdHJveV9ncmFwaChtZW0sIG1lbV9kZXRhY2gsIGVsaW1faWQpCiAgICAgICAgICAgIGVsc2U6CiAgICAgICAgICAgICAgICBkZXN0cm95X2dyYXBoKG1lbSwgbWVtX2RldGFjaCwgeGlkKQoKICAgIGZvciBlbGltX2lkIGluIHJldmVyc2VkKHJlbW92ZShyZXNlcnZvaXIsIGNodW5rX2lkKSk6CiAgICAgICAgZGVzdHJveV9ncmFwaChtZW0sIG1lbV9kZXRhY2gsIGVsaW1faWQp)1def  remove(reservoir,  chunk_id):2  if  chunk_id  in  reservoir:3  reservoir.remove(chunk_id)4  return  reservoir567def  destroy_graph(mem:  List,  mem_detach:  List,  elim_id):8  #  second  backward  progagation9  mem[elim_id].backward(gradient=mem_detach[elim_id].grad.data)10  m.grad  =  m.grad  *  factor  +  gd1112  mem_i_detach  =  mem_i.detach()13  mem_i_detach.requires_grad_(True)1415  mem.append(mem_i)16  mem_detach.append(mem_i_detach)171819def  unbiased_incremental_tbptt(model:  torch.Module,  x:  List[torch.Tensor],  S:int):20  mem  =  []21  mem_detach  =  []22  reservoir  =  []2324  for  xid,  xi  in  enumerate(x):25  #  forward  propagation26  loss_i,  mem_i  =  model.forward(xi,  mem_detach)2728  grads  =  []29  for  m  in  mem_detach:30  grads.append(m.grad)31  m.grad  =  None3233  #  first  backward  progagation34  loss_i.backward(retain_graph=True)3536  for  gd,  m  in  zip(grads,  mem_detach):37  factor  =  max(xid  /  S,  1)38  m.grad  =  m.grad  *  factor  +  gd3940  mem_i_detach  =  mem_i.detach()41  mem_i_detach.requires_grad_(True)4243  mem.append(mem_i)44  mem_detach.append(mem_i_detach)4546  if  xid  <  S:47  reservoir.append(xid)48  else:49  j  =  random.randint(0,  chunk_id)50  if  j  <  S:51  elim_id  =  reservoir[j]52  reservoir[j]  =  xid53  destroy_graph(mem,  mem_detach,  elim_id)54  else:55  destroy_graph(mem,  mem_detach,  xid)5657  for  elim_id  in  reversed(remove(reservoir,  chunk_id)):58  destroy_graph(mem,  mem_detach,  elim_id)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This code snippet illustrates the practical application of our unbiased incremental
+    TBPTT algorithm within the PyTorch environment, emphasizing its enhanced gradient
+    estimation capabilities and its similarity to the incremental TBPTT in terms of
+    implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Appendix C The Detailed Derivation of Eq. ([11](#S3.E11 "In 3.3.3 Unbiased
+    Incremental TBPTT ‣ 3.3 Unbiased Incremental Optimization ‣ 3 Methodology ‣ UIO-LLMs:
+    Unbiased Incremental Optimization for Long-Context LLMs"))'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Reservoir sampling [[34](#bib.bib34)] is a technique that ensures uniformly
+    sampling from a sequence of unknown length. In our case, we can analogously apply
+    this concept to the TBPTT window. At time step $t$ with high probability. This
+    can be interpreted as the correlation between the random variables $\mathbf{Z}_{t1,s}^{(X_{i})}$
+    are independent, satisfying the following equation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (13) |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix D More Ablations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Analysis on Different TBPTT Window Sizes Increasing $S$ leads to better performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/71f096b292ac5412471f5f7e408e6a87.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 10: Learning curve with various $S$ for better visualization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 11: Language modeling performance on various TBPTT window $S$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Perplexity$\downarrow$ PG19 9.84 9.75 9.67 9.63 Proof-Pile 9.90 9.74 9.59 9.44
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Analysis on Components In order to examine the impact of transfer head and
+    unbiased incremental TBPTT on the model’s performance, we use a fixed compression
+    ratio of $32$ while keeping other settings unchanged for the ablation study. As
+    shown in Table [4](#A4.T4 "Table 4 ‣ Appendix D More Ablations ‣ UIO-LLMs: Unbiased
+    Incremental Optimization for Long-Context LLMs"), both transfer head and unbiased
+    incremental TBPTT increase the performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4: Ablation results on transfer head and unbiased incremental TBPTT (UIO-TBPTT).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Components | Benchmarks |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Transfer Head | UIO-TBPTT | TBPTT | PG19-100K$\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ✓ | ✓ |  | 8.28 | 20.10 | 18.90 | 21.83 | 23.03 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ✓ |  | ✓ | 8.31 | 17.01 | 17.69 | 19.23 | 20.35 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | ✓ |  | 9.29 | 18.70 | 18.65 | 21.47 | 22.71 |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix E Inference Advantages
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In the prefill stage, the model encodes input tokens to generate context representations,
+    also known as the KV cache or memories in UIO-LLMs. For Llama2-7b-chat [[18](#bib.bib18)]
+    and RoPE extrapolation based methods like LongChat-7B-v1.5-32K [[38](#bib.bib38)],
+    a significant challenge in this stage is the computational complexity, which scales
+    quadratically with the input token length. This requires a substantial number
+    of FLOPs and GPU memory, making prefilling a computationally expensive process.
+    However, as shown in Figure [12](#A5.F12 "Figure 12 ‣ Appendix E Inference Advantages
+    ‣ UIO-LLMs: Unbiased Incremental Optimization for Long-Context LLMs"), our approach
+    achieves a nearly linear growth in prefilling time and GPU memory overhead as
+    the sequence length increases, suggesting a considerable superiority.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/0ed00c95dff784d7e5f4b62d8d85a5a0.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 12: The prefilling time and GPU memory comparison of different models
+    are presented below. Since the experimental results for LongChat-7B-v1.5-32K and
+    LongAlpaca-7B are nearly identical to those of Llama2-7b-chat, we only show the
+    results of Llama2-7b-chat for clarity.'
+  prefs: []
+  type: TYPE_NORMAL

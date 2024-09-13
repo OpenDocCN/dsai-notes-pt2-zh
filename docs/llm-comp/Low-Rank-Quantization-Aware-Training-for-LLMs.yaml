@@ -1,0 +1,1851 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:48:11'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: Low-Rank Quantization-Aware Training for LLMs
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2406.06385](https://ar5iv.labs.arxiv.org/html/2406.06385)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: \newfloatcommand
+  prefs: []
+  type: TYPE_NORMAL
+- en: capbtabboxtable[][\FBwidth]
+  prefs: []
+  type: TYPE_NORMAL
+- en: Yelysei Bondarenko, Riccardo Del Chiaro, Markus Nagel
+  prefs: []
+  type: TYPE_NORMAL
+- en: Qualcomm AI Research
+  prefs: []
+  type: TYPE_NORMAL
+- en: Amsterdam, The Netherlands
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{ybond, rdelchia, markusn}@qti.qualcomm.com Qualcomm AI Research is an initiative
+    of Qualcomm Technologies, Inc.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'Large language models (LLMs) are omnipresent, however their practical deployment
+    is challenging due to their ever increasing computational and memory demands.
+    Quantization is one of the most effective ways to make them more compute and memory
+    efficient. Quantization-aware training (QAT) methods, generally produce the best
+    quantized performance, however it comes at the cost of potentially long training
+    time and excessive memory usage, making it impractical when applying for LLMs.
+    Inspired by parameter-efficient fine-tuning (PEFT) and low-rank adaptation (LoRA)
+    literature, we propose LR-QAT – a lightweight and memory-efficient QAT algorithm
+    for LLMs. LR-QAT employs several components to save memory without sacrificing
+    predictive performance: (a) low-rank auxiliary weights that are aware of the quantization
+    grid; (b) a downcasting operator using fixed-point or double-packed integers and
+    (c) checkpointing. Unlike most related work, our method (i) is inference-efficient,
+    leading to no additional overhead compared to traditional PTQ; (ii) can be seen
+    as a general extended pretraining framework, meaning that the resulting model
+    can still be utilized for any downstream task afterwards; (iii) can be applied
+    across a wide range of quantization settings, such as different choices quantization
+    granularity, activation quantization, and seamlessly combined with many PTQ techniques.
+    We apply LR-QAT to LLaMA-2/3 and Mistral model families and validate its effectiveness
+    on several downstream tasks. Our method outperforms common post-training quantization
+    (PTQ) approaches and reaches the same model performance as full-model QAT at the
+    fraction of its memory usage. Specifically, we can train a 7B LLM on a single
+    consumer grade GPU with 24GB of memory.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In recent years, large language models (LLMs) have emerged as a powerful tool
+    for a plethora of natural language processing tasks. As these models continue
+    to grow in size and capability, addressing their ever increasing computational
+    and memory demands becomes crucial for practical deployment, especially when considering
+    resource-constrained edge devices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One of the most effective methods to tackle this problem is neural network quantization,
+    which uses low-bit precision for weight and activation tensors. While recent post-training
+    quantization (PTQ) methods can help with decreasing the model size and improving
+    the computational efficiency of LLMs, they typically lead to subpar performance,
+    especially in the case of low-bit ($\leq 4$) quantization. Quantization-aware
+    training (QAT), conversely, yields significantly better model performance compared
+    to PTQ. However, due to extreme model sizes of modern LLMs, using traditional
+    QAT is very computationally expensive and requires a prohibitively high GPU memory
+    usage, making it impractical.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Inspired by parameter-efficient fine-tuning (PEFT) and low-rank adaptation (LoRA)
+    literature, we propose Low-Rank Quantization-Aware Training (LR-QAT) – a lightweight
+    memory-efficient and inference-efficient QAT algorithm for LLMs. LR-QAT reduces
+    the memory requirements of training a 7B LLM from >70GB of GPU memory to <21GB
+    without degrading the predictive performance compared to traditional full-model
+    QAT, making it possible to train such models on a single consumer grade GPU. Unlike
+    most related work that combines low-rank adaptation with quantization, our method
+    is also inference-efficient. After the training is complete, the auxiliary matrices
+    are naturally absorbed into the quantized weight tensor without loss of accuracy
+    and no extra overhead at inference time. LR-QAT is positioned as a general *extended
+    pretraining* method, as opposed to being strictly a fine-tuning method – the resulting
+    model is a low-bit general pretrained LLM, that can still be utilized for any
+    task afterwards. If needed, our resulting low-bit pretrained LLM can be fine-tuned
+    on specific downstream tasks or used with multiple LoRA adapters for rapid switching
+    between various tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'LR-QAT introduces and combines several innovations designed to reduce memory
+    use without sacrificing model performance: (1) a form of QAT with low-rank reparameterization,
+    in which we place the low-rank weights in the integer domain to ensure they align
+    with the quantization grid of the pretrained weights. This allows for seamless
+    fusion during inference into a single low-bit integer matrix. (2) A downcasting
+    operator that represents the frozen pretrained weights as low-bit INT-$b$) double-packed
+    into INT8 or as fixed-point values stored in INT8. (3) Finally, we combine the
+    proposed quantization formulation with gradient checkpointing to avoid aggressive
+    memory spikes from storing some of the intermediate results in memory for the
+    backward pass.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We apply LR-QAT to LLaMA-2/3 and Mistral model families and demonstrate its
+    effectiveness on several general language modeling datasets and zero-shot evaluation
+    on some of the common reasoning downstream tasks. Our method outperforms recent
+    PTQ approaches and reaches the same predictive performance as full-model QAT at
+    the fraction of its memory usage. Finally, our method can be applied across a
+    wide range of quantization settings, including per-channel or per-block weight
+    quantization, activation quantization, and can be combined with most of other
+    PTQ techniques.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Background and related work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/60d160c2841cb777b482064476e777cd.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '![Refer to caption](img/bf6653e89698f29df02308456f696527.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: *Left:* A schematic illustration of our proposed LR-QAT. $\mathbf{x}$,
+    and BF16 compute data type).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Neural network quantization is one of the most powerful ways to reduce model
+    footprint, data transfer and compute requirements. By quantizing a model, high
+    bit-width floating point weights and activations can be represented using low-bit
+    numbers. On top of that, by using low-bit fixed-point representations, such as INT8,
+    one can further reduce energy consumption since the fixed-point operations are
+    more efficient than their floating-point counterparts. Quantizing to 8 bits or
+    lower, however, typically introduces quantization noise in the model, resulting
+    in a potential drop in accuracy/perplexity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we provide a brief overview of uniform affine quantization
+    and a summary of recent methods for LLM quantization. We will discuss some of
+    the trade-offs of those techniques. Finally, we touch upon the challenges of LLM
+    quantization and some of the limitations of current approaches.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Uniform affine quantization
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'We use the following definition of the quantization function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\widehat{\mathbf{x}}:=q\left(\mathbf{x};\,s,z,b\right)=s\cdot\vphantom{\Bigg{(}}\Big{(}\,\smash{\underbrace{\operatorname{clip}\!\left(\left\lfloor{\frac{\mathbf{x}}{s}}\right\rceil+z;-2^{b-1},2^{b-1}-1\right)}_{\text{\normalsize$=:\mathbf{x}_{\mathbb{Z}}$}}}-z\Big{)},$
+    |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\mathbf{x}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Post-training quantization methods
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Post-training quantization (PTQ) algorithms take a pretrained high precision
+    (FP32 / FP16 / BF16) network and convert it directly into a fixed-point network
+    without the need for the original training pipeline [[2](#bib.bib2), [8](#bib.bib8),
+    [11](#bib.bib11), [27](#bib.bib27), [34](#bib.bib34), [40](#bib.bib40), [47](#bib.bib47),
+    [49](#bib.bib49), [50](#bib.bib50), [71](#bib.bib71)]. These methods are either
+    data-free or only require a small calibration dataset and are generally quite
+    easy to use. Having almost no hyperparameter tuning makes them usable via a single
+    API call as a black-box method to quantize a pretrained neural network in a computationally
+    efficient manner.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Post-training quantization of LLMs is a challenging task due to presence of
+    numerical outliers in weights and activations [[6](#bib.bib6), [7](#bib.bib7),
+    [33](#bib.bib33), [14](#bib.bib14), [58](#bib.bib58)]. Existing LLM PTQ methods
+    can be broadly categorized into *weights-only* quantization and *weight-activation*
+    quantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Weights-only quantization focuses on converting weights to low-bit values. For
+    instance, GPTQ [[18](#bib.bib18)] employs second-order information to iteratively
+    round grouped weights and correct the quantization error in the remaining groups.
+    SpQR [[15](#bib.bib15)], AWQ [[41](#bib.bib41)] and OWQ [[35](#bib.bib35)] emphasize
+    the importance of so-called “salient” weights that correspond to high-magnitude
+    activations. Other recent W-only methods include [[30](#bib.bib30), [37](#bib.bib37),
+    [46](#bib.bib46), [9](#bib.bib9)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: Weight-activation quantization compresses both weights and activations. SmoothQuant [[65](#bib.bib65)],
+    LLM.int8() [[14](#bib.bib14)] and Outlier Suppression [[62](#bib.bib62)] achieve
+    W8A8 quantization by managing activation outliers. LLM.int8() uses mixed-precision
+    decomposition, while the other two employ channel-wise scaling. OmniQuant [[55](#bib.bib55)]
+    modulates the extreme values of weights by optimizing the clipping threshold and
+    shifts the challenge of quantization from activations to weights by employing
+    the learnable equivalent transformation. Some of the other recent W&A PTQ methods
+    are [[36](#bib.bib36), [43](#bib.bib43), [63](#bib.bib63), [68](#bib.bib68), [59](#bib.bib59),
+    [67](#bib.bib67), [42](#bib.bib42)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quantization-aware training methods
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Quantization-aware training (QAT) methods [[4](#bib.bib4), [17](#bib.bib17),
+    [22](#bib.bib22), [28](#bib.bib28), [34](#bib.bib34)] simulate quantization during
+    training, allowing the model to find more optimal solutions compared to PTQ approaches.
+    However, better accuracy/perplexity comes at the cost of neural network training,
+    i.e., longer training times, increased memory usage, need for labeled data and
+    hyperparameter search.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The excessive training cost and memory usage of traditional QAT methods make
+    them unsuitable for quantizing modern LLMs. A few works that apply QAT to LLMs
+    include LLM-QAT [[44](#bib.bib44)] that combine QAT with data-free knowledge distillation,
+    and EdgeQAT [[56](#bib.bib56)] that only considers tiny (sub 100M parameter) language
+    models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Low-rank adapters for fine-tuning
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Low-rank adaptation (LoRA) [[25](#bib.bib25)] is a parameter efficient fine-tuning
+    (PEFT) method that reduces memory requirements compared to standard training.
+    LoRA freezes the pretrained weights $\bm{W}=\bm{W_{0}}$, LoRA computes
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathbf{y}=\bm{W_{0}}\mathbf{x}+\frac{\alpha}{r}\bm{A}\bm{B}\mathbf{x},$
+    |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\bm{A}\in\mathbb{R}^{m\times r}$).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Naturally, there have been several works that explored the combination of LoRA
+    and quantization. QLoRA [[16](#bib.bib16)] quantizes the pretrained weights to
+    4 bit using (a non-uniform) NF4 format and dequantizes them in the forward pass
+    to further reduce fine-tuning memory footprint. QA-LoRA [[66](#bib.bib66)] uses
+    INT4 quantization and introduces group-wise operators to enable quantization during
+    inference stage. LoftQ [[39](#bib.bib39)] proposed an iterative SVD-based procedure
+    for initializing $\bm{A}$ that yields faster fine-tuning convergence when used
+    together with low-bit quantization. LQ-LoRA [[21](#bib.bib21)] further extends
+    initialization technique from LoftQ to mixed precision and data aware cases. Other
+    recent works include [[29](#bib.bib29), [70](#bib.bib70)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, the closest work to ours is PEQA [[32](#bib.bib32)], that attempts
+    to combine the benefits of inference-efficiency of QAT together with memory-efficiency
+    of PEFT methods. However, their approach is different since they focus on a task-specific
+    fine-tuning as opposed to being a general extended pretraining method. In addition
+    to that, PEQA has significantly less degrees of freedom compared to our method,
+    leading to a subpar performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Motivation
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: While generally fast and simple, PTQ suffers from limited performance in low-bit
+    scenarios. Although QAT methods still perform well in low-bit regimes, their high
+    training costs and memory usage make them impractical for LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: LoRA-based methods address memory issues for efficient fine-tuning. However,
+    in most cases they don’t consider efficient inference. The adapters $\bm{A}$ are
+    dequantized to match the same data format, resulting in runtime overhead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Simply quantizing adapters after training will lead to a different quantization
+    grid compared to $\bm{W_{0}}$). In addition to that, QA-LoRA and most of LoRA-based
+    methods combine their proposed techniques with the task-specific fine-tuning,
+    whereas we propose LR-QAT as an *extended pretraining* method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We are inspired by LoRA-based methods to make QAT more memory- and runtime-efficient.
+    In addition to that, our goal is to design a method that is *inference-efficient*,
+    *i.e*. where the low-rank adapters can be fused back into a low-bit integer matrix
+    $\bm{W}_{\mathbb{Z}}$ without any loss of accuracy/perplexity, yielding PTQ level
+    of inference efficiency. Contrary to QA-LoRA [[66](#bib.bib66)], we are not relaxing
+    the quantization constraints – our method is applicable at any weight quantization
+    granularity. Finally, we see our method as a general extended pretraining framework.
+    The resulting model can afterwards still be used on any task. We summarize different
+    trade-offs for the discussed techniques in Table [1](#S2.T1 "Table 1 ‣ Motivation
+    ‣ 2 Background and related work ‣ Low-Rank Quantization-Aware Training for LLMs").
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | Accuracy | Memory efficiency | Inference efficiency |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PTQ | ✕ | ✓ | ✓ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (Full-model) QAT | ✓ | ✕ | ✓ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LoRA / PEFT | ✓ | ✓ | ✕ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | \textpdfrender TextRenderingMode=FillStroke, LineWidth=.5pt,
+    ✓ | \textpdfrender TextRenderingMode=FillStroke, LineWidth=.5pt, ✓ | \textpdfrender
+    TextRenderingMode=FillStroke, LineWidth=.5pt, ✓ |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 1: A comparison between existing approaches and the proposed method.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Method
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We now discuss the components of LR-QAT followed by a formal definition of LR-QAT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: QAT with low-rank adapters
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Let’s recall how traditional QAT works. Given a linear layer with a weight
+    matrix $\bm{W}\in\mathbb{R}^{m\times k}$-bit symmetric uniform affine quantization,
+    the quantization is simulated as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\widehat{\bm{W}}:=\mathbf{s}\cdot\operatorname{clip}\left(\left\lfloor{\frac{\bm{W}}{\mathbf{s}}}\right\rceil,-2^{b-1},2^{b-1}-1\right),$
+    |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where weights $\bm{W}$. When applied to LLMs, it is straightforward to see
+    that this procedure is very expensive: we have to learn a comparable number of
+    parameters that was used for pretraining, leading to excessive memory usage.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To make this approach more practical we *freeze* the pretrained weights $\bm{W}$
+    without loss of accuracy to facilitate efficient inference. To accommodate that,
+    we put the auxiliary matrices inside the rounding operator as follows
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\widehat{\bm{W}}:=\mathbf{s}\cdot\operatorname{clip}\left(\left\lfloor{\frac{\bm{W_{0}}}{\mathbf{s}}+\frac{\alpha}{r}\bm{A}\bm{B}}\right\rceil,-2^{b-1},2^{b-1}-1\right),$
+    |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: where we are using STE assumption for the rounding operation to compute the
+    gradients of the loss w.r.t. $\bm{A}$) and are typically stored in higher precision
+    formats such as BF16.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Downcasting operator
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: The formulation ([4](#S3.E4 "In QAT with low-rank adapters ‣ 3 Method ‣ Low-Rank
+    Quantization-Aware Training for LLMs")) is already significantly more memory efficient
+    compared to standard full-model QAT ([3](#S3.E3 "In QAT with low-rank adapters
+    ‣ 3 Method ‣ Low-Rank Quantization-Aware Training for LLMs")). We don’t need to
+    compute neither gradients w.r.t. weights $\bm{W}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Given that the weight matrix $\bm{W_{0}}$ during every forward pass. To ensure
+    stable training, the scale generally needs to be stored in a high-precision format.
+    Therefore, to simplify further, we propose the following variant of low-rank QAT:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\widehat{\bm{W}}:=\mathbf{s}\cdot\operatorname{clip}\left(\left\lfloor{\frac{\bm{W_{0}}}{\mathbf{s_{0}}}+\frac{\alpha}{r}\bm{A}\bm{B}}\right\rceil,-2^{b-1},2^{b-1}-1\right),$
+    |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: where we use the initial scale¹¹1A frozen scale obtained after initial range
+    estimation before the training begins. $\mathbf{s_{0}}$ outside of the clipping
+    operator can still be learned. Empirically, we found that ([5](#S3.E5 "In Downcasting
+    operator ‣ 3 Method ‣ Low-Rank Quantization-Aware Training for LLMs")) performs
+    consistently on par with or even slightly better compared to ([4](#S3.E4 "In QAT
+    with low-rank adapters ‣ 3 Method ‣ Low-Rank Quantization-Aware Training for LLMs")).
+  prefs: []
+  type: TYPE_NORMAL
+- en: During training the pretrained weights are represented and stored as follows
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\bm{\Phi_{0}}:=\varphi\!\left(\frac{\bm{W_{0}}}{\mathbf{s_{0}}}\right),$
+    |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\varphi\!\left(\cdot\right)$ would cast the input to one of pre-existing
+    floating-point formats, such as FP16, BF16, FP8 etc.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Inspired by traditional fixed point quantization, we also explore integer representations
+    for $\varphi\!\left(\cdot\right)$ numbers can be *double-packed* into a single INT8
+    number, leading to further memory savings. This is helpful because most of the
+    common deep learning frameworks like PyTorch, at the time of writing this paper,
+    don’t natively support low-bit formats such as INT4 yet.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using $\varphi={\text{{\small{INT-}}$b$}}$ and potentially the need for better
+    initialization of auxiliary matrices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We address this problem in two distinct ways: We adapt and experiment with
+    a variant of SVD-based initialization for low-rank matrices $\bm{A}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another way is to use INT8 storage type, allocate $b$ using fixed-point numbers.
+    Assuming the rest of the computation is performed in BF16, we define the downcasting
+    and the corresponding upcasting operators as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\varphi\!\left(x\right)$ |  | (7) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\varphi^{-1}\!\left(x\right)$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: A fixed-point number where $n$, which corresponds to Q3.5 and Q4.4, respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Gradient checkpointing
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Note that both in the original LoRA paper [[25](#bib.bib25)] and in the related
+    work like QLoRA [[16](#bib.bib16)], there is no need to compute the product $\bm{A}\bm{B}$
+    in ([5](#S3.E5 "In Downcasting operator ‣ 3 Method ‣ Low-Rank Quantization-Aware
+    Training for LLMs")), and in the naïve implementation of our method, this product
+    together with the results of some intermediate computations (e.g., after rounding
+    and clipping) will be automatically kept in memory for the backward pass, leading
+    to increased memory usage. To prevent this, we employ gradient checkpointing [[10](#bib.bib10)]
+    on ([5](#S3.E5 "In Downcasting operator ‣ 3 Method ‣ Low-Rank Quantization-Aware
+    Training for LLMs")). In other words, we recompute the quantizer function in the
+    backward pass, leading to a slight runtime overhead but avoiding significantly
+    increased memory usage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: LR-QAT
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Using the components described above, we define LR-QAT for a single layer with
+    a (pretrained) weight matrix $\bm{W_{0}}$ as follows
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\widehat{\bm{W}}:=\mathbf{s}\cdot\operatorname{clip}\left(\left\lfloor{\bm{\Phi_{0}}+\frac{\alpha}{r}\bm{A}\bm{B}}\right\rceil,-2^{b-1},2^{b-1}-1\right),$
+    |  | (8) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\mathbf{s}$ outside the rounding operation as shown in ([1](#S2.E1 "In
+    Uniform affine quantization ‣ 2 Background and related work ‣ Low-Rank Quantization-Aware
+    Training for LLMs")).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '{floatrow}![[Uncaptioned image]](img/cf4b19b102319f66e5b3e26afeda37be.png)\capbtabbox
+    | $\varphi\!\left(\cdot\right)$ init. | W4pc | W3pc |'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WT-2 $\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP32 | FP32 | LoRA | 5.69 | 69.28 | 6.21 | 66.62 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | FP32 | LoRA | $+$0.01 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BF16 | FP32 | LoRA | $-$0.45 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Q4.4 / Q3.5 | FP32 | LoRA | $-$0.31 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Q4.4 / Q3.5 | BF16 | LoRA | $-$0.31 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| INT-4 / INT-3 | FP32 | LoRA | $+$30.30 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| INT-4 / INT-3 | FP32 | LoftQ ($T=1$0.26 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| INT-4 / INT-3 | FP32 | LoftQ ($T=64$2.01 | \captionlistentry'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[figure]'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 2: *Left*: The performance of LR-QAT ($\varphi{}={\text{{\small{Q4.4}}}}$,
+    compute data type, and initialization method for low-rank auxiliary matrices.
+    We report WikiText-2 (‘WT-2’) test set perplexity, lower is better, and average
+    zero-shot accuracy of 6 tasks, higher is better. Numbers marked in bold are the
+    best results.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We assess the effectiveness of LR-QAT by conducting experiments on LLaMA-2 7B/13B [[61](#bib.bib61)],
+    LLaMA-3 8B [[1](#bib.bib1)] and Mistral-0.1 7B [[31](#bib.bib31)]. To compare
+    to relevant literature with weight-activation quantization, we further experiment
+    with LLaMa-1 7B [[60](#bib.bib60)]. We first explore the impact of the choice
+    of rank $r$. We then compare our method in terms of accuracy to standard full-model
+    QAT, other baselines, and the related work. All detailed hyperparameters of our
+    experiments are in Appendix [B](#A2 "Appendix B Experimental details ‣ Low-Rank
+    Quantization-Aware Training for LLMs").
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quantization
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We experiment with both weight-only and weight-activation quantization. The
+    default settings are INT4 / INT3 per-channel (denoted ‘pc’) and group-wise weight
+    quantization with a group size of 128 (denoted ‘g128’). We quantize all linear
+    layers, except the classification head. In weight-activation quantization, defaults
+    are INT4 per-channel weight and per-token activation quantization [[14](#bib.bib14)].
+    Following OmniQuant [[55](#bib.bib55)], we quantize all inputs to matmuls with
+    exception of the softmax output and additionally quantize the KV-cache as in LLM-QAT [[44](#bib.bib44)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: Evaluation
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Following the previous work [[18](#bib.bib18), [65](#bib.bib65), [55](#bib.bib55),
+    [44](#bib.bib44)], we evaluate quantized models by reporting the perplexity of
+    language generation on WikiText-2 [[48](#bib.bib48)], using a sequence length
+    of $2048$. We also report zero-shot accuracy on a set of common sense reasoning
+    tasks including BoolQ [[12](#bib.bib12)], PIQA [[5](#bib.bib5)], Winogrande [[54](#bib.bib54)],
+    ARC [[13](#bib.bib13)], and HellaSwag [[69](#bib.bib69)]. For zero-shot evaluation,
+    we use the LM Evaluation Harness framework [[19](#bib.bib19)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: Datasets and training
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We apply our methods to all linear layers in the attention blocks (both in self-attention
+    and in the feed-forward network). We only train low-rank auxiliary matrices $\bm{A}$
+    steps. We select hyperparameters based on the perplexity of a small subset of
+    Wikipedia validation set (512 sequences).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Baselines
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We compare with round-to-nearest quantization (RTN), where we set the ranges
+    based on minimizing the $L^{p}$-norms between quantized and unquantized weights
+    and report the best performing configuration. We also use that as initialization
+    for LR-QAT. For weight-only quantization, we compare with GPTQ [[18](#bib.bib18)],
+    AWQ [[41](#bib.bib41)], OmniQuant [[55](#bib.bib55)], and our implementation of
+    PEQA [[32](#bib.bib32)], where we use symmetric weight quantization and following
+    the same experimental setup and best RTN initialization, for a fair comparison.
+    Similar to our method, we also apply PEQA only to linear layers in the attention
+    blocks and keep token embeddings, final classification head and LayerNorm parameters
+    frozen.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For weight-activation quantization, we compare our method with RTN, SmoothQuant [[65](#bib.bib65)],
+    LLM-QAT [[44](#bib.bib44)], Outlier Suppression$+$ [[63](#bib.bib63)], OmniQuant [[55](#bib.bib55)],
+    and our implementation of PEQA [[32](#bib.bib32)]. Following [[44](#bib.bib44)],
+    we compare to them in several different settings, where the weights, activations
+    and KV cache values are quantized to different bitwidths (denoted as W-A-KV).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 3: A comparison of the proposed method ($\varphi{}={\text{{\small{Q4.4}}}}$)
+    with the full-model QAT on LLaMA-2 7B with W4 per-channel quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | GPU memory, GB | WikiText-2 perplexity $\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Full-model QAT | 71.9 | 5.74 | 69.29 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT | 20.5 | 5.68 | 69.43 |'
+  prefs: []
+  type: TYPE_TB
+- en: 4.1 The impact of rank $r$
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We investigate the effect of different values of rank $r$ in all our experiments²²2This
+    amounts to only 1.2% of the total number of parameters for 7B LLaMA model..
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 The choice of the downcasting operator $\varphi\!\left(\cdot\right)$ initialization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We study the effect of several choices of the downcasting operators discussed
+    in Section [3](#S3 "3 Method ‣ Low-Rank Quantization-Aware Training for LLMs")
+    and summarize results in Table [2](#S4.T2 "Table 2 ‣ 4 Experiments ‣ Low-Rank
+    Quantization-Aware Training for LLMs"). We can see that by going from FP32 to
+    BF16, and finally to an 8-bit fixed-point representation of $\bm{\Phi_{0}}$ still
+    leads to a good model performance in the case of 4-bit weight quantization, it
+    completely breaks for W3.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far, we initialized matrices $\bm{A}$ step recovers almost all the predictive
+    performance compared to a fixed-point representation. Increasing number of LoftQ
+    steps, or applying it to a 4-bit case, however, did not help.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, when using the fixed point representation for $\bm{\Phi_{0}}$ with
+    ‘LoRA’ initialization and BF16 compute data type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4: Weight-only quantization results for LLaMA-2/3 and Mistral models.
+    We report WikiText-2 test set perplexity (lower is better) and average zero-shot
+    accuracy (higher is better). Models marked ‘L2’/‘L3’, and ‘M’ denote LLaMA-2/3
+    and Mistral, respectively. Numbers marked in bold are SOTA or on par (within $0.05$).
+    ^§Uses asymmetric weight quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| # Bits | Method | WikiText-2 Perplexity $\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| L2-7B | L2-13B | L3-8B | M-7B | L2-7B | L2-13B | L3-8B | M-7B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 |  | 5.47 | 4.88 | 6.14 | 5.25 | 70.47 | 73.18 | 74.22 | 75.69 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4pc | RTN | 6.14 | 5.21 | 7.53 | 5.91 | 68.88 | 71.73 | 72.19 | 73.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ^§ | 5.83 | 5.13 | - | - | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 6.15 | 5.12 | - | - | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant^§ | 5.74 | 5.02 | - | - | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 5.71 | 5.03 | 7.51 | 5.56 | 69.23 | 72.51 | 72.79 | 73.73
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | 5.66 | 5.04 | 6.78 | 5.46 | 69.95 | 73.13 | 73.35 | 73.67
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3pc | RTN | 26.73 | 8.71 | 34.10 | 9.49 | 43.87 | 55.01 | 47.46 | 64.58
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ^§ | 8.37 | 6.44 | - | - | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 24.00 | 10.45 | - | - | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant^§ | 6.58 | 5.58 | - | - | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 6.45 | 5.73 | 27.45 | 6.51 | 65.44 | 69.81 | 50.28 | 71.02
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | 6.13 | 5.54 | 8.12 | 6.03 | 67.66 | 71.22 | 70.46 | 71.87
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4g128 | RTN | 5.78 | 5.04 | 6.96 | 5.49 | 69.75 | 72.94 | 72.30 | 75.07
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ^§ | 5.61 | 4.98 | - | - | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 5.62 | 4.97 | - | - | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant^§ | 5.58 | 4.95 | - | - | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 5.67 | 5.02 | 6.89 | 5.48 | 69.64 | 72.80 | 72.99 | 73.34
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | 5.59 | 4.97 | 6.62 | 5.36 | 69.88 | 72.89 | 73.72 | 75.18
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3g128 | RTN | 7.61 | 6.20 | 15.11 | 6.77 | 63.20 | 67.60 | 57.74 | 69.35
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ^§ | 6.29 | 5.42 | - | - | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 6.24 | 5.32 | - | - | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant^§ | 6.03 | 5.28 | - | - | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 6.05 | 5.58 | 9.64 | 5.85 | 68.10 | 70.29 | 67.19 | 72.21
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | 5.99 | 5.53 | 7.74 | 5.81 | 67.98 | 70.54 | 70.48 | 71.44
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: 4.3 Comparison with full-model QAT
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Finally, before presenting our main set of results, we compare our method with
+    a vanilla full-model QAT [[17](#bib.bib17)]. For full-model QAT, we follow the
+    same training setup as for our method. We also tune the maximum value of the learning
+    rate using the following search space $\left\{\text{1e-5, {5e-5}, 1e-4, 5e-4,
+    1e-3}\right\}$ and select the best configuration based on Wikipedia validation
+    perplexity. As we can see in Table [3](#S4.T3 "Table 3 ‣ Baselines ‣ 4 Experiments
+    ‣ Low-Rank Quantization-Aware Training for LLMs"), training with our method leads
+    to a better predictive performance at a significantly lower memory usage compared
+    to vanilla QAT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4 Main results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Weight-only quantization
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We summarize our results in Table [4](#S4.T4 "Table 4 ‣ 4.2 The choice of the
+    downcasting operator 𝜑⁢(⋅) and 𝑨, 𝑩 initialization ‣ 4 Experiments ‣ Low-Rank
+    Quantization-Aware Training for LLMs"). As we can see, in almost most cases LR-QAT
+    outperforms or is on par with prior weight-only quantization methods across various
+    LLM families and quantization settings, including both per-channel and group-wise
+    quantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In a few cases, especially in case of group-wise quantization our method did
+    not outpeform OmniQuant. However, OmniQuant uses asymmetric quantization which
+    provides extra degrees of freedom compared to symmetric quantization, which are
+    very helpful in the case of low-bit quantization. In practice, however, symmetric
+    weight quantization yields more efficient inference [[51](#bib.bib51)]. Additionally,
+    techniques like OmniQuant and related techniques are orthogonal to our method
+    and can be used as as initialization of LR-QAT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Weight-activation quantization
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Table 5: Weight and activation quantization results for LLaMA-1 7B. We report
+    WikiText-2 test set perplexity (lower is better) and zero-shot accuracy of 6 tasks
+    (higher is better). Numbers marked in bold are SOTA. ^§Uses asymmetric weight
+    quantization. ^*Uses a maximum sequence length of 1024 for evaluation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| # Bits (W-A-KV) | Method | WikiText-2 $\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BoolQ | PIQA | Winogrande | ARC-e | ARC-c | HellaSwag | Avg. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 |  | 5.68 | 75.05 | 79.16 | 70.01 | 72.85 | 44.80 | 76.21 | 69.68 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4-8-8 | RTN | 23.18 | 60.55 | 67.14 | 53.43 | 54.08 | 33.11 | 50.77 | 53.18
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant | 13.7^* | 71.00 | 76.00 | 66.00 | 67.40 | 42.80 | 67.80 | 65.17
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-QAT | 11.2^* | 74.60 | 77.50 | 67.70 | 70.20 | 45.60 | 73.50 | 68.18
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 5.89 | 74.86 | 78.24 | 70.01 | 70.12 | 42.83 | 75.14 |
+    68.53 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | LR-QAT (ours) | 5.85 | 73.76 | 78.51 | 71.19 | 71.09 | 41.81 | 75.10 |
+    68.58 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4-8-4 | RTN | 182.7 | 48.01 | 52.23 | 48.78 | 29.00 | 22.70 | 28.52 | 38.21
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant | 163.6^* | 54.70 | 55.40 | 51.50 | 43.90 | 27.70 | 38.90 | 45.35
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-QAT | 11.6^* | 69.50 | 75.40 | 64.60 | 66.00 | 43.80 | 69.20 | 64.75
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 6.15 | 72.97 | 77.80 | 67.72 | 67.13 | 40.27 | 73.35 |
+    66.54 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | 6.07 | 73.64 | 77.91 | 67.56 | 69.28 | 41.30 | 73.25 | 67.16
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4-4-4 | RTN | 4.1e4 | 41.41 | 49.24 | 51.30 | 27.19 | 28.84 | 26.30 | 37.38
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant | 25.25 | 49.10 | 49.80 | 48.00 | 30.40 | 25.80 | 27.40 | 38.42
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-QAT | - | 61.30 | 51.50 | 51.90 | 27.90 | 23.90 | 31.10 | 41.27 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-QAT + SQ | - | 62.40 | 55.90 | 50.60 | 35.50 | 26.40 | 47.80 | 46.43
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OS+ | - | 60.21 | 62.73 | 52.96 | 39.98 | 30.29 | 44.39 | 48.43 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant^§ | 11.26 | 63.51 | 66.15 | 53.43 | 45.20 | 31.14 | 56.44 | 52.65
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 8.60 | 65.69 | 72.31 | 59.83 | 56.52 | 34.22 | 61.79 |
+    58.39 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | LR-QAT (ours) | 8.47 | 67.16 | 71.76 | 59.59 | 58.42 | 34.73 | 62.34 |
+    59.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: We present our results for weight-activation quantization applied to LLaMA-1
+    7B in Table [5](#S4.T5 "Table 5 ‣ Weight-activation quantization ‣ 4.4 Main results
+    ‣ 4 Experiments ‣ Low-Rank Quantization-Aware Training for LLMs"). LR-QAT demonstrates
+    superior performance compared to all the PTQ and QAT baselines, consistently outperforming
+    them across all the bitwidth settings. In addition to that, as we decrease the
+    activation bitwidths, the improvement in model performance compared to prior work
+    becomes more pronounced.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This indicates LR-QAT’s versatility, being readily applicable not only to weight-only
+    quantization but also weight-activation quantization, a setting that allows for
+    a very efficient inference using fixed-point arithmetic. Finally, our method can
+    still be combined with most of the related PTQ methods including OmniQuant that
+    shift the difficulty of activation quantization to weight quantization, and will
+    likely lead to even better results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Limitations
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: A core assumption of LR-QAT is that a low-rank approximation can compensate
+    the introduced quantization noise. While quantization noise follows a random uniform
+    distribution and is theoretically not low-rank, our results and several prior
+    works [[16](#bib.bib16), [66](#bib.bib66), [32](#bib.bib32)] suggest that in an
+    end-to-end training setup, low-rank approaches can effectively compensate quantization
+    noise. In our work, we demonstrated the effectiveness of LR-QAT for LLMs up to
+    13B parameters. It is unclear how it scales to significantly larger LLMs, though
+    we do not see any reason why our findings should not hold beyond 13B models. We
+    evaluate LR-QAT as extended pretraining technique with several thousands of iterations.
+    It is unclear how it would perform in case it is used during pretraining for millions
+    of iterations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Impact
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: As LR-QAT improves memory and inference efficiency of LLMs, we expect mainly
+    positive outcomes from our work. Efficiently deploying LLMs will help with reducing
+    their high power consumption at inference time. It further helps to move inference
+    from the cloud to edge devices which can overcome potential privacy concerns.
+    In some cases, quantization might lead to biased predictions, see [[24](#bib.bib24)]
+    for further discussion.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Conclusions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this paper we propose LR-QAT, a lightweight and memory-efficient QAT algorithm
+    for LLMs which enables training a 7B LLM on a single consumer grade GPU with 24GB
+    of memory. Inspired by PEFT methods, we introduce a low-rank reparameterization
+    that is aware of the quantization grid. We further reduce the memory requirements
+    by introducing a downcasting operator involving fixed-point or double-packed integers,
+    and applying checkpointing. In almost all cases, our method outperforms common
+    PTQ approaches and reaches the same model performance as full-model QAT at the
+    fraction of its memory usage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Acknowledgements
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We would like to thank Tijmen Blankevoort, Paul Whatmough, Jorn Peters, and
+    Ties van Rozendaal for valuable discussions and support.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: AI@Meta [2024] AI@Meta. Llama 3 model card, 2024. URL [https://github.com/meta-llama/llama3/blob/main/MODEL_CARD.md](https://github.com/meta-llama/llama3/blob/main/MODEL_CARD.md).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Banner et al. [2018] Ron Banner, Yury Nahshan, Elad Hoffer, and Daniel Soudry.
+    Post-training 4-bit quantization of convolution networks for rapid-deployment.
+    *arXiv preprint arXiv:1810.05723*, 2018.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Bengio et al. [2013] Yoshua Bengio, Nicholas Léonard, and Aaron Courville. Estimating
+    or propagating gradients through stochastic neurons for conditional computation.
+    *arXiv preprint arXiv:1308.3432*, 2013.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bhalgat et al. [2020] Yash Bhalgat, Jinwon Lee, Markus Nagel, Tijmen Blankevoort,
+    and Nojun Kwak. Lsq+: Improving low-bit quantization through learnable offsets
+    and better initialization. In *Proceedings of the IEEE/CVF Conference on Computer
+    Vision and Pattern Recognition (CVPR) Workshops*, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bisk et al. [2020] Yonatan Bisk, Rowan Zellers, Jianfeng Gao, Yejin Choi, et al.
+    Piqa: Reasoning about physical commonsense in natural language. In *Proceedings
+    of the AAAI conference on artificial intelligence*, volume 34, pages 7432–7439,
+    2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bondarenko et al. [2021] Yelysei Bondarenko, Markus Nagel, and Tijmen Blankevoort.
+    Understanding and overcoming the challenges of efficient transformer quantization.
+    In *Proceedings of the 2021 Conference on Empirical Methods in Natural Language
+    Processing*, pages 7947–7969, Online and Punta Cana, Dominican Republic, November
+    2021\. Association for Computational Linguistics. doi: 10.18653/v1/2021.emnlp-main.627.
+    URL [https://aclanthology.org/2021.emnlp-main.627](https://aclanthology.org/2021.emnlp-main.627).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bondarenko et al. [2024] Yelysei Bondarenko, Markus Nagel, and Tijmen Blankevoort.
+    Quantizable transformers: Removing outliers by helping attention heads do nothing.
+    *Advances in Neural Information Processing Systems*, 36, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Cai et al. [2020] Yaohui Cai, Zhewei Yao, Zhen Dong, Amir Gholami, Michael W
+    Mahoney, and Kurt Keutzer. Zeroq: A novel zero shot quantization framework. In
+    *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition*,
+    pages 13169–13178, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chee et al. [2024] Jerry Chee, Yaohui Cai, Volodymyr Kuleshov, and Christopher M
+    De Sa. Quip: 2-bit quantization of large language models with guarantees. *Advances
+    in Neural Information Processing Systems*, 36, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chen et al. [2016] Tianqi Chen, Bing Xu, Chiyuan Zhang, and Carlos Guestrin.
+    Training deep nets with sublinear memory cost. *arXiv preprint arXiv:1604.06174*,
+    2016.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Choukroun et al. [2019] Yoni Choukroun, Eli Kravchik, Fan Yang, and Pavel Kisilev.
+    Low-bit quantization of neural networks for efficient inference. In *ICCV Workshops*,
+    pages 3009–3018, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Clark et al. [2019] Christopher Clark, Kenton Lee, Ming-Wei Chang, Tom Kwiatkowski,
+    Michael Collins, and Kristina Toutanova. Boolq: Exploring the surprising difficulty
+    of natural yes/no questions. *arXiv preprint arXiv:1905.10044*, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Clark et al. [2018] Peter Clark, Isaac Cowhey, Oren Etzioni, Tushar Khot, Ashish
+    Sabharwal, Carissa Schoenick, and Oyvind Tafjord. Think you have solved question
+    answering? try arc, the ai2 reasoning challenge. *arXiv preprint arXiv:1803.05457*,
+    2018.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. [2022] Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer.
+    Gpt3\. int8 (): 8-bit matrix multiplication for transformers at scale. In *Advances
+    in Neural Information Processing Systems*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. [2023] Tim Dettmers, Ruslan Svirschevski, Vage Egiazarian,
+    Denis Kuznedelev, Elias Frantar, Saleh Ashkboos, Alexander Borzunov, Torsten Hoefler,
+    and Dan Alistarh. Spqr: A sparse-quantized representation for near-lossless llm
+    weight compression. *arXiv preprint arXiv:2306.03078*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. [2024] Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, and Luke
+    Zettlemoyer. Qlora: Efficient finetuning of quantized llms. *Advances in Neural
+    Information Processing Systems*, 36, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Esser et al. [2020] Steven K. Esser, Jeffrey L. McKinstry, Deepika Bablani,
+    Rathinakumar Appuswamy, and Dharmendra S. Modha. Learned step size quantization.
+    In *International Conference on Learning Representations (ICLR)*, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Frantar et al. [2022] Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan
+    Alistarh. Gptq: Accurate post-training quantization for generative pre-trained
+    transformers. *arXiv preprint arXiv:2210.17323*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Gao et al. [2021] Leo Gao, Jonathan Tow, Stella Biderman, Sid Black, Anthony
+    DiPofi, Charles Foster, Laurence Golding, Jeffrey Hsu, Kyle McDonell, Niklas Muennighoff,
+    et al. A framework for few-shot language model evaluation. *Version v0\. 0.1\.
+    Sept*, page 8, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Gugger et al. [2022] Sylvain Gugger, Lysandre Debu, Thomas Wolf, Philipp Schmid,
+    Zachary Mueller, and Sourab Mangrulkar. Accelerate: Training and inference at
+    scale made simple, efficient and adaptable. [https://github.com/huggingface/accelerate](https://github.com/huggingface/accelerate),
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Guo et al. [2023] Han Guo, Philip Greengard, Eric P Xing, and Yoon Kim. Lq-lora:
+    Low-rank plus quantized matrix decomposition for efficient language model finetuning.
+    *arXiv preprint arXiv:2311.12023*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Gupta et al. [2015] Suyog Gupta, Ankur Agrawal, Kailash Gopalakrishnan, and
+    Pritish Narayanan. Deep learning with limited numerical precision. In *International
+    conference on machine learning*, pages 1737–1746\. PMLR, 2015.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'He et al. [2015] Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Delving
+    deep into rectifiers: Surpassing human-level performance on imagenet classification.
+    In *Proceedings of the IEEE international conference on computer vision*, pages
+    1026–1034, 2015.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hooker et al. [2020] Sara Hooker, Nyalleng Moorosi, Gregory Clark, Samy Bengio,
+    and Emily Denton. Characterising bias in compressed models. *arXiv preprint arXiv:2010.03058*,
+    2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hu et al. [2021] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu,
+    Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. Lora: Low-rank adaptation of
+    large language models. *arXiv preprint arXiv:2106.09685*, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hubara et al. [2017] Itay Hubara, Matthieu Courbariaux, Daniel Soudry, Ran
+    El-Yaniv, and Yoshua Bengio. Quantized neural networks: Training neural networks
+    with low precision weights and activations. *The Journal of Machine Learning Research*,
+    18(1):6869–6898, 2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hubara et al. [2020] Itay Hubara, Yury Nahshan, Yair Hanani, Ron Banner, and
+    Daniel Soudry. Improving post training neural quantization: Layer-wise calibration
+    and integer programming. *arXiv preprint arXiv:2006.10518*, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Jacob et al. [2018] Benoit Jacob, Skirmantas Kligys, Bo Chen, Menglong Zhu,
+    Matthew Tang, Andrew Howard, Hartwig Adam, and Dmitry Kalenichenko. Quantization
+    and training of neural networks for efficient integer-arithmetic-only inference.
+    In *Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition*,
+    pages 2704–2713, 2018.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Jeon et al. [2024] Hyesung Jeon, Yulhwa Kim, and Jae-joon Kim. L4q: Parameter
+    efficient quantization-aware training on large language models via lora-wise lsq.
+    *arXiv preprint arXiv:2402.04902*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Jeon et al. [2023] Yongkweon Jeon, Chungman Lee, Kyungphil Park, and Ho-young
+    Kim. A frustratingly easy post-training quantization scheme for llms. In *Proceedings
+    of the 2023 Conference on Empirical Methods in Natural Language Processing*, pages
+    14446–14461, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Jiang et al. [2023] Albert Q Jiang, Alexandre Sablayrolles, Arthur Mensch, Chris
+    Bamford, Devendra Singh Chaplot, Diego de las Casas, Florian Bressand, Gianna
+    Lengyel, Guillaume Lample, Lucile Saulnier, et al. Mistral 7b. *arXiv preprint
+    arXiv:2310.06825*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kim et al. [2024] Jeonghoon Kim, Jung Hyun Lee, Sungdong Kim, Joonsuk Park,
+    Kang Min Yoo, Se Jung Kwon, and Dongsoo Lee. Memory-efficient fine-tuning of compressed
+    large language models via sub-4-bit integer quantization. *Advances in Neural
+    Information Processing Systems*, 36, 2024.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kovaleva et al. [2021] Olga Kovaleva, Saurabh Kulshreshtha, Anna Rogers, and
+    Anna Rumshisky. Bert busters: Outlier dimensions that disrupt transformers. In
+    *Findings of the Association for Computational Linguistics: ACL-IJCNLP 2021*,
+    pages 3392–3405, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Krishnamoorthi [2018] Raghuraman Krishnamoorthi. Quantizing deep convolutional
+    networks for efficient inference: A whitepaper. *arXiv preprint arXiv:1806.08342*,
+    2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lee et al. [2024] Changhun Lee, Jungyu Jin, Taesu Kim, Hyungjun Kim, and Eunhyeok
+    Park. Owq: Outlier-aware weight quantization for efficient fine-tuning and inference
+    of large language models. In *Proceedings of the AAAI Conference on Artificial
+    Intelligence*, volume 38, pages 13355–13364, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Lee et al. [2023a] Jangwhan Lee, Minsoo Kim, Seungcheol Baek, Seok Joong Hwang,
+    Wonyong Sung, and Jungwook Choi. Enhancing computation efficiency in large language
+    models through weight and activation quantization. *arXiv preprint arXiv:2311.05161*,
+    2023a.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lee et al. [2023b] Jung Hyun Lee, Jeonghoon Kim, Se Jung Kwon, and Dongsoo
+    Lee. Flexround: Learnable rounding based on element-wise division for post-training
+    quantization. In *International Conference on Machine Learning*, pages 18913–18939\.
+    PMLR, 2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lhoest et al. [2021] Quentin Lhoest, Albert Villanova del Moral, Yacine Jernite,
+    Abhishek Thakur, Patrick von Platen, Suraj Patil, Julien Chaumond, Mariama Drame,
+    Julien Plu, Lewis Tunstall, Joe Davison, Mario $\mathbf{S}$ko, Gunjan Chhablani,
+    Bhavitvya Malik, Simon Brandeis, Teven Le Scao, Victor Sanh, Canwen Xu, Nicolas
+    Patry, Angelina McMillan-Major, Philipp Schmid, Sylvain Gugger, Clément Delangue,
+    Théo Matussière, Lysandre Debut, Stas Bekman, Pierric Cistac, Thibault Goehringer,
+    Victor Mustar, François Lagunas, Alexander Rush, and Thomas Wolf. Datasets: A
+    community library for natural language processing. In *Proceedings of the 2021
+    Conference on Empirical Methods in Natural Language Processing: System Demonstrations*,
+    pages 175–184, Online and Punta Cana, Dominican Republic, November 2021\. Association
+    for Computational Linguistics. URL [https://aclanthology.org/2021.emnlp-demo.21](https://aclanthology.org/2021.emnlp-demo.21).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. [2023] Yixiao Li, Yifan Yu, Chen Liang, Pengcheng He, Nikos Karampatziakis,
+    Weizhu Chen, and Tuo Zhao. Loftq: Lora-fine-tuning-aware quantization for large
+    language models. *arXiv preprint arXiv:2310.08659*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. [2021] Yuhang Li, Ruihao Gong, Xu Tan, Yang Yang, Peng Hu, Qi Zhang,
+    Fengwei Yu, Wei Wang, and Shi Gu. Brecq: Pushing the limit of post-training quantization
+    by block reconstruction. *arXiv preprint arXiv:2102.05426*, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lin et al. [2023] Ji Lin, Jiaming Tang, Haotian Tang, Shang Yang, Xingyu Dang,
+    and Song Han. Awq: Activation-aware weight quantization for llm compression and
+    acceleration. *arXiv preprint arXiv:2306.00978*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lin et al. [2024] Yujun Lin, Haotian Tang, Shang Yang, Zhekai Zhang, Guangxuan
+    Xiao, Chuang Gan, and Song Han. Qserve: W4a8kv4 quantization and system co-design
+    for efficient llm serving. *arXiv preprint arXiv:2405.04532*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. [2023a] Jing Liu, Ruihao Gong, Xiuying Wei, Zhiwei Dong, Jianfei
+    Cai, and Bohan Zhuang. Qllm: Accurate and efficient low-bitwidth quantization
+    for large language models. *arXiv preprint arXiv:2310.08041*, 2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. [2023b] Zechun Liu, Barlas Oguz, Changsheng Zhao, Ernie Chang, Pierre
+    Stock, Yashar Mehdad, Yangyang Shi, Raghuraman Krishnamoorthi, and Vikas Chandra.
+    Llm-qat: Data-free quantization aware training for large language models. *arXiv
+    preprint arXiv:2305.17888*, 2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Loshchilov and Hutter [2017] Ilya Loshchilov and Frank Hutter. Decoupled weight
+    decay regularization. *arXiv preprint arXiv:1711.05101*, 2017.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Luo et al. [2023] Yan Luo, Yangcheng Gao, Zhao Zhang, Jicong Fan, Haijun Zhang,
+    and Mingliang Xu. Long-range zero-shot generative deep network quantization. *Neural
+    Networks*, 166:683–691, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Meller et al. [2019] Eldad Meller, Alexander Finkelstein, Uri Almog, and Mark
+    Grobman. Same, same but different: Recovering neural network quantization error
+    through weight factorization. In *International Conference on Machine Learning*,
+    pages 4486–4495\. PMLR, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Merity et al. [2016] Stephen Merity, Caiming Xiong, James Bradbury, and Richard
+    Socher. Pointer sentinel mixture models. *arXiv preprint arXiv:1609.07843*, 2016.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Nagel et al. [2019] Markus Nagel, Mart van Baalen, Tijmen Blankevoort, and Max
+    Welling. Data-free quantization through weight equalization and bias correction.
+    In *Proceedings of the IEEE/CVF International Conference on Computer Vision*,
+    pages 1325–1334, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Nagel et al. [2020] Markus Nagel, Rana Ali Amjad, Mart Van Baalen, Christos
+    Louizos, and Tijmen Blankevoort. Up or down? Adaptive rounding for post-training
+    quantization. In *International Conference on Machine Learning (ICML)*, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Nagel et al. [2021] Markus Nagel, Marios Fournarakis, Rana Ali Amjad, Yelysei
+    Bondarenko, Mart van Baalen, and Blankevoort Tijmen. A white paper on neural network
+    quantization. *arXiv preprint arXiv:2106.08295*, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Oberstar [2007] Erick L Oberstar. Fixed-point representation & fractional math.
+    *Oberstar Consulting*, 9:19, 2007.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Paszke et al. [2019] Adam Paszke, Sam Gross, Francisco Massa, Adam Lerer, James
+    Bradbury, Gregory Chanan, Trevor Killeen, Zeming Lin, Natalia Gimelshein, Luca
+    Antiga, Alban Desmaison, Andreas Kopf, Edward Yang, Zachary DeVito, Martin Raison,
+    Alykhan Tejani, Sasank Chilamkurthy, Benoit Steiner, Lu Fang, Junjie Bai, and
+    Soumith Chintala. Pytorch: An imperative style, high-performance deep learning
+    library. In *Neural Information Processing Systems (NeuRIPS)*. 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sakaguchi et al. [2021] Keisuke Sakaguchi, Ronan Le Bras, Chandra Bhagavatula,
+    and Yejin Choi. Winogrande: An adversarial winograd schema challenge at scale.
+    *Communications of the ACM*, 64(9):99–106, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Shao et al. [2023] Wenqi Shao, Mengzhao Chen, Zhaoyang Zhang, Peng Xu, Lirui
+    Zhao, Zhiqian Li, Kaipeng Zhang, Peng Gao, Yu Qiao, and Ping Luo. Omniquant: Omnidirectionally
+    calibrated quantization for large language models. *arXiv preprint arXiv:2308.13137*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Shen et al. [2024] Xuan Shen, Zhenglun Kong, Changdi Yang, Zhaoyang Han, Lei
+    Lu, Peiyan Dong, Cheng Lyu, Chih-hsiang Li, Xuehang Guo, Zhihao Shu, et al. Edgeqat:
+    Entropy and distribution guided quantization-aware training for the acceleration
+    of lightweight llms on the edge. *arXiv preprint arXiv:2402.10787*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Soboleva et al. [2023] Daria Soboleva, Faisal Al-Khateeb, Robert Myers, Jacob R
+    Steeves, Joel Hestness, and Nolan Dey. SlimPajama: A 627B token cleaned and deduplicated
+    version of RedPajama. [https://www.cerebras.net/blog/slimpajama-a-627b-token-cleaned-and-deduplicated-version-of-redpajama](https://www.cerebras.net/blog/slimpajama-a-627b-token-cleaned-and-deduplicated-version-of-redpajama),
+    June 2023. URL [https://huggingface.co/datasets/cerebras/SlimPajama-627B](https://huggingface.co/datasets/cerebras/SlimPajama-627B).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sun et al. [2024] Mingjie Sun, Xinlei Chen, J Zico Kolter, and Zhuang Liu. Massive
+    activations in large language models. *arXiv preprint arXiv:2402.17762*, 2024.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Tang et al. [2024] Hanlin Tang, Yifu Sun, Decheng Wu, Kai Liu, Jianchen Zhu,
+    and Zhanhui Kang. Easyquant: An efficient data-free quantization algorithm for
+    llms. *arXiv preprint arXiv:2403.02775*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. [2023a] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier
+    Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal,
+    Eric Hambro, Faisal Azhar, et al. Llama: Open and efficient foundation language
+    models. *arXiv preprint arXiv:2302.13971*, 2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. [2023b] Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert,
+    Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava,
+    Shruti Bhosale, et al. Llama 2: Open foundation and fine-tuned chat models. *arXiv
+    preprint arXiv:2307.09288*, 2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wei et al. [2022] Xiuying Wei, Yunchen Zhang, Xiangguo Zhang, Ruihao Gong,
+    Shanghang Zhang, Qi Zhang, Fengwei Yu, and Xianglong Liu. Outlier suppression:
+    Pushing the limit of low-bit transformer language models. *arXiv preprint arXiv:2209.13325*,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wei et al. [2023] Xiuying Wei, Yunchen Zhang, Yuhang Li, Xiangguo Zhang, Ruihao
+    Gong, Jinyang Guo, and Xianglong Liu. Outlier suppression+: Accurate quantization
+    of large language models by equivalent and optimal shifting and scaling. *arXiv
+    preprint arXiv:2304.09145*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wolf et al. [2020] Thomas Wolf, Lysandre Debut, Victor Sanh, Julien Chaumond,
+    Clement Delangue, Anthony Moi, Pierric Cistac, Tim Rault, Rémi Louf, Morgan Funtowicz,
+    et al. Transformers: State-of-the-art natural language processing. In *Proceedings
+    of the 2020 conference on empirical methods in natural language processing: system
+    demonstrations*, pages 38–45, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xiao et al. [2023] Guangxuan Xiao, Ji Lin, Mickael Seznec, Hao Wu, Julien Demouth,
+    and Song Han. Smoothquant: Accurate and efficient post-training quantization for
+    large language models. In *International Conference on Machine Learning*, pages
+    38087–38099\. PMLR, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xu et al. [2023] Yuhui Xu, Lingxi Xie, Xiaotao Gu, Xin Chen, Heng Chang, Hengheng
+    Zhang, Zhensu Chen, Xiaopeng Zhang, and Qi Tian. Qa-lora: Quantization-aware low-rank
+    adaptation of large language models. *arXiv preprint arXiv:2309.14717*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yao et al. [2022] Zhewei Yao, Reza Yazdani Aminabadi, Minjia Zhang, Xiaoxia
+    Wu, Conglong Li, and Yuxiong He. Zeroquant: Efficient and affordable post-training
+    quantization for large-scale transformers. In S. Koyejo, S. Mohamed, A. Agarwal,
+    D. Belgrave, K. Cho, and A. Oh, editors, *Advances in Neural Information Processing
+    Systems*, volume 35, pages 27168–27183\. Curran Associates, Inc., 2022. URL [https://proceedings.neurips.cc/paper_files/paper/2022/file/adf7fa39d65e2983d724ff7da57f00ac-Paper-Conference.pdf](https://proceedings.neurips.cc/paper_files/paper/2022/file/adf7fa39d65e2983d724ff7da57f00ac-Paper-Conference.pdf).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yuan et al. [2023] Zhihang Yuan, Lin Niu, Jiawei Liu, Wenyu Liu, Xinggang Wang,
+    Yuzhang Shang, Guangyu Sun, Qiang Wu, Jiaxiang Wu, and Bingzhe Wu. Rptq: Reorder-based
+    post-training quantization for large language models. *arXiv preprint arXiv:2304.01089*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zellers et al. [2019] Rowan Zellers, Ari Holtzman, Yonatan Bisk, Ali Farhadi,
+    and Yejin Choi. Hellaswag: Can a machine really finish your sentence? *arXiv preprint
+    arXiv:1905.07830*, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. [2024] Cheng Zhang, Jianyi Cheng, George A Constantinides, and
+    Yiren Zhao. Lqer: Low-rank quantization error reconstruction for llms. *arXiv
+    preprint arXiv:2402.02446*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Zhao et al. [2019] Ritchie Zhao, Yuwei Hu, Jordan Dotzel, Chris De Sa, and Zhiru
+    Zhang. Improving neural network quantization without retraining using outlier
+    channel splitting. In *International conference on machine learning*, pages 7543–7552\.
+    PMLR, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhou et al. [2016] Shuchang Zhou, Yuxin Wu, Zekun Ni, Xinyu Zhou, He Wen, and
+    Yuheng Zou. Dorefa-net: Training low bitwidth convolutional neural networks with
+    low bitwidth gradients. *arXiv preprint arXiv:1606.06160*, 2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Extended results
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we provide extended results and present some additional ablation
+    studies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table A1: LM-eval weight-only quantization results for LLaMA-2/3 and Mistral
+    models. We report zero-shot accuracy of 6 tasks (higher is better).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | # Bits | Method | BoolQ | PIQA | Winogrande | ARC-e | ARC-c | HellaSwag
+    | Avg. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2 7B | FP16 |  | 77.74 | 79.11 | 69.14 | 74.58 | 46.25 | 75.98 | 70.47
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4pc | RTN | 76.36 | 78.07 | 68.19 | 71.21 | 44.80 | 74.65 | 68.88 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 77.49 | 78.24 | 69.61 | 70.96 | 43.52 | 75.54 | 69.23
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | 77.43 | 78.45 | 69.69 | 73.15 | 45.48 | 75.51 | 69.95 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3pc | RTN | 46.27 | 60.28 | 54.85 | 38.05 | 23.29 | 40.47 | 43.87 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 71.62 | 76.82 | 66.14 | 65.66 | 39.76 | 72.63 | 65.44
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | 74.43 | 77.15 | 68.03 | 69.95 | 43.09 | 73.29 | 67.66 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4g128 | RTN | 76.76 | 78.18 | 69.77 | 72.60 | 45.73 | 75.43 | 69.75 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 76.88 | 78.89 | 69.85 | 72.18 | 44.11 | 75.95 | 69.64
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | 76.73 | 78.62 | 70.48 | 72.85 | 44.97 | 75.62 | 69.88 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3g128 | RTN | 66.42 | 75.57 | 65.19 | 64.90 | 38.14 | 68.96 | 63.20 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 75.38 | 77.97 | 68.59 | 70.62 | 42.32 | 73.74 | 68.10
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | 73.30 | 78.07 | 67.72 | 71.46 | 43.77 | 73.53 | 67.98 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2 13B | FP16 |  | 80.55 | 80.52 | 72.22 | 77.44 | 48.98 | 79.38 | 73.18
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4pc | RTN | 79.30 | 79.71 | 70.01 | 75.51 | 48.89 | 76.96 | 71.73 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 78.99 | 80.14 | 71.27 | 76.43 | 48.98 | 79.24 | 72.51
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | 79.91 | 80.25 | 71.03 | 77.48 | 50.68 | 79.45 | 73.13 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3pc | RTN | 55.05 | 71.06 | 54.22 | 56.19 | 32.25 | 61.27 | 55.01 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 74.28 | 78.67 | 69.06 | 74.87 | 45.99 | 76.00 | 69.81
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | 78.62 | 79.49 | 72.61 | 73.99 | 45.56 | 77.05 | 71.22 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4g128 | RTN | 81.10 | 79.82 | 72.38 | 76.73 | 49.06 | 78.52 | 72.94 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 80.28 | 80.63 | 71.74 | 76.14 | 48.38 | 79.62 | 72.80
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | 80.73 | 79.92 | 71.98 | 76.60 | 48.81 | 79.31 | 72.89 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3g128 | RTN | 74.65 | 76.93 | 69.14 | 70.16 | 42.66 | 72.06 | 67.60 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 78.56 | 78.73 | 69.85 | 73.61 | 44.28 | 76.69 | 70.29
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | 79.69 | 78.78 | 68.98 | 73.99 | 44.88 | 76.89 | 70.54 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-3 8B | FP16 |  | 81.44 | 80.79 | 72.85 | 77.74 | 53.33 | 79.16 | 74.22
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4pc | RTN | 79.02 | 78.56 | 72.85 | 75.97 | 49.32 | 77.44 | 72.19 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 79.57 | 78.67 | 72.93 | 77.19 | 51.11 | 77.25 | 72.79
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | 80.09 | 80.41 | 73.88 | 76.89 | 50.51 | 78.30 | 73.35 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3pc | RTN | 58.65 | 61.75 | 56.04 | 39.60 | 23.81 | 44.91 | 47.46 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 62.63 | 63.66 | 56.59 | 42.34 | 27.13 | 49.35 | 50.28
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | 77.46 | 78.51 | 69.85 | 74.83 | 47.35 | 74.73 | 70.46 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4g128 | RTN | 79.48 | 79.27 | 73.56 | 75.08 | 48.81 | 77.61 | 72.30 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 80.98 | 80.14 | 72.61 | 76.18 | 49.57 | 78.45 | 72.99
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | 80.28 | 80.96 | 74.11 | 77.19 | 51.45 | 78.31 | 73.72 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3g128 | RTN | 65.47 | 68.39 | 65.19 | 54.00 | 33.45 | 59.96 | 57.74 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 72.26 | 76.06 | 67.80 | 69.02 | 46.08 | 71.89 | 67.19
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | 72.97 | 79.38 | 71.67 | 74.37 | 49.06 | 75.44 | 70.48 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Mistral 7B | FP16 |  | 83.58 | 82.10 | 73.88 | 79.59 | 53.92 | 81.07 | 75.69
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4pc | RTN | 81.22 | 80.63 | 72.53 | 76.77 | 50.09 | 79.41 | 73.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 81.80 | 81.12 | 72.61 | 77.23 | 50.17 | 79.43 | 73.73
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | 80.12 | 81.83 | 73.40 | 76.73 | 49.66 | 80.25 | 73.67 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3pc | RTN | 68.13 | 77.64 | 63.93 | 63.93 | 41.13 | 72.73 | 64.58 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 80.03 | 80.09 | 69.93 | 72.90 | 45.82 | 77.32 | 71.02
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | 81.62 | 80.09 | 70.96 | 74.75 | 46.08 | 77.71 | 71.87 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4g128 | RTN | 84.16 | 81.77 | 74.43 | 77.95 | 51.71 | 80.42 | 75.07 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 80.89 | 81.72 | 73.80 | 75.42 | 48.46 | 79.76 | 73.34
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | 83.85 | 81.77 | 73.88 | 78.54 | 52.22 | 80.79 | 75.18 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3g128 | RTN | 78.44 | 79.60 | 69.14 | 71.17 | 43.00 | 74.75 | 69.35 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PEQA (our impl.) | 81.99 | 81.18 | 69.61 | 74.92 | 47.18 | 78.37 | 72.21
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LR-QAT (ours) | 81.38 | 80.41 | 70.32 | 73.15 | 45.39 | 78.00 | 71.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table A2: A comparison between min-max and the best range setting used for
+    round-to-nearest (RTN) initialization for LLaMA-2/3 and Mistral models. We report
+    WikiText-2 test set perplexity (lower is better) and average zero-shot accuracy
+    (higher is better).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | # Bits | RTN init. | WikiText-2 $\downarrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2 7B | FP16 |  | 5.47 | 70.47 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4pc | min-max | 7.14 | 66.41 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| best ($L^{3.5}$) | 6.14 | 68.88 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3pc | min-max | 1.9e4 | 35.71 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| best ($L^{3.5}$) | 26.73 | 43.87 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4g128 | best = min-max | 5.78 | 69.75 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3g128 | min-max | 8.22 | 64.07 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| best ($L^{4}$) | 7.61 | 63.20 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-2 13B | FP16 |  | 4.88 | 73.18 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4pc | min-max | 5.40 | 72.19 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| best ($L^{3.5}$) | 5.21 | 71.73 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3pc | min-max | 2.3e3 | 37.85 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| best ($L^{5}$) | 8.71 | 55.01 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4g128 | best = min-max | 5.04 | 72.94 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3g128 | min-max | 6.14 | 66.81 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| best ($L^{5}$) | 6.20 | 67.60 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-3 8B | FP16 |  | 6.14 | 74.22 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4pc | min-max | 10.53 | 67.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| best ($L^{3.5}$) | 7.53 | 72.19 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3pc | min-max | 1.6e5 | 35.78 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| best ($L^{3.5}$) | 34.10 | 47.46 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4g128 | min-max | 6.99 | 72.95 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| best ($L^{4}$) | 6.96 | 72.30 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3g128 | min-max | 29.38 | 54.54 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| best ($L^{5}$) | 15.11 | 57.74 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Mistral 7B | FP16 |  | 5.25 | 75.69 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4pc | min-max | 6.33 | 71.84 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| best ($L^{4}$) | 5.91 | 73.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3pc | min-max | 3.2e3 | 36.78 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| best ($L^{4}$) | 9.49 | 64.58 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4g128 | min-max | 5.51 | 74.98 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| best ($L^{5}$) | 5.49 | 75.07 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3g128 | min-max | 7.22 | 68.35 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| best ($L^{5}$) | 6.77 | 69.35 |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix B Experimental details
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we list the details related to hyperparameters and other settings
+    used in our experiments. If not stated otherwise, the standard hyperparameters
+    that we use are the one shown in Table [B1](#A2.T1 "Table B1 ‣ Appendix B Experimental
+    details ‣ Low-Rank Quantization-Aware Training for LLMs").
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Hyperparameter | Value / Search space |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Optimizer | AdamW |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Learning rate for $\bm{A}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Learning rate for quantization scale ($\mathbf{s}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Learning rate schedule for $\bm{A}$ | linear (with warmup) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Learning rate schedule for quantization scale ($\mathbf{s}$) | linear (with
+    warmup) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Weight decay for $\bm{A}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Weight decay for quantization scale ($\mathbf{s}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Adam $\beta_{1}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Adam $\beta_{2}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Training steps | $10^{4}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Warmup steps | $10\%$ of Training steps |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Batch size | $32$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Maximum sequence length (during training) | $1024$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $L^{2}$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\alpha$ |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table B1: Common hyperparameters used for experiments. ^*Is equivalent to freezing
+    the quantization scale obtained after initial range estimation ($\mathbf{s}=\mathbf{s_{0}}$).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quantization
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We experiment with both weight-only and weight-activation quantization. The
+    default settings are INT4 / INT3 per-channel (denoted ‘pc’) and group-wise weight
+    quantization with a group size of 128 (denoted ‘g128’). We always use symmetric
+    uniform affine quantization. We quantize all linear layers, except the classification
+    head. LayerNorm and Embedding layers are always kept at full precision. In weight-activation
+    quantization, defaults are INT4 per-channel weight and per-token activation quantization [[14](#bib.bib14)].
+    Following OmniQuant [[55](#bib.bib55)] we quantize all inputs to matmuls with
+    exception of the softmax output and additionally quantize the KV-cache as in LLM-QAT [[44](#bib.bib44)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: Libraries
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We implement our method in PyTorch [[53](#bib.bib53)] and use training and evaluation
+    pipelines from HuggingFace libraries [[20](#bib.bib20), [38](#bib.bib38), [64](#bib.bib64)].
+    For zero-shot evaluation, we use the LM Evaluation Harness framework [[19](#bib.bib19)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: Datasets and training
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: To optimize the learnable parameters, we use AdamW optimizer [[45](#bib.bib45)]
+    with weight decay set to zero, $(\beta_{1},\beta_{2})=(0.9,0.95)$ steps, following
+    by a linear decay to zero by the end of training. We use a separate maximum learning
+    rate for quantization scales and for low-rank adapters, which are tuned depending
+    on the experiment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We apply our methods to all linear layers in the attention blocks (both in self-attention
+    and in the feed-forward network). We only train low-rank auxiliary matrices $\bm{A}$.
+    Specifically, we freeze the token embeddings, the final classification heads and
+    LayerNorm parameters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We train on a small subset of SlimPajama [[57](#bib.bib57)], which is a close
+    open-source replica of the dataset used for pre-training LLaMA models. We select
+    hyperparameters based on the perplexity of a small subset of Wikipedia validation
+    set⁴⁴4Specifically, we use the English subset of Wiki40b, [https://huggingface.co/datasets/wiki40b](https://huggingface.co/datasets/wiki40b),
+    that contains cleaned-up text of English Wikipedia and training/validation splits.
+    (512 sequences). For weight-only and weight-activation quantization results, we
+    train for $10^{4}$ steps. The rest of the hyperparameters and their search spaces
+    are listed in Table [B1](#A2.T1 "Table B1 ‣ Appendix B Experimental details ‣
+    Low-Rank Quantization-Aware Training for LLMs")
+  prefs: []
+  type: TYPE_NORMAL
+- en: PTQ initialization
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We compare with vanilla round-to-nearest quantization (RTN), where we explore
+    several choices of range setting and report the best one based on Wikipedia validation
+    set perplexity, and also use that as initialization for our method. Specifically,
+    we experimented with min-max range estimator and with $L^{p}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Computational Resources
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Each experiment for which we reported results, was executed on a single NVidia
+    A100 GPU equipped with 80GB of VRAM. LLaMA-2 7B and 13B experiments needed respectively
+    around 3 and 5 days for 10k training steps experiments. Mistral 7B and LLaMA-3
+    8B needed around 1.6 days for 5k training steps experiments. For obtaining all
+    the results in the paper, including the ablations, we needed 107 GPU days (A100).
+    Including preliminary experiments that did not make it in the final paper and
+    hyperparameter turning we estimate the total compute costs of this research to
+    approximately 500 GPU days.
+  prefs: []
+  type: TYPE_NORMAL

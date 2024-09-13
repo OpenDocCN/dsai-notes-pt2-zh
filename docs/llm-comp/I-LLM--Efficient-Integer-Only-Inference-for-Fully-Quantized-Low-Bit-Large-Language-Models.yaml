@@ -1,0 +1,1356 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:49:10'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'I-LLM: Efficient Integer-Only Inference for Fully-Quantized Low-Bit Large Language
+    Models'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2405.17849](https://ar5iv.labs.arxiv.org/html/2405.17849)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Xing Hu^(1∗) &Yuan Cheng^(1,2∗†) &Dawei Yang^(1◇) Zhihang Yuan¹ &Jiangyong Yu¹
+    &Chen Xu¹ &Sifan Zhou^(1,3†)
+  prefs: []
+  type: TYPE_NORMAL
+- en: ¹Houmo AI
+  prefs: []
+  type: TYPE_NORMAL
+- en: ²Nanjing University
+  prefs: []
+  type: TYPE_NORMAL
+- en: ³Southeast University
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Post-training quantization (PTQ) serves as a potent technique to accelerate
+    the inference of large language models (LLMs). Nonetheless, existing works still
+    necessitate a considerable number of floating-point (FP) operations during inference,
+    including additional quantization and de-quantization, as well as non-linear operators
+    such as RMSNorm and Softmax. This limitation hinders the deployment of LLMs on
+    the edge and cloud devices. In this paper, we identify the primary obstacle to
+    integer-only quantization for LLMs lies in the large fluctuation of activations
+    across channels and tokens in both linear and non-linear operations. To address
+    this issue, we propose I-LLM, a novel integer-only fully-quantized PTQ framework
+    tailored for LLMs. Specifically, (1) we develop Fully-Smooth Block-Reconstruction
+    (FSBR) to aggressively smooth inter-channel variations of all activations and
+    weights. (2) to alleviate degradation caused by inter-token variations, we introduce
+    a novel approach called Dynamic Integer-only MatMul (DI-MatMul). This method enables
+    dynamic quantization in full-integer matrix multiplication by dynamically quantizing
+    the input and outputs with integer-only operations. (3) we design DI-ClippedSoftmax,
+    DI-Exp, and DI-Normalization, which utilize bit shift to execute non-linear operators
+    efficiently while maintaining accuracy. The experiment shows that our I-LLM achieves
+    comparable accuracy to the FP baseline and outperforms non-integer quantization
+    methods. For example, I-LLM can operate at W4A4 with negligible loss of accuracy.
+    To our knowledge, we are the first to bridge the gap between integer-only quantization
+    and LLMs. We’ve published our code on [anonymous.4open.science](https://anonymous.4open.science/r/I-LLM-F242/),
+    aiming to contribute to the advancement of this field.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '^($\Diamond$)^($\Diamond$)footnotetext: Corresponding author^($\ast$)^($\ast$)footnotetext:
+    Equal contribution^($\dagger$)^($\dagger$)footnotetext: This work was conducted
+    during his internship at Houmo'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Large Language Models (LLMs) have paved the way for general artificial intelligence
+    with their remarkable performance across a wide range of tasks. However, the rising
+    number of parameters and computing power requirements of LLMs pose significant
+    challenges when it comes to deployment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Post-training quantization (PTQ) is a powerful technique employed to accelerate
+    the inference process of LLMs. Previous PTQ methods for LLMs have primarily relied
+    on simulated quantization (aka. fake quantization) [[38](#bib.bib38), [29](#bib.bib29),
+    [35](#bib.bib35), [42](#bib.bib42)], where integer values are typically used for
+    inputs/outputs and compute-intensive operations are performed using dequantized
+    floating-point (FP) values (as shown in Fig[4](#S3.F4 "Figure 4 ‣ 3 Method ‣ I-LLM:
+    Efficient Integer-Only Inference for Fully-Quantized Low-Bit Large Language Models")).
+    Although this scheme offers benefits in scenarios where data transmission bandwidth
+    is limited, it does not effectively reduce computational costs and thus has little
+    effect on compute-bound situations. Besides, non-linear operations (e.g., Softmax
+    and RMSNorm) often involve complex operations, including transcendental functions
+    such as exponential functions and square root functions. These functions are typically
+    performed on dedicated FP units and may require multiple iterations for accurate
+    computation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e5c8ebdf6b008ad66093f7910cd71655.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Differences in activations of the non-linear operator in LLaMA2-7b
+    across the channel/token dimensions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/e77ac4d0467a02c4011944e894062462.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: The output activation distribution of the gated unit in the SwiGLU
+    before FSBR (a) and after FSBR (b).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In contrast, integer-only quantization [[11](#bib.bib11), [37](#bib.bib37),
+    [25](#bib.bib25), [18](#bib.bib18), [21](#bib.bib21)] utilizes low-precision integer
+    arithmetic for all operations, including linear operations (e.g., matrix multiplication)
+    and non-linear operations. It enables quantized models to take full advantage
+    of fast and efficient integer arithmetic units, resulting in promising speedup
+    effects and reduction of latency and power consumption. Additionally, integer-only
+    quantization facilitates deployment on popular edge processors specifically designed
+    for embedded, mobile, or IoT devices, which often lack dedicated floating point
+    units. Examples of such edge processors include ARM Cortex-M [[36](#bib.bib36)],
+    GreenWaves GAP-9 [[8](#bib.bib8)], and Google’s Edge TPU [[10](#bib.bib10)]. Note
+    that Turing Tensor Cores in GPU server-class devices also have introduced support
+    for integer logical units, offering notably lower latency compared to FP arithmetic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'However, the aforementioned integer-only methods are designed specifically
+    for CNNs or small Transformer networks (e.g., Bert [[12](#bib.bib12)] and ViT
+    [[7](#bib.bib7)]), which renders them inadequate for LLMs. First, they are incapable
+    of straightforwardly supporting the non-linear operators inherent in LLMs, such
+    as SwiGLU and RMSNorm. Furthermore, their accuracy on LLMs deteriorates significantly
+    (as depicted in Table [4](#S3.F4 "Figure 4 ‣ 3 Method ‣ I-LLM: Efficient Integer-Only
+    Inference for Fully-Quantized Low-Bit Large Language Models")), even when those
+    non-supported operators are executed in full-precision mode. This is because as
+    the model size increasing, the presence of activation outliers in both linear
+    and non-linear layers becomes prominent. As illustrated in Fig [2](#S1.F2 "Figure
+    2 ‣ 1 Introduction ‣ I-LLM: Efficient Integer-Only Inference for Fully-Quantized
+    Low-Bit Large Language Models"), Llama2-7B exhibits substantial variations in
+    activation magnitude at both the token and channel levels, making previous approaches
+    ineffective. Last but not least, these methods are limited to 8-bit quantization,
+    whereas LLMs would benefit from lower bit-width quantization (e.g., 4-bit) to
+    address the extensive computational requirements and storage demands. Consequently,
+    how to accurately perform LLMs with efficient integer-only arithmetic remains
+    an unresolved issue that requires further investigation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this paper, we identify the primary obstacle to integer-only quantization
+    for LLMs lies in the large fluctuation of activations across channels and tokens
+    in both linear and non-linear operators. To address this issue, we introduce I-LLM,
+    a novel integer-only PTQ framework tailored for LLMs: (1) We propose Fully-Smooth
+    Block-Reconstruction (FSBR) to harmonize the variance in activation across channels.
+    While Omniquant [[29](#bib.bib29)] and Smoothquant [[38](#bib.bib38)] share some
+    similarities, they primarily focus on smoothing the activation in serial norm-linear
+    and parallel linear-linear operations. We argue that mitigating the disparities
+    of all suitable activation-activation and activation-weight pairs of LLMs (see
+    Fig.[5](#S3.F5 "Figure 5 ‣ 3.2 Fully-Smooth Block-Reconstruction (FSBR) ‣ 3 Method
+    ‣ I-LLM: Efficient Integer-Only Inference for Fully-Quantized Low-Bit Large Language
+    Models")) significantly enhances accuracy. For instance, the input of SwiGLU encounters
+    numerous disparities on both token-wise and channel-wise dimensions, as depicted
+    in Fig.[2](#S1.F2 "Figure 2 ‣ 1 Introduction ‣ I-LLM: Efficient Integer-Only Inference
+    for Fully-Quantized Low-Bit Large Language Models")-a. To achieve smoothing on
+    such a non-linear operator, we decompose SiLU into $x\cdot\sigma(x)$ to apply
+    FSBR, and as a result the input becomes more consistent and amenable to quantization,
+    as shown in Fig.[2](#S1.F2 "Figure 2 ‣ 1 Introduction ‣ I-LLM: Efficient Integer-Only
+    Inference for Fully-Quantized Low-Bit Large Language Models")-b. (2) To alleviate
+    the degradation resulting from inter-token variations, we present a novel approach
+    called Dynamic Integer-only MatMul (DI-MatMul). DI-MatMul facilitates quantization
+    on full-integer matrix multiplication by employing integer-only operations to
+    quantize the input and outputs dynamically. Traditional static quantization methods,
+    which are characterized by their lack of robustness and adaptability, often falter
+    when encountering input beyond the calibration set. In contrast, DI-MatMul is
+    designed to proactively recognize and adapt to the diverse range of input data,
+    thereby reducing quantization errors and enhancing overall model performance.
+    (3) For non-linear operators, we design DI-ClippedSoftmax, DI-Exp, and DI-Norm,
+    which leverage the efficiency of bit shifting to replace complex math calculations
+    while maintaining accuracy. Our contributions are summarized as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We identify the primary obstacle to integer-only quantization for LLMs lies
+    in the large fluctuation of activations across channels and tokens in both linear
+    and non-linear operators. To address inter-channel variations, we propose FSBR
+    to effectively reduces disparities among all suitable activation-activation and
+    activation-weight pairs, thereby markedly improving accuracy.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We attribute the failure of previous integer-only quantization methods on LLMs
+    to various range in activation tokens. To tackle this problem, we introduce DI-MatMul,
+    which enables dynamic quantization on input and output through full-integer matrix
+    multiplication. DI-MatMul proactively adapts to the range of input, minimizing
+    quantization errors and improving overall performance.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '3.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We introduce DI-Exp, DI-ClippedSoftmax, and DI-Norm, innovative integer-only
+    operators that harness the power of bit shifting to replace complex mathematical
+    computations within the non-linear functions of LLMs, without compromising on
+    accuracy.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '4.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: To the best of our knowledge, this work represents the first attempt to utilize
+    integer-only quantization for LLMs, enabling their deployment on edge devices
+    that lack floating-point capabilities. Experiments demonstrate remarkable accuracy
+    when compared to SOTA non-integer quantization techniques, e.g., I-LLM on LLAMA-13b
+    achieves an approximate 20% reduction in perplexity.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 2 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: LLMs Quantization. LLMs quantization can be broadly categorized into weight-only
+    and weight-activation quantization. To alleviate the computational burdens, some
+    works [[23](#bib.bib23), [9](#bib.bib9), [3](#bib.bib3), [19](#bib.bib19), [14](#bib.bib14),
+    [28](#bib.bib28), [13](#bib.bib13), [6](#bib.bib6)] make efforts in weight-only
+    quantization. GPTQ [[9](#bib.bib9)] and QuIP [[3](#bib.bib3)] achieve high compression
+    rates by optimizing matrix multiplications operation. AWQ [[19](#bib.bib19)] and
+    OWQ [[14](#bib.bib14)] demonstrate performance improvements by accounting for
+    the impact of activation outliers on weight quantization. Moreover, works such
+    as QLORA [[5](#bib.bib5)], QA-lora [[39](#bib.bib39)] and LoftQ [[17](#bib.bib17)]
+    leverage Parameter Efficient Fine-Tuning (PEFT) techniques to achieve weight compression
+    with fine-tuning tasks. Different with weight-only quantization methods, towards
+    to accelerate the LLMs inference, the weight-activation quantization methods [[35](#bib.bib35),
+    [42](#bib.bib42), [34](#bib.bib34), [15](#bib.bib15), [43](#bib.bib43), [44](#bib.bib44)]
+    quantize both the weights and activations, including the KV cache. The primary
+    challenge in quantizing activations lies in outliers, leading to significant quantization
+    errors. To tackle this issue, ZeroQuant [[40](#bib.bib40)] proposes a fine-grained
+    hardware-friendly quantization scheme for both weight and activations. SmoothQuant
+    [[38](#bib.bib38)] migrates the quantization difficulty from activations to weights
+    with a mathematically equivalent transformation (i.e., per-channel scaling). OmniQuant
+    [[29](#bib.bib29)] further enhances performance by training the quantization parameters.
+    While these methods have mitigated the quantization error, their inference pipelines
+    still involve partially FP operations on non-linear operators such as Softmax,
+    Normalization, and SiLU. In this study, our focus on achieving Integer-only inference
+    for LLMs model using advanced PTQ [[16](#bib.bib16), [33](#bib.bib33), [22](#bib.bib22),
+    [47](#bib.bib47)] techniques.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Integer-only Quantization. Current quantization methods for LLMs often involve
+    dequantized FP operations during inference, limiting the utilization of efficient
+    low-precision arithmetic units. Integer-only quantization, eliminating dequantization,
+    enables complete inference using Integer-only arithmetic, promising enhanced model
+    acceleration. Previous approaches [[11](#bib.bib11), [41](#bib.bib41)] leverage
+    dyadic arithmetic for Integer-only pipeline on CNNs, but these are tailored for
+    linear operations and are unsuitable for non-linear operations in ViTs. Applying
+    INT arithmetic solely to linear operations while retaining FP arithmetic for non-linear
+    ones maybe a straightforward solution, but this demands custom hardware and introduces
+    computational overheads. Advancements include Fully-8bit [[20](#bib.bib20)] and
+    I-BERT [[12](#bib.bib12)], which address non-linear operations through employs
+    L1 LayerNorm and INT polynomial approximations for the non-linear operations.
+    However, these methods face inefficiencies or fail to fully exploit hardware advantages.
+    Based on I-BERT[[12](#bib.bib12)], FQ-ViT[[21](#bib.bib21)] extends INT arithmetic
+    to part of the operations but overlooks significant non-linear operations like
+    GELU. While some methods[[30](#bib.bib30), [48](#bib.bib48)] retain FP arithmetic
+    during approximation, they cannot meet the requirement for Integer-only arithmetic.
+    Recently, I-ViT[[18](#bib.bib18)] introduces Integer-only quantization for ViTs,
+    yet its suitability for LLMs is questionable due to differing data distributions,
+    and its computational graph includes partially INT32 precision operations. In
+    this paper, we focus on Integer-only inference for LLMs, maintaining the entire
+    computational graph at INT8 precision or lower bit (e.g., 6/4-bit), enhancing
+    LLMs’ inference efficiency on edge processors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Method
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/c32f21d55832b07133489f369a3c4c64.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Typical LLM quantization vs. I-LLM. The former requires dequantization
+    and involves FP arithmetic, while the latter performs the entire inference using
+    integer-only arithmetic.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f5713d30765dcc304ad77634c41b8c63.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: PPL$\downarrow$ of different PTQ methods on LLaMA family using W8A8\.
+    Notably, due to the exceptionally high PPL of I-Bert, a dedicated y-axis has been
+    allocated for its representation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Challenges of Integer-Only Quantization for Large Language Models. Presently,
+    integer-only LLMs encounter two primary hurdles: (1) quantizing the activation
+    of LLMs, especially those originating from non-linear operators, poses a formidable
+    challenge. As evidenced in Fig [2](#S1.F2 "Figure 2 ‣ 1 Introduction ‣ I-LLM:
+    Efficient Integer-Only Inference for Fully-Quantized Low-Bit Large Language Models"),
+    the divergence in these non-linear activations often surpasses that of linear
+    operators, particularly pronounced in models such as LLaMA [[31](#bib.bib31)].
+    Previous methods have failed to address these non-linear activations, and straightforwardly
+    quantizing non-linear layers may lead to substantial accuracy degradation. (2)
+    prior integer-only quantization techniques have overlooked the distinctive traits
+    of LLMs, including divergent activation scales and the substantial overhead of
+    loading large-scale weights. Even the W8A8 method introduced in I-BERT can lead
+    to catastrophic outcomes, as shown in Fig [4](#S3.F4 "Figure 4 ‣ 3 Method ‣ I-LLM:
+    Efficient Integer-Only Inference for Fully-Quantized Low-Bit Large Language Models"),
+    let alone more aggressive quantization methods like W6A6 or W4A4.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this section, we introduce a novel integer-only quantization framework termed
+    I-LLM. As illustrated in Fig [5](#S3.F5 "Figure 5 ‣ 3.2 Fully-Smooth Block-Reconstruction
+    (FSBR) ‣ 3 Method ‣ I-LLM: Efficient Integer-Only Inference for Fully-Quantized
+    Low-Bit Large Language Models"), this framework incorporates a differentiable
+    approach within the Post-Training Quantization (PTQ) paradigm, termed Fully-Smooth
+    Block Reconstruction. This method is designed to effectively balance all feasible
+    parameter pairs, as elaborated in Section [3.2](#S3.SS2 "3.2 Fully-Smooth Block-Reconstruction
+    (FSBR) ‣ 3 Method ‣ I-LLM: Efficient Integer-Only Inference for Fully-Quantized
+    Low-Bit Large Language Models"). Furthermore, we advance the develop of dynamic
+    quantization within the integer-only context by introducing DI-MatMul, a dynamic
+    integer-only matrix multiplication method, which is elucidated in Section [3.3](#S3.SS3
+    "3.3 Dynamic Interger-only MatMul (DI-MatMul) ‣ 3 Method ‣ I-LLM: Efficient Integer-Only
+    Inference for Fully-Quantized Low-Bit Large Language Models"). Additionally, we
+    detail integer-only non-linear approximations, including DI-ClippedSoftmax, DI-exp,
+    and DI-Norm, that are built upon DI-MatMul and are presented in Section [3.4](#S3.SS4
+    "3.4 Dynamic Non-Linear Integer-only Operations ‣ 3 Method ‣ I-LLM: Efficient
+    Integer-Only Inference for Fully-Quantized Low-Bit Large Language Models"). These
+    operators facilitate 8-bit input activations while minimizing accuracy loss.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Basic Mathematical Notations
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Matrices are denoted by bold uppercase letters such as $\bm{X}$ denotes element-wise
+    division. Other mathematical symbols follow their standard definitions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Fully-Smooth Block-Reconstruction (FSBR)
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'As mention above, to mitigate the issue of non-linear layer activations in
+    LLMs being affected by channel and token differences (Fig [2](#S1.F2 "Figure 2
+    ‣ 1 Introduction ‣ I-LLM: Efficient Integer-Only Inference for Fully-Quantized
+    Low-Bit Large Language Models")and [2](#S1.F2 "Figure 2 ‣ 1 Introduction ‣ I-LLM:
+    Efficient Integer-Only Inference for Fully-Quantized Low-Bit Large Language Models")),
+    we propose Fully-Smooth Block-Reconstruction (FSBR). An intuitive method is to
+    train a smoothing coefficient for all activations and weights to aid in restoring
+    the model’s quantization accuracy, especially the quantization accuracy of non-linear
+    operators. Therefore, we consider the activations of all non-linear layers and
+    learn the smoothing coefficients for all possible equivalent smoothing transformations
+    at the channel level. On the left side of Fig [5](#S3.F5 "Figure 5 ‣ 3.2 Fully-Smooth
+    Block-Reconstruction (FSBR) ‣ 3 Method ‣ I-LLM: Efficient Integer-Only Inference
+    for Fully-Quantized Low-Bit Large Language Models"), four paradigms for achieving
+    inter-channel smoothing during block reconstruction are shown: Parallel Linear-Linear,
+    Serial Linear-Norm, Serial Linear-Linear, and NonLinear Act-Smooth. The first
+    three smoothing methods are indeed linear, making them easier to implement.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'However, when addressing non-linear operators (NonLinear Act-Smooth) in LLMs,
+    such as the gated activation function (SwiGLU), it becomes challenging to apply
+    any linear transformations to them. For convenience, we can represent SwiGLU using
+    the following formula:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\operatorname{SwiGLU}(\bm{x},\bm{W},\bm{V},\bm{b},\bm{c})$
+    |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle=\bm{x1}\otimes\bm{x2}\otimes\sigma(\bm{x1})$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Where $x\in\mathbb{R}^{ic}$, expressed in the formula as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\operatorname{SwiGLU}(\bm{x},\bm{W},\bm{V},\bm{b},\bm{c})$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle=\bm{x1^{\prime}}\otimes\bm{x2^{\prime}}\otimes{\sigma^{\prime}}(\bm{x1^{\prime}})\
+    $ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Where $\bm{W}^{\prime}=\bm{W}\otimes\bm{s},\quad\bm{b}^{\prime}=\bm{b}\otimes\bm{s},\quad\bm{V}^{\prime}=\bm{V}\oslash\bm{s},\quad\bm{c}^{\prime}=\bm{c}\oslash\bm{s}$,
+    which incurs negligible overhead. Fig [2](#S1.F2 "Figure 2 ‣ 1 Introduction ‣
+    I-LLM: Efficient Integer-Only Inference for Fully-Quantized Low-Bit Large Language
+    Models") presents the output activation distribution of the gated unit in SwiGLU
+    before and after the FSBR. It can be observed that the significant imbalance between
+    channels and tokens, as depicted in Fig [2](#S1.F2 "Figure 2 ‣ 1 Introduction
+    ‣ I-LLM: Efficient Integer-Only Inference for Fully-Quantized Low-Bit Large Language
+    Models")-a, is effectively alleviated after FSBR (Fig [2](#S1.F2 "Figure 2 ‣ 1
+    Introduction ‣ I-LLM: Efficient Integer-Only Inference for Fully-Quantized Low-Bit
+    Large Language Models")-b).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/cf777b942396df06178f760eda2a422a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: Details of I-LLM in a transformer block. The left side of the figure
+    illustrates various paradigms for channel-wise smoothing during the FSBR process.
+    The right side depicts the integer-only execution pipeline for both linear operators,
+    such as matrix multiplication (MatMul), and non-linear operators.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It is worth noting that SmoothQuant[[38](#bib.bib38)] and OmniQuant[[29](#bib.bib29)]
+    are subsets of FSBR. FSBR encompasses various previous equivalent quantization
+    algorithms, providing more possibilities for optimizing the distribution of weights
+    and activations. Through mutual optimization across channels, the network demonstrates
+    improved robustness to quantization, as shown in Table [5](#S4.T5 "Table 5 ‣ 4.2
+    Ablation Study ‣ 4 Experiments ‣ I-LLM: Efficient Integer-Only Inference for Fully-Quantized
+    Low-Bit Large Language Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Dynamic Interger-only MatMul (DI-MatMul)
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The dynadic arithmetic pipeline is an efficient approach that implements floating-point
+    operations using integer bit-shifts, allowing linear operations to be performed
+    solely through integer arithmetic. Initially developed for convolutional neural
+    networks [[11](#bib.bib11)], this technique has been extended to Vision Transformers
+    by I-ViT [[18](#bib.bib18)]. However, these methods primarily focus on static
+    quantization, where the quantization parameters of the model’s activation are
+    fixed during runtime. In the context of LLMs, even after applying inter-channel
+    smoothing, there still exists considerable variation in activation on a token-wise
+    basis, as shown in Fig. [6](#A1.F6 "Figure 6 ‣ A.3 Fully Results ‣ Appendix A
+    Appendix ‣ I-LLM: Efficient Integer-Only Inference for Fully-Quantized Low-Bit
+    Large Language Models") in Appendix [A](#A1 "Appendix A Appendix ‣ I-LLM: Efficient
+    Integer-Only Inference for Fully-Quantized Low-Bit Large Language Models"). Employing
+    static per-token quantization can result in significant quantization errors and
+    subsequent degradation in accuracy, as depicted in the Fig. [4](#S3.F4 "Figure
+    4 ‣ 3 Method ‣ I-LLM: Efficient Integer-Only Inference for Fully-Quantized Low-Bit
+    Large Language Models"). Therefore, implementing dynamic quantization for inputs
+    and outputs while adhering to Integer-only constraints poses a significant challenge.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We propose a novel DI-MatMul approach, where the matrix multiplication is formulated
+    as $\bm{Y^{I}},s_{y},zp^{I}=\mathcal{M}(s_{1},zp_{1}^{I},\bm{X^{I}_{1}},s_{2},zp_{2}^{I},\bm{X^{I}_{2}})$
+    are 8-bit integers. Consequently, the entire matrix multiplication can be expressed
+    as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'For a single matrix multiplication operation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'The intermediate result of the matrix multiplication is denoted as $\bm{P^{I}}$.
+    By applying Eq [15](#A1.E15 "In A.1 Quantization Preliminaries ‣ Appendix A Appendix
+    ‣ I-LLM: Efficient Integer-Only Inference for Fully-Quantized Low-Bit Large Language
+    Models") and preliminary Eq [2](#S3.E2 "In 3.3 Dynamic Interger-only MatMul (DI-MatMul)
+    ‣ 3 Method ‣ I-LLM: Efficient Integer-Only Inference for Fully-Quantized Low-Bit
+    Large Language Models"), we obtain the following approximation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $p^{I}_{\max}$. To obtain the quantization scale of the output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Obtaining the optimal values for $m^{I}_{y}$, and subsequently solve for the
+    remaining variables as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle m^{I}_{y}=\left\lfloor\frac{(p^{I}_{\max}-p^{I}_{\min})\cdot
+    m^{I}_{x1}\cdot m^{I}_{x2}}{n^{I}}\gg(k^{I}_{1}+k^{I}_{2}-k^{I}_{y})\right\rceil$
+    |  | (7) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle z^{I}_{y}=\left\lfloor\frac{-p^{I}_{\min}\cdot n^{I}}{p^{I}_{\max}-p^{I}_{\min}}\right\rceil,\quad\bm{Y^{I}}=\left\lfloor\frac{(\bm{P^{I}}-p^{I}_{\min})\cdot
+    n^{I}}{p^{I}_{\max}-p^{I}_{\min}}\right\rceil$ |  | (8) |'
+  prefs: []
+  type: TYPE_TB
+- en: The implementation of $\left\lfloor\operatorname{log_{2}}(\cdot)\right\rfloor$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.4 Dynamic Non-Linear Integer-only Operations
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 3.4.1 Dynamic Interger-only Clipped Softmax & Dynamic Integer-only Exponent
+    function
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'The Softmax function converts attention scores into a probability distribution.
+    It can be represented as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (9) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'We introduce DI-ClippedSoftmax to avoid quantizing the entire input range.
+    As shown in Fig [2](#S1.F2 "Figure 2 ‣ 1 Introduction ‣ I-LLM: Efficient Integer-Only
+    Inference for Fully-Quantized Low-Bit Large Language Models"), the activation
+    inputs to the Softmax function in LLMs can exhibit significant outliers, with
+    their magnitudes being proportional to the number of tokens. Fortunately, the
+    DI-MatMul approach proposed in Section [3.3](#S3.SS3 "3.3 Dynamic Interger-only
+    MatMul (DI-MatMul) ‣ 3 Method ‣ I-LLM: Efficient Integer-Only Inference for Fully-Quantized
+    Low-Bit Large Language Models") allows for the differences between tokens to be
+    handled individually. However, simply applying 8-bit quantization to the Softmax
+    inputs would result in substantial precision loss, as demonstrated by the ablation
+    studies in Section [5](#S4.T5 "Table 5 ‣ 4.2 Ablation Study ‣ 4 Experiments ‣
+    I-LLM: Efficient Integer-Only Inference for Fully-Quantized Low-Bit Large Language
+    Models"). Starting from the observation that the value of the exponential function
+    at $-20$. Combining this with Eq [4](#S3.E4 "In 3.3 Dynamic Interger-only MatMul
+    (DI-MatMul) ‣ 3 Method ‣ I-LLM: Efficient Integer-Only Inference for Fully-Quantized
+    Low-Bit Large Language Models"), the entire truncation process can be expressed
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (10) |'
+  prefs: []
+  type: TYPE_TB
+- en: Therefore, regardless of the dynamic range, the length of our quantization range
+    will never exceed $c$, ensuring that the maximum quantization error does not exceed
+    0.047.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We also propose Dynamic Interger-only Exponent function(DI-Exp), an exponential
+    computation method that performs non-linear calculations of the exponential function
+    using only shift operations. For a dynamically quantized input composed of $\bm{x^{I}},m^{I}_{x},k_{x}^{I}$
+    is already the result after subtracting the maximum value, the computation of
+    the exponential can be expressed as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (11) |'
+  prefs: []
+  type: TYPE_TB
+- en: We let $s=\frac{\log_{2}e}{2^{k_{x}^{I}}}$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'where $q^{I}=-\left\lfloor\frac{\bm{x^{I}}}{s^{I}}\right\rfloor,\quad r^{I}=\bm{x^{I}}\%s^{I}$
+    Finally, we obtain:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\operatorname{e}^{\bm{x^{I}}\cdot\left(m^{I}_{x}\gg k^{I}_{x}\right)}\approx\left(1-\frac{r^{I}}{2\cdot
+    s^{I}}\right)\gg q^{I}$ |  | (12) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'In DI-Exp, nonlinearity is achieved using only shift operations, which improves
+    computational efficiency compared to complex methods such as quadratic fitting
+    and Taylor series expansion. Only the calculation of $s^{I}$ and the linear interpolation
+    within a small interval introduce errors, while other computations remain equivalent
+    to the original. Detailed implementation of DI-Exp is in Algorithm[1](#alg1 "Algorithm
+    1 ‣ A.2 Dynamic Interger-only Algorithms ‣ Appendix A Appendix ‣ I-LLM: Efficient
+    Integer-Only Inference for Fully-Quantized Low-Bit Large Language Models").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.4.2 Dynamic Interger-only Normalization & Dynamic Interger-only SwiGLU
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'DI-Norm. LayerNorm and RMSNorm are commonly used normalization methods in LLMs.
+    RMSNorm represents a lightweight improvement over LayerNorm, as it does not necessitate
+    the computation of means and biases, thereby reducing computational complexity.
+    Both RMSNorm and LayerNorm exhibit similar characteristics, with significant fluctuations
+    at the channel level. As depicted in the Fig [2](#S1.F2 "Figure 2 ‣ 1 Introduction
+    ‣ I-LLM: Efficient Integer-Only Inference for Fully-Quantized Low-Bit Large Language
+    Models"), RMSNorm often exhibits more pronounced differences between channels
+    due to the absence of a centering step. We propose Dynamic Integer-only Normalization
+    (DI-Norm) to adapt to fluctuations between channels. When conducting FSBR, we
+    perform per-channel quantization on the inputs of LayerNorm and RMSNorm. During
+    inference, while computing the mean is straightforward, calculating the variance
+    requires an appropriate root mean square function. Unlike the Newton’s method
+    used in I-BERT, to ensure consistency between inference and training, we employ
+    a bit-wise check method as mentioned in the Algorithm [4](#alg4 "Algorithm 4 ‣
+    A.2 Dynamic Interger-only Algorithms ‣ Appendix A Appendix ‣ I-LLM: Efficient
+    Integer-Only Inference for Fully-Quantized Low-Bit Large Language Models") to
+    achieve higher precision.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'DI-SwiGLU. During the block reconstruction stage, we decompose the SiLU activation
+    function of SwiGLU into $\operatorname{SiLU}(\bm{x})=\bm{x}\cdot\sigma(\bm{x})$
+    to achieve non-linear smoothing. As described in Algorithm [3](#alg3 "Algorithm
+    3 ‣ A.2 Dynamic Interger-only Algorithms ‣ Appendix A Appendix ‣ I-LLM: Efficient
+    Integer-Only Inference for Fully-Quantized Low-Bit Large Language Models"), we
+    implement the Dynamic Integer-only SwiGLU (DI-SwiGLU), consisting of a single
+    sigmoid nonlinearity and two multiplication operations, where the sigmoid implementation
+    involves multiple invocations of our proposed DI-Exp operator.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Implementation Details. I-LLM ensures that the activation of all non-linear
+    operators remains at 8 bits, while the weights and activations of linear operators
+    are determined by the current quantization configuration, such as W4A8\. Consistent
+    with other methods, we employ 128 samples for reconstruction. During the reconstruction
+    phase, we maintain that the input to Softmax is not quantized and ensure that
+    all smoothing coefficients maintain a common learning rate of $5\times 10^{-3}$.
+    After the reconstruction, all operators will be replaced with respective versions
+    supporting dynamic integer-only inference. All experiments are conducted on Nvidia
+    A6000 GPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Models & Evaluation Metric. We conduct experiments on several commonly used
+    open-source LLMs, including OPT [[46](#bib.bib46)], LLaMA [[31](#bib.bib31)],
+    and LLaMA2 [[32](#bib.bib32)]. Additionally, we also evaluated the recently impressive
+    LLaMA3-8B model. For the sake of comparison, we tested the impact of quantization
+    on Perperxity on two of the most commonly used datasets WikiText2[[24](#bib.bib24)]
+    and C4[[26](#bib.bib26)]. Moreover, accuracy is evaluated in zero-short tasks
+    including PIQA [[1](#bib.bib1)], ARC[[2](#bib.bib2)], BoolQ [[4](#bib.bib4)],
+    HellaSwag [[45](#bib.bib45)], Winogrande[[27](#bib.bib27)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Quantitative Results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Notably, our work is the first to address integer-only quantization for LLMs,
+    whereas all the methods we compare against in our experiments are not integer-only
+    except I-Bert. Although this may seem somewhat unfair for us, I-LLM still demonstrates
+    the superiority through its remarkable performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Fig [4](#S3.F4 "Figure 4 ‣ 3 Method ‣ I-LLM: Efficient Integer-Only Inference
+    for Fully-Quantized Low-Bit Large Language Models") illustrates the efficacy of
+    our 8-bit quantization technique on widely adopted large-scale language models.
+    Despite SmoothQuant’s prior success with 8-bit quantization, our approach demonstrates
+    performance for each model that is closer to floating-point precision. This suggests
+    that even with low-bit quantization using integer-only conditions (e.g., 8-bit),
+    we can achieve performance comparable to floating-point representation. These
+    findings strongly validate the effectiveness of our proposed I-LLM, as it enables
+    integer-only operators to yield results highly akin to those obtained through
+    floating-point operations, using simple arithmetic and integer bit-shifting.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: Quantitative weight-activation quantization PPL($\downarrow$) results
+    of I-LLM. We report WikiText2 and C4 perplexity of LLaMA Family in this table.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| #Bits | Method | LLaMA-7B | LLaMA-13B | LLaMA-30B | LLaMA2-7B | LLaMA2-13B
+    | LLaMA3-8b |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WikiText2 | C4 | WikiText2 | C4 | WikiText2 | C4 | WikiText2 | C4 | WikiText2
+    | C4 | WikiText2 | C4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | - | 5.68 | 7.08 | 5.09 | 6.61 | 4.10 | 5.98 | 5.47 | 6.97 | 4.88 |
+    6.46 | 6.14 | 8.88 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W6A6 | SmoothQuant | 6.03 | 7.47 | 5.42 | 6.97 | 4.55 | 6.34 | 6.2 | 7.76
+    | 5.18 | 6.76 | 7.08 | 10.16 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant | 5.96 | 7.43 | 5.28 | 6.84 | 4.38 | 6.22 | 5.87 | 7.48 | 5.14
+    | 6.74 | 6.97 | 10.08 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| I-LLM | 5.84 | 7.32 | 5.23 | 6.79 | 4.32 | 6.25 | 5.68 | 7.27 | 5.10 | 6.74
+    | 6.61 | 9.77 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | SmoothQuant | 22.25 | 32.32 | 40.05 | 47.18 | 192.40 | 122.38 | 83.12
+    | 77.27 | 35.88 | 43.19 | 418.88 | 312.86 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant | 11.26 | 14.51 | 10.87 | 13.78 | 10.33 | 12.49 | 14.26 | 18.02
+    | 12.30 | 14.55 | 437.88 | 315.69 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AffineQuant | 10.28 | 13.64 | 10.32 | 13.44 | 9.35 | 11.58 | 12.69 | 15.76
+    | 11.45 | 13.97 | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| I-LLM | 9.10 | 12.33 | 7.99 | 10.96 | 7.24 | 9.85 | 10.44 | 12.92 | 9.76
+    | 12.57 | 21.19 | 30.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: Quantitative weight-activation quantization PPL($\downarrow$) results
+    on OPT Family of I-LLM.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#Bits Method OPT-6.7B OPT-13B OPT-30B WikiText2 C4 WikiText2 C4 WikiText2 C4
+    FP16 - 10.86 11.74 10.13 11.20 9.56 10.69 W6A6 SmoothQuant 11.34 12.14 10.56 11.40
+    9.67 10.81 RPTQ 11.19 12.08 11.00 11.68 10.22 11.73 OmniQuant 10.96 11.81 10.21
+    11.27 9.62 10.76 I-LLM 10.94 11.82 10.17 11.90 9.72 10.83 W4A4 SmoothQuant 1.8e4
+    1.5e4 7.4e3 5.6e3 1.2e4 8.3e3 RPTQ 12.00 12.85 12.74 14.71 11.15 13.48 OmniQuant
+    12.24 13.56 11.65 13.46 10.60 11.90 I-LLM 12.20 12.21 11.45 13.41 10.53 11.66'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As shown in Table [1](#S4.T1 "Table 1 ‣ 4.1 Quantitative Results ‣ 4 Experiments
+    ‣ I-LLM: Efficient Integer-Only Inference for Fully-Quantized Low-Bit Large Language
+    Models") and Table [2](#S4.T2 "Table 2 ‣ 4.1 Quantitative Results ‣ 4 Experiments
+    ‣ I-LLM: Efficient Integer-Only Inference for Fully-Quantized Low-Bit Large Language
+    Models"), we report the perplexity performance of I-LLM on the C4 and WikiText2
+    datasets. As depicted in these tables, I-LLM consistently surpasses previous methods
+    across a diverse array of LLM families (LLaMA-1, LLaMA-2, LLaMA-3, OPT) and varying
+    levels of precision. Particularly noteworthy is its performance under the W4A4
+    setting, where our proposed method achieves perplexity values that are consistently
+    10% to 30% lower than those attained by state-of-the-art methods.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 3: The performance of various methods for 4-bit and 6-bit quantization
+    on the LLaMA family models across six zero-shot datasets.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| LLaMA / Acc($\uparrow$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-7B | FP16 | - | 77.47 | 52.48 | 41.46 | 73.08 | 73.00 | 67.07 | 64.09
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W6A6 | SmoothQuant | 76.75 | 51.64 | 39.88 | 71.75 | 71.67 | 65.03 | 62.81
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W6A6 | OmniQuant | 77.09 | 51.89 | 40.87 | 72.53 | 71.61 | 65.03 | 63.17
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W6A6 | I-LLM | 76.99 | 52.66 | 40.78 | 72.94 | 71.31 | 65.67 | 63.39 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | SmoothQuant | 49.80 | 30.40 | 25.80 | 49.10 | 27.40 | 48.00 | 38.41
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | LLM-QAT | 51.50 | 27.90 | 23.90 | 61.30 | 31.10 | 51.90 | 41.27 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | LLM-QAT+SQ | 55.90 | 35.50 | 26.40 | 62.40 | 47.80 | 50.60 | 46.43
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | OS+ | 62.73 | 39.98 | 30.29 | 60.21 | 44.39 | 52.96 | 48.43 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | OmniQuant | 66.15 | 45.20 | 31.14 | 63.51 | 56.44 | 53.43 | 52.65
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | AffineQuant | 69.37 | 42.55 | 31.91 | 63.73 | 57.65 | 55.33 | 53.42
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | I-LLM | 67.25 | 45.58 | 32.59 | 63.88 | 58.89 | 57.06 | 54.21 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-13B | FP16 | - | 79.10 | 59.89 | 44.45 | 68.01 | 76.21 | 70.31 | 66.33
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W6A6 | SmoothQuant | 77.91 | 56.60 | 42.40 | 64.95 | 75.36 | 69.36 | 64.43
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W6A6 | OmniQuant | 78.40 | 57.28 | 42.91 | 67.00 | 75.82 | 68.27 | 64.95
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W6A6 | I-LLM | 77.48 | 56.94 | 44.03 | 64.92 | 75.24 | 69.14 | 64.63 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | SmoothQuant | 61.04 | 39.18 | 30.80 | 61.80 | 52.29 | 51.06 | 49.36
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | OS+ | 63.00 | 40.32 | 30.38 | 60.34 | 53.61 | 51.54 | 49.86 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | OmniQuant | 69.69 | 47.39 | 33.10 | 62.84 | 58.96 | 55.80 | 54.37
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | AffineQuant | 66.32 | 43.90 | 29.61 | 64.10 | 56.88 | 54.70 | 52.58
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | I-LLM | 67.95 | 48.15 | 34.47 | 62.29 | 63.13 | 59.98 | 56.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-30B | FP16 | - | 80.08 | 58.92 | 45.47 | 68.44 | 79.21 | 72.53 | 67.44
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W6A6 | SmoothQuant | 77.14 | 57.61 | 42.91 | 65.56 | 78.07 | 69.92 | 65.20
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W6A6 | OmniQuant | 78.40 | 57.28 | 42.91 | 67.00 | 75.82 | 68.27 | 64.95
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W6A6 | I-LLM | 79.43 | 58.88 | 45.14 | 73.36 | 78.51 | 72.61 | 67.99 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | SmoothQuant | 58.65 | 35.53 | 27.73 | 60.42 | 35.56 | 48.06 | 44.83
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | OS+ | 67.63 | 46.17 | 34.40 | 60.70 | 54.32 | 52.64 | 52.62 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | OmniQuant | 71.21 | 49.45 | 34.47 | 65.33 | 64.65 | 59.19 | 56.63
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | AffineQuant | 66.32 | 43.90 | 29.61 | 64.10 | 56.88 | 54.70 | 52.58
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A4 | I-LLM | 71.38 | 51.81 | 37.12 | 65.69 | 67.79 | 61.40 | 59.20 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table [3](#S4.T3 "Table 3 ‣ 4.1 Quantitative Results ‣ 4 Experiments ‣ I-LLM:
+    Efficient Integer-Only Inference for Fully-Quantized Low-Bit Large Language Models")
+    presents our performance on six zero-shot tasks, employing both W4A4 and W6A6
+    settings. Particularly striking is the performance of the LLaMA-30b model, configured
+    with full quantization at W6A6 precision, which achieves an average accuracy on
+    these tasks surpassing even that of the floating-point model. This achievement
+    underscores the potential of fully quantized integer-only methods in maintaining
+    the generalization capabilities of LLMs to a considerable degree.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Ablation Study
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Contribution of Fully-Smooth Block Reconstruction In Table [5](#S4.T5 "Table
+    5 ‣ 4.2 Ablation Study ‣ 4 Experiments ‣ I-LLM: Efficient Integer-Only Inference
+    for Fully-Quantized Low-Bit Large Language Models"), we meticulously assess the
+    impact of various PTQ methods on model accuracy. To maintain impartiality, this
+    experiment abstains from utilizing integer-only operators; instead, all quantization
+    procedures are substituted with pseudo-quantization. The nodes necessitating quantization
+    align with those delineated in Fig [4](#S3.F4 "Figure 4 ‣ 3 Method ‣ I-LLM: Efficient
+    Integer-Only Inference for Fully-Quantized Low-Bit Large Language Models"). Notably,
+    conventional non-integer-only methodologies often overlook the influence of activation
+    in non-linear layers, leading to compromised model accuracy during integer inference.
+    However, with the integration of FSBR, these activations are thoughtfully considered
+    during PTQ, effectively reinstating the model’s accuracy under full quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4: Impact of different PTQ methods and integer-only operators on LLaMA-7B
+    PPL($\downarrow$) across WikiText2 and C4 datasets.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| LLaMA-7B | W4A4 | W6A6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Method | WikiText2 | C4 | WikiText2 | C4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant | 256.58 | 218.47 | 6.09 | 7.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniquantQuant | 122.18 | 183.2 | 5.99 | 7.57 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FSBR | 9.44 | 12.72 | 5.83 | 7.02 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| +DI-CLippedSoftamx | 9.44 | 12.72 | 5.83 | 7.02 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| +DI-Swiglu | 9.12 | 12.38 | 5.83 | 7.04 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| +DI-Norm | 9.52 | 12.63 | 5.85 | 7.35 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 5: Effect of clipped value in DI-ClippedSoftamx.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| LLaMA-7B | W4A4 | W6A6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Clipped Value $c$ | WikiText2 | C4 | WikiText2 | C4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| – | 7360945.00 | 1998371.38 | 60335.22 | 47103.44 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 20 | 9.15 | 12.39 | 5.86 | 7.36 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 17 | 9.19 | 12.38 | 5.86 | 7.37 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 15 | 9.16 | 12.36 | 5.85 | 7.36 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 12 | 9.19 | 12.35 | 5.86 | 7.36 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 10 | 9.23 | 12.45 | 5.89 | 7.42 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Impact of Integer-Only Operators. As shown in Table [5](#S4.T5 "Table 5 ‣ 4.2
+    Ablation Study ‣ 4 Experiments ‣ I-LLM: Efficient Integer-Only Inference for Fully-Quantized
+    Low-Bit Large Language Models"), we intricately outline the precise impact of
+    each integer-only operator on the holistic accuracy of the model. Additionally,
+    we ablate the influence of the clipping coefficient $c$ in the Eq [10](#S3.E10
+    "In 3.4.1 Dynamic Interger-only Clipped Softmax & Dynamic Integer-only Exponent
+    function ‣ 3.4 Dynamic Non-Linear Integer-only Operations ‣ 3 Method ‣ I-LLM:
+    Efficient Integer-Only Inference for Fully-Quantized Low-Bit Large Language Models")
+    from DI-ClippedSoftmax on model accuracy. It’s worth noting that the quantization
+    of DI-Norm results in a performance decline, as expected due to residual connections,
+    a phenomenon that aligns with our expectations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this paper, we present I-LLM, a fully-quantized integer-only PTQ framework
+    for LLMs. We address the challenge of fluctuating activations in both linear and
+    non-linear operations by proposing Fully-Smooth Block-Reconstruction (FSBR) to
+    harmonize inter-channel variations and Dynamic Integer-only MatMul (DI-MatMul)
+    to handle inter-token variations. Additionally, we design DI-ClippedSoftmax, DI-Exp,
+    and DI-Norm as lightweight integer-only operators to replace complex math caculations.
+    Experiments demonstrate that I-LLM outperforms simulated quantization methods
+    and achieves comparable accuracy to the floating-point baseline. Notably, I-LLM
+    can operate at W4A4 quantization setting with negligible loss of accuracy, bridging
+    the gap between low-bit integer-only quantization and LLMs. This work opens up
+    avenues for the efficient deployment of LLMs on edge devices without floating-point
+    capabilities. Looking ahead, we are committed to deploying I-LLM on specialized
+    hardware and cloud platforms, with the aim of achieving even greater acceleration
+    performance and further optimizing the operational efficiency of LLMs in various
+    computational environments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '[1] Yonatan Bisk, Rowan Zellers, Jianfeng Gao, Yejin Choi, et al. Piqa: Reasoning
+    about physical commonsense in natural language. In Proceedings of the AAAI conference
+    on artificial intelligence, volume 34, pages 7432–7439, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[2] Michael Boratko, Harshit Padigela, Divyendra Mikkilineni, Pritish Yuvraj,
+    Rajarshi Das, Andrew McCallum, Maria Chang, Achille Fokoue-Nkoutche, Pavan Kapanipathi,
+    Nicholas Mattei, et al. A systematic classification of knowledge, reasoning, and
+    context within the arc dataset. arXiv preprint arXiv:1806.00358, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[3] Jerry Chee, Yaohui Cai, Volodymyr Kuleshov, and Christopher De Sa. Quip:
+    2-bit quantization of large language models with guarantees. arXiv preprint arXiv:2307.13304,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[4] Christopher Clark, Kenton Lee, Ming-Wei Chang, Tom Kwiatkowski, Michael
+    Collins, and Kristina Toutanova. Boolq: Exploring the surprising difficulty of
+    natural yes/no questions. arXiv preprint arXiv:1905.10044, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[5] Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, and Luke Zettlemoyer. Qlora:
+    Efficient finetuning of quantized llms. Advances in Neural Information Processing
+    Systems, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[6] Tim Dettmers, Ruslan Svirschevski, Vage Egiazarian, Denis Kuznedelev, Elias
+    Frantar, Saleh Ashkboos, Alexander Borzunov, Torsten Hoefler, and Dan Alistarh.
+    Spqr: A sparse-quantized representation for near-lossless llm weight compression.
+    arXiv preprint arXiv:2306.03078, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[7] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, Dirk Weissenborn,
+    Xiaohua Zhai, Thomas Unterthiner, Mostafa Dehghani, Matthias Minderer, Georg Heigold,
+    Sylvain Gelly, et al. An image is worth 16x16 words: Transformers for image recognition
+    at scale. arXiv preprint arXiv:2010.11929, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[8] Eric Flamand, Davide Rossi, Francesco Conti, Igor Loi, Antonio Pullini,
+    Florent Rotenberg, and Luca Benini. Gap-8: A risc-v soc for ai at the edge of
+    the iot. In 2018 IEEE 29th International Conference on Application-specific Systems,
+    Architectures and Processors (ASAP), pages 1–4\. IEEE, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[9] Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan Alistarh. Gptq:
+    Accurate post-training quantization for generative pre-trained transformers. arXiv
+    preprint arXiv:2210.17323, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[10] Google. Edge tpu, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[11] Benoit Jacob, Skirmantas Kligys, Bo Chen, Menglong Zhu, Matthew Tang,
+    Andrew Howard, Hartwig Adam, and Dmitry Kalenichenko. Quantization and training
+    of neural networks for efficient integer-arithmetic-only inference. In Proceedings
+    of the IEEE conference on computer vision and pattern recognition, pages 2704–2713,
+    2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[12] Sehoon Kim, Amir Gholami, Zhewei Yao, Michael W Mahoney, and Kurt Keutzer.
+    I-bert: Integer-only bert quantization. In International conference on machine
+    learning, pages 5506–5518\. PMLR, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[13] Sehoon Kim, Coleman Hooper, Amir Gholami, Zhen Dong, Xiuyu Li, Sheng Shen,
+    Michael W Mahoney, and Kurt Keutzer. Squeezellm: Dense-and-sparse quantization.
+    arXiv preprint arXiv:2306.07629, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[14] Changhun Lee, Jungyu Jin, Taesu Kim, Hyungjun Kim, and Eunhyeok Park.
+    Owq: Lessons learned from activation outliers for weight quantization in large
+    language models. arXiv preprint arXiv:2306.02272, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[15] Liang Li, Qingyuan Li, Bo Zhang, and Xiangxiang Chu. Norm tweaking: High-performance
+    low-bit quantization of large language models. Association for the Advancement
+    of Artificial Intelligence, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[16] Yuhang Li, Ruihao Gong, Xu Tan, Yang Yang, Peng Hu, Qi Zhang, Fengwei
+    Yu, Wei Wang, and Shi Gu. Brecq: Pushing the limit of post-training quantization
+    by block reconstruction. In International Conference on Learning Representations
+    (ICLR), 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[17] Yixiao Li, Yifan Yu, Chen Liang, Pengcheng He, Nikos Karampatziakis, Weizhu
+    Chen, and Tuo Zhao. Loftq: Lora-fine-tuning-aware quantization for large language
+    models. arXiv preprint arXiv:2310.08659, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[18] Zhikai Li and Qingyi Gu. I-vit: integer-only quantization for efficient
+    vision transformer inference. In Proceedings of the IEEE/CVF International Conference
+    on Computer Vision, pages 17065–17075, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[19] Ji Lin, Jiaming Tang, Haotian Tang, Shang Yang, Xingyu Dang, and Song
+    Han. Awq: Activation-aware weight quantization for llm compression and acceleration.
+    arXiv preprint arXiv:2306.00978, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[20] Ye Lin, Yanyang Li, Tengbo Liu, Tong Xiao, Tongran Liu, and Jingbo Zhu.
+    Towards fully 8-bit integer inference for the transformer model. In Proceedings
+    of the Twenty-Ninth International Conference on International Joint Conferences
+    on Artificial Intelligence, pages 3759–3765, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[21] Yang Lin, Tianyu Zhang, Peiqin Sun, Zheng Li, and Shuchang Zhou. Fq-vit:
+    Post-training quantization for fully quantized vision transformer. In Proceedings
+    of the Thirty-First International Joint Conference on Artificial Intelligence,
+    IJCAI-22, pages 1173–1179, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[22] Jiawei Liu, Lin Niu, Zhihang Yuan, Dawei Yang, Xinggang Wang, and Wenyu
+    Liu. Pd-quant: Post-training quantization based on prediction difference metric.
+    In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition,
+    pages 24427–24437, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[23] Zechun Liu, Barlas Oguz, Changsheng Zhao, Ernie Chang, Pierre Stock, Yashar
+    Mehdad, Yangyang Shi, Raghuraman Krishnamoorthi, and Vikas Chandra. Llm-qat: Data-free
+    quantization aware training for large language models. arXiv preprint arXiv:2305.17888,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[24] Stephen Merity, Caiming Xiong, James Bradbury, and Richard Socher. Pointer
+    sentinel mixture models. arXiv preprint arXiv:1609.07843, 2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[25] Haotong Qin, Yifu Ding, Mingyuan Zhang, Qinghua Yan, Aishan Liu, Qingqing
+    Dang, Ziwei Liu, and Xianglong Liu. Bibert: Accurate fully binarized bert. arXiv
+    preprint arXiv:2203.06390, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[26] Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang,
+    Michael Matena, Yanqi Zhou, Wei Li, and Peter J Liu. Exploring the limits of transfer
+    learning with a unified text-to-text transformer. Journal of Machine Learning
+    Research, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[27] Keisuke Sakaguchi, Ronan Le Bras, Chandra Bhagavatula, and Yejin Choi.
+    Winogrande: An adversarial winograd schema challenge at scale. Communications
+    of the ACM, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[28] Yuzhang Shang, Zhihang Yuan, Qiang Wu, and Zhen Dong. Pb-llm: Partially
+    binarized large language models. International Conference on Learning Representations,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[29] Wenqi Shao, Mengzhao Chen, Zhaoyang Zhang, Peng Xu, Lirui Zhao, Zhiqian
+    Li, Kaipeng Zhang, Peng Gao, Yu Qiao, and Ping Luo. Omniquant: Omnidirectionally
+    calibrated quantization for large language models. CoRR, abs/2308.13137, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[30] Jacob R Stevens, Rangharajan Venkatesan, Steve Dai, Brucek Khailany, and
+    Anand Raghunathan. Softermax: Hardware/software co-design of an efficient softmax
+    for transformers. In 2021 58th ACM/IEEE Design Automation Conference (DAC), pages
+    469–474, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[31] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne
+    Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal, Eric Hambro, Faisal
+    Azhar, et al. Llama: Open and efficient foundation language models. arXiv preprint
+    arXiv:2302.13971, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[32] Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi,
+    Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale,
+    et al. Llama 2: Open foundation and fine-tuned chat models. arXiv preprint arXiv:2307.09288,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[33] Xiuying Wei, Ruihao Gong, Yuhang Li, Xianglong Liu, and Fengwei Yu. Qdrop:
+    Randomly dropping quantization for extremely low-bit post-training quantization.
+    In International Conference on Learning Representations (ICLR), 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[34] Xiuying Wei, Yunchen Zhang, Yuhang Li, Xiangguo Zhang, Ruihao Gong, Jinyang
+    Guo, and Xianglong Liu. Outlier suppression+: Accurate quantization of large language
+    models by equivalent and optimal shifting and scaling. arXiv preprint arXiv:2304.09145,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[35] Xiuying Wei, Yunchen Zhang, Xiangguo Zhang, Ruihao Gong, Shanghang Zhang,
+    Qi Zhang, Fengwei Yu, and Xianglong Liu. Outlier suppression: Pushing the limit
+    of low-bit transformer language models. Advances in Neural Information Processing
+    Systems, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[36] WIKIPEDIA. Arm cortex-m, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[37] Hao Wu, Patrick Judd, Xiaojie Zhang, Mikhail Isaev, and Paulius Micikevicius.
+    Integer quantization for deep learning inference: Principles and empirical evaluation.
+    arXiv preprint arXiv:2004.09602, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[38] Guangxuan Xiao, Ji Lin, Mickael Seznec, Julien Demouth, and Song Han.
+    Smoothquant: Accurate and efficient post-training quantization for large language
+    models. arXiv preprint arXiv:2211.10438, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[39] Yuhui Xu, Lingxi Xie, Xiaotao Gu, Xin Chen, Heng Chang, Hengheng Zhang,
+    Zhensu Chen, Xiaopeng Zhang, and Qi Tian. Qa-lora: Quantization-aware low-rank
+    adaptation of large language models. arXiv preprint arXiv:2309.14717, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[40] Zhewei Yao, Reza Yazdani Aminabadi, Minjia Zhang, Xiaoxia Wu, Conglong
+    Li, and Yuxiong He. Zeroquant: Efficient and affordable post-training quantization
+    for large-scale transformers. arXiv preprint arXiv:2206.01861, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[41] Zhewei Yao, Zhen Dong, Zhangcheng Zheng, Amir Gholami, Jiali Yu, Eric
+    Tan, Leyuan Wang, Qijing Huang, Yida Wang, Michael Mahoney, et al. Hawq-v3: Dyadic
+    neural network quantization. In International Conference on Machine Learning,
+    pages 11875–11886\. PMLR, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[42] Zhihang Yuan, Lin Niu, Jiawei Liu, Wenyu Liu, Xinggang Wang, Yuzhang Shang,
+    Guangyu Sun, Qiang Wu, Jiaxiang Wu, and Bingzhe Wu. Rptq: Reorder-based post-training
+    quantization for large language models. arXiv preprint arXiv:2304.01089, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[43] Zhihang Yuan, Yuzhang Shang, Yue Song, Qiang Wu, Yan Yan, and Guangyu
+    Sun. Asvd: Activation-aware singular value decomposition for compressing large
+    language models. arXiv preprint arXiv:2312.05821, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[44] Yuxuan Yue, Zhihang Yuan, Haojie Duanmu, Sifan Zhou, Jianlong Wu, and
+    Liqiang Nie. Wkvquant: Quantizing weight and key/value cache for large language
+    models gains more. arXiv preprint arXiv:2402.12065, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[45] Rowan Zellers, Ari Holtzman, Yonatan Bisk, Ali Farhadi, and Yejin Choi.
+    Hellaswag: Can a machine really finish your sentence? arXiv preprint arXiv:1905.07830,
+    2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[46] Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe, Moya Chen, Shuohui
+    Chen, Christopher Dewan, Mona Diab, Xian Li, Xi Victoria Lin, et al. Opt: Open
+    pre-trained transformer language models. arXiv preprint arXiv:2205.01068, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[47] Sifan Zhou, Liang Li, Xinyu Zhang, Bo Zhang, Shipeng Bai, Miao Sun, Ziyu
+    Zhao, Xiaobo Lu, and Xiangxiang Chu. Lidar-ptq: Post-training quantization for
+    point cloud 3d object detection. International Conference on Learning Representations,
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[48] Danyang Zhu, Siyuan Lu, Meiqi Wang, Jun Lin, and Zhongfeng Wang. Efficient
+    precision-adjustable architecture for softmax function in deep learning. IEEE
+    Transactions on Circuits and Systems II: Express Briefs, 67(12):3382–3386, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Appendix
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A.1 Quantization Preliminaries
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Quantization & Dequantization. Quantization typically refers to mapping a floating-point
+    number to a discrete interval with integer number. Here, we only consider uniform
+    quantization. The quantization process can be expressed as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\bm{X}^{I}=\text{clamp}\left(\left\lfloor\frac{\bm{X}}{s}\right\rceil+zp^{I},0,2^{n^{I}}-1\right)$
+    |  | (13) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle s=\frac{x_{\max}-x_{\min}}{2^{n^{I}}-1}$ |  | (14) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle zp^{I}=\left\lfloor\frac{-x_{\min}}{s}\right\rceil$ |  |
+    (15) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle X^{\prime}=(X^{I}-zp^{I})\cdot s$ |  | (16) |'
+  prefs: []
+  type: TYPE_TB
+- en: where $\bm{X}$ from the activations of some samples, which is called static
+    quantization. Alternatively, we can derive it from runtime statistics, known as
+    dynamic quantization. Quantization can also be distinguished by its granularity
+    into per-channel quantization and per-token quantization [[40](#bib.bib40)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: A.2 Dynamic Interger-only Algorithms
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Algorithm 1 Dynamic Integer-only Exp: DI-Exp'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Input: Integer input ${\mathbf{x}^{I}_{in}}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Output: result of I-Exp.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:$m_{f}^{I}=m^{I}+(m^{I}{\gg}1)-(m^{I}{\gg}4)$8:return result
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Algorithm 2 Dynamic Integer-only Softmax : DI-Softmax'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Input: Integer input ${\mathbf{x}^{I}_{in}}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Output: Integer output ${\mathbf{y}^{I}_{out}}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:$\mathbf{x}^{I}_{\Delta}=\mathbf{x}^{I}_{in}-max(\mathbf{x}^{I}_{in})$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Algorithm 3 Dynamic Integer-only SwiGLU : DI-SwiGLU'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Input: Integer input ${\mathbf{x}^{I}_{gate},\mathbf{x}^{I}_{up}}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Output: Integer output $\mathbf{y}^{I}_{out}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:$\mathbf{x}^{I}_{smoothed\_gate}=\mathbf{x}^{I}_{gate}/\alpha_{smooth}$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Algorithm 4 Dynamic Integer-only RMSnorm : DI-RMSnorm'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Input: Integer input $\mathbf{x}^{I}_{in}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Output: Integer output $\mathbf{y}^{I}_{out}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1:function I-Sqrt($I_{in}$29:end function
+  prefs: []
+  type: TYPE_NORMAL
+- en: A.3 Fully Results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a9c36d953f07fdd1ad90e8426578217a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: The output activation distribution of qkv of LLMs before and after
+    the FSBR.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A.4 Limitation and Discussion
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We have shown evidence that our I-LLM can replicate float-point performance
+    with an integer-only module with 8-bit or lower bits. However, due to time constraints,
+    we are currently evaluating the model’s latency on real hardware devices, but
+    have not obtained quantitative results. Another limitation is that we only focused
+    on natural language models, however, it would be interesting to explore how I-LLM
+    performs in computer vision tasks. We leave this for future work.
+  prefs: []
+  type: TYPE_NORMAL

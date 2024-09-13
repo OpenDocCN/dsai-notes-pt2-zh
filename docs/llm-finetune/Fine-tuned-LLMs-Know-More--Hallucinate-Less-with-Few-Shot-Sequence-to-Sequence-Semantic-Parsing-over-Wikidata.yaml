@@ -1,0 +1,1598 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:40:13'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fine-tuned LLMs Know More, Hallucinate Less with Few-Shot Sequence-to-Sequence
+    Semantic Parsing over Wikidata
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2305.14202](https://ar5iv.labs.arxiv.org/html/2305.14202)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Silei Xu^∗ Shicheng Liu^∗ Theo Culhane  Elizaveta Pertseva
+  prefs: []
+  type: TYPE_NORMAL
+- en: Meng-Hsi Wu¹  Sina J. Semnani  Monica S. Lam Computer Science Department, Stanford
+    University
+  prefs: []
+  type: TYPE_NORMAL
+- en: Stanford, CA
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{silei, shicheng, tculhane, pertseva, sinaj, lam}@cs.stanford.edu'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ¹Ailly.ai
+  prefs: []
+  type: TYPE_NORMAL
+- en: jwu@ailly.ai
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: While large language models (LLMs) can answer many questions correctly, they
+    can also hallucinate and give wrong answers. Wikidata, with its over 12 billion
+    facts, can be used to ground LLMs to improve their factuality.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This paper presents WikiWebQuestions, a high-quality question answering benchmark
+    for Wikidata. Ported over from WebQuestions for Freebase, it consists of real-world
+    data with SPARQL annotation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This paper presents a few-shot sequence-to-sequence semantic parser for Wikidata.
+    We modify SPARQL to use the unique domain and property names instead of their
+    IDs. We train the parser to use either the results from an entity linker or mentions
+    in the query. We fine-tune LLaMA by adding the few-shot training data to that
+    used to fine-tune Alpaca.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our experimental results demonstrate the effectiveness of this methodology,
+    establishing a strong baseline of 76% and 65% answer accuracy in the dev and test
+    sets of WikiWebQuestions, respectively. By pairing our semantic parser with GPT-3,
+    we combine verifiable results with qualified GPT-3 guesses to provide useful answers
+    to 96% of the questions in dev. We also show that our method outperforms the state-of-the-art
+    for the QALD-7 Wikidata dataset by 3.6% in F1 score.¹¹1Code, data, and model are
+    available at [https://github.com/stanford-oval/wikidata-emnlp23](https://github.com/stanford-oval/wikidata-emnlp23)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '^*^*footnotetext: Equal contribution'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/663ea14e2396116934ae4581d0fc5835.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: An Overview of WikiSP. An entity linker is used to link entities
+    in the user query to their unique ID in Wikidata; e.g. “A Bronx Tale” is linked
+    to entity ID “Q1130705”. The query and entity linker outputs are fed to the WikiSP
+    semantic parser to produce a modified version of SPARQL, where property IDs (e.g.
+    “P915”) are replaced by their unique string identifiers (e.g. “filming_location”).
+    If applying the query to Wikidata fails to return a result, we default to GPT-3,
+    labeling the result as a GPT-3 guess. Returned answers are presented in the context
+    of the query, so the user can tell if the answer is acceptable; if not, we also
+    show the guess from GPT-3\. Here WikiSP mistakenly uses “filming_location” instead
+    of “narrative_location”; the user detects the mistake, thumbs down the answer,
+    and the GPT-3 answer is provided.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Large language models (LLMs) such as GPT-3 can answer open-domain questions
+    without access to external knowledge or any task-specific training examples. However,
+    LLMs are prone to hallucinate (Bang et al., [2023](#bib.bib4)), while using a
+    convincing and confident tone. This may cause significant harm as people increasingly
+    accept LLMs as a knowledge source (Goddard, [2023](#bib.bib14); Weiser, [2023](#bib.bib46)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In contrast, traditional knowledge base question answering (KBQA) is grounded
+    with a given knowledge base. Semantic parsing (SP) has been widely used to tackle
+    this challenging task, where the questions are first parsed into a logical form
+    and then executed to retrieve answers from the knowledge base. It has better interpretability
+    than GPT-3 and other information-retrieval-based approaches (Dong et al., [2015](#bib.bib13);
+    Miller et al., [2016](#bib.bib24); Sun et al., [2018](#bib.bib38), [2019](#bib.bib37))
+    where answers are predicted directly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/a0a5c992fd14712255fd32fd337a0d98.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Distribution of correct, incomplete, and incorrect answers for the
+    WikiWebQuestions dev set, when GPT-3 is used alone and when combined with WikiSP.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To handle large knowledge bases, previous SP-based approaches tend to use a
+    multi-stage pipeline of sub-tasks, starting with extracting the relevant subgraph
+    based on entities detected in the questions (Yih et al., [2015](#bib.bib50); Luo
+    et al., [2018](#bib.bib22)). Such an approach struggles with questions that have
+    a large search space and fails to understand questions that refer to information
+    missing in the knowledge graph. Having to retrieve the relevant subgraphs to create
+    the logical form conflates query resolution with semantic parsing, rendering classical
+    query optimization inapplicable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: End-to-end seq2seq translation, on the other hand, has mainly been used on schemas
+    of relatively small relational databases (Yu et al., [2018](#bib.bib53); Xu et al.,
+    [2020a](#bib.bib47), [b](#bib.bib48)) and web APIs (Campagna et al., [2017](#bib.bib7);
+    Su et al., [2017](#bib.bib36)). To handle large knowledge graphs, recent work
+    proposed retrieving (1) information on linked entities, (2) exemplary logical
+    forms relevant to the query Gu et al. ([2021](#bib.bib15)); Ye et al. ([2022](#bib.bib49)),
+    and (3) schemas as context to semantic parsing Shu et al. ([2022](#bib.bib34)).
+    Others use induction or iterative methods to generate complex logical forms (Cao
+    et al., [2022b](#bib.bib10); Gu and Su, [2022](#bib.bib16)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1.1 Few-Shot Seq2Seq Semantic Parsing
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This paper investigates how we can leverage large language models (LLMs) to
+    create seq2seq neural semantic parsers for large knowledge bases such as Wikidata.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pretrained with the internet corpora, LLMs are already familiar with the syntax
+    of formal query languages such as SQL (Hu et al., [2022](#bib.bib17); Poesia et al.,
+    [2022](#bib.bib28); Li et al., [2023](#bib.bib21); An et al., [2023](#bib.bib1);
+    Nan et al., [2023](#bib.bib26); Arora et al., [2023](#bib.bib2)). When given simple
+    SQL schemas, they can perform zero-shot semantic parsing of simple natural language
+    queries into formal queries. Unlike Freebase, the KB used in most of the KBQA
+    semantic parsing research, Wikidata does not have a pre-defined schema, making
+    it a much harder problem. It has 150K domains, 3K applicable properties, and 107M
+    entities, each of the properties and entities are uniquely identified with PIDs
+    and QIDs, respectively. While zero-shot LLMs can generate SPARQL queries for the
+    easiest and most common questions, they do not know all the PIDs and QIDs, and
+    nor is it possible to include them in a prompt.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This paper presents WikiSP, a few-shot sequence-to-sequence semantic parser
+    for Wikidata that translates a user query, along with results from an entity linker,
+    directly into SPARQL queries. To handle the 100M+ entities in Wikidata, we train
+    the parser to use either the entity linker results or a mention in the query;
+    to handle the 150K domains and 3K applicable properties, we modify SPARQL to use
+    domain and property names instead of their unique QIDs and PIDs, respectively.
+    We fine-tune a LLaMA (Touvron et al., [2023](#bib.bib41)) with a few-shot training
+    set along with the instructions used to fine-tune Alpaca (Taori et al., [2023](#bib.bib40)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.2 A New Dataset: WikiWebQuestions'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Most of the widely-used high-quality benchmarks for KBQA are based on Freebase (Bollacker
+    et al., [2008](#bib.bib6)) which has been shut down since 2015\. With outdated
+    knowledge, it is hard to compare the results with modern LLMs such as GPT-3, since
+    answers have changed over time for most of the questions. Wikidata, despite being
+    the largest and most popular knowledge base nowadays, has very few datasets annotated
+    with SPARQL queries; they are either extremely small (Usbeck et al., [2017](#bib.bib42))
+    or synthetic (Saha et al., [2018](#bib.bib31)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: We migrated the popular WebQuestionsSP (Yih et al., [2016](#bib.bib51)) benchmark
+    from Freebase to Wikidata, with updated SPARQL and up-to-date answers from the
+    much larger Wikidata.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1.3 Complementing Large Language Models
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Trained on Wikipedia and all of the internet, LLMs can answer many questions
+    directly. Unfortunately, the user cannot tell if the answers are correct, thus
+    requiring them to fact-check every answer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unlike humans, GPT-3 always sounds definitive even when they are wrong by providing
+    specific and plausible facts. For example, on the question “what is the biggest
+    country in Europe by population?”, GPT-3 answers “Germany”, when the answer is
+    “Russia”. Or, on the question, “where does the name Melbourne come from?” GPT-3
+    answers “Melbourne comes from the Latin word ‘melburnum’ meaning ‘blackburn’ or
+    ‘blackbird’.”, but in reality, Melbourne is named after William Lamb, 2nd Viscount
+    Melbourne. It is not possible to tell when GPT-3’s answers are wrong, and every
+    answer needs to be fact-checked.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Semantic parsers can be used to complement LLMs as they are interpretable; their
+    results are grounded in Wikidata, which we assume to be correct. It is possible
+    for semantic parsers to misunderstand a query, but by providing the answer in
+    the context of the query, the user can spot the error.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We propose getting the best of both worlds by answering the question with WikiSP
+    if possible. Otherwise, we report GPT-3’s guesses by prefacing it with: “GPT-3
+    guesses that” (Figure [1](#S1.F1 "Figure 1 ‣ 1 Introduction ‣ Fine-tuned LLMs
+    Know More, Hallucinate Less with Few-Shot Sequence-to-Sequence Semantic Parsing
+    over Wikidata")). In this way, the user can have full confidence with the answers
+    from the former, while also benefiting from the latter. It is easier for users
+    to fact-check an answer than trying to find the answer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1.4 Contributions
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: WikiWebQuestions, a high-quality semantic parsing dataset for Wikidata, migrated
+    from the popular WebQuestions dataset for Freebase.
+  prefs: []
+  type: TYPE_NORMAL
+- en: WikiSP, a few-shot Seq2Seq semantic parser by fine-tuning LLaMA with a few shot
+    training set. We improve the learnability of SPARQL queries by replacing the IDs
+    of properties and domains with their unique names; we tolerate errors in entity
+    linking by accepting mentions in the queries as entities. We establish a first,
+    strong baseline of 76% and 65% answer accuracy for the dev set and test set of
+    our new WikiWebQuestions benchmark, respectively. We also demonstrate that our
+    method surpasses the state of the art for QALD-7 wikidata set by 3.6% in F1 score.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We improve GPT-3’s trustworthiness by first returning interpretable results
+    from semantic parser and backing it up with GPT-3 guesses. WikiSP can provide
+    verifiable results for WikiWebQuestions 76% of the time and improves the guesses
+    by GPT-3, resulting in errors only 4% of the time (Figure [2](#S1.F2 "Figure 2
+    ‣ 1 Introduction ‣ Fine-tuned LLMs Know More, Hallucinate Less with Few-Shot Sequence-to-Sequence
+    Semantic Parsing over Wikidata")).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 2.1 KBQA
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The KBQA task aims to make large knowledge bases accessible by natural language.
+    One common approach is semantic parsing where a natural language query is translated
+    into a formal logical form, which is then executed to retrieve an answer from
+    the knowledge base. To handle large KBs, one method is to formulate SP as a multi-staged
+    search problem by retrieving entities and expanding the graphs according to the
+    relationships between their properties and the query Yih et al. ([2015](#bib.bib50),
+    [2016](#bib.bib51)); Luo et al. ([2018](#bib.bib22)). Lan and Jiang ([2020](#bib.bib18))
+    add constraints to the staged query graph generation method. Another popular method
+    is to use seq2seq models obtained by fine-tuning pretrained language models. Das
+    et al. ([2021](#bib.bib11)) first find other queries that contain semantically
+    similar subparts, and construct a new logical form by combining the similar subparts
+    of the found queries. Ye et al. ([2022](#bib.bib49)) search over the KB based
+    on predefined rules to derive a set of candidate logical forms, rank them, and
+    generate the final logical form. Cao et al. ([2022b](#bib.bib10)) first generate
+    a “sketch” program and then fill in its arguments. Gu and Su ([2022](#bib.bib16))
+    use dynamic program induction to generate query structures. Based on a user query,
+    Shu et al. ([2022](#bib.bib34)) retrieve entities, example logical forms, and
+    related schema. Unlike FreeBase, Wikidata does not have a fixed schema.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another approach to KBQA is based on graph retrieval (Dong et al., [2015](#bib.bib13);
+    Miller et al., [2016](#bib.bib24); Sun et al., [2018](#bib.bib38), [2019](#bib.bib37);
+    Mavromatis and Karypis, [2022](#bib.bib23); Sen et al., [2021](#bib.bib32); Vivona
+    and Hassani, [2019](#bib.bib44); Verga et al., [2021](#bib.bib43)). It predicts
+    the answers directly within the subgraph extracted based on the topic entity in
+    the question. Yu et al. ([2023](#bib.bib52)) combine semantic parsing with retrieval
+    and achieve the state-of-the-art on the WebQuestionsSP dataset (Yih et al., [2016](#bib.bib51)).
+    However, retrieval-based methods cannot handle entire categories of questions,
+    such as questions with no available answer and questions like “the tallest mountain”
+    where no entities are mentioned by name. They have poor interpretability and do
+    not support query optimization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2 KBQA Benchmarks
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Most of the early KBQA benchmarks are based on Freebase  (Berant et al., [2013](#bib.bib5);
+    Yih et al., [2016](#bib.bib51); Talmor and Berant, [2018](#bib.bib39)). Recently,
+    new benchmarks have been created for Wikidata  (Cao et al., [2022a](#bib.bib9);
+    Saha et al., [2019](#bib.bib30)). However, these benchmarks are created using
+    rule-based synthesis or paraphrases, which are easier for semantic parsers. CSQA
+    collects human-written questions for single triples and constructs complex questions
+    using fixed rules with very limited natural language variety  (Saha et al., [2019](#bib.bib30)).
+    KQA Pro first synthesizes queries with canonical natural language and then crowdsources
+    human paraphrases  (Cao et al., [2022a](#bib.bib9)). Campagna et al. ([2019](#bib.bib8))
+    show that a model can achieve significantly higher accuracy over paraphrased data
+    compared to real-world data even for untrained queries. Thus, we base our WikiWebQuestions
+    dataset on WebQuestionsSP  (Yih et al., [2016](#bib.bib51)), where data are collected
+    from real-world users using the Google Suggest API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.3 LLMs for Semantic Parsing
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Shin et al. ([2021](#bib.bib33)) show the promise of few-shot prompting LLMs
+    for semantic parsing. They use constrained decoding to enforce the syntax of the
+    formal language, and achieve comparable results with a smaller fine-tuned BART
+    model (Lewis et al., [2020](#bib.bib19)) on datasets with small database schemas.
+    Rubin et al. ([2022](#bib.bib29)) fine-tune a small retriever to obtain the most
+    relevant few-shot examples to use for each input. Niu et al. ([2023](#bib.bib27))
+    use a few-shot prompted Codex model to break down the natural language input to
+    make the task easier for a smaller semantic parser. LLMs have also been applied
+    to semantic parsing on relational databases (Hu et al., [2022](#bib.bib17); Poesia
+    et al., [2022](#bib.bib28); Li et al., [2023](#bib.bib21); An et al., [2023](#bib.bib1);
+    Nan et al., [2023](#bib.bib26); Arora et al., [2023](#bib.bib2)). The schemas
+    used in these projects are very small when compared to Wikidata.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.4 Entity Linking
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Entity linking involves finding the named entities in a query, and linking them
+    to the corresponding entities in the knowledge graph so that the query can be
+    executed using the proper entities as reference points. The current state-of-the-art
+    entity linking model on the WebQuestionsSP dataset is ReFinED (Ayoola et al.,
+    [2022](#bib.bib3)). They use a bidirectional transformer on the query to predict
+    the most likely mentions of named entities within a query, and then combine that
+    information with embeddings computed over every entity in the knowledge base to
+    predict which entity the mention is most likely to be referring to. Prior to ReFinED,
+    the state-of-the-art was ELQ (Li et al., [2020](#bib.bib20)). They similarly generate
+    embeddings for each entity in the knowledge base, and then use the predicted mentions
+    of entities combined with these predicted embeddings to generate likely entities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Semantic Parsing for Wikidata
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Wikidata is the largest public knowledge base with over 12 billion facts represented
+    by subject-predicate-object triples using 100+ million entities and 10,000 properties.
+    3,000 of the properties are useful for answering natural language questions, whereas
+    the rest are used to link data in Wikidata with external library catalogs and
+    database IDs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Entities and properties are given unique identifiers, QIDs and PIDs, respectively.
+    For example, the fact that Joe Biden is the president of the US can be represented
+    as a triple (Q6279, P39, Q11696), where P39 is the PID for property position held,
+    Q6279 and Q11696 are QIDs for Joe Biden and the president of the United States,
+    respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Query Format
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Unlike relational databases and Freebase, Wikidata has no predefined domains
+    or types. Any entity can have an arbitrary set of properties. However, even though
+    Wikidata is property-based, all named entities have one or more instance of properties
+    to some domain entity; domain entities are organized into a hierarchy with the
+    subclass of property.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that the names of domain entities and properties are unique. Non-domain
+    entities, on the other hand, can be ambiguous. For example, “Lincoln” can refer
+    to the president, a car brand, a sparrow, an aircraft, and many different cities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We posit that it is impossible for LLMs to memorize the QIDs and PIDs for domains
+    and properties. We modify the format of SPARQL queries to use the more mnemonic
+    property name, instead of its PID. Similarly, we use entity names for domains.
+    For example, the original SPARQL for the query “What car models does GM make?”
+    is
+  prefs: []
+  type: TYPE_NORMAL
+- en: SELECT DISTINCT ?x WHERE {
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: ?x wdt:P31/wdt:P279* wd:Q3231690\.
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: ?x wdt:P176 wd:Q81965\. }
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: This says that we are seeking $x$ has General Motors (wd:Q81965) as the manufacturer
+    (wdt:P176). Note wdt is the prefix for Wikidata property, and wd is for Wikidata
+    entity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With our modification, the query becomes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: SELECT DISTINCT ?x WHERE {
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: ?x wdt:instance_of/wdt:subclass_of*
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: wd:automobile_model.
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: ?x wdt:manufacturer wd:Q81965\. }
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: For non-domain entity QIDs, we also accept a string in lieu of a QID in case
+    of entity linking errors. At inference time, we use simple heuristics to resolve
+    the string to a QID before applying the query. For example, “wd:Q81965” in the
+    query may be replaced with “wd:GM”. See Section [3.2.2](#S3.SS2.SSS2 "3.2.2 Recovering
+    from Entity Linker Errors ‣ 3.2 Entity Linking ‣ 3 Semantic Parsing for Wikidata
+    ‣ Fine-tuned LLMs Know More, Hallucinate Less with Few-Shot Sequence-to-Sequence
+    Semantic Parsing over Wikidata") for more details.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Normally, we refrain from changing standard query notations since LLMs have
+    been pretrained on them. However, we posit that learning this new syntax is much
+    easier than learning the PIDs and QIDs. Our experimentation with few-shot prompting
+    suggests that LLMs can easily adjust to this format.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Entity Linking
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Linking entities for WikiWebQuestions is particularly difficult. First, since
+    the dataset is collected from real-world questions without prompting the users
+    for more information, users tend to refer to their entities of interest without
+    using their full names. Second, the questions are generally short with very limited
+    context, making it harder to disambiguate among entities with similar names. Lastly,
+    many QIDs in Wikidata are used to represent terms not generally known as “named
+    entities”. For example, domain entities are often ignored by entity linker models,
+    as in “What is the biggest country in Europe by population?”, both “country” (Q6256)
+    and “Europe” (Q46) are required to construct the correct SPARQL, but entity linkers
+    only provide “Europe” and ignore “country”.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2.1 Semantic Parsing with Entity Linking
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: To handle ambiguous entities, we use an entity linker to first find the domain
+    names and QIDs of the entities mentioned in the text. We train a semantic parser
+    that accepts users’ input along with the results produced by the entity linker.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Formally, given a user input $T$ in our modified SPARQL format.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the example above, the SOTA ReFinED entity linker (Ayoola et al., [2022](#bib.bib3))
+    returns $\{\langle$. Unfortunately, it misses the entity automobile model (Q3231690),
+    a term not usually considered to be an entity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2.2 Recovering from Entity Linker Errors
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We want our semantic parser to be able to recover from mistakes by an entity
+    linker. That is, the semantic parser should use entity linking when it is helpful,
+    but it should still try to predict the right logical form when the linker fails.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The semantic parser is trained to accept, along with the user query, an optional
+    set of potentially useful QIDs from the entity linker. We include samples where
+    some of the supplied linked entities are not used in the gold answer, as well
+    as samples where there are missing linked entities. For the latter, we use mentions
+    in the original query in lieu of the QIDs. At inference time, we use the mentions
+    to look up the QIDs in Wikidata. If multiple matches exist, the most popular entity
+    is returned. An example is shown in Appendix [A](#A1 "Appendix A Examples of Recovering
+    from Entity Linking Errors ‣ Fine-tuned LLMs Know More, Hallucinate Less with
+    Few-Shot Sequence-to-Sequence Semantic Parsing over Wikidata").
+  prefs: []
+  type: TYPE_NORMAL
+- en: With the above example where the entity linker misses “automobile model”, the
+    semantic parser is likely to predict “car model” by copying from the user query.
+    We search “automobile model” among aliases in domains to find the correct QID.
+    This design allows the model to potentially recover from entity-linking failures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 WikiWebQuestions (WWQ) Dataset
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Despite being the most popular large knowledge base for a long time, existing
+    benchmarks on Wikidata with labeled SPARQL queries are unfortunately either small
+    or of low quality. On the other hand, benchmarks over the deprecated Freebase
+    still dominate the KBQA research with better-quality data. For example, the WebQuestions (Yih
+    et al., [2015](#bib.bib50)) dataset was collected by using Google Search API instead
+    of human paraphrasing or synthesis. As a result, it is much more natural and truly
+    reflects the real-world questions users may ask. This dataset is later annotated
+    with SPARQL over Freebase, named WebQuestionsSP (Yih et al., [2016](#bib.bib51)).
+    Examples with no legitimate SPARQL to retrieve answers from Freebase are dropped.
+    In total, WebQuestionsSP consists of 3098 examples in the training set and 1639
+    in the test set.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We migrated WebQuestionsSP, the best collection of natural language questions
+    over a general knowledge graph, from Freebase to Wikidata, with the help of an
+    automatic tool we developed, based on Google’s entity mapping²²2[https://developers.google.com/freebase](https://developers.google.com/freebase)
+    and Wikidata’s relation mapping³³3[https://www.wikidata.org/wiki/Wikidata:WikiProject_Freebase/Mapping](https://www.wikidata.org/wiki/Wikidata:WikiProject_Freebase/Mapping).
+    About 60% of the dataset was automatically converted. One of the authors of this
+    paper, who did not participate in model tuning, manually converted those instances
+    that failed to convert automatically.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Migrating WebQuestionsSP to Wikidata
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Here are the major decisions we made in migrating WebQuestionsSP dataset to
+    Wikidata. While much bigger, Wikidata does not necessarily contain all the information
+    available in Freebase. For example, it lacks countries’ trade partners, hence
+    we drop all such questions from the WebQuestionsSP dataset.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If multiple paths can lead to the correct answer, we choose the path that provides
+    the most complete answers and has the best availability among entities in the
+    same domain. For example, when asking for books written by an author X, we can
+    either search for books whose author is X or find notable works of X that are
+    books. While the latter is more efficient, the property notable works is not always
+    available for all authors and it often does not provide a complete list. Thus,
+    we annotate such examples using the former representation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We also cleaned up the original dataset. The dataset contained questions like
+    “who does Ronaldinho play for now in 2011?”. We drop the appended year as it conflicts
+    with “now” in the utterance, and it would refer to the live information in Wikidata.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In total, we dropped 9% of the examples from WebQuestionsSP and created a training,
+    dev, and test set of 2431, 454, and 1431 samples, respectively. Given that Wikidata
+    has 100 million entities and 3,000 useful properties for answering questions,
+    the training data set is woefully inadequate and can be considered as a “fewshot”
+    training set at best.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Implementation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This section discusses the implementation details of the entity linker and the
+    WikiSP semantic parser.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.1 Entity Linking
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We use ReFinED  (Ayoola et al., [2022](#bib.bib3)) for entity linking, which
+    is the current state of the art for WebQuestionsSP. As discussed before, Wikidata
+    treats many common terms such as “country” as named entities and assigns them
+    QIDs. To fine-tune ReFinED to learn such terms, we add the question and entity
+    pairs from the training set of WikiWebQuestions to the data used to train ReFinED’s
+    questions model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We run 10 epochs of finetuning using the default hyperparameters suggested by
+    Ayoola et al. ([2022](#bib.bib3)). For each identified entity, we provide the
+    mention in the original utterance, the QID, as well as its domain in plain text.
+    The information is appended to the utterance before being fed into the neural
+    semantic parsing model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.2 The WikiSP Semantic Parser
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We prepare the training data with entities provided by fine-tuned ReFinED. Comparing
+    with the gold entities, ReFinED provides extra entities in 215 cases, while missing
+    at least one entity in 137 cases. When ReFinED failed to produce the correct entities,
+    we replace the missing QIDs in the logical form with the corresponding mention
+    of the entity in the question. During evaluation, if a mention of an entity is
+    predicted by the model, we look up the QID using the Wikidata “wbsearchentities”
+    API ⁴⁴4[https://www.wikidata.org/w/api.php?action=wbsearchentities](https://www.wikidata.org/w/api.php?action=wbsearchentities).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We fine-tune LLaMA with 7B parameters because it has been shown to perform
+    well despite its relatively small size Touvron et al. ([2023](#bib.bib41)). We
+    include the Alpaca (Taori et al., [2023](#bib.bib40)) instruction following data,
+    which was derived using the self-instruct (Wang et al., [2023](#bib.bib45)) method,
+    in our training data. The training data samples in WikiWebQuestion start with
+    the following instruction: “Given a Wikidata query with resolved entities, generate
+    the corresponding SPARQL. Use property names instead of PIDs.”. We concatenate
+    the resolved entities and the user utterance together as input. We up-sample the
+    WikiWebQuestion fewshot set 5 times and train for 3 epochs using 2e-5 learning
+    rate and 0.03 warmup ratio.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.3 Executing Queries on Wikidata
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: SPARQL queries are used to retrieve answers from the Wikidata SPARQL endpoint⁵⁵5[https://www.wikidata.org/wiki/Wikidata:SPARQL_query_service](https://www.wikidata.org/wiki/Wikidata:SPARQL_query_service).
+    Since Wikidata is actively being updated, the gold SPARQL can be easily re-executed
+    to acquire up-to-date answers, allowing the benchmark to compare with forthcoming
+    iterations of large language models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | EM | F1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WikiSP (ours) | 65.5 | 71.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 1: Results of WikiSP on the WWQ test set.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we evaluate WikiSP on WikiWebQuestions and demonstrate how
+    it can be used to complement large language models such as GPT-3.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.1 Semantic Parser Results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We evaluate our model with two different answer accuracy metrics: (1) exact
+    match (EM): the percentage of examples where the answers of the predicted SPARQL
+    exactly match the gold answers, and (2) Macro F1 score (F1): the average F1 score
+    for answers of each example. The evaluation results are shown in Table [1](#S5.T1
+    "Table 1 ‣ 5.3 Executing Queries on Wikidata ‣ 5 Implementation ‣ Fine-tuned LLMs
+    Know More, Hallucinate Less with Few-Shot Sequence-to-Sequence Semantic Parsing
+    over Wikidata"). Our approach achieves a 65.5% exact match accuracy and a 71.9%
+    F1 score on the WWQ dataset.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As a reference, the current state-of-the-art result on the original WebQuestionsSP
+    dataset for Freebase is 78.8% F1 (Yu et al., [2023](#bib.bib52)). The result was
+    obtained with a combination of semantic parsing and retrieval. The WikiWebQuestions
+    dataset is slightly different, as discussed above. More significantly, unlike
+    Freebase, Wikidata does not have a fixed schema and ours is an end-to-end, seq2seq
+    semantic parser.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.2 Ablation Experiments
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 6.2.1 Entity Linking
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Our first ablation study evaluates the need for entity linking with ReFinED,
+    by replacing it with simply using the LLM to detect entities as mentions. In this
+    experiment, all entity IDs in the training data are replaced by their mentions;
+    during inference, we map the predicted entities to their actual QIDs according
+    to Section [3.2.2](#S3.SS2.SSS2 "3.2.2 Recovering from Entity Linker Errors ‣
+    3.2 Entity Linking ‣ 3 Semantic Parsing for Wikidata ‣ Fine-tuned LLMs Know More,
+    Hallucinate Less with Few-Shot Sequence-to-Sequence Semantic Parsing over Wikidata").
+  prefs: []
+  type: TYPE_NORMAL
+- en: The results show that replacing the neural entity linker with just using mentions
+    reduces the exact match by 9.1% and the F1 score by 9.3%. This suggests that entity
+    linking is important.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.2.2 Allowing Mentions as Entities
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Our logical form is designed to recover from entity linking errors by allowing
+    entities be specified by a mention, as an alternative to a QID. Our ablation study
+    on this feature tested two training strategies:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | EM | F1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WikiSP (ours) | 75.6 | 76.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| No Entity Linking | 66.5 | 67.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| No mentions, trained with ReFinED | 73.3 | 75.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| No mentions, trained with Oracle entities | 72.2 | 73.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PIDs and QIDs for properties & domains | 73.6 | 74.7 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: Ablation results of WikiSP on the WWQ dev set.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ReFinED. The entity linker tuples are produced by fine-tuned ReFinED, which
+    may be missing entities in the gold target. The data show that generating unseen
+    QIDs is needed for missing entities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Oracle. The entity linker tuples are exactly all the entities used in the gold.
+    The model would only encounter missing QIDs at test time when ReFinED fails to
+    generate all the necessary QIDs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The answer accuracy of the model using entity linked tuples from ReFinED (“No
+    mentions, trained with ReFinED” in Table [2](#S6.T2 "Table 2 ‣ 6.2.2 Allowing
+    Mentions as Entities ‣ 6.2 Ablation Experiments ‣ 6 Experiments ‣ Fine-tuned LLMs
+    Know More, Hallucinate Less with Few-Shot Sequence-to-Sequence Semantic Parsing
+    over Wikidata")) lags by 2.3% when compared against our best model. The model
+    using Oracle (“No mentions, trained with Oracle entities” in Table [2](#S6.T2
+    "Table 2 ‣ 6.2.2 Allowing Mentions as Entities ‣ 6.2 Ablation Experiments ‣ 6
+    Experiments ‣ Fine-tuned LLMs Know More, Hallucinate Less with Few-Shot Sequence-to-Sequence
+    Semantic Parsing over Wikidata")) lags by 3.4%. These results indicate that allowing
+    mentions is useful for recovering from entity linking errors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.2.3 Names vs. IDs for Properties & Domains
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Our logical form replaces PIDs with property names, and domain-entity QIDs with
+    the domain names. Here we evaluate the effectiveness of this query format. We
+    compare our approach with the original SPARQL where all properties and entities
+    are represented with PIDs and QIDs. Our ablation study shows that our representation
+    with property names and domain names improves the answer accuracy by 2.0% (Table [2](#S6.T2
+    "Table 2 ‣ 6.2.2 Allowing Mentions as Entities ‣ 6.2 Ablation Experiments ‣ 6
+    Experiments ‣ Fine-tuned LLMs Know More, Hallucinate Less with Few-Shot Sequence-to-Sequence
+    Semantic Parsing over Wikidata")). This shows that LLMs can adapt to changes in
+    query notation with fine-tuning, and it is easier to learn names than remembering
+    random IDs. If we did not allow mentions in the predicted logical form, the replacement
+    of QIDs with their names is likely to be more significant.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.3 Complementing GPT-3
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: LLMs like GPT-3 can answer many questions on general knowledge correctly; however,
+    they may also hallucinate. WWQ is representative of popular questions, so we expect
+    GPT-3 to perform well. We use text-davinci-002 with the temperature set to 0 to
+    evaluate GPT-3’s performance on WWQ.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the dev set of WWQ, GPT-3 answers 66.4% of the questions correctly and provides
+    incomplete answers to 26.5% of the questions. For example, when asked “What does
+    Obama have a degree in?”, GPT-3 correctly identifies President Obama’s political
+    science degree, but fails to mention his law degree. In total, GPT-3 gives wrong
+    answers to 7.1% of the questions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For this dev set, we can give definitive answers to 75.6% of the questions with
+    WikiSP (Table [2](#S6.T2 "Table 2 ‣ 6.2.2 Allowing Mentions as Entities ‣ 6.2
+    Ablation Experiments ‣ 6 Experiments ‣ Fine-tuned LLMs Know More, Hallucinate
+    Less with Few-Shot Sequence-to-Sequence Semantic Parsing over Wikidata")). For
+    the rest of the questions (24.4%), accounting for the overlap between the GPT-3
+    and our semantic parser’s results, the percentages of guessing correctly, incompletely,
+    and incorrectly are at 15.2%, 5.5%, and 3.7%, respectively (Figure [2](#S1.F2
+    "Figure 2 ‣ 1 Introduction ‣ Fine-tuned LLMs Know More, Hallucinate Less with
+    Few-Shot Sequence-to-Sequence Semantic Parsing over Wikidata")).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In summary, the combination of GPT-3 and WikiSP makes it possible to give a
+    definitive, correct, and complete answer three quarters of the time for the dev
+    set. Users can also benefit from GPT-3’s guesses the rest of the time at a 3.7%
+    error rate, which is about half of the original error rate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.4 Error Analysis
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We analyzed the 111 examples in the WWQ dev set where the model failed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.4.1 Acceptable Alternative Results (18.0%)
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Our analysis shows that 18.0% of the “errors” can actually be deemed to be correct.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reasonable alternate answers (11.7%). In 11.7% of the cases, the model predicts
+    an alternative interpretation to the question and returns a reasonable answer
+    that is different from the gold. For example, the gold for question “what did
+    Boudicca do?” uses the position held property, while the model predicts occupation
+    property. Both are considered valid answers to the question.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reasonable alternative SPARQL but no answer was retrieved (6.3%). In another
+    6.3% of cases, the model predicts a reasonable alternative SPARQL, but the SPARQL
+    returns no answer. Sometimes, since the information for the “correct” property
+    is missing, the question is represented with a similar property. For example,
+    since residence property is missing for Patrick Henry, the gold SPARQL for “where
+    did Patrick Henry live?” uses place of birth instead, while our model predicts
+    residence.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.4.2 Errors in Entity Linking (35.1%)
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: The biggest source of errors is entity linking. Entity linker failed to provide
+    the correct entities in 35.1% of the failed examples. While WikiSP can potentially
+    recover from missing entities, it cannot recover from incorrect entities. This
+    is especially common for character roles, as some character roles have different
+    entities for books and movies or even different series of movies. Sometimes WikiSP
+    located the correct mention from the question, but the lookup failed. For example,
+    the model located the mention of the event “allied invasion of France” in question
+    “where did the allied invasion of France take place?”, but failed to find the
+    corresponding entity from Wikidata by the name.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.4.3 Errors Beyond Entity Linking
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Semantic parsing in Wikidata is challenging as there are no predefined schemas,
+    and there are 150K domains and 3K applicable properties. Some representative mistakes
+    include the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Wrong property (17.1%). 17.1% of the errors are caused by predicting the wrong
+    property. Some of the examples require background knowledge to parse. For example
+    the answer of the question “what did martin luther king jr do in his life?” should
+    return the value of movement, while the model predicts occupation. Properties
+    are a challenge in Wikidata because as illustrated here which property to predict
+    depends on the entity itself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Missing domain constraint (5.4%). Another common problem is missing the domain
+    constraint. For example, the model correctly identifies that property shares border
+    with should be used for question “what countries are around Egypt?”. However,
+    it does not limit the answer to countries only, thus extra entities are returned.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7 Experiment with QALD-7
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: For another evaluation of WikiSP, we apply our model on Task 4 from QALD-7 (Usbeck
+    et al., [2017](#bib.bib42)) dataset. QALD-7 is part of the QALD (Question Answering
+    over Linked Data) which is a series of challenges started in 2011 known for their
+    complex, manually created questions. It mainly focuses on DBpedia, but QALD-7’s
+    Task 4 is engineered for Wikidata. The task includes 100 train examples, which
+    we use to fine-tune our model and 50 test examples. There is no dev set.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | EM | F1 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| STAGG Yih et al. ([2016](#bib.bib51)) | - | 19.0 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GGNN Sorokin and Gurevych ([2018](#bib.bib35)) | - | 21.3 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WDAqua Diefenbach et al. ([2017](#bib.bib12)) | - | 40.0 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WikiSP (Ours) | 38.0 | 43.6 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 3: Evaluation results of WikiSP on QALD-7 Task 4 and comparison with
+    prior work.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We choose QALD-7 as it is a manually crafted dataset with complex questions.
+    We avoid datasets built on synthetic or human-paraphrased data, such as CSQA (Saha
+    et al., [2018](#bib.bib31)) and KQA-Pro (Cao et al., [2022a](#bib.bib9)). As they
+    have limited natural language variety between the training and evaluation data,
+    models can get artificially high accuracy. For example, a simple BART based model
+    can achieve over 90% accuracy on KQA-Pro even without an entity linking module (Cao
+    et al., [2022a](#bib.bib9)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The QALD-7 test set provides both the SPARQL queries as well as the answers.
+    To double-check the correctness of the QALD-7 dataset, we applied the 50 gold
+    queries of the test set to Wikidata and found that 4 did not return an answer.
+    We hypothesize that the discrepancy is caused by the change in Wikidata structure/quantity
+    of information. We evaluate WikiSP by comparing the answers where possible, and
+    by comparing the generated SPARQL syntactically otherwise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For this experiment, we use the same hyperparameters and data format as described
+    in Section [5.3](#S5.SS3 "5.3 Executing Queries on Wikidata ‣ 5 Implementation
+    ‣ Fine-tuned LLMs Know More, Hallucinate Less with Few-Shot Sequence-to-Sequence
+    Semantic Parsing over Wikidata"). In addition to the training data for WikiSP,
+    we also include the QALD-7 train samples, upsampled 20 times.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7.1 QALD-7 Results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Our model achieves 38% accuracy on the QALD-7 dataset and outperforms the F1
+    score of the state-of-the-art WDAqua (Diefenbach et al., [2017](#bib.bib12)) by
+    3.6%, as shown in Table [3](#S7.T3 "Table 3 ‣ 7 Experiment with QALD-7 ‣ Fine-tuned
+    LLMs Know More, Hallucinate Less with Few-Shot Sequence-to-Sequence Semantic Parsing
+    over Wikidata"). Note that WDAqua is based on retrieval, whereas WikiSP is based
+    on sequence-to-sequence semantic parsing. QALD-7 (Usbeck et al., [2017](#bib.bib42))
+    reports WDAqua as the winner of the leaderboard with 55.2 F1, however the authors
+    of WDAqua reported 40.0 F1 in their papers (Diefenbach et al., [2017](#bib.bib12)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7.2 Complementing GPT-3 on QALD-7
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Similar to WWQ, we also assess the combination of GPT with WikiSP on QALD-7
+    as shown in Figure [3](#S7.F3 "Figure 3 ‣ 7.2 Complementing GPT-3 on QALD-7 ‣
+    7 Experiment with QALD-7 ‣ Fine-tuned LLMs Know More, Hallucinate Less with Few-Shot
+    Sequence-to-Sequence Semantic Parsing over Wikidata"). The GPT model used was
+    "text-davinci-002". Since there is no validation set and the test set is already
+    very small, one of the authors who was not involved in training or finetuning
+    the model evaluated GPT-3 on the test set.
+  prefs: []
+  type: TYPE_NORMAL
+- en: GPT-3 is fully accurate on 62% of the questions, 20% incomplete, and 18% wrong.
+    With our approach, we can provide 38% verifiably good answers from WikiSP; the
+    guesses of GPT-3 get an additional 34% correct, 16% incomplete, and only 12% wrong.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7714f896358bcdd5d25671ed3eb2721f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Distribution of correct, incomplete, and incorrect answers for the
+    QALD-7 test set, when GPT-3 is used alone and when combined with WikiSP.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7.3 Discussion
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We did not conduct error analysis on the performance of QALD-7 as it has no
+    dev set. The author evaluating GPT-3 noted that the test set of QALD-7 is much
+    more complicated than the training data (of just 100 samples), with most of the
+    queries containing multiple properties. This explains the lower accuracy of WikiSP
+    on QALD-7 when compared to WikiWebQuestions, which has a few-shot training data
+    set with a similar distribution as the test set.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This result suggests that the performance of WikiSP depends heavily on a good
+    few-shot training data for fine-tuning the LLMs. We hypothesize that we can increase
+    the performance of WikiSP in handling less popular questions with a better, possibly
+    synthesized, training dataset.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 8 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We have created a new high-quality benchmark, WikiWebQuestions, for large knowledge-base
+    question answering. The dataset is based on the popular WebQuestionsSP dataset
+    with natural questions, annotated with SPARQL for Wikidata.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We establish a first, strong baseline of 65% answer accuracy and 72% F1 score
+    for WikiWebQuestions. This is achieved by fine-tuning LLaMA with a few-shot training
+    data set using a SPARQL query format modified for semantic parsing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We show that we can reduce the hallucination of large language models like GPT-3
+    by grounding it with a semantic parser. For the dev set of WikiWebQuestions, this
+    combination approach provides useful information for 96% of the questions in the
+    dev set of the benchmark. More importantly, it generates verifiable answers for
+    76% of the questions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Limitations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: While applications of large language models seem to expand every day, this paper
+    mainly focuses on factoid question answering. Long-form text generation, for example,
+    is outside the scope of the experiments of this paper, but the methodology described
+    here may be extended to this setting in the future. Even though knowledge bases
+    are an important source of facts, a large portion of the knowledge available in
+    digital form (e.g. Wikipedia, news articles, etc.), is not organized into knowledge
+    bases. As such, the results of this paper can be considered complementary to the
+    larger body of fact-checking research based on free text.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our semantic parser can be used to verify answers from LLMs. However, this additional
+    round of running the semantic parser and querying Wikidata increase the response
+    latency, which may be noticeable by end-users of such systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: All of our datasets and experiments are conducted for English. Expanding to
+    other languages, while possible (Moradshahi et al., [2020](#bib.bib25)) are outside
+    the scope of this work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our experiments were performed using GPT-3 (davinci-002) as that was what we
+    had access to when we started the project. Undoubtedly, the later LLMs will produce
+    better results. Nonetheless, the need to have verifiable results based on live
+    database accesses will remain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Ethical Considerations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: LLMs are used by millions of people everyday. We hope that this line of work
+    will help make them more reliable for everyone, mitigating some of their potential
+    downsides, and giving users access to more accurate information. Our use of Wikidata
+    will enable future researchers and developers to connect their systems with a
+    large, diverse and live knowledge graph that is updated every day. We do not anticipate
+    any harm resulting from the methods introduced in this work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We did not crowdsource any datasets for this paper, as the questions are converted
+    from a previous dataset and all the re-annotation and analysis is done by the
+    authors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To conduct experiments in this paper, we used an estimated total of 60 NC96ads-A100
+    GPU hours on Microsoft Azure. Each finetuning experiment takes roughly 3 hours,
+    and we conducted roughly 20 experiments to arrive at the results in this paper.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Acknowledgements
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This work is supported in part by the National Science Foundation, the Alfred
+    P. Sloan Foundation, the Verdant Foundation, Microsoft Azure AI credit, KDDI,
+    JPMorgan Chase, and the Stanford Human-Centered Artificial Intelligence (HAI)
+    Institute. We also thank the reviewers for their valuable comments and suggestions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: An et al. (2023) Shengnan An, Bo Zhou, Zeqi Lin, Qiang Fu, Bei Chen, Nanning
+    Zheng, Weizhu Chen, and Jian-Guang Lou. 2023. [Skill-based few-shot selection
+    for in-context learning](http://arxiv.org/abs/2305.14210).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Arora et al. (2023) Aseem Arora, Shabbirhussain Bhaisaheb, Harshit Nigam, Manasi
+    Patwardhan, Lovekesh Vig, and Gautam Shroff. 2023. [Adapt and decompose: Efficient
+    generalization of text-to-sql via domain adapted least-to-most prompting](http://arxiv.org/abs/2308.02582).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ayoola et al. (2022) Tom Ayoola, Shubhi Tyagi, Joseph Fisher, Christos Christodoulopoulos,
+    and Andrea Pierleoni. 2022. [ReFinED: An efficient zero-shot-capable approach
+    to end-to-end entity linking](https://doi.org/10.18653/v1/2022.naacl-industry.24).
+    In *Proceedings of the 2022 Conference of the North American Chapter of the Association
+    for Computational Linguistics: Human Language Technologies: Industry Track*, pages
+    209–220, Hybrid: Seattle, Washington + Online. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Bang et al. (2023) Yejin Bang, Samuel Cahyawijaya, Nayeon Lee, Wenliang Dai,
+    Dan Su, Bryan Wilie, Holy Lovenia, Ziwei Ji, Tiezheng Yu, Willy Chung, Quyet V.
+    Do, Yan Xu, and Pascale Fung. 2023. [A multitask, multilingual, multimodal evaluation
+    of chatgpt on reasoning, hallucination, and interactivity](http://arxiv.org/abs/2302.04023).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Berant et al. (2013) Jonathan Berant, Andrew Chou, Roy Frostig, and Percy Liang.
+    2013. [Semantic parsing on Freebase from question-answer pairs](https://aclanthology.org/D13-1160).
+    In *Proceedings of the 2013 Conference on Empirical Methods in Natural Language
+    Processing*, pages 1533–1544, Seattle, Washington, USA. Association for Computational
+    Linguistics.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bollacker et al. (2008) Kurt Bollacker, Colin Evans, Praveen Paritosh, Tim
+    Sturge, and Jamie Taylor. 2008. [Freebase: A collaboratively created graph database
+    for structuring human knowledge](https://doi.org/10.1145/1376616.1376746). In
+    *Proceedings of the 2008 ACM SIGMOD International Conference on Management of
+    Data*, SIGMOD ’08, page 1247–1250, New York, NY, USA. Association for Computing
+    Machinery.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Campagna et al. (2017) Giovanni Campagna, Rakesh Ramesh, Silei Xu, Michael
+    Fischer, and Monica S. Lam. 2017. [Almond: The architecture of an open, crowdsourced,
+    privacy-preserving, programmable virtual assistant](https://doi.org/10.1145/3038912.3052562).
+    In *Proceedings of the 26th International Conference on World Wide Web - WWW ’17*,
+    pages 341–350, New York, New York, USA. ACM Press.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Campagna et al. (2019) Giovanni Campagna, Silei Xu, Mehrad Moradshahi, Richard
+    Socher, and Monica S. Lam. 2019. [Genie: A generator of natural language semantic
+    parsers for virtual assistant commands](https://doi.org/10.1145/3314221.3314594).
+    In *Proceedings of the 40th ACM SIGPLAN Conference on Programming Language Design
+    and Implementation*, PLDI 2019, page 394–410, New York, NY, USA. Association for
+    Computing Machinery.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Cao et al. (2022a) Shulin Cao, Jiaxin Shi, Liangming Pan, Lunyiu Nie, Yutong
+    Xiang, Lei Hou, Juanzi Li, Bin He, and Hanwang Zhang. 2022a. [KQA pro: A dataset
+    with explicit compositional programs for complex question answering over knowledge
+    base](https://doi.org/10.18653/v1/2022.acl-long.422). In *Proceedings of the 60th
+    Annual Meeting of the Association for Computational Linguistics (Volume 1: Long
+    Papers)*, pages 6101–6119, Dublin, Ireland. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Cao et al. (2022b) Shulin Cao, Jiaxin Shi, Zijun Yao, Xin Lv, Jifan Yu, Lei
+    Hou, Juanzi Li, Zhiyuan Liu, and Jinghui Xiao. 2022b. [Program transfer for answering
+    complex questions over knowledge bases](https://doi.org/10.18653/v1/2022.acl-long.559).
+    In *Proceedings of the 60th Annual Meeting of the Association for Computational
+    Linguistics (Volume 1: Long Papers)*, pages 8128–8140, Dublin, Ireland. Association
+    for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Das et al. (2021) Rajarshi Das, Manzil Zaheer, Dung Thai, Ameya Godbole, Ethan
+    Perez, Jay Yoon Lee, Lizhen Tan, Lazaros Polymenakos, and Andrew McCallum. 2021.
+    [Case-based reasoning for natural language queries over knowledge bases](https://doi.org/10.18653/v1/2021.emnlp-main.755).
+    In *Proceedings of the 2021 Conference on Empirical Methods in Natural Language
+    Processing*, pages 9594–9611, Online and Punta Cana, Dominican Republic. Association
+    for Computational Linguistics.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Diefenbach et al. (2017) Dennis Diefenbach, Kamal Singh, and Pierre Maret.
+    2017. Wdaqua-core0: A question answering component for the research community.
+    In *Semantic Web Evaluation Challenge*, pages 84–89\. Springer.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dong et al. (2015) Li Dong, Furu Wei, Ming Zhou, and Ke Xu. 2015. [Question
+    answering over Freebase with multi-column convolutional neural networks](https://doi.org/10.3115/v1/P15-1026).
+    In *Proceedings of the 53rd Annual Meeting of the Association for Computational
+    Linguistics and the 7th International Joint Conference on Natural Language Processing
+    (Volume 1: Long Papers)*, pages 260–269, Beijing, China. Association for Computational
+    Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Goddard (2023) Jerome Goddard. 2023. Hallucinations in chatgpt: A cautionary
+    tale for biomedical researchers. *The American Journal of Medicine*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Gu et al. (2021) Yu Gu, Sue Kase, Michelle Vanni, Brian Sadler, Percy Liang,
+    Xifeng Yan, and Yu Su. 2021. [Beyond i.i.d.: Three levels of generalization for
+    question answering on knowledge bases](https://doi.org/10.1145/3442381.3449992).
+    In *Proceedings of the Web Conference 2021*. ACM.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Gu and Su (2022) Yu Gu and Yu Su. 2022. [ArcaneQA: Dynamic program induction
+    and contextualized encoding for knowledge base question answering](https://aclanthology.org/2022.coling-1.148).
+    In *Proceedings of the 29th International Conference on Computational Linguistics*,
+    pages 1718–1731, Gyeongju, Republic of Korea. International Committee on Computational
+    Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hu et al. (2022) Yushi Hu, Chia-Hsuan Lee, Tianbao Xie, Tao Yu, Noah A. Smith,
+    and Mari Ostendorf. 2022. [In-context learning for few-shot dialogue state tracking](https://doi.org/10.18653/v1/2022.findings-emnlp.193).
+    In *Findings of the Association for Computational Linguistics: EMNLP 2022*, pages
+    2627–2643, Abu Dhabi, United Arab Emirates. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Lan and Jiang (2020) Yunshi Lan and Jing Jiang. 2020. [Query graph generation
+    for answering multi-hop complex questions from knowledge bases](https://doi.org/10.18653/v1/2020.acl-main.91).
+    In *Proceedings of the 58th Annual Meeting of the Association for Computational
+    Linguistics*, pages 969–974, Online. Association for Computational Linguistics.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lewis et al. (2020) Mike Lewis, Yinhan Liu, Naman Goyal, Marjan Ghazvininejad,
+    Abdelrahman Mohamed, Omer Levy, Veselin Stoyanov, and Luke Zettlemoyer. 2020.
+    [BART: Denoising sequence-to-sequence pre-training for natural language generation,
+    translation, and comprehension](https://doi.org/10.18653/v1/2020.acl-main.703).
+    In *Proceedings of the 58th Annual Meeting of the Association for Computational
+    Linguistics*, pages 7871–7880, Online. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Li et al. (2020) Belinda Z. Li, Sewon Min, Srinivasan Iyer, Yashar Mehdad, and
+    Wen-tau Yih. 2020. [Efficient one-pass end-to-end entity linking for questions](https://doi.org/10.18653/v1/2020.emnlp-main.522).
+    In *Proceedings of the 2020 Conference on Empirical Methods in Natural Language
+    Processing (EMNLP)*, pages 6433–6441, Online. Association for Computational Linguistics.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Li et al. (2023) Jinyang Li, Binyuan Hui, Ge Qu, Binhua Li, Jiaxi Yang, Bowen
+    Li, Bailin Wang, Bowen Qin, Rongyu Cao, Ruiying Geng, Nan Huo, Xuanhe Zhou, Chenhao
+    Ma, Guoliang Li, Kevin C. C. Chang, Fei Huang, Reynold Cheng, and Yongbin Li.
+    2023. [Can llm already serve as a database interface? a big bench for large-scale
+    database grounded text-to-sqls](http://arxiv.org/abs/2305.03111).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Luo et al. (2018) Kangqi Luo, Fengli Lin, Xusheng Luo, and Kenny Zhu. 2018.
+    [Knowledge base question answering via encoding of complex query graphs](https://doi.org/10.18653/v1/D18-1242).
+    In *Proceedings of the 2018 Conference on Empirical Methods in Natural Language
+    Processing*, pages 2185–2194, Brussels, Belgium. Association for Computational
+    Linguistics.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Mavromatis and Karypis (2022) Costas Mavromatis and George Karypis. 2022. [ReaRev:
+    Adaptive reasoning for question answering over knowledge graphs](https://aclanthology.org/2022.findings-emnlp.181).
+    In *Findings of the Association for Computational Linguistics: EMNLP 2022*, pages
+    2447–2458, Abu Dhabi, United Arab Emirates. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Miller et al. (2016) Alexander Miller, Adam Fisch, Jesse Dodge, Amir-Hossein
+    Karimi, Antoine Bordes, and Jason Weston. 2016. [Key-value memory networks for
+    directly reading documents](https://doi.org/10.18653/v1/D16-1147). In *Proceedings
+    of the 2016 Conference on Empirical Methods in Natural Language Processing*, pages
+    1400–1409, Austin, Texas. Association for Computational Linguistics.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Moradshahi et al. (2020) Mehrad Moradshahi, Giovanni Campagna, Sina Semnani,
+    Silei Xu, and Monica Lam. 2020. [Localizing open-ontology QA semantic parsers
+    in a day using machine translation](https://doi.org/10.18653/v1/2020.emnlp-main.481).
+    In *Proceedings of the 2020 Conference on Empirical Methods in Natural Language
+    Processing (EMNLP)*, pages 5970–5983, Online. Association for Computational Linguistics.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Nan et al. (2023) Linyong Nan, Yilun Zhao, Weijin Zou, Narutatsu Ri, Jaesung
+    Tae, Ellen Zhang, Arman Cohan, and Dragomir Radev. 2023. [Enhancing few-shot text-to-sql
+    capabilities of large language models: A study on prompt design strategies](http://arxiv.org/abs/2305.12586).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Niu et al. (2023) Yilin Niu, Fei Huang, Wei Liu, Jianwei Cui, Bin Wang, and
+    Minlie Huang. 2023. [Bridging the Gap between Synthetic and Natural Questions
+    via Sentence Decomposition for Semantic Parsing](https://doi.org/10.1162/tacl_a_00552).
+    *Transactions of the Association for Computational Linguistics*, 11:367–383.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Poesia et al. (2022) Gabriel Poesia, Alex Polozov, Vu Le, Ashish Tiwari, Gustavo
+    Soares, Christopher Meek, and Sumit Gulwani. 2022. [Synchromesh: Reliable code
+    generation from pre-trained language models](https://openreview.net/forum?id=KmtVD97J43e).
+    In *The Tenth International Conference on Learning Representations, ICLR 2022,
+    Virtual Event, April 25-29, 2022*. OpenReview.net.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Rubin et al. (2022) Ohad Rubin, Jonathan Herzig, and Jonathan Berant. 2022.
+    [Learning to retrieve prompts for in-context learning](https://doi.org/10.18653/v1/2022.naacl-main.191).
+    In *Proceedings of the 2022 Conference of the North American Chapter of the Association
+    for Computational Linguistics: Human Language Technologies*, pages 2655–2671,
+    Seattle, United States. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Saha et al. (2019) Amrita Saha, Ghulam Ahmed Ansari, Abhishek Laddha, Karthik
+    Sankaranarayanan, and Soumen Chakrabarti. 2019. [Complex program induction for
+    querying knowledge bases in the absence of gold programs](https://doi.org/10.1162/tacl_a_00262).
+    *Transactions of the Association for Computational Linguistics*, 7:185–200.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Saha et al. (2018) Amrita Saha, Vardaan Pahuja, Mitesh Khapra, Karthik Sankaranarayanan,
+    and Sarath Chandar. 2018. Complex sequential question answering: Towards learning
+    to converse over linked question answer pairs with a knowledge graph. In *Proceedings
+    of the AAAI conference on artificial intelligence*, volume 32.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sen et al. (2021) Priyanka Sen, Armin Oliya, and Amir Saffari. 2021. [Expanding
+    end-to-end question answering on differentiable knowledge graphs with intersection](https://doi.org/10.18653/v1/2021.emnlp-main.694).
+    In *Proceedings of the 2021 Conference on Empirical Methods in Natural Language
+    Processing*, pages 8805–8812, Online and Punta Cana, Dominican Republic. Association
+    for Computational Linguistics.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Shin et al. (2021) Richard Shin, Christopher Lin, Sam Thomson, Charles Chen,
+    Subhro Roy, Emmanouil Antonios Platanios, Adam Pauls, Dan Klein, Jason Eisner,
+    and Benjamin Van Durme. 2021. [Constrained language models yield few-shot semantic
+    parsers](https://doi.org/10.18653/v1/2021.emnlp-main.608). In *Proceedings of
+    the 2021 Conference on Empirical Methods in Natural Language Processing*, pages
+    7699–7715, Online and Punta Cana, Dominican Republic. Association for Computational
+    Linguistics.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Shu et al. (2022) Yiheng Shu, Zhiwei Yu, Yuhan Li, Börje Karlsson, Tingting
+    Ma, Yuzhong Qu, and Chin-Yew Lin. 2022. [TIARA: Multi-grained retrieval for robust
+    question answering over large knowledge base](https://aclanthology.org/2022.emnlp-main.555).
+    In *Proceedings of the 2022 Conference on Empirical Methods in Natural Language
+    Processing*, pages 8108–8121, Abu Dhabi, United Arab Emirates. Association for
+    Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sorokin and Gurevych (2018) Daniil Sorokin and Iryna Gurevych. 2018. [Modeling
+    semantics with gated graph neural networks for knowledge base question answering](https://aclanthology.org/C18-1280).
+    In *Proceedings of the 27th International Conference on Computational Linguistics*,
+    pages 3306–3317, Santa Fe, New Mexico, USA. Association for Computational Linguistics.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Su et al. (2017) Yu Su, Ahmed Hassan Awadallah, Madian Khabsa, Patrick Pantel,
+    Michael Gamon, and Mark Encarnacion. 2017. Building natural language interfaces
+    to web apis. In *Proceedings of the 2017 ACM on Conference on Information and
+    Knowledge Management*, pages 177–186.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sun et al. (2019) Haitian Sun, Tania Bedrax-Weiss, and William Cohen. 2019.
+    [PullNet: Open domain question answering with iterative retrieval on knowledge
+    bases and text](https://doi.org/10.18653/v1/D19-1242). In *Proceedings of the
+    2019 Conference on Empirical Methods in Natural Language Processing and the 9th
+    International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)*,
+    pages 2380–2390, Hong Kong, China. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sun et al. (2018) Haitian Sun, Bhuwan Dhingra, Manzil Zaheer, Kathryn Mazaitis,
+    Ruslan Salakhutdinov, and William Cohen. 2018. [Open domain question answering
+    using early fusion of knowledge bases and text](https://doi.org/10.18653/v1/D18-1455).
+    In *Proceedings of the 2018 Conference on Empirical Methods in Natural Language
+    Processing*, pages 4231–4242, Brussels, Belgium. Association for Computational
+    Linguistics.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Talmor and Berant (2018) Alon Talmor and Jonathan Berant. 2018. [The web as
+    a knowledge-base for answering complex questions](https://doi.org/10.18653/v1/N18-1059).
+    In *Proceedings of the 2018 Conference of the North American Chapter of the Association
+    for Computational Linguistics: Human Language Technologies, Volume 1 (Long Papers)*,
+    pages 641–651, New Orleans, Louisiana. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Taori et al. (2023) Rohan Taori, Ishaan Gulrajani, Tianyi Zhang, Yann Dubois,
+    Xuechen Li, Carlos Guestrin, Percy Liang, and Tatsunori B. Hashimoto. 2023. Stanford
+    alpaca: An instruction-following llama model. [https://github.com/tatsu-lab/stanford_alpaca](https://github.com/tatsu-lab/stanford_alpaca).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023) Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier
+    Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal,
+    Eric Hambro, Faisal Azhar, et al. 2023. Llama: Open and efficient foundation language
+    models. *arXiv preprint arXiv:2302.13971*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Usbeck et al. (2017) Ricardo Usbeck, Axel-Cyrille Ngonga Ngomo, Bastian Haarmann,
+    Anastasia Krithara, Michael Röder, and Giulio Napolitano. 2017. 7th open challenge
+    on question answering over linked data (qald-7). In *Semantic web evaluation challenge*,
+    pages 59–69\. Springer.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Verga et al. (2021) Pat Verga, Haitian Sun, Livio Baldini Soares, and William
+    Cohen. 2021. [Adaptable and interpretable neural MemoryOver symbolic knowledge](https://doi.org/10.18653/v1/2021.naacl-main.288).
+    In *Proceedings of the 2021 Conference of the North American Chapter of the Association
+    for Computational Linguistics: Human Language Technologies*, pages 3678–3691,
+    Online. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Vivona and Hassani (2019) Salvatore Vivona and Kaveh Hassani. 2019. [Relational
+    graph representation learning for open-domain question answering](http://arxiv.org/abs/1910.08249).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wang et al. (2023) Yizhong Wang, Yeganeh Kordi, Swaroop Mishra, Alisa Liu,
+    Noah A. Smith, Daniel Khashabi, and Hannaneh Hajishirzi. 2023. [Self-instruct:
+    Aligning language models with self-generated instructions](https://doi.org/10.18653/v1/2023.acl-long.754).
+    In *Proceedings of the 61st Annual Meeting of the Association for Computational
+    Linguistics (Volume 1: Long Papers)*, pages 13484–13508, Toronto, Canada. Association
+    for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Weiser (2023) Benjamin Weiser. 2023. [Here’s what happens when your lawyer uses
+    chatgpt](https://www.nytimes.com/2023/05/27/nyregion/avianca-airline-lawsuit-chatgpt.html).
+    *The New York Times*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xu et al. (2020a) Silei Xu, Giovanni Campagna, Jian Li, and Monica S. Lam.
+    2020a. [Schema2qa: High-quality and low-cost q&a agents for the structured web](https://doi.org/10.1145/3340531.3411974).
+    In *Proceedings of the 29th ACM International Conference on Information & Knowledge
+    Management*, CIKM ’20, page 1685–1694, New York, NY, USA. Association for Computing
+    Machinery.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xu et al. (2020b) Silei Xu, Sina Semnani, Giovanni Campagna, and Monica Lam.
+    2020b. [AutoQA: From databases to QA semantic parsers with only synthetic training
+    data](https://doi.org/10.18653/v1/2020.emnlp-main.31). In *Proceedings of the
+    2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)*,
+    pages 422–434, Online. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ye et al. (2022) Xi Ye, Semih Yavuz, Kazuma Hashimoto, Yingbo Zhou, and Caiming
+    Xiong. 2022. [RNG-KBQA: Generation augmented iterative ranking for knowledge base
+    question answering](https://doi.org/10.18653/v1/2022.acl-long.417). In *Proceedings
+    of the 60th Annual Meeting of the Association for Computational Linguistics (Volume
+    1: Long Papers)*, pages 6032–6043, Dublin, Ireland. Association for Computational
+    Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yih et al. (2015) Wen-tau Yih, Ming-Wei Chang, Xiaodong He, and Jianfeng Gao.
+    2015. [Semantic parsing via staged query graph generation: Question answering
+    with knowledge base](https://doi.org/10.3115/v1/P15-1128). In *Proceedings of
+    the 53rd Annual Meeting of the Association for Computational Linguistics and the
+    7th International Joint Conference on Natural Language Processing (Volume 1: Long
+    Papers)*, pages 1321–1331, Beijing, China. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yih et al. (2016) Wen-tau Yih, Matthew Richardson, Chris Meek, Ming-Wei Chang,
+    and Jina Suh. 2016. [The value of semantic parse labeling for knowledge base question
+    answering](https://doi.org/10.18653/v1/P16-2033). In *Proceedings of the 54th
+    Annual Meeting of the Association for Computational Linguistics (Volume 2: Short
+    Papers)*, pages 201–206, Berlin, Germany. Association for Computational Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yu et al. (2023) Donghan Yu, Sheng Zhang, Patrick Ng, Henghui Zhu, Alexander Hanbo
+    Li, Jun Wang, Yiqun Hu, William Wang, Zhiguo Wang, and Bing Xiang. 2023. [Decaf:
+    Joint decoding of answers and logical forms for question answering over knowledge
+    bases](https://www.amazon.science/publications/decaf-joint-decoding-of-answers-and-logical-forms-for-question-answering-over-knowledge-bases).
+    In *ICLR 2023*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yu et al. (2018) Tao Yu, Rui Zhang, Kai Yang, Michihiro Yasunaga, Dongxu Wang,
+    Zifan Li, James Ma, Irene Li, Qingning Yao, Shanelle Roman, Zilin Zhang, and Dragomir
+    Radev. 2018. [Spider: A large-scale human-labeled dataset for complex and cross-domain
+    semantic parsing and text-to-SQL task](https://doi.org/10.18653/v1/D18-1425).
+    In *Proceedings of the 2018 Conference on Empirical Methods in Natural Language
+    Processing*, pages 3911–3921, Brussels, Belgium. Association for Computational
+    Linguistics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Examples of Recovering from Entity Linking Errors
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Here, we illustrate our proposal of using entity mentions to recover from entity
+    linking errors. In the training set, we have the following example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Query: What year did giants win the world series?'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Original Gold SPARQL:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: SELECT DISTINCT ?x WHERE {
+  prefs:
+  - PREF_IND
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: ?y wdt:sports_season_of_league_or_competition
+  prefs:
+  - PREF_IND
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: wd:Q265538;
+  prefs:
+  - PREF_IND
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: wdt:winner wd:Q308966;
+  prefs:
+  - PREF_IND
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: wdt:point_in_time ?x. }
+  prefs:
+  - PREF_IND
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Gold Entity linker result:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: World Series (QID Q265538),
+  prefs:
+  - PREF_IND
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: San Francisco Giants (QID Q308966);
+  prefs:
+  - PREF_IND
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'ReFinED result:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: San Francisco Giants (QID Q308966);
+  prefs:
+  - PREF_IND
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: 'Here, the ReFinED entity linker model fails to identify the “World Series”
+    entity. Our proposal of mentions gives the semantic parser a chance to recover
+    from entity linker failures. To train the parser to generate mentions, our training
+    includes samples like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Query: what year did giants win the world series?'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'ReFinED result:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: San Francisco Giants (QID Q308966);
+  prefs:
+  - PREF_IND
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Gold target:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: SELECT DISTINCT ?x WHERE {
+  prefs:
+  - PREF_IND
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: ?y wdt:sports_season_of_league_or_competition;
+  prefs:
+  - PREF_IND
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: wd:world_series;
+  prefs:
+  - PREF_IND
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: wdt:winner wd:Q308966;
+  prefs:
+  - PREF_IND
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: wdt:point_in_time ?x. }
+  prefs:
+  - PREF_IND
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: The gold query mentions “world_series”. At inference time, our heuristics use
+    the predicted mention to look up the actual Wikidata entity. For example, if wd:world_series
+    is predicted at inference time, our heuristics maps it back to wd:Q265538.
+  prefs: []
+  type: TYPE_NORMAL

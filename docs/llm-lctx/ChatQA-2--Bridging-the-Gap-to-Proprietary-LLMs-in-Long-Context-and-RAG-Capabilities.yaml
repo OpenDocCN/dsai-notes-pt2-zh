@@ -1,0 +1,964 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 19:00:44'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'ChatQA 2: Bridging the Gap to Proprietary LLMs in Long Context and RAG Capabilities'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2407.14482](https://ar5iv.labs.arxiv.org/html/2407.14482)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Peng Xu^∗,  Wei Ping^∗,  Xianchao Wu,  Zihan Liu, Mohammad Shoeybi,  Bryan Catanzaro
+  prefs: []
+  type: TYPE_NORMAL
+- en: NVIDIA
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^∗{pengx, wping}@nvidia.com
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: In this work, we introduce ChatQA 2, a Llama3-based model designed to bridge
+    the gap between open-access LLMs and leading proprietary models (e.g., GPT-4-Turbo)
+    in long-context understanding and retrieval-augmented generation (RAG) capabilities.
+    These two capabilities are essential for LLMs to process large volumes of information
+    that cannot fit into a single prompt and are complementary to each other, depending
+    on the downstream tasks and computational budgets. We present a detailed continued
+    training recipe to extend the context window of Llama3-70B-base from 8K to 128K
+    tokens, along with a three-stage instruction tuning process to enhance the model’s
+    instruction-following, RAG performance, and long-context understanding capabilities.
+    Our results demonstrate that the $\mathtt{Llama3\text{-}ChatQA\text{-}2\text{-}70B}$
+    model achieves accuracy comparable to GPT-4-Turbo-2024-0409 on many long-context
+    understanding tasks and surpasses it on the RAG benchmark. Interestingly, we find
+    that the long-context retriever can alleviate the top-*k* context fragmentation
+    issue in RAG, further improving RAG-based results for long-context understanding
+    tasks. We also provide extensive comparisons between RAG and long-context solutions
+    using state-of-the-art long-context LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The open LLM community has made significant progress in advancing the capabilities
+    of open-access large language models (LLMs), including Llama-3-70B-Instruct (Meta-AI,
+    [2024](#bib.bib29)), QWen2-72B-Instruct (Alibaba-QWen, [2024](#bib.bib2)), Nemotron-4-340B-Instruct (Nvidia
+    et al., [2024](#bib.bib34)), and Mixtral-8x22B-Instruct-v0.1 (Mistral, [2024](#bib.bib30)).
+    However, performance gaps compared to frontier proprietary models, e.g., GPT-4-Turbo (OpenAI,
+    [2023](#bib.bib35)), still exist in many domains. Additionally, open-access models
+    focused on key domains have been developed, such as DeepSeek-Coder-V2 (Zhu et al.,
+    [2024](#bib.bib51)) for coding and math, ChatQA 1.5 (Liu et al., [2024](#bib.bib28))
+    for conversational QA and retrieval-augmented generation (RAG), and InternVL 1.5 (Chen
+    et al., [2024](#bib.bib7)) for vision-language tasks, which can be on par with
+    GPT-4-Turbo-2024-04-09 (OpenAI, [2023](#bib.bib35)) in the certain domains.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In recent developments, the trend of extending the context window length in
+    LLMs has gained remarkable traction within both the industrial and research communities.
+    All leading proprietary LLMs support very large context window, allowing them
+    to accommodate several hundred pages of text in a single prompt. For example,
+    GPT-4 Turbo (OpenAI, [2023](#bib.bib35)) and Claude 3.5 Sonnet offer a 128K and
+    200K context window, respectively. Meanwhile, Gemini 1.5 Pro (Gemini-Team, [2024](#bib.bib9))
+    impressively supports up to a 10M context. Open-access LLMs have also made significant
+    strides to keep up (01.AI et al., [2024](#bib.bib1); Alibaba-QWen, [2024](#bib.bib2)).
+    For instance, QWen2-72B-Instruct (Alibaba-QWen, [2024](#bib.bib2)) and Yi-34B (01.AI
+    et al., [2024](#bib.bib1)) support 128K and 200K context windows, respectively.
+    However, the training data and technical details for these models are missing,
+    making reproduction challenging. In addition, these models have mostly been evaluated
+    on synthetic tasks, like Needle in a Haystack (Kamradt, [2023](#bib.bib18)) test,
+    which does not accurately represent real-world downstream task performance. For
+    example, previous studies shows a noticeable gap between open-access LLMs and
+    leading proprietary models on real-world long context understanding tasks (Zhang
+    et al., [2024a](#bib.bib49); Hsieh et al., [2024](#bib.bib13)). In this work,
+    we focus on bridging the gap between the open-access Llama-3 and proprietary GPT-4
+    Turbo on real-world long context understanding tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The long-context capability of LLMs is sometimes considered a rival technique
+    to retrieval-augmented generation (RAG). However, from a pragmatic perspective,
+    these techniques complement each other. An LLM with a long context window can
+    either process large volumes of text as a prompt or utilize retrieval methods
+    to efficiently extract relevant information from the extensive text, depending
+    on the downstream tasks and accuracy vs. efficiency trade-offs. RAG has efficiency
+    advantages and can easily retrieve relevant contexts for query-based tasks (e.g,
+    QA) from billions of tokens, a feat that long context models cannot achieve. Meanwhile,
+    long context models are good at tasks such as summarizing entire documents, where
+    RAG may not perform as well. As a result, the state-of-the-art LLM needs to excel
+    at both capabilities, providing options for different downstream tasks based on
+    accuracy and efficiency requirements. In a previous study, the open-source ChatQA
+    1.5 (Liu et al., [2024](#bib.bib28)) model can surpass GPT-4-Turbo on RAG tasks.
+    In this work, we present ChatQA 2, which possesses both GPT-4-Turbo level long
+    context understanding capability and RAG performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Xu et al. ([2024](#bib.bib47)) extended the context window of Llama2 (Touvron
+    et al., [2023b](#bib.bib40)) to 16K and 32K tokens, and studied the interplay
+    between RAG and long-context LLMs. It demonstrates that the RAG method can improve
+    the generation accuracy and inference efficiency of a GPT-3.5-turbo-16k level
+    long context model for QA and query-based summarization tasks. In this work, we
+    extend this study by pushing the long context LLM to GPT-4-Turbo level with 128K
+    context window and combining it with a state-of-the-art long-context retriever
+    for RAG.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Specifically, we make the following contributions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We present a two-step approach to establish the long context capability of Llama3-70B.
+    First, we extend Llama3-70B base’s context window from 8K to 128K by continually
+    pretraining it on a mix of SlimPajama (Soboleva et al., [2023](#bib.bib37)) with
+    upsampled long sequences (Fu et al., [2024](#bib.bib8)). Then, we apply a three-stage
+    instruction tuning process on curated datasets to enhance the instruction-following,
+    RAG, and long context understanding capabilities at each respective stage. We
+    find that stage-wise instruction-tuning, by incorporating previous datasets, simplifies
+    experimentation and hyperparameter tuning. This approach enhances long context
+    capabilities while maintaining RAG performance.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '2.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We demonstrate that the resulting $\mathtt{Llama3\text{-}ChatQA\text{-}2\text{-}70B\text{-}128K}$
+    can be on par or slightly worse than GPT-4-Turbo-2024-04-09 on many real-world
+    long context understanding tasks. In addition, it outperforms GPT-4-Turbo-2024-04-09
+    on RAG and conversational QA tasks.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '3.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'The current RAG pipeline has limitations that can undermine downstream task
+    accuracy: *i)* top-*k* chunk-wise retrieval introduces fragmentation of context;
+    and *ii)* a small top-*k* leads to low recall, while a larger *k* introduces too
+    much irrelevant context to the LLM (e.g., see the analysis in Figure 1 of Yu et al.,
+    [2024](#bib.bib48)). We find that the state-of-the-art long-context retriever (Wang
+    et al., [2023c](#bib.bib45); Lee et al., [2024](#bib.bib21)) can largely alleviate
+    these issues and further improve the RAG-based results for long-context understanding
+    tasks.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '4.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: In the comparison between RAG and long-context results, we find that the GPT-4-Turbo
+    level long-context model (including our $\mathtt{Llama3\text{-}ChatQA\text{-}2\text{-}70B}$)
+    outperforms the RAG on 32K benchmarks but still underperforms compared to RAG
+    methods on real-world 128K tasks.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'We organize the rest of the paper as follows. We discuss related work in § [2](#S2
+    "2 Related Work ‣ ChatQA 2: Bridging the Gap to Proprietary LLMs in Long Context
+    and RAG Capabilities"). We introduce the continued pretraining for context window
+    extension in § [3](#S3 "3 Extending Context Window to 128K ‣ ChatQA 2: Bridging
+    the Gap to Proprietary LLMs in Long Context and RAG Capabilities") and the three-stage
+    instruction tuning in § [4](#S4 "4 Instruction-Tuning with Long Context Data ‣
+    ChatQA 2: Bridging the Gap to Proprietary LLMs in Long Context and RAG Capabilities").
+    We report results in § [7](#S7 "7 Results ‣ ChatQA 2: Bridging the Gap to Proprietary
+    LLMs in Long Context and RAG Capabilities") and conclude the paper in § [8](#S8
+    "8 Conclusion ‣ ChatQA 2: Bridging the Gap to Proprietary LLMs in Long Context
+    and RAG Capabilities").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 2.1 Long Context LLM
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The trend of extending the context window in LLM starts by Claude with 100K
+    token context (Anthropic, [2023](#bib.bib3)). Although the underlying long context
+    techniques behind proprietary models are unclear, the open LLM and research community
+    has developed many methods to extend the context window of LLMs through continued
+    training or fine-tuning (Kaiokendev, [2023](#bib.bib17); Nijkamp et al., [2023](#bib.bib32);
+    Chen et al., [2023a](#bib.bib5); Tworkowski et al., [2023](#bib.bib41); Chen et al.,
+    [2023b](#bib.bib6); Peng et al., [2023](#bib.bib36); Xiong et al., [2023](#bib.bib46);
+    Fu et al., [2024](#bib.bib8)), especially for open-access LLMs (Touvron et al.,
+    [2023a](#bib.bib39), [b](#bib.bib40)) based on rotary position embedding (RoPE) (Su
+    et al., [2024](#bib.bib38)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are two popular approaches to adapt RoPE for long-context inputs: position
+    interpolation (Chen et al., [2023a](#bib.bib5)) and increasing the base frequency
+    $\theta$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2 Retrieval-augmented Generation (RAG)
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Retrieval with a standalone retriever (e.g., Karpukhin et al., [2020](#bib.bib19);
+    Wang et al., [2022](#bib.bib44); Lin et al., [2023](#bib.bib25); Lee et al., [2024](#bib.bib21))
+    is a long-standing solution for handling long texts that cannot fit into the context
+    window of language models. In previous work, various retrieval-augmented language
+    models have been proposed (Nakano et al., [2021](#bib.bib31); Borgeaud et al.,
+    [2022](#bib.bib4); Wang et al., [2023b](#bib.bib43), [a](#bib.bib42); Guu et al.,
+    [2020](#bib.bib12); Izacard & Grave, [2021](#bib.bib15); Izacard et al., [2022](#bib.bib16);
+    Lewis et al., [2020](#bib.bib22); Huang et al., [2023](#bib.bib14); Khandelwal
+    et al., [2019](#bib.bib20); Liu et al., [2024](#bib.bib28)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Previous dense-embedding-based retrievers only supported limited context windows
+    (e.g., 512 tokens) (e.g., Karpukhin et al., [2020](#bib.bib19); Wang et al., [2022](#bib.bib44);
+    Lin et al., [2023](#bib.bib25)). In top-*k* chunk-wise retrieval, the short chunk
+    size increases context fragmentation. As a result, extending the context window
+    of retrievers has become popular. For example, Jina Embeddings 2(Günther et al.,
+    [2023](#bib.bib11)) and Nomic Embed (Nussbaum et al., [2024](#bib.bib33)) support
+    8K tokens, while E5-mistral-7B (Wang et al., [2023c](#bib.bib45)) and NV-Embed Lee
+    et al. ([2024](#bib.bib21)) support 32K tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Extending Context Window to 128K
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we present the method to extend the context window from 8K
+    to 128K for Llama3. We prepare our long context pretraining corpus from the Slimpajama (Soboleva
+    et al., [2023](#bib.bib37)) following Fu et al. ([2024](#bib.bib8)). We upsample
+    long-context documents with the hyperparameter set as 0.1 to produce 10 billion
+    tokens with sequence length of 128k. Since Llama3 is pretrained with a much higher
+    RoPE base frequency of 500,000 compared to Llama2, we increased the RoPE base
+    frequency to 150M accordingly. We set the batch size to 32 to fit 4 million tokens
+    in a batch and use a learning rate of 3e-5 to train 2000 steps (8B tokens in total).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Interestingly, we found it more effective to separate different documents using
+    special characters, such as "<s>", rather than the reserved beginning and ending
+    tokens <BOS> and <EOS>. We hypothesize that the <BOS> and <EOS> tokens in Llama3
+    signal the model to ignore previous chunks of text after pretraining, which is
+    not helpful for the LLMs to adapt for longer context inputs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Instruction-Tuning with Long Context Data
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we present the instruction tuning method designed to enhance
+    both long context understanding capability and RAG performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Specifically, we implement three stages of instruction-tuning. For the first
+    two stages, we follow ChatQA 1.5 (Liu et al., [2024](#bib.bib28)), where the model
+    is initially trained on 128k high-quality instruction-following datasets, and
+    then trained on a blend of conversational QA data with provided context. However,
+    these two stages involve relatively short contexts, with a maximum sequence length
+    of only 4K tokens. To enhance our model’s capability to handle very long context
+    sequences up to 128k tokens, we collect a long SFT dataset.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This dataset is collected through two categories: 1) For SFT data sequences
+    less than 32k: We leverage existing long-context datasets from LongAlpaca12k,
+    GPT-4 samples from Open Orca ¹¹1[https://huggingface.co/datasets/Open-Orca/OpenOrca](https://huggingface.co/datasets/Open-Orca/OpenOrca),
+    and Long Data Collections ²²2[https://huggingface.co/datasets/togethercomputer/Long-Data-Collections](https://huggingface.co/datasets/togethercomputer/Long-Data-Collections).
+    2) For sequence lengths between 32k and 128k: Since it is challenging to collect
+    such SFT samples, we rely on synthetic datasets. We utilize NarrativeQA, which
+    contains both the ground truth summary and semantically related paragraphs. We
+    assemble all the related paragraphs and randomly insert the ground truth summary
+    to simulate a real long document for its QA pairs. Both the full long SFT dataset
+    and the short SFT dataset from the first two stages are then blended for training.
+    We set the learning rate at 3e-5 and the batch size at 32.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Long Context Retriever meets Long Context LLM
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'As we mentioned in previous section, the current RAG pipeline for LLM has the
+    following issues: *i)* The top-*k* chunk-wise retrieval introduces non-negligible
+    fragmentation of context for generating accurate answers. For example, previous
+    state-of-the-art dense-embedding based retrievers (e.g., Li et al., [2023](#bib.bib23);
+    Lin et al., [2023](#bib.bib25)) only support 512 tokens. *ii)* Small top-*k* (e.g.,
+    5 or 10) usually leads to relatively low recall, while much larger *k* (e.g.,
+    100) can lead to worse generation (see Table 5 in Xu et al. ([2024](#bib.bib47)))
+    as the previous LLMs could not utilize too many chunked context very well (Liu
+    et al., [2023a](#bib.bib26)). To address the issue, we propose to use the most
+    recent long-context retriever (Wang et al., [2023c](#bib.bib45); Lee et al., [2024](#bib.bib21)),
+    which can support thousands of tokens. In our setting, we use the E5-mistral embedding
+    model (Wang et al., [2023c](#bib.bib45)) as the retriever.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table [1](#S5.T1 "Table 1 ‣ 5 Long Context Retriever meets Long Context LLM
+    ‣ ChatQA 2: Bridging the Gap to Proprietary LLMs in Long Context and RAG Capabilities")
+    compares different chunk sizes for top-*k* retrieval and the total number of tokens
+    in the context window. Comparing total tokens from 3000 to 12000, we found that
+    more tokens consistently yield better results, confirming the strong long-context
+    capability of our model. We also found that 6000 total tokens offer a good trade-off
+    between cost and performance. With the total number of tokens set to 6000, we
+    discovered that larger chunk sizes give better results. Therefore, we use a chunk
+    size of 1200 and top-5 chunks as the default in our experiments.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| chunk-size | 300 | 300 | 300 | 600 | 1200 | 1200 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| top-*k* | 10 | 20 | 40 | 10 | 5 | 10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| total tokens | 3000 | 6000 | 12000 | 6000 | 6000 | 12000 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Avg. | 46.31 | 46.28 | 46.96 | 46.88 | 47.08 | 47.13 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 1: Ablation of $\mathtt{Llama3\text{-}ChatQA\text{-}2\text{-}70B}$ with
+    RAG given different top-*k* = {5, 10, 20, 40} retrieval, and chunk-size = {300,
+    600, 1200} on medium-long context benchmarks within 32K tokens (see Section [6.2](#S6.SS2
+    "6.2 Medium-Long Context Benchmarks within 32K Tokens ‣ 6 Evaluation Benchmarks
+    ‣ ChatQA 2: Bridging the Gap to Proprietary LLMs in Long Context and RAG Capabilities")
+    for more details). Given the same budget of total tokens in the context window (e.g.,
+    6000), larger chunk-size (e.g., 1200) gives better results than small chunk-size (e.g.,
+    300 and 600). The accuracy can also improve with larger total tokens in the context
+    window.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6 Evaluation Benchmarks
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We compare our model against SOTA long context models: 1) GPT-4-Turbo-2024-04-09
+    (128K context window) (OpenAI, [2023](#bib.bib35)), 2) Qwen2-72B-Instruct (128K
+    context window) (Alibaba-QWen, [2024](#bib.bib2)), and (3) Llama-3-70B-Instruct-Gradient-262k (GradientAI,
+    [2024](#bib.bib10)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To give a comprehensive study of different context lengths, our evaluation benchmarks
+    covers three categories, 1) long context benchmarks beyond 100K tokens, 2) medium-long
+    context benchmarks within 32K tokens, and 3) short context benchmarks within 4K
+    tokens. We also apply RAG when it is applicable to the downstream tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.1 Long Context Benchmarks Beyond 100K Tokens
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: InfiniteBench (Zhang et al., [2024b](#bib.bib50)) is proposed to evaluate the
+    long context capability of LLMs over 100K sequence length. As we focus on real-world
+    english tasks, we only take the four related tasks from the InfiniteBench, i.e.
+    longbook summarization (En.Sum), longbook qa (En.QA), longbook multiple choice
+    (En.MC), and longbook dialogue (En.Dia). En.Sum is a task that requires models
+    to generate a concise summary of the given novel and is evaluated using the ROUGE-L-Sum
+    metric (Lin, [2004](#bib.bib24)). En.QA is annotated by a pipeline that ensures
+    the questions’ necessitating of long-range dependencies and reasoning, beyond
+    simple short passage retrieval. Aggregation reasoning and filtering reasoning
+    are the two primary reasoning categories. F1 score is used to evaluate the quality
+    of the answer. En.MC is annotated with the same pipeline of En.QA except that
+    four answer choices are provided and exact matching scores are reported. En.Dia
+    leverages movie and drama scripts from a designated online database ³³3[https://imsdb.com](https://imsdb.com)
+    with long, multi-role dialogues. In this task, random instances of character names
+    within a script are masked and the objective is to correctly identify these masked
+    names. Exact matching score is used again to evaluate the prediction accuracy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.2 Medium-Long Context Benchmarks within 32K Tokens
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We use the long context datasets (except NarrativeQA as it is included in our
+    training) from Xu et al. ([2024](#bib.bib47)) as our benchmark for medium-long
+    datasets within 32K. There are six datasets in total, where QMSum (QM), Qasper
+    (QASP), QuALITY (QLTY) are token from SCROLLS and HotpotQA (HQA) MuSiQue (MSQ),
+    MultiFieldQA-en (MFQA) are token from LongBench. Following the official metrics,
+    we report the geometric mean of ROUGE scores (i.e., ROUGE1/2/L) (Lin, [2004](#bib.bib24))
+    for QM, the exact matching (EM) score for QLTY, and F1 scores for the remaining
+    four datasets QASP, MSQ, HQA and MFQA.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.3 Short Context within 4K Tokens
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We use ChatRAG Bench (Liu et al., [2024](#bib.bib28)) as our benchmark for short
+    context within 4k. ChatRAG bench consists of 10 datasets and we exclude HDial
+    as it is vasincluded in our training. Following the setup of Liu et al. ([2024](#bib.bib28)),
+    for Doc2Dial (D2D), QuAC, and QReCC task with long documents, each document is
+    divided into segments of roughly 300 words. The top 5 relevant chunks are then
+    retrieved as context for each user question. For TopiOCQA and INSCIT, top-20 chunks
+    were retrieved to obtain similar context length to the first three datasets. The
+    other four datasets are CoQA, DoQA, ConvFinQA (CFQA), and SQA, which cover a wide
+    range of domains like finance, children’s stories, literature, mid/high school
+    exams, news, Wikipedia and etc. We use F1 score as the metric to evaluate the
+    generations and report the average score without HDial as it is a fair zero-shot
+    comparisons over different models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7 Results
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we present the results and comparisons from extensive benchmark
+    evaluations. We begin with the synthetic Needle in a Haystack test, then focus
+    on real-world long context understanding and RAG tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/bd0c9d47c2d65eb626c64a0c6a63c2be.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Needle in A Haystack test for $\mathtt{Llama3\text{-}ChatQA\text{-}2\text{-}70B}$
+    up to 128K context window.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7.1 Needle In A Haystack
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We evaluate our $\mathtt{Llama3\text{-}ChatQA\text{-}2\text{-}70B}$ model on
+    the Needle In A Haystack test (Kamradt, [2023](#bib.bib18)). This synthetic task
+    is popular for testing the long-context capability of LLMs, and can be considered
+    as a threshold level evaluation. Figure [1](#S7.F1 "Figure 1 ‣ 7 Results ‣ ChatQA
+    2: Bridging the Gap to Proprietary LLMs in Long Context and RAG Capabilities")
+    demonstrates the performance of our model with up to 128K tokens, showing that
+    our model achieves 100% accuracy. This test confirms our model’s perfect long-context
+    retrieval capability.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Avg. | En.Sum | En.QA | En.MC | En.Dia |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPT-4-1106 preview | 28.23 | 14.73 | 22.44 | 67.25 | 8.50 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Claude 2 | 33.96 | 14.50 | 11.97 | 62.88 | 46.50 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Kimi-Chat | 29.62 | 17.96 | 16.52 | 72.49 | 11.50 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Yi-34B-200K | < 15.15 | < 5 | 12.17 | 38.43 | < 5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Llama-3-70B-Instruct-Gradient-262k | 32.57 | 14.27 | 29.52 | 69.00 | 17.50
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPT-4-Turbo-2024-04-09 | 33.16 | 17.62 | 19.29 | 77.73 | 18.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|    w/ RAG | N/A | N/A | 17.69 | 77.29 | N/A |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Qwen2-72B-Instruct | 34.88 | 14.84 | 21.50 | 81.66 | 21.50 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|    w/ RAG | N/A | N/A | 16.48 | 76.86 | N/A |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\mathtt{Llama3\text{-}ChatQA\text{-}2\text{-}70B}$ | 34.11 | 16.10 | 44.22
+    | 64.63 | 11.50 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|    w/ RAG | N/A | N/A | 41.00 | 70.74 | N/A |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: Evaluation results on InfiniteBench includes real-world long-context
+    understanding tasks beyond a 100K context window. For RAG, we use top-5 retrieved
+    chunks, each with 1200 tokens from E5-mistral retriever (Wang et al., [2023c](#bib.bib45)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7.2 Long Context Evaluation Beyond 100K Tokens
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In this subsection, we evaluate the long context capability beyond 100K tokens
+    on the real-world tasks from InfiniteBench (Zhang et al., [2024a](#bib.bib49)).
+    Table [2](#S7.T2 "Table 2 ‣ 7.1 Needle In A Haystack ‣ 7 Results ‣ ChatQA 2: Bridging
+    the Gap to Proprietary LLMs in Long Context and RAG Capabilities") shows that
+    our model (34.11) outperforms many existing state-of-the-art models, such as GPT4-Turbo-2024-04-09
+    (33.16), GPT4-1106 preview (28.23), Llama-3-70B-Instruct-Gradient-262k (32.57)
+    and Claude 2 (33.96). Additionally, our model is very close to the highest score
+    of 34.88 achieved by Qwen2-72B-Instruct, confirming the competitive long-context
+    capability of our model.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7.3 Medium-Long Context Evaluation within 32K Tokens
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In this subsection, we evaluate the medium-long context capability within 32K
+    tokens. Table [3](#S7.T3 "Table 3 ‣ 7.3 Medium-Long Context Evaluation within
+    32K Tokens ‣ 7 Results ‣ ChatQA 2: Bridging the Gap to Proprietary LLMs in Long
+    Context and RAG Capabilities") shows that GPT-4-Turbo-2024-04-09 achieves the
+    highest score of 51.93 among all models. Our model scores 47.37, which is higher
+    than Llama-3-70B-Instruct-Gradient-262k but is lower than Qwen2-72B-Instruct.
+    This difference can be attributed to the extensive 32K pretraining implemented
+    by Qwen2-72B-Instruct, while we used a much smaller continued pretraining corpus.
+    Additionally, we found that all the RAG solutions perform worse than the long
+    context solution, which suggest all these SOTA long context LLMs can really handle
+    32K tokens within their context window.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Avg. | QM | QASP | QLTY | MSQ | HQA | MFQA |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPT-4-Turbo-2024-04-09 | 51.93 | 16.37 | 38.96 | 88.45 | 44.88 | 70.65 |
+    52.26 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|    w/ RAG | 49.84 | 16.07 | 36.18 | 85.85 | 42.17 | 67.85 | 50.94 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Qwen2-72B-Instruct | 49.94 | 17.06 | 34.84 | 84.85 | 46.80 | 65.98 | 50.12
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '|    w/ RAG | 48.08 | 17.63 | 35.19 | 83.05 | 39.92 | 64.58 | 48.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\mathtt{Llama3\text{-}ChatQA\text{-}2\text{-}70B}$ | 47.37 | 15.20 | 33.77
+    | 81.45 | 37.27 | 62.69 | 53.84 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|    w/ RAG | 47.08 | 14.71 | 33.25 | 80.45 | 39.45 | 61.04 | 53.58 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Llama-3-70B-Instruct-Gradient-262k | 40.51 | 20.72 | 30.64 | 74.35 | 20.20
+    | 45.82 | 51.33 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|    w/ RAG | 40.57 | 20.04 | 30.68 | 72.35 | 22.19 | 46.85 | 51.31 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 3: Evaluation results on the medium-long context benchmarks within 32K
+    tokens. For RAG, we use top-5 retrieved chunks, each with 1200 tokens from E5-mistral
+    retriever (Wang et al., [2023c](#bib.bib45)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Models Avg. w/o HDial D2D QuAC QReCC CoQA DoQA CFQA SQA TCQA INSCIT Llama2-Chat-70B
+    44.64 36.87 32.47 49.40 80.41 38.97 46.85 37.62 44.31 34.88 Llama3-Instruct-70B
+    52.95 37.88 36.96 51.34 76.98 41.24 76.60 69.61 49.72 36.23 Command R+ 51.40 33.51
+    34.16 49.77 69.71 40.67 71.21 74.07 53.77 35.76 GPT-3.5-Turbo-0613 50.69 34.83
+    37.17 50.46 79.33 41.11 73.15 60.63 44.30 35.27 GPT-4-0613 54.35 34.16 40.29 52.01
+    77.42 43.39 81.28 79.21 45.09 36.34 Llama3-ChatQA-1.5-70B 57.14 41.26 38.82 51.40
+    78.44 50.76 81.88 83.82 55.63 32.31 GPT-4-Turbo-2024-04-09 54.72 35.35 40.10 51.46
+    77.73 41.60 84.16 79.98 48.32 33.75 Llama-3-70B-Instruct-Gradient-262k 45.20 34.30
+    24.01 49.60 73.45 25.76 54.70 63.80 46.30 34.89 Qwen2-72B-Instruct 54.06 35.76
+    38.48 51.21 85.04 33.89 77.52 77.06 51.64 35.90 $\mathtt{Llama3\text{-}ChatQA\text{-}2\text{-}70B}$
+    54.81 40.76 38.99 47.12 72.44 51.21 78.52 78.15 55.75 30.35
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4: Evaluation results on ChatRAG Bench with 9 datasets. Following (Liu
+    et al., [2024](#bib.bib28)), we exclude HDial as it is included in the instruction
+    tuning datasets. The maximum context lengths are 4K tokens.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '7.4 ChatRAG Bench: Short Context Evaluation within 4K Tokens'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In this subsection, we evaluate the models on the short context tasks within
+    4K tokens from ChatRAG Bench (Liu et al., [2024](#bib.bib28)). Our model achieves
+    the average score of 54.81\. Even though it is worse than Llama3-ChatQA-1.5-70B,
+    it still outperforms GPT-4-Turbo-2024-04-09 and Qwen2-72B-Instruct. This confirms
+    that extending short context models to long context is not a free lunch. How to
+    effectively extend the context window to even larger scale (e.g., million tokens
+    in Gemini 1.5 Pro (Gemini-Team, [2024](#bib.bib9))) without any degradation on
+    regular short context tasks is an exciting research direction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Top-*k* | 5 | 10 | 20 | 30 | Long Context |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\mathtt{Llama3\text{-}ChatQA\text{-}2\text{-}70B}$ | 47.08 | 47.13 | 47.18
+    | 47.19 | 47.37 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 5: We compare our $\mathtt{Llama3\text{-}ChatQA\text{-}2\text{-}70B}$
+    using RAG vs. direct long context evaluation on benchmarks with maximum 32K tokens
+    inputs. RAG can be slightly worse than direct long context solution even when
+    we increase top-*k* chunks to 30.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | RAG (top-*k*) | Long Context |'
+  prefs: []
+  type: TYPE_TB
+- en: '| $\mathtt{Llama3\text{-}ChatQA\text{-}2\text{-}70B}$ | 56.36 (5) | 54.43 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Qwen2-72B-Instruct | 52.95 (20) | 51.58 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 6: We compare RAG vs. long context evaluation using our $\mathtt{Llama3\text{-}ChatQA\text{-}2\text{-}70B}$
+    on tasks beyond 100k. Here we use average accuracy of En.QA and En.MC tasks that
+    can apply RAG. The RAG-based result is still better than long context evaluation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 7.5 RAG vs. Long Context
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In Table [5](#S7.T5 "Table 5 ‣ 7.4 ChatRAG Bench: Short Context Evaluation
+    within 4K Tokens ‣ 7 Results ‣ ChatQA 2: Bridging the Gap to Proprietary LLMs
+    in Long Context and RAG Capabilities") and Table [6](#S7.T6 "Table 6 ‣ 7.4 ChatRAG
+    Bench: Short Context Evaluation within 4K Tokens ‣ 7 Results ‣ ChatQA 2: Bridging
+    the Gap to Proprietary LLMs in Long Context and RAG Capabilities"), we compare
+    RAG vs. long context solutions under different context lengths. For sequence length
+    beyond 100k, we only report the average score of En.QA and En.MC as the RAG setting
+    is not directly applicable for En.Sum and En.Dia. We found that for downstream
+    tasks within 32k sequence length, our long context solution is better than RAG.
+    This means using RAG can save the cost but the accuracy will drop a bit. On the
+    other hand, we found that for context lengths beyond 100K, RAG (using top-5 for
+    our $\mathtt{Llama3\text{-}ChatQA\text{-}2\text{-}70B}$, and top-20 for Qwen2-72B-Instruct)
+    outperforms the full long-context solution. This indicates that even state-of-the-art
+    long-context LLMs may struggle to effectively understand and reason over 128K
+    tokens. In such scenarios, RAG is recommended for better accuracy and lower inference
+    cost, provided it is applicable to the downstream tasks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 8 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We introduce $\mathtt{Llama3\text{-}ChatQA\text{-}2\text{-}70B}$ can achieve
+    GPT-4-Turbo-2024-0409 level accuracy on these benchmarks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '01.AI et al. (2024) 01.AI, Alex Young, Bei Chen, Chao Li, Chengen Huang, Ge Zhang,
+    Guanwei Zhang, Heng Li, Jiangcheng Zhu, Jianqun Chen, Jing Chang, et al. Yi: Open
+    foundation models by 01\. ai. *arXiv preprint arXiv:2403.04652*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Alibaba-QWen (2024) Alibaba-QWen. Qwen2 technical report. 2024. URL [https://qwenlm.github.io/blog/qwen2/](https://qwenlm.github.io/blog/qwen2/).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Anthropic (2023) Anthropic. Introducing 100k context windows. [https://www.anthropic.com/index/100k-context-windows](https://www.anthropic.com/index/100k-context-windows),
+    2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Borgeaud et al. (2022) Sebastian Borgeaud, Arthur Mensch, Jordan Hoffmann, Trevor
+    Cai, Eliza Rutherford, Katie Millican, George Bm Van Den Driessche, Jean-Baptiste
+    Lespiau, Bogdan Damoc, Aidan Clark, et al. Improving language models by retrieving
+    from trillions of tokens. In *ICML*, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chen et al. (2023a) Shouyuan Chen, Sherman Wong, Liangjian Chen, and Yuandong
+    Tian. Extending context window of large language models via positional interpolation.
+    *arXiv preprint arXiv:2306.15595*, 2023a.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chen et al. (2023b) Yukang Chen, Shengju Qian, Haotian Tang, Xin Lai, Zhijian
+    Liu, Song Han, and Jiaya Jia. Longlora: Efficient fine-tuning of long-context
+    large language models. *arXiv preprint arXiv:2309.12307*, 2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chen et al. (2024) Zhe Chen, Weiyun Wang, Hao Tian, Shenglong Ye, Zhangwei Gao,
+    Erfei Cui, Wenwen Tong, Kongzhi Hu, Jiapeng Luo, Zheng Ma, et al. How far are
+    we to gpt-4v? closing the gap to commercial multimodal models with open-source
+    suites. *arXiv preprint arXiv:2404.16821*, 2024.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Fu et al. (2024) Yao Fu, Rameswar Panda, Xinyao Niu, Xiang Yue, Hannaneh Hajishirzi,
+    Yoon Kim, and Hao Peng. Data engineering for scaling language models to 128k context.
+    *arXiv preprint arXiv:2402.10171*, 2024.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Gemini-Team (2024) Gemini-Team. Gemini 1.5: Unlocking multimodal understanding
+    across millions of tokens of context. *arXiv preprint arXiv:2310.07713*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: GradientAI (2024) GradientAI. Scaling rotational embeddings for long-context
+    language models. [https://gradient.ai/blog/scaling-rotational-embeddings-for-long-context-language-models](https://gradient.ai/blog/scaling-rotational-embeddings-for-long-context-language-models),
+    2024.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Günther et al. (2023) Michael Günther, Jackmin Ong, Isabelle Mohr, Alaeddine
+    Abdessalem, Tanguy Abel, Mohammad Kalim Akram, Susana Guzman, Georgios Mastrapas,
+    Saba Sturua, Bo Wang, et al. Jina embeddings 2: 8192-token general-purpose text
+    embeddings for long documents. *arXiv preprint arXiv:2310.19923*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Guu et al. (2020) Kelvin Guu, Kenton Lee, Zora Tung, Panupong Pasupat, and
+    Mingwei Chang. REALM: Retrieval augmented language model pre-training. In *ICML*,
+    2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hsieh et al. (2024) Cheng-Ping Hsieh, Simeng Sun, Samuel Kriman, Shantanu Acharya,
+    Dima Rekesh, Fei Jia, and Boris Ginsburg. Ruler: What’s the real context size
+    of your long-context language models? *arXiv preprint arXiv:2404.06654*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Huang et al. (2023) Jie Huang, Wei Ping, Peng Xu, Mohammad Shoeybi, Kevin Chen-Chuan
+    Chang, and Bryan Catanzaro. Raven: In-context learning with retrieval augmented
+    encoder-decoder language models. *arXiv preprint arXiv:2308.07922*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Izacard & Grave (2021) Gautier Izacard and Édouard Grave. Leveraging passage
+    retrieval with generative models for open domain question answering. In *EACL*,
+    2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Izacard et al. (2022) Gautier Izacard, Patrick Lewis, Maria Lomeli, Lucas Hosseini,
+    Fabio Petroni, Timo Schick, Jane Dwivedi-Yu, Armand Joulin, Sebastian Riedel,
+    and Edouard Grave. Few-shot learning with retrieval augmented language models.
+    *arXiv preprint arXiv:2208.03299*, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kaiokendev (2023) Kaiokendev. Things I’m learning while training SuperHOT. [https://kaiokendev.github.io/til#extending-context-to-8k](https://kaiokendev.github.io/til#extending-context-to-8k),
+    2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kamradt (2023) Gregory Kamradt. Needle in a haystack - pressure testing llms.
+    [https://github.com/gkamradt/LLMTest_NeedleInAHaystack](https://github.com/gkamradt/LLMTest_NeedleInAHaystack),
+    2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Karpukhin et al. (2020) Vladimir Karpukhin, Barlas Oguz, Sewon Min, Patrick
+    Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, and Wen-tau Yih. Dense passage retrieval
+    for open-domain question answering. In *EMNLP*, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Khandelwal et al. (2019) Urvashi Khandelwal, Omer Levy, Dan Jurafsky, Luke
+    Zettlemoyer, and Mike Lewis. Generalization through memorization: Nearest neighbor
+    language models. *arXiv preprint arXiv:1911.00172*, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lee et al. (2024) Chankyu Lee, Rajarshi Roy, Mengyao Xu, Jonathan Raiman, Mohammad
+    Shoeybi, Bryan Catanzaro, and Wei Ping. Nv-embed: Improved techniques for training
+    llms as generalist embedding models. *arXiv preprint arXiv:2405.17428*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Lewis et al. (2020) Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni,
+    Vladimir Karpukhin, Naman Goyal, Heinrich Küttler, Mike Lewis, Wen-tau Yih, Tim
+    Rocktäschel, et al. Retrieval-augmented generation for knowledge-intensive nlp
+    tasks. *NeurIPS*, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Li et al. (2023) Zehan Li, Xin Zhang, Yanzhao Zhang, Dingkun Long, Pengjun Xie,
+    and Meishan Zhang. Towards general text embeddings with multi-stage contrastive
+    learning. *arXiv preprint arXiv:2308.03281*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lin (2004) Chin-Yew Lin. ROUGE: A package for automatic evaluation of summaries.
+    In *Text Summarization Branches Out*, pp.  74–81, Barcelona, Spain, July 2004\.
+    Association for Computational Linguistics. URL [https://aclanthology.org/W04-1013](https://aclanthology.org/W04-1013).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lin et al. (2023) Sheng-Chieh Lin, Akari Asai, Minghan Li, Barlas Oguz, Jimmy
+    Lin, Yashar Mehdad, Wen-tau Yih, and Xilun Chen. How to train your dragon: Diverse
+    augmentation towards generalizable dense retrieval. *arXiv preprint arXiv:2302.07452*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. (2023a) Nelson F Liu, Kevin Lin, John Hewitt, Ashwin Paranjape,
+    Michele Bevilacqua, Fabio Petroni, and Percy Liang. Lost in the middle: How language
+    models use long contexts. *arXiv preprint arXiv:2307.03172*, 2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Liu et al. (2023b) Xiaoran Liu, Hang Yan, Shuo Zhang, Chenxin An, Xipeng Qiu,
+    and Dahua Lin. Scaling laws of rope-based extrapolation. *arXiv preprint arXiv:2310.05209*,
+    2023b.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. (2024) Zihan Liu, Wei Ping, Rajarshi Roy, Peng Xu, Chankyu Lee,
+    Mohammad Shoeybi, and Bryan Catanzaro. ChatQA: Surpassing GPT-4 on conversational
+    QA and RAG. *arXiv preprint arXiv:2401.10225*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Meta-AI (2024) Meta-AI. Llama 3 model card. 2024. URL [https://github.com/meta-llama/llama3/blob/main/MODEL_CARD.md](https://github.com/meta-llama/llama3/blob/main/MODEL_CARD.md).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Mistral (2024) Mistral. Mixtral 8x22b. 2024. URL [https://mistral.ai/news/mixtral-8x22b/](https://mistral.ai/news/mixtral-8x22b/).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Nakano et al. (2021) Reiichiro Nakano, Jacob Hilton, Suchir Balaji, Jeff Wu,
+    Long Ouyang, Christina Kim, Christopher Hesse, Shantanu Jain, Vineet Kosaraju,
+    William Saunders, et al. WebGPT: Browser-assisted question-answering with human
+    feedback. *arXiv preprint arXiv:2112.09332*, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Nijkamp et al. (2023) Erik Nijkamp, Hiroaki Hayashi, Tian Xie, Congying Xia,
+    Bo Pang, Congying Xia, and et al. Long sequence modeling with XGen: A 7b LLM trained
+    on 8k input sequence length. [https://blog.salesforceairesearch.com/xgen/](https://blog.salesforceairesearch.com/xgen/),
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Nussbaum et al. (2024) Zach Nussbaum, John X Morris, Brandon Duderstadt, and
+    Andriy Mulyar. Nomic embed: Training a reproducible long context text embedder.
+    *arXiv preprint arXiv:2402.01613*, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Nvidia et al. (2024) Nvidia, Bo Adler, Niket Agarwal, Ashwath Aithal, Dong H
+    Anh, Pallab Bhattacharya, Annika Brundyn, Jared Casper, Bryan Catanzaro, Sharon
+    Clay, Jonathan Cohen, et al. Nemotron-4 340b technical report. *arXiv preprint
+    arXiv:2406.11704*, 2024.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: OpenAI (2023) OpenAI. GPT-4 turbo with 128k context. [https://openai.com/blog/new-models-and-developer-products-announced-at-devday](https://openai.com/blog/new-models-and-developer-products-announced-at-devday),
+    2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Peng et al. (2023) Bowen Peng, Jeffrey Quesnelle, Honglu Fan, and Enrico Shippole.
+    Yarn: Efficient context window extension of large language models. *arXiv preprint
+    arXiv:2309.00071*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Soboleva et al. (2023) Daria Soboleva, Faisal Al-Khateeb, Robert Myers, Jacob R
+    Steeves, Joel Hestness, and Nolan Dey. SlimPajama: A 627B token cleaned and deduplicated
+    version of RedPajama. [https://www.cerebras.net/blog/slimpajama-a-627b-token-cleaned-and-deduplicated-version-of-redpajama](https://www.cerebras.net/blog/slimpajama-a-627b-token-cleaned-and-deduplicated-version-of-redpajama),
+    2023. URL [https://huggingface.co/datasets/cerebras/SlimPajama-627B](https://huggingface.co/datasets/cerebras/SlimPajama-627B).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Su et al. (2024) Jianlin Su, Murtadha Ahmed, Yu Lu, Shengfeng Pan, Wen Bo,
+    and Yunfeng Liu. Roformer: Enhanced transformer with rotary position embedding.
+    *Neurocomputing*, 568:127063, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023a) Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier
+    Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal,
+    Eric Hambro, Faisal Azhar, et al. Llama: Open and efficient foundation language
+    models. *arXiv preprint arXiv:2302.13971*, 2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023b) Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert,
+    Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava,
+    Shruti Bhosale, et al. Llama 2: Open foundation and fine-tuned chat models. *arXiv
+    preprint arXiv:2307.09288*, 2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Tworkowski et al. (2023) Szymon Tworkowski, Konrad Staniszewski, Mikołaj Pacek,
+    Yuhuai Wu, Henryk Michalewski, and Piotr Miłoś. Focused transformer: Contrastive
+    training for context scaling. *arXiv preprint arXiv:2307.03170*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wang et al. (2023a) Boxin Wang, Wei Ping, Lawrence McAfee, Peng Xu, Bo Li,
+    Mohammad Shoeybi, and Bryan Catanzaro. InstructRetro: Instruction tuning post
+    retrieval-augmented pretraining. *arXiv preprint arXiv:2310.07713*, 2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wang et al. (2023b) Boxin Wang, Wei Ping, Peng Xu, Lawrence McAfee, Zihan Liu,
+    Mohammad Shoeybi, Yi Dong, Oleksii Kuchaiev, Bo Li, Chaowei Xiao, et al. Shall
+    we pretrain autoregressive language models with retrieval? a comprehensive study.
+    *arXiv preprint arXiv:2304.06762*, 2023b.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wang et al. (2022) Liang Wang, Nan Yang, Xiaolong Huang, Binxing Jiao, Linjun
+    Yang, Daxin Jiang, Rangan Majumder, and Furu Wei. Text embeddings by weakly-supervised
+    contrastive pre-training. *arXiv preprint arXiv:2212.03533*, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Wang et al. (2023c) Liang Wang, Nan Yang, Xiaolong Huang, Linjun Yang, Rangan
+    Majumder, and Furu Wei. Improving text embeddings with large language models.
+    *arXiv preprint arXiv:2401.00368*, 2023c.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Xiong et al. (2023) Wenhan Xiong, Jingyu Liu, Igor Molybog, Hejia Zhang, Prajjwal
+    Bhargava, Rui Hou, Louis Martin, Rashi Rungta, Karthik Abinav Sankararaman, Barlas
+    Oguz, et al. Effective long-context scaling of foundation models. *arXiv preprint
+    arXiv:2309.16039*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Xu et al. (2024) Peng Xu, Wei Ping, Xianchao Wu, Lawrence McAfee, Chen Zhu,
+    Zihan Liu, Sandeep Subramanian, Evelina Bakhturina, Mohammad Shoeybi, and Bryan
+    Catanzaro. Retrieval meets long context large language models. In *ICLR*, 2024.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yu et al. (2024) Yue Yu, Wei Ping, Zihan Liu, Boxin Wang, Jiaxuan You, Chao
+    Zhang, Mohammad Shoeybi, and Bryan Catanzaro. Rankrag: Unifying context ranking
+    with retrieval-augmented generation in LLMs. *arXiv e-prints*, pp.  arXiv–2407,
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. (2024a) Xinrong Zhang, Yingfa Chen, Shengding Hu, Zihang Xu, Junhao
+    Chen, Moo Khai Hao, Xu Han, Zhen Leng Thai, Shuo Wang, Zhiyuan Liu, and Maosong
+    Sun. $\infty$bench: Extending long context evaluation beyond 100k tokens, 2024a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. (2024b) Xinrong Zhang, Yingfa Chen, Shengding Hu, Zihang Xu, Junhao
+    Chen, Moo Khai Hao, Xu Han, Zhen Leng Thai, Shuo Wang, Zhiyuan Liu, and Maosong
+    Sun. $\infty$bench: Extending long context evaluation beyond 100k tokens, 2024b.
+    URL [https://arxiv.org/abs/2402.13718](https://arxiv.org/abs/2402.13718).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhu et al. (2024) Qihao Zhu, Daya Guo, Zhihong Shao, Dejian Yang, Peiyi Wang,
+    Runxin Xu, Y Wu, Yukun Li, Huazuo Gao, Shirong Ma, et al. Deepseek-coder-v2: Breaking
+    the barrier of closed-source models in code intelligence. *arXiv preprint arXiv:2406.11931*,
+    2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

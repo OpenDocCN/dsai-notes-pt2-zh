@@ -1,0 +1,1430 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:51:10'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Dual Grained Quantization: Efficient Fine-Grained Quantization for LLM'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2310.04836](https://ar5iv.labs.arxiv.org/html/2310.04836)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: '^†^†footnotetext: ^∗Corresponding author: Hong Zhou, zhouh@mail.bme.zju.edu.cn'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ^† Equal ContributionLuoming Zhang^(†1), Wen Fei^(†2), Weijia Wu¹, Yefei He¹,
+    Zhenyu Lou¹, Hong Zhou^(∗1)
+  prefs: []
+  type: TYPE_NORMAL
+- en: ¹Zhejiang University ²Shanghai Jiao Tong University
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'Large Language Models (LLMs) pose significant hardware challenges related to
+    memory requirements and computational ability. There are two mainstream quantization
+    schemes for LLMs: coarse-grained (e.g., channel-wise) quantization and fine-grained
+    ( e.g., group-wise) quantization. Fine-grained quantization has smaller quantization
+    loss, consequently achieving superior performance. However, when applied to weight-activation
+    quantization, it disrupts continuous integer matrix multiplication, leading to
+    inefficient inference. In this paper, we introduce Dual Grained Quantization (DGQ),
+    a novel A8W4 quantization for LLM that maintains superior performance while ensuring
+    fast inference speed. DSQ dequantizes the fine-grained INT4 weight into coarse-grained
+    INT8 representation and preform matrix multiplication using INT8 kernels. Besides,
+    we develop a two-phase grid search algorithm to simplify the determination of
+    fine-grained and coarse-grained quantization scales. We also devise a percentile
+    clipping schema for smoothing the activation outliers without the need for complex
+    optimization techniques. Experimental results demonstrate that DGQ consistently
+    outperforms prior methods across various LLM architectures and a wide range of
+    tasks. Remarkably, by our implemented efficient CUTLASS kernel, we achieve 1.12
+    $\times$ speed gains comparing A16W4 implementation. These advancements enable
+    efficient deployment of A8W4 LLMs for real-world applications.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The internet has generated vast amounts of text data, and with the increase
+    in computing power, Large Language Models (LLMs) such as GPT-4 (Bubeck et al.,
+    [2023](#bib.bib5)) have excelled in comprehending and generating natural language.
+    However, these models have become much larger. For instance, GPT-3 (Brown et al.,
+    [2020](#bib.bib4)) boasts over 175 billion parameters. Open-source models like
+    OPT (Zhang et al., [2022](#bib.bib48)) and BLOOM (Scao et al., [2022](#bib.bib35)),
+    built on the GPT architecture, often surpass GPT-3 in parameter count. More recently,
+    models like Meta’s 65B (Touvron et al., [2023a](#bib.bib37)) have matched GPT-3’s
+    language generation abilities. To put this in perspective, LLaMA-65B is approximately
+    190 times larger than BERT-Large (Devlin et al., [2018](#bib.bib15)), necessitating
+    around 130 GB of memory storage, which requires two A100 GPUs to accommodate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Model quantization, as discussed in Han et al. ([2015](#bib.bib19)), maps high-precision
+    values to lower-precision representations (e.g., INT8, INT4, FP8, FP4). This technique
+    serves to reduce memory requirements and enhance inference speed. In the context
+    of Large Language Models (LLM), Post-training Quantization(PTQ)  (Nagel et al.,
+    [2020](#bib.bib30); Hubara et al., [2020](#bib.bib21)) methods are preferred,
+    primarily due to the extensive computational demands associated with fine-tuning
+    for Quantization Aware Training (QAT) (Esser et al., [2019](#bib.bib16); Martinez
+    et al., [2018](#bib.bib28)). To maintain precision when applying PTQ, we incorporate
+    finer-grained quantization methods (Yao et al., [2022](#bib.bib44); Bondarenko
+    et al., [2021](#bib.bib3)). Fine-grained quantization involves dividing a dimension
+    into multiple parts and quantizing each smaller slice, while coarse-grained quantization (Xiao
+    et al., [2023](#bib.bib43); Yuan et al., [2023](#bib.bib46)) typically quantizes
+    the entire tensor or quantizes along a dimension. Fine-grained quantization is
+    commonly used in weight-only quantization (Frantar et al., [2022](#bib.bib18);
+    Lin et al., [2023](#bib.bib24); Dettmers et al., [2023b](#bib.bib14)), where only
+    model weights are quantized.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/0a657b2089e34596fd56ee630ba056a7.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: Comparison of four different quantization methods in terms of runtime
+    and memory usage. Opt-30b with different sequence length from 512 to 2048 is used
+    as the baseline. Our A8W4 implement maintain the comparable run time to A8W8 and
+    FP16 while maintaining small memory usages. Besieds, our implement has a smaller
+    memory usage than A16W4 implement.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, in weight-activation quantization (Xiao et al., [2023](#bib.bib43);
+    Yuan et al., [2023](#bib.bib46); Wei et al., [2023](#bib.bib41)), which includes
+    both weights and activations, a key challenge emerges due to varying quantization
+    scales along the accumulation axis, typically represented by input channels in
+    linear layers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Addressing this challenge involves partitioning the integer General Matrix Multiplication
+    (GEMM) operation into discrete segments and aggregating them through floating-point
+    arithmetic. Notably, implementing such a scheme on existing hardware infrastructure
+    proves to be notably inefficient.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To address this challenge, we introduce Dual Grained Quantization (DGQ) as
+    an efficient deployment solution for LLMs. DGQ combines the performance benefits
+    of fine-grained quantization with the computational efficiency of coarse-grained
+    methods. In our weight quantization approach, we employ a two-step process. To
+    avoid the need for segmenting General Matrix Multiplication (GEMM) operations,
+    we dequantize INT4-weight back to INT8, instead of directly casting to INT8\.
+    This results in INT8 weights with a coarser-grained scale. As a consequence, our
+    coarser-grained INT8 activation-weight quantization can be efficiently accelerated
+    by general-purpose hardware, eliminating the necessity for specialized hardware
+    designs. DGQ introduces two quantized scales for weight tensors: a fine-grained
+    INT8 quantization scale and a coarse-grained FP16 quantization scale. A notable
+    challenge arises when directly quantizing the FP16 fine-grained scale, leading
+    to a significant drop in accuracy, as illustrated in Table  ([1](#S3.T1 "Table
+    1 ‣ 3.2 Dual Grained Quantization ‣ 3 Method ‣ Dual Grained Quantization: Efficient
+    Fine-Grained Quantization for LLM")). To tackle this issue, we propose a two-phase
+    search approach. In the first phase, we diligently search for the original fine-grained
+    parameters. In the subsequent phase, we determine coarse-grained parameters using
+    the original weights, rather than relying on previously derived fine-grained parameters.
+    We then partition the fine-grained parameters using the determined coarse-grained
+    parameters, preserving the performance of the original fine-grained quantized
+    models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Recent studies (Xiao et al., [2023](#bib.bib43); Yuan et al., [2023](#bib.bib46);
+    Wei et al., [2023](#bib.bib41)) have made significant strides in addressing the
+    challenge of outliers in Large Language Models (LLMs). These efforts have resulted
+    in INT8 models that match the accuracy levels of their full-precision counterparts.
+    Drawing inspiration from LLM.int8() (Dettmers et al., [2022](#bib.bib12)) and
+    AWQ (Lin et al., [2023](#bib.bib24)), we propose a novel percentile clipping smoothing
+    strategy to further enhance quantization. One of the notable advantages of our
+    method is its gradient-free nature, which ensures the preservation of the model’s
+    generalization ability across diverse domains and modalities. Our optimization
+    approach also demonstrates exceptional efficiency. For instance, we can achieve
+    quantized A8W4 models for BLOOM-176B within just one GPU hour on the A100-80G.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The experimental results highlight the effectiveness of DGQ across a wide range
+    of tasks, model families, and sizes. In particular, DGQ demonstrates impressive
+    performance on the WikiText-2 (Merity et al., [2016](#bib.bib29)) task, achieving
+    a mere 0.3 perplexity loss for integer A8W4 models. This outperforms the floating-point
+    A8W4 quantization scheme (Wu et al., [2023](#bib.bib42)) by approximately 0.3.
+    To support DGQ inference, we have implemented efficient CUTLASS kernels. Leveraging
+    these efficient kernels, DGQ achieves a remarkable up to 3x speedup compared to
+    the A16W4 baseline while maintaining similar memory usage. Furthermore, DGQ excels
+    in overhead management, enabling it to achieve similar inference speeds to A8W8
+    models but with only half the memory usage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Related Works
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 2.1 Large Language Models
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Pre-trained large language models (LLMs), such as GPT-4 (Bubeck et al., [2023](#bib.bib5)),
+    LLaMA-2 (Touvron et al., [2023b](#bib.bib38)), and OPT (Zhang et al., [2022](#bib.bib48)),
+    have demonstrated exceptional performance across a wide range of tasks and domains.
+    Despite their impressive capabilities, these models come with significant memory
+    and computational demands, presenting challenges in practical deployment. To address
+    these challenges, a growing body of research has emerged, focusing on various
+    techniques to optimize LLMs. These approaches encompass model compression methods (Frantar
+    & Alistarh, [2023](#bib.bib17); Xiao et al., [2023](#bib.bib43)), distributed
+    computing strategies (Aminabadi et al., [2022](#bib.bib1)), and computational
+    graph optimizations (Dao et al., [2022](#bib.bib10); Dao, [2023](#bib.bib9)).
+    In this study, our primary focus is on model quantization, a key component of
+    model compression. We aim to explore and advance quantization techniques to enable
+    efficient deployment of LLMs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.2 Model Quantization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Quantization-Aware Training (QAT) (Esser et al., [2019](#bib.bib16); Martinez
+    et al., [2018](#bib.bib28)) and Post-training Quantization (PTQ) (Choukroun et al.,
+    [2019](#bib.bib6); Li et al., [2021](#bib.bib23); Wei et al., [2022](#bib.bib40)).
+    QAT fine-tunes quantized models with the full dataset, preserving accuracy but
+    involving complex computations, making it less suitable for LLMs. In contrast,
+    PTQ directly quantizes models with little data and computation. Techniques like
+    AdaRound (Nagel et al., [2020](#bib.bib30)), and Adaquant (Hubara et al., [2020](#bib.bib21))
+    optimize quantization parameters and distill quantized models layer by layer.
+    Some approaches (Qin et al., [2022](#bib.bib32); He et al., [2022](#bib.bib20))
+    employ alternating optimization, and some push the boundaries by compressing transformations
+    into binary values. These quantization techniques are crucial for enhancing the
+    efficiency of deep learning models, especially in resource-constrained environments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For LLMs quantization, fine-grained quantization is introduced to solve the
+    significant accuracy drop. PEG-PTQ (Bondarenko et al., [2021](#bib.bib3)) proposed
+    per-embedding-group quantization, which splits the activation into several groups
+    and quantizes activation via each group. ZeroQuant (Yao et al., [2022](#bib.bib44))
+    used token-wise activation quantization and group-wise weight quantization as
+    quantization scheme. LLM.int8() (Dettmers et al., [2022](#bib.bib12)) finds that
+    the outliers in activation have a significant contributor to poor quantization
+    performance and splits the outliers and calculate the matrix multiple evolved
+    outliers in FP16\. GPTQ (Frantar et al., [2022](#bib.bib18)) and SparseGPT (Frantar
+    & Alistarh, [2023](#bib.bib17)) use second-order approximation to quantize and
+    prune weights. GPTQ also introduces channel-reorder via hessian matrix to weight
+    to maintain better accuracy. RPTQ (Yuan et al., [2023](#bib.bib46)) reorders channels
+    and splits activation into three groups via activation ranges. It successfully
+    quants LLMs into fine-grained A4W4 models.SmoothQuant (Xiao et al., [2023](#bib.bib43))
+    proposes a mathematically equivalent per-channel scaling transformation makes
+    activation easier to quantize. Outlier Suppression+ (Wei et al., [2023](#bib.bib41))
+    introduce a fusible offset for activation quantization and convert the hard-to-quant
+    asymmetric quantization into symmetric quantization. AWQ (Lin et al., [2023](#bib.bib24))
+    finds that the sensitive weight is based on significant activation channels and
+    introduces a scale to amplify the significant weight channels. OmniQuant (Shao
+    et al., [2023](#bib.bib36)) follows the Quadapter (Park et al., [2022](#bib.bib31))
+    try to only optimize the smooth scale during optimization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ZeroQuantv2 (Yao et al., [2023](#bib.bib45)) introduces the Low Rank Compensation
+    (LoRC) technique to enhance the precision of A8W4 quantized models, resulting
+    in improved accuracy. However, it’s essential to note that LoRC involves FP16
+    computations, which add computational overhead. ZeroQuant-FP (Wu et al., [2023](#bib.bib42))
+    explores the use of A8W4 precision within a floating-point (FP) context, showcasing
+    improved accuracy. It introduces an efficient method for optimizing weight scales,
+    especially relevant given the limited support for FP8, primarily on H100 hardware.
+    However, it’s worth noting that floating-point calculations generally entail higher
+    computational costs compared to integer-based computations. QLoRA (Dettmers et al.,
+    [2023a](#bib.bib13)) introduces the NF4 double quantization technique, which enhances
+    memory utilization by quantizing FP32 group-wise quantization scales to FP8 while
+    using a channel-wise FP32 scale. This method prioritizes memory efficiency over
+    computational efficiency and shows that direct quantization of quantization scales
+    to FP8 does not lead to substantial accuracy loss. In our proposed methods, we
+    tackle the dual quantization challenge for integer (INT) values by introducing
+    a lossless compression solution. This innovative approach seamlessly combines
+    computational efficiency with memory conservation, presenting a promising solution
+    within this field.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Method
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 3.1 Preliminary
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Quantization is a crucial process that transforms high-precision values into
+    low-precision representations. In our work, we emphasize the use of uniform integer
+    quantization, which offers better hardware support and computational efficiency.
+    Asymmetric quantization can be expressed as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle{\bf\widehat{X}}=$ |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\mathbf{ZP}$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Here, $\mathbf{X}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are two distinct quantization methods for LLM quantization, weight-only
+    quantization and weight-activation quantization. Weight-only quantization focuses
+    on quantizing only the model weights into low-bit representations while preserving
+    full precision during inference. This method reduces memory requirements and storage
+    demands. In contrast, weight-activation quantization extends quantization to both
+    the model weights and input activations. By utilizing lower-bit representations
+    for both weights and activations, this approach accelerates inference. In our
+    paper, we primarily concentrate on weight-activation quantization, exploring its
+    advantages and optimizing it to enhance overall model efficiency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Dual Grained Quantization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'For weight quantization, we consider two levels of granularity, i.e. channel-
+    and group-wise quantization, as illustrated in Figure [2](#S3.F2 "Figure 2 ‣ 3.2
+    Dual Grained Quantization ‣ 3 Method ‣ Dual Grained Quantization: Efficient Fine-Grained
+    Quantization for LLM") (a) and (b). Channel-wise quantization involves assigning
+    a specific quantization scale to each output channel, which is then applied to
+    the result of the integer General Matrix Multiplication (GEMM) operation. On the
+    other hand, group-wise quantization is a more refined approach that divides the
+    output channels into multiple groups and assigns a quantization scale to each
+    group. These quantization scales are collectively represented as a matrix denoted
+    by $\mathbf{S}$. In general, group-wise quantization tends to yield smaller quantization
+    errors compared to channel-wise quantization, resulting in higher accuracy.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/876d63c25b8e964235533e99491436f2.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Different grained quantization method. Unlike channel-wise and DGQ
+    quantization, group-wise quantization tends to result in FP16 accumulation, which
+    is conflict with typical hardware design.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To achieve model compression with lower bit precision, it becomes essential
+    to introduce fine-grained quantization (e.g., group-wise) methods into weight
+    quantization. However, group-wise quantization methods present a notable challenge
+    when it comes to their implementation on hardware platforms. In group-wise quantization,
+    the reduction axis is divided into multiple groups, each with distinct quantization
+    scales. These groups effectively operate within separate INT8 domains, which poses
+    limitations on their ability to perform direct INT8 General Matrix Multiplication
+    (GEMM) operations. To facilitate Group-Wise INT8 quantization, the matrix is divided
+    into segments, allowing for separate GEMM computations on each segment. Following
+    these computations, the results are combined through FP16 accumulation. It’s worth
+    noting, however, that the adoption of FP16 accumulation introduces a delay in
+    the INT8 kernel’s GEMM calculations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To enhance the hardware efficiency of group-wise quantization, we introduce
+    dual-grained quantization (DGQ) as shown in Figure [2](#S3.F2 "Figure 2 ‣ 3.2
+    Dual Grained Quantization ‣ 3 Method ‣ Dual Grained Quantization: Efficient Fine-Grained
+    Quantization for LLM") (c). This approach incorporates a crucial dequantization
+    step before the GEMM operation, which involves converting INT4 weights into INT8
+    weights, enabling subsequent INT8 GEMM operations. Our method leverages group-wise
+    INT8 quantization scales and zero points to transform INT4 weights into INT8 weights.
+    Following this, we employ channel-wise FP16 quantization scales to determine the
+    dequantization factors for the output. Given the hidden states $\mathbf{X}_{s8}\in\mathbb{N}_{s8}^{b\times
+    h}$, the quantization process is defined by the following equations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathbf{s}_{f16}$ |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\mathbf{W}_{s8}$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\mathbf{O}_{f16}$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Here, $\mathbf{S}^{(2)}_{s8}\in\mathbb{N}_{s8}^{g\times o}$ represents the input
+    channels for the weight. When comparing A16W4 to A8W4 with DGQ, it becomes evident
+    that the latter configuration significantly accelerates the calculation process.
+    Moreover, in comparison to A8W8, A8W4 with DGQ exhibits reduced weight memory
+    usage and facilitates faster memory transfers. Our method offers a significant
+    improvement in calculation matrix efficiency when compared to weight-only quantization
+    with the same weight bitwidth. Furthermore, it demonstrates superior memory efficiency
+    compared to weight-activation quantization with lower bit-width weights.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/56a2015bc9aa816c27ae5091d964a5ac.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: DGQ inference schema and quantization schema with Two-Phase Search
+    algorithm.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: WikiText-2 Results for A8W4 LLaMA family: Original Group-Wise Quantization
+    vs. Round to Nearst(RTN) Dual-Grained Quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| LLaMA PPL $\downarrow$ | 1-7B | 1-13B | 1-30B | 2-7B | 2-13B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Original | 6.03 | 5.39 | 4.43 | 5.87 | 5.23 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RTN | 6.93 | 6.00 | 4.83 | 2155.54 | 5.48 |'
+  prefs: []
+  type: TYPE_TB
+- en: 3.3 Two-phase Grid Search
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: A significant quantization error is introduced when directly quantizing group-wise
+    parameters $\mathbf{S^{\prime}}$. To address these two problem, we propose a novel
+    two-phase search approach.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To narrow down the expansive search space, our initial step involves quantizing
+    the weights into group-wise INT4 representations. This approach capitalizes on
+    the assumption of weight independence across in-channels. We divide both weights
+    and activations into $\mathbf{n_{g}}$ as the parallelism axis, and our goal is
+    to formulate the minimum granularity optimization problem as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: Here, $k$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For next phase, we aim to decouple the group-wise FP16 scale $\mathbf{S}^{\prime}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathbf{W}_{u4}\in\mathbf{[0,15]},\mathbf{S^{(2)}}\in\mathbf{[-128,127]},\mathbf{W}_{s8}\in\mathbf{[-128,127]}$
+    |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Remarkably, we can consolidate the range for $\mathbf{W_{s8}}$. The proof of
+    this consolidation can be found in Appendix B. This fusion leads us to the following
+    constraint for our search space:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathbf{W}_{u4}\in\mathbf{[max(0,\lfloor\frac{-127}{S^{(2)}}\rceil+ZP),min(15,\lfloor\frac{127}{S^{(2)}}\rceil+ZP)]}\\
+    $ |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Similar to the prior phase, we also use the grid employing for the scaling
+    parameter $\alpha$. The optimization problem for this phase is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathop{\arg\min}\limits_{\mathbf{{s}^{(1)}}}\&#124;\mathbf{X}\mathbf{W}-\widehat{\mathbf{X}}\mathcal{Q}_{W}(\mathbf{W},\mathbf{S},\mathbf{ZP})\&#124;^{2},\mathbf{S^{(2)}=\lfloor\frac{S^{\prime}}{s^{(1)}}\rceil},\mathbf{S=s^{(1)}\cdot
+    S^{(2)}}$ |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Here, we replace the max value and min value in Eq. [1](#S3.E1 "In 3.1 Preliminary
+    ‣ 3 Method ‣ Dual Grained Quantization: Efficient Fine-Grained Quantization for
+    LLM") with Eq. [5](#S3.E5 "In 3.3 Two-phase Grid Search ‣ 3 Method ‣ Dual Grained
+    Quantization: Efficient Fine-Grained Quantization for LLM") to prevent overflow
+    or underflow in integer representations. It’s worth noting that this phase allows
+    for efficient parallelization along the $\mathbf{o}$. This approach significantly
+    reduces the search space compared to the one-step search. Experimental results
+    demonstrate that our method introduces virtually no additional error.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.4 percentile clipping smoothing
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: As discussed in prior works (Xiao et al., [2023](#bib.bib43)), outliers in activation
+    have a large impact on model accuracy. A channel-wise smooth would help limit
+    the influence of outliers for activation quantization. For weight quantization,
+    AWQ (Lin et al., [2023](#bib.bib24)) proposed to use activation outliers to amplify
+    the weight in outlier channels to decrease the quantization error of such channels.
+    This is similar in principle to reordering in GPTQ (Frantar et al., [2022](#bib.bib18)).
+    As the quantization-sensitivity can be approximated by the Hessian matrix of weights.
+    Hessian matrix of weights is calculated by $\mathbf{H=XX^{T}}$ and is directly
+    related to the absolute value of the input. Therefore, the mean value of the input
+    channel for activation can approximately present the quantization sensitivity
+    of weight.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For weight-activation smooth scales, the quantization difficulty that moves
+    from activation to weight could act as the quantization amplifier for weights,
+    making it possible as a win-win for both weight and activation quantization. And
+    from the observation from  Dettmers et al. ([2023b](#bib.bib14)), the outliers
+    always appear at fixed channels, which means that the biggest maximum and mean
+    channels are almost the same channels. We can conduct these two methods into one
+    activation-to-weight smooth.
+  prefs: []
+  type: TYPE_NORMAL
+- en: LLM.int8() finds that keeping the activation channels with outliers unquantized
+    will help the model maintain its performance. It’s interesting that AWQ also finds
+    that keeping that 1% salient channels for weight would protect the performance.
+    We can follow their conclusions for weight-activation quantization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In our smooth strategy, we calculate the smooth scale $\mathbf{k}_{j}$ as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathbf{z}_{j}=\mathbf{max}(&#124;\mathbf{X}_{[j,:]}&#124;),\ \mathbf{k}_{j}=\mathbf{clamp}(\mathbf{z}_{j}/\mathbf{max}_{0.5\%}(\mathbf{z}),\text{low}=1)$
+    |  | (7) |'
+  prefs: []
+  type: TYPE_TB
+- en: Here, we use the top 0.5% of the largest values as the clipping threshold. We
+    constrain outliers larger than 0.5% by setting their value to 0.5% and employ
+    the resulting scale as an amplifier for quantization-sensitive channels.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 4.1 Experiments Setups
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Baseline. We compare with baselines in the A8W4 post-training quantization setting,
+    ZeroQuantv2 (Yao et al., [2023](#bib.bib45)), SmoothQuant (Xiao et al., [2023](#bib.bib43)),
+    RPTQ (Yuan et al., [2023](#bib.bib46)) and ZeroQuant-FP (Wu et al., [2023](#bib.bib42)).
+    Since the quantization schemes vary from different quantization methods, we test
+    one aligned quantization scheme per-token dynamic activation quantization and
+    group-wise weight quantization. Additionally, we include results for static activation
+    quantization to facilitate further comparisons. AWQ (Lin et al., [2023](#bib.bib24))
+    and GPTQ (Frantar et al., [2022](#bib.bib18)), which is designed for weight-only
+    quantization. As activation quantization is harder for activation, comparison
+    to those methods in A8W4 quantization schemes is unfair. We try to compare the
+    results of A8W4 to A16W3, since they are both the next step of A16W4.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Models and datasets. We choose OPT (Zhang et al., [2022](#bib.bib48)) and LLaMA (Touvron
+    et al., [2023a](#bib.bib37); [b](#bib.bib38)) families to evaluate our quantization
+    methods. As BLOOM (Scao et al., [2022](#bib.bib35)) has a similar structure as
+    OPT and have close quantization performance. For Common Sense Question Answers
+    evaluation, we use five zero-shot evaluation task: HellaSwag (Zellers et al.,
+    [2019](#bib.bib47)), PIQA (Bisk et al., [2020](#bib.bib2)), Winogrande (Sakaguchi
+    et al., [2021](#bib.bib34)), BoolQ (Clark et al., [2019](#bib.bib7)) and ARC (Clark
+    et al., [2018](#bib.bib8)). Common Sense Question Answers benchmark is done with
+    lm-eval (Lin & Chen, [2023](#bib.bib25)). Follows the evaluation proposed at GPTQ (Frantar
+    et al., [2022](#bib.bib18)), we use WikiText-2 (Merity et al., [2016](#bib.bib29)),
+    PTB (Marcus et al., [1994](#bib.bib27)) and C4 (Raffel et al., [2020](#bib.bib33))
+    to compare the generation ability.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementation. We implement our methods with Pytorch Huggingface for the proof
+    of concept. We use the CUTLASS GEMM kernels to develop our two-grained quantization
+    kernels, and we use the INT8 BMM kernels from torch-int.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 2: Quantization Results on WikiText-2 with A16W3 and A8W4 LLaMA Models.
+    C4 perplexity results can be found in Table [A1](#A3.T1 "Table A1 ‣ Appendix A3
+    More accuracy results ‣ Dual Grained Quantization: Efficient Fine-Grained Quantization
+    for LLM") in Appendix [A3](#A3 "Appendix A3 More accuracy results ‣ Dual Grained
+    Quantization: Efficient Fine-Grained Quantization for LLM"). $\dagger$ indicates
+    static quantization for activation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| LLaMA PPL $\downarrow$ | 1-7B | 1-13B | 1-30B | 1-65B | 2-7B | 2-13B | 2-70B
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | - | 5.68 | 5.09 | 4.10 | 3.53 | 5.47 | 4.88 | 3.31 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A16 g128 | RTN | 7.01 | 5.88 | 4.87 | 4.24 | 6.66 | 5.51 | 3.97 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 6.55 | 5.62 | 4.80 | 4.17 | 6.29 | 5.42 | 3.85 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 6.46 | 5.51 | 4.63 | 3.99 | 6.24 | 5.32 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A8 g128 | RTN | 8.72 | 7.81 | 6.76 | 6.16 | 12.85 | 44.82 | 8.70 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ZeroQuantv2 | 6.44 | 5.32 | 4.36 | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant | 6.04 | 5.36 | 4.48 | 3.98 | 5.97 | 5.23 | 3.65 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ZeroQuant-FP | 6.32 | 5.26 | 4.26 | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 5.85 | 5.21 | 4.28 | 3.71 | 5.64 | 5.01 | 3.45 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours^† | 6.04 | 5.39 | 4.45 | 3.89 | 5.87 | 5.23 | 3.74 |'
+  prefs: []
+  type: TYPE_TB
+- en: 4.2 Accuracy Evaluation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Results on LLaMA Family. Our static activation quantization surpasses INT3 weight-only
+    quantization, demonstrating that A8W4 quantization offers more sophisticated deployment
+    options than A16W3\. Furthermore, our quantized models consistently outperform
+    their half-size counterparts, demonstrating the practical feasibility of dual-grained
+    quantization (DGQ). In addition, our quantization methods consistently produce
+    results that are comparable to, or even superior to, those achieved by ZeroQuantFP,
+    a method that employs FP8 for quantization. This advantage is especially notable
+    when applied to smaller models with identical quantization settings. It’s important
+    to note that the utilization of FP8, as reported by van Baalen et al. ([2023](#bib.bib39)),
+    comes at the cost of increased chip area and extended inference times. In the
+    realm of Common Sense Question Answering tasks, our dynamic quantization methods
+    outperform other quantization approaches. Additionally, our static quantization
+    schemes yield results that are on par with gradient-based methods (Liu et al.,
+    [2023](#bib.bib26)). The application of GLU (Dauphin et al., [2017](#bib.bib11))
+    in LLaMA amplify the outliers by element-wise multiplication, making quantization
+    difficult. While dynamic activation quantization can mitigate this issue, it necessitates
+    computing statistics for each token before passing through linear kernels, impacting
+    processing time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 3: CSQA Reuslts on Six zero-shot tasks with A8W4 LLaMA Models. Due to
+    the unavailability of the identical model as LLM-QAT, we present FP16 accuracy
+    data sourced from LLM-QAT. MMLU results can be found in Table [A4](#A3.T4 "Table
+    A4 ‣ Appendix A3 More accuracy results ‣ Dual Grained Quantization: Efficient
+    Fine-Grained Quantization for LLM") in Appendix [A3](#A3 "Appendix A3 More accuracy
+    results ‣ Dual Grained Quantization: Efficient Fine-Grained Quantization for LLM").
+    $\dagger$ indicates static quantization for activation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| LLaMA / Acc$\uparrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-1-7B | FP16 | 79.3 | 73.0 | 48.0 | 76.8 | 76.1 | 70.0 | 70.5 | 0.0
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQunat | 76.0 | 67.4 | 42.8 | 71.0 | 67.8 | 66.0 | 65.2 | 5.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-QAT | 77.5 | 70.2 | 45.6 | 74.6 | 73.5 | 67.7 | 68.2 | 2.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 79.2 | 73.0 | 44.7 | 75.1 | 76.2 | 70.0 | 69.7 | 0.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 78.8 | 72.4 | 43.9 | 74.7 | 74.9 | 70.2 | 69.2 | 0.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours^† | 77.4 | 70.4 | 42.7 | 69.1 | 73.0 | 68.6 | 66.9 | 2.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-1-13B | FP16 | 80.0 | 74.5 | 52.6 | 78.1 | 79.2 | 73.6 | 73.0 | 0.0
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQunat | 77.1 | 67.4 | 43.4 | 72.5 | 74.3 | 69.5 | 67.4 | 5.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-QAT | 79.1 | 73.0 | 51.9 | 77.5 | 77.5 | 70.6 | 71.6 | 1.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 80.3 | 74.6 | 47.7 | 77.9 | 79.1 | 72.4 | 72.0 | 0.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 80.1 | 73.7 | 46.8 | 77.8 | 78.6 | 71.7 | 71.5 | 0.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours^† | 79.2 | 72.5 | 47.2 | 73.9 | 77.3 | 70.6 | 70.1 | 1.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-1-30B | FP16 | 82.1 | 80.0 | 58.0 | 83.2 | 82.9 | 75.6 | 77.0 | 0.0
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQunat | 79.5 | 76.5 | 54.5 | 74.9 | 76.9 | 70.6 | 72.2 | 4.8 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLM-QAT | 80.9 | 80.3 | 56.5 | 81.3 | 81.3 | 76.3 | 76.1 | 0.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | 82.1 | 79.0 | 53.1 | 82.7 | 82.6 | 75.6 | 75.8 | 0.0 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 81.6 | 78.5 | 53.6 | 83.1 | 82.1 | 74.6 | 75.6 | 0.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours^† | 79.7 | 78.0 | 51.8 | 80.2 | 79.8 | 74.0 | 73.9 | 1.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: Results on OPT Family. In our evaluation of OPT models spanning from 125M to
+    66B parameters, we observe that the gap between static and dynamic activation
+    quantization is relatively narrow. This phenomenon is attributed to the fact that
+    the outliers in OPT models tend to be smaller compared to LLaMA models. Compared
+    to RPTQ, which is also static activation quantization, our methods achieve superior
+    results. As our coarse is finer than RPTQ. But the RPTQ needs to reorder the input
+    channel at each layer norm, introducing extra inference cost. After all, our method
+    outperforms both other quantization methods on OPT Family, demonstrating the generality
+    of our method to different model families and model sizes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4: Quantization Results on WikiText-2 with A16W3 and A8W4 OPT Models.
+    C4 and PTB perplexity can be found in Table [A2](#A3.T2 "Table A2 ‣ Appendix A3
+    More accuracy results ‣ Dual Grained Quantization: Efficient Fine-Grained Quantization
+    for LLM") and Table [A3](#A3.T3 "Table A3 ‣ Appendix A3 More accuracy results
+    ‣ Dual Grained Quantization: Efficient Fine-Grained Quantization for LLM") in
+    Appendix [A3](#A3 "Appendix A3 More accuracy results ‣ Dual Grained Quantization:
+    Efficient Fine-Grained Quantization for LLM"). $\dagger$ indicates static quantization
+    for activation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| OPT PPL $\downarrow$ | 125M | 1.3B | 2.7B | 6.7B | 13B | 30B | 66B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | - | 27.65 | 14.63 | 12.47 | 10.86 | 10.12 | 9.56 | 9.34 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A16 g128 | RTN | 51.22 | 119.00 | 297.98 | 23.54 | 46.03 | 18.80 | 136.89
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 39.24 | 16.47 | 13.69 | 11.65 | 10.35 | 9.73 | 10.96 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 36.74 | 16.32 | 13.58 | 11.41 | 10.68 | 9.85 | 9.60 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A8 g128 | RTN | 32.21 | 17.33 | 15.51 | 51.57 | 3978.101 | 2407.99 | 2832.57
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ZeroQuantv2 | 31.69 | 15.53 | 13.02 | 11.29 | 10.43 | 9.86 | 9.62 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant | 29.01 | 14.71 | 12.71 | 10.90 | 10.25 | 9.57 | 9.32 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RPTQ | - | 15.39 | - | 11.21 | 10.90 | 10.22 | 9.46 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ZeroQuant-FP | - | 15.32 | - | 10.89 | 10.16 | 9.52 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 29.25 | 14.78 | 12.67 | 10.93 | 10.29 | 9.53 | 9.31 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours$\dagger$ | 29.94 | 14.96 | 12.75 | 10.92 | 10.30 | 9.55 | 9.32 |'
+  prefs: []
+  type: TYPE_TB
+- en: 4.3 Efficiency Evaluation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In Figure [4](#S4.F4 "Figure 4 ‣ 4.3 Efficiency Evaluation ‣ 4 Experiments
+    ‣ Dual Grained Quantization: Efficient Fine-Grained Quantization for LLM"), we
+    compare the end-to-end efficiency of OPT-30B and LLaMa-30B models using different
+    quantization methods: SmoothQuant (A8W8), AWQ (A8W4), and our methods. As SmoothQuant
+    and AWQ both give their implement code, we directly test the implementation time
+    on a single 80G A100 GPU. For shorter sequences, A8W4 implementation takes more
+    time than A8W8 and FP16 due to additional computation introduced by group-wise
+    quantization. However, as sequences get longer, A8W4 outperforms A8W8 because
+    it fuses dequantization and matrix multiplication efficiently. AWQ (A16W4) performs
+    well but struggles with long sequences due to activation bottlenecks. Our method
+    achieves A8W8-level inference times with half the memory usage, demonstrating
+    its efficiency across various quantization methods.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/4cd2976622d0d7b8fd93c98a00d44221.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: Runtime and Memory Usage for LLaMA-30B and OPT-30B Across Varying
+    Sequence Lengths on a Single A100-80G GPU.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4 Ablation Study
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Different quantization scheme for A8W4 LLaMA models. In our experiments with
+    LLaMA1-7b and LLaMA1-13b models, we explored different quantization schemes, including
+    A8W4 quantization, as detailed in Table [5](#S4.T5 "Table 5 ‣ 4.4 Ablation Study
+    ‣ 4 Experiments ‣ Dual Grained Quantization: Efficient Fine-Grained Quantization
+    for LLM"). The results indicate that fine-grained and coarse-grained quantization
+    methods can lead to up to a 1 PPL (Perplexity) difference. Specifically, in fine-grained
+    quantization, we observe that static activation quantization in combination with
+    group-wise weight quantization outperforms dynamic activation quantization coupled
+    with channel-wise weight quantization. Additionally, our dual-grained quantization
+    approach demonstrates that it introduces minimal additional quantization errors
+    compared to group-wise quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 5: Comparison for different quantization schemes for A8W4 LLaMA models.
+    S means static tensor-wise quantization, D means dynamic token-wise quantization,
+    CW means channel-wise quantization, GW means Group-wise quantization and DG means
+    Dula-Grained quantization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| PPL $\downarrow$ | LLaMA1-7B | LLaMA1-13B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | S$+$DG |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WikiText-2 | 5.68 | 6.57 | 6.03 | 6.37 | 6.04 | 5.09 | 6.17 | 5.39 | 5.82
+    | 5.39 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| C4 | 7.08 | 8.10 | 7.44 | 7.75 | 7.43 | 6.61 | 7.84 | 6.92 | 7.37 | 6.93
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Effect of Percentile Clipping Smooth. In our analysis, we present the WikiText-2
+    perplexity (PPL) results in both Table [2](#S4.T2 "Table 2 ‣ 4.1 Experiments Setups
+    ‣ 4 Experiments ‣ Dual Grained Quantization: Efficient Fine-Grained Quantization
+    for LLM") and Table [4](#S4.T4 "Table 4 ‣ 4.2 Accuracy Evaluation ‣ 4 Experiments
+    ‣ Dual Grained Quantization: Efficient Fine-Grained Quantization for LLM"). The
+    primary distinction between SmoothQuant (Xiao et al., [2023](#bib.bib43)) and
+    our methods lies in the choice of the smoothing scale. We want to emphasize the
+    effectiveness of our approach, termed Percentile Clipping Smoothing, as a straightforward
+    yet powerful technique for LLaMA quantization. Notably, it’s worth mentioning
+    that the presence of outliers in OPT models is less pronounced compared to LLaMA
+    models. This difference explains why our methods achieve comparable performance
+    to SmoothQuant, primarily on OPT models.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this work, we propose Dual Grained Quantization (DGQ), a promising and hardware-efficient
+    scheme for mixed bit weight-activation quantization (A8W4) for LLM. DGQ is designed
+    to compensate for the hardware-inefficient group-wise quantization by a fine-grained
+    integer quantization scale and a coarse-grained full-precision scale. We also
+    improve the search algorithm for quantization scales to adapt to our quantization
+    scheme. We propose a percentile clipping smooth strategy, achieving a better smooth
+    scales without search. Furthermore, we implement efficient kernels, achieving
+    3 $\times$ memory usage over A8W8 with comparable run time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Aminabadi et al. (2022) Reza Yazdani Aminabadi, Samyam Rajbhandari, Ammar Ahmad
+    Awan, Cheng Li, Du Li, Elton Zheng, Olatunji Ruwase, Shaden Smith, Minjia Zhang,
+    Jeff Rasley, et al. Deepspeed-inference: enabling efficient inference of transformer
+    models at unprecedented scale. In *SC22: International Conference for High Performance
+    Computing, Networking, Storage and Analysis*, pp.  1–15\. IEEE, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bisk et al. (2020) Yonatan Bisk, Rowan Zellers, Jianfeng Gao, Yejin Choi, et al.
+    Piqa: Reasoning about physical commonsense in natural language. In *Proceedings
+    of the AAAI conference on artificial intelligence*, volume 34, pp.  7432–7439,
+    2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Bondarenko et al. (2021) Yelysei Bondarenko, Markus Nagel, and Tijmen Blankevoort.
+    Understanding and overcoming the challenges of efficient transformer quantization.
+    *arXiv preprint arXiv:2109.12948*, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Brown et al. (2020) Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D
+    Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda
+    Askell, et al. Language models are few-shot learners. *Advances in neural information
+    processing systems*, 33:1877–1901, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bubeck et al. (2023) Sébastien Bubeck, Varun Chandrasekaran, Ronen Eldan, Johannes
+    Gehrke, Eric Horvitz, Ece Kamar, Peter Lee, Yin Tat Lee, Yuanzhi Li, Scott Lundberg,
+    et al. Sparks of artificial general intelligence: Early experiments with gpt-4.
+    *arXiv preprint arXiv:2303.12712*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Choukroun et al. (2019) Yoni Choukroun, Eli Kravchik, Fan Yang, and Pavel Kisilev.
+    Low-bit quantization of neural networks for efficient inference. In *2019 IEEE/CVF
+    International Conference on Computer Vision Workshop (ICCVW)*, pp.  3009–3018\.
+    IEEE, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Clark et al. (2019) Christopher Clark, Kenton Lee, Ming-Wei Chang, Tom Kwiatkowski,
+    Michael Collins, and Kristina Toutanova. Boolq: Exploring the surprising difficulty
+    of natural yes/no questions. *arXiv preprint arXiv:1905.10044*, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Clark et al. (2018) Peter Clark, Isaac Cowhey, Oren Etzioni, Tushar Khot, Ashish
+    Sabharwal, Carissa Schoenick, and Oyvind Tafjord. Think you have solved question
+    answering? try arc, the ai2 reasoning challenge. *ArXiv*, abs/1803.05457, 2018.
+    URL [https://api.semanticscholar.org/CorpusID:3922816](https://api.semanticscholar.org/CorpusID:3922816).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dao (2023) Tri Dao. Flashattention-2: Faster attention with better parallelism
+    and work partitioning. *arXiv preprint arXiv:2307.08691*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dao et al. (2022) Tri Dao, Dan Fu, Stefano Ermon, Atri Rudra, and Christopher
+    Ré. Flashattention: Fast and memory-efficient exact attention with io-awareness.
+    *Advances in Neural Information Processing Systems*, 35:16344–16359, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Dauphin et al. (2017) Yann N Dauphin, Angela Fan, Michael Auli, and David Grangier.
+    Language modeling with gated convolutional networks. In *International conference
+    on machine learning*, pp. 933–941\. PMLR, 2017.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. (2022) Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer.
+    Llm. int8 (): 8-bit matrix multiplication for transformers at scale. *arXiv preprint
+    arXiv:2208.07339*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. (2023a) Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, and Luke
+    Zettlemoyer. Qlora: Efficient finetuning of quantized llms. *arXiv preprint arXiv:2305.14314*,
+    2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. (2023b) Tim Dettmers, Ruslan Svirschevski, Vage Egiazarian,
+    Denis Kuznedelev, Elias Frantar, Saleh Ashkboos, Alexander Borzunov, Torsten Hoefler,
+    and Dan Alistarh. Spqr: A sparse-quantized representation for near-lossless llm
+    weight compression. *arXiv preprint arXiv:2306.03078*, 2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Devlin et al. (2018) Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina
+    Toutanova. Bert: Pre-training of deep bidirectional transformers for language
+    understanding. *arXiv preprint arXiv:1810.04805*, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Esser et al. (2019) Steven K Esser, Jeffrey L McKinstry, Deepika Bablani, Rathinakumar
+    Appuswamy, and Dharmendra S Modha. Learned step size quantization. *arXiv preprint
+    arXiv:1902.08153*, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Frantar & Alistarh (2023) Elias Frantar and Dan Alistarh. Massive language models
+    can be accurately pruned in one-shot. *arXiv preprint arXiv:2301.00774*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Frantar et al. (2022) Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan
+    Alistarh. Gptq: Accurate post-training quantization for generative pre-trained
+    transformers. *arXiv preprint arXiv:2210.17323*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Han et al. (2015) Song Han, Huizi Mao, and William J Dally. Deep compression:
+    Compressing deep neural networks with pruning, trained quantization and huffman
+    coding. *arXiv preprint arXiv:1510.00149*, 2015.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'He et al. (2022) Yefei He, Zhenyu Lou, Luoming Zhang, Weijia Wu, Bohan Zhuang,
+    and Hong Zhou. Bivit: Extremely compressed binary vision transformer. *arXiv preprint
+    arXiv:2211.07091*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hubara et al. (2020) Itay Hubara, Yury Nahshan, Yair Hanani, Ron Banner, and
+    Daniel Soudry. Improving post training neural quantization: Layer-wise calibration
+    and integer programming. *arXiv preprint arXiv:2006.10518*, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. (2023) Qingyuan Li, Yifan Zhang, Liang Li, Peng Yao, Bo Zhang, Xiangxiang
+    Chu, Yerui Sun, Li Du, and Yuchen Xie. Fptq: Fine-grained post-training quantization
+    for large language models. *arXiv preprint arXiv:2308.15987*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Li et al. (2021) Yuhang Li, Ruihao Gong, Xu Tan, Yang Yang, Peng Hu, Qi Zhang,
+    Fengwei Yu, Wei Wang, and Shi Gu. Brecq: Pushing the limit of post-training quantization
+    by block reconstruction. *arXiv preprint arXiv:2102.05426*, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lin et al. (2023) Ji Lin, Jiaming Tang, Haotian Tang, Shang Yang, Xingyu Dang,
+    and Song Han. Awq: Activation-aware weight quantization for llm compression and
+    acceleration. *arXiv preprint arXiv:2306.00978*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lin & Chen (2023) Yen-Ting Lin and Yun-Nung Chen. Llm-eval: Unified multi-dimensional
+    automatic evaluation for open-domain conversations with large language models.
+    *arXiv preprint arXiv:2305.13711*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Liu et al. (2023) Zechun Liu, Barlas Oguz, Changsheng Zhao, Ernie Chang, Pierre
+    Stock, Yashar Mehdad, Yangyang Shi, Raghuraman Krishnamoorthi, and Vikas Chandra.
+    Llm-qat: Data-free quantization aware training for large language models. *arXiv
+    preprint arXiv:2305.17888*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Marcus et al. (1994) Mitch Marcus, Grace Kim, Mary Ann Marcinkiewicz, Robert
+    MacIntyre, Ann Bies, Mark Ferguson, Karen Katz, and Britta Schasberger. The penn
+    treebank: Annotating predicate argument structure. In *Human Language Technology:
+    Proceedings of a Workshop held at Plainsboro, New Jersey, March 8-11, 1994*, 1994.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Martinez et al. (2018) Julieta Martinez, Shobhit Zakhmi, Holger H Hoos, and
+    James J Little. Lsq++: Lower running time and higher recall in multi-codebook
+    quantization. In *Proceedings of the European Conference on Computer Vision (ECCV)*,
+    pp.  491–506, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Merity et al. (2016) Stephen Merity, Caiming Xiong, James Bradbury, and Richard
+    Socher. Pointer sentinel mixture models. *arXiv preprint arXiv:1609.07843*, 2016.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Nagel et al. (2020) Markus Nagel, Rana Ali Amjad, Mart Van Baalen, Christos
+    Louizos, and Tijmen Blankevoort. Up or down? adaptive rounding for post-training
+    quantization. In *International Conference on Machine Learning*, pp. 7197–7206\.
+    PMLR, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Park et al. (2022) Minseop Park, Jaeseong You, Markus Nagel, and Simyung Chang.
+    Quadapter: Adapter for gpt-2 quantization. *arXiv preprint arXiv:2211.16912*,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Qin et al. (2022) Haotong Qin, Yifu Ding, Mingyuan Zhang, Qinghua Yan, Aishan
+    Liu, Qingqing Dang, Ziwei Liu, and Xianglong Liu. Bibert: Accurate fully binarized
+    bert. *arXiv preprint arXiv:2203.06390*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Raffel et al. (2020) Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee,
+    Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter J Liu. Exploring
+    the limits of transfer learning with a unified text-to-text transformer. *The
+    Journal of Machine Learning Research*, 21(1):5485–5551, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sakaguchi et al. (2021) Keisuke Sakaguchi, Ronan Le Bras, Chandra Bhagavatula,
+    and Yejin Choi. Winogrande: An adversarial winograd schema challenge at scale.
+    *Communications of the ACM*, 64(9):99–106, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Scao et al. (2022) Teven Le Scao, Angela Fan, Christopher Akiki, Ellie Pavlick,
+    Suzana Ilić, Daniel Hesslow, Roman Castagné, Alexandra Sasha Luccioni, François
+    Yvon, Matthias Gallé, et al. Bloom: A 176b-parameter open-access multilingual
+    language model. *arXiv preprint arXiv:2211.05100*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Shao et al. (2023) Wenqi Shao, Mengzhao Chen, Zhaoyang Zhang, Peng Xu, Lirui
+    Zhao, Zhiqian Li, Kaipeng Zhang, Peng Gao, Yu Qiao, and Ping Luo. Omniquant: Omnidirectionally
+    calibrated quantization for large language models. *arXiv preprint arXiv:2308.13137*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023a) Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier
+    Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal,
+    Eric Hambro, Faisal Azhar, et al. Llama: Open and efficient foundation language
+    models. *arXiv preprint arXiv:2302.13971*, 2023a.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023b) Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert,
+    Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava,
+    Shruti Bhosale, et al. Llama 2: Open foundation and fine-tuned chat models. *arXiv
+    preprint arXiv:2307.09288*, 2023b.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: van Baalen et al. (2023) Mart van Baalen, Andrey Kuzmin, Suparna S Nair, Yuwei
+    Ren, Eric Mahurin, Chirag Patel, Sundar Subramanian, Sanghyuk Lee, Markus Nagel,
+    Joseph Soriaga, et al. Fp8 versus int8 for efficient deep learning inference.
+    *arXiv preprint arXiv:2303.17951*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wei et al. (2022) Xiuying Wei, Ruihao Gong, Yuhang Li, Xianglong Liu, and Fengwei
+    Yu. Qdrop: Randomly dropping quantization for extremely low-bit post-training
+    quantization. *arXiv preprint arXiv:2203.05740*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wei et al. (2023) Xiuying Wei, Yunchen Zhang, Yuhang Li, Xiangguo Zhang, Ruihao
+    Gong, Jinyang Guo, and Xianglong Liu. Outlier suppression+: Accurate quantization
+    of large language models by equivalent and optimal shifting and scaling. *arXiv
+    preprint arXiv:2304.09145*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wu et al. (2023) Xiaoxia Wu, Zhewei Yao, and Yuxiong He. Zeroquant-fp: A leap
+    forward in llms post-training w4a8 quantization using floating-point formats.
+    *arXiv preprint arXiv:2307.09782*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xiao et al. (2023) Guangxuan Xiao, Ji Lin, Mickael Seznec, Hao Wu, Julien Demouth,
+    and Song Han. Smoothquant: Accurate and efficient post-training quantization for
+    large language models. In *International Conference on Machine Learning*, pp. 38087–38099\.
+    PMLR, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yao et al. (2022) Zhewei Yao, Reza Yazdani Aminabadi, Minjia Zhang, Xiaoxia
+    Wu, Conglong Li, and Yuxiong He. Zeroquant: Efficient and affordable post-training
+    quantization for large-scale transformers. *Advances in Neural Information Processing
+    Systems*, 35:27168–27183, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Yao et al. (2023) Zhewei Yao, Cheng Li, Xiaoxia Wu, Stephen Youn, and Yuxiong
+    He. A comprehensive study on post-training quantization for large language models.
+    *arXiv preprint arXiv:2303.08302*, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Yuan et al. (2023) Zhihang Yuan, Lin Niu, Jiawei Liu, Wenyu Liu, Xinggang Wang,
+    Yuzhang Shang, Guangyu Sun, Qiang Wu, Jiaxiang Wu, and Bingzhe Wu. Rptq: Reorder-based
+    post-training quantization for large language models. *arXiv preprint arXiv:2304.01089*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zellers et al. (2019) Rowan Zellers, Ari Holtzman, Yonatan Bisk, Ali Farhadi,
+    and Yejin Choi. Hellaswag: Can a machine really finish your sentence? *arXiv preprint
+    arXiv:1905.07830*, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zhang et al. (2022) Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe,
+    Moya Chen, Shuohui Chen, Christopher Dewan, Mona Diab, Xian Li, Xi Victoria Lin,
+    et al. Opt: Open pre-trained transformer language models. *arXiv preprint arXiv:2205.01068*,
+    2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A1 Limitation and Discussion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this paper, we propose a simple yet highly efficient quantization method
+    for fine-grained weight-activation quantization. This method makes it practical
+    to implement large language models using A8W4 quantization. Our primary focus
+    is on developing efficient solutions for fine-grained weight quantization. For
+    activation, layer-wise activation quantization strategy (Li et al., [2023](#bib.bib22))
+    would be a good solution, as the limitation of smooth scales.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In our work, we specifically develop efficient kernels tailored for long-sequence
+    inference. A16W4 kernels will introduce redundant dequantization operations. Self-decoding
+    task is memory bound, A16W4 kernels can ease memory bound. Compared to A16W4,
+    our method have same bit width for weight and the calculation progression is done
+    with INT8 kernels. This theoretically positions our approach as more efficient
+    than A16W4. One challenge we are currently addressing is the need for two separate
+    operations in different situations, and we are actively working on a solution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Furthermore, self-decoding tasks face a challenge with memory consumption, especially
+    when dealing with large self-attention matrices. For example, with a sequence
+    length of 32K, a single self-attention matrix can occupy about 20GB of memory
+    in FP16\. To mitigate this issue, we are exploring quantization methods for activation,
+    which we plan to incorporate into our future work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix A2 Proof for constraints relaxation and fusion for Grid Search.
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The constraints are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathbf{W}_{u4}\in\mathbf{[0,15]},\mathbf{S^{(2)}}\in\mathbf{[0,15]},\mathbf{W}_{s8}\in\mathbf{[-127,127]}$
+    |  | (A8) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'The dequantization calculation is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathbf{W}_{f16}=(\mathbf{W}_{u4}-\mathbf{ZP}_{u4})\mathbf{S}_{f16},\mathbf{S}_{f16}=\left\lfloor\mathbf{S^{\prime}/S^{(1)}}\right\rceil
+    S^{(1)}$ |  | (A9) |'
+  prefs: []
+  type: TYPE_TB
+- en: Due to the rounding operation $\lfloor\cdot\rceil$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathbf{W}_{u4}=\left\lfloor{\frac{\mathbf{W}_{s8}}{\mathbf{S^{(2)}}}}\right\rceil+\mathbf{ZP}\in[\left\lfloor\mathbf{\frac{-127}{S^{(2)}}}\right\rceil+\mathbf{ZP},\left\lfloor\mathbf{\frac{127}{S^{(2)}}}\right\rceil+\mathbf{ZP}]$
+    |  | (A10) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'We can merge the two intervals as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\mathbf{W}_{u4}\in\mathbf{[max(0,\lfloor\frac{-127}{S^{(2)}}\rceil+ZP),min(15,\lfloor\frac{127}{S^{(2)}}\rceil+ZP)]}$
+    |  | (A11) |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix A3 More accuracy results
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section, we provide a comprehensive presentation of our results across
+    various datasets to complement the main paper. We also provide here a comparison
+    with contemporaneous work Omniquant (Shao et al., [2023](#bib.bib36)) and FPTQ (Li
+    et al., [2023](#bib.bib22)). Specifically, the results include:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'C4 perplexity in the LLaMA families (Table [A1](#A3.T1 "Table A1 ‣ Appendix
+    A3 More accuracy results ‣ Dual Grained Quantization: Efficient Fine-Grained Quantization
+    for LLM"))'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'C4 perplexity in OPT families (Table [A2](#A3.T2 "Table A2 ‣ Appendix A3 More
+    accuracy results ‣ Dual Grained Quantization: Efficient Fine-Grained Quantization
+    for LLM")).'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'PTB perplexity in OPT families (Table [A3](#A3.T3 "Table A3 ‣ Appendix A3 More
+    accuracy results ‣ Dual Grained Quantization: Efficient Fine-Grained Quantization
+    for LLM")).'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'MMLU in LLaMA families (Table [A4](#A3.T4 "Table A4 ‣ Appendix A3 More accuracy
+    results ‣ Dual Grained Quantization: Efficient Fine-Grained Quantization for LLM")).'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Table A1: Quantization Results on c4 with A16W3 and A8W4 LLaMA Models. $\dagger$
+    indicates static quantization for activation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| LLaMA PPL $\downarrow$ | 1-7B | 1-13B | 1-30B | 1-65B | 2-7B | 2-13B | 2-70B
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | - | 7.08 | 6.61 | 5.98 | 5.62 | 6.97 | 6.46 | 5.52 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A16 g128 | RTN | 8.62 | 7.49 | 6.58 | 6.10 | 8.40 | 7.18 | 6.02 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 7.85 | 7.10 | 6.47 | 6.00 | 7.89 | 7.00 | 5.85 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 7.92 | 7.07 | 6.37 | 5.94 | 7.84 | 6.94 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant | 7.34 | 6.76 | 6.11 | 5.73 | 7.35 | 6.65 | 5.86 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A8 g128 | RTN | 10.76 | 9.94 | 8.14 | 7.96 | 17.29 | 90.57 | 11.86 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ZeroQuantv2 | 7.79 | 6.78 | 6.16 | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant | 7.51 | 6.89 | 6.39 | 5.94 | 7.50 | 6.82 | 5.78 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ZeroQuant-FP | 7.51 | 5.73 | 6.09 | - | - | - | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 7.29 | 6.73 | 6.10 | 5.73 | 7.16 | 6.62 | 5.62 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours^† | 7.43 | 6.93 | 6.31 | 5.97 | 7.44 | 6.82 | 5.89 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table A2: Quantization Results on c4 with A16W3 and A8W4 OPT Models $\dagger$
+    indicates static quantization for activation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| OPT PPL $\downarrow$ | 125M | 1.3B | 2.7B | 6.7B | 13B | 30B | 66B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | - | 24.61 | 14.73 | 13.17 | 11.75 | 11.21 | 10.69 | 10.28 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A16 g128 | RTN | 40.13 | 126.47 | 372.23 | 32.56 | 44.12 | 25.70 | 286.87
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 30.08 | 16.47 | 14.54 | 12.48 | 11.58 | 10.91 | 11.35 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 30.39 | 16.27 | 14.19 | 12.30 | 11.61 | 10.96 | 10.53 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant | 29.34 | 16.11 | 14.15 | 12.31 | 11.63 | 10.98 | 10.51 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A8 g128 | RTN | 27.93 | 17.52 | 16.33 | 98.34 | 3926.05 | 3557.30 | 2493.73
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ZeroQuantv2 | 27.19 | 15.73 | 13.82 | 12.19 | 11.64 | 11.00 | 10.63 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant | 25.99 | 15.16 | 13.46 | 11.88 | 11.39 | 10.75 | 10.32 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RPTQ | - | 15.48 | - | 12.11 | 11.62 | 11.01 | 10.57 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ZeroQuant-FP | - | 15.32 | - | 11.95 | 11.30 | 10.75 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 26.03 | 15.10 | 13.42 | 11.87 | 11.40 | 10.74 | 10.33 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours^† | 26.64 | 15.24 | 13.45 | 11.89 | 11.42 | 10.76 | 10.33 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table A3: Quantization Results on ptb with A16W3 and A8W4 OPT Models $\dagger$
+    indicates static quantization for activation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| OPT PPL $\downarrow$ | 125M | 1.3B | 2.7B | 6.7B | 13B | 30B | 66B |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | - | 32.55 | 16.97 | 15.11 | 13.09 | 12.34 | 11.84 | 11.36 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W3A16 g128 | RTN | 64.67 | 222.13 | 337.75 | 39.90 | 65.33 | 34.27 | 309.69
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | 45.17 | 19.90 | 17.06 | 14.24 | 12.84 | 12.54 | 13.27 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| AWQ | 44.07 | 19.59 | 16.52 | 13.98 | 12.87 | 66.68 | 3.4e3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OmniQuant | 45.29 | 20.42 | 17.08 | 14.23 | 13.49 | 12.54 | 12.06 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| W4A8 g128 | RTN | 38.31 | 20.84 | 19.75 | 65.86 | 3370.84 | 2972.69 | 2556.84
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ZeroQuantv2 | 36.66 | 18.35 | 16.11 | 13.70 | 12.91 | 12.28 | 11.84 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQuant | 34.32 | 17.37 | 15.27 | 13.27 | 12.55 | 11.93 | 11.42 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| RPTQ | - | 17.79 | - | 13.74 | 13.40 | 12.41 | 11.73 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ZeroQuant-FP | - | 18.19 | - | 13.44 | 12.55 | 11.90 | - |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 34.29 | 17.48 | 15.31 | 13.26 | 12.61 | 11.93 | 11.42 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours^† | 35.29 | 17.61 | 15.34 | 13.29 | 12.63 | 11.93 | 11.42 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table A4: MMLU Reuslts with A8W4 LLaMA Models. $\dagger$ indicates static quantization
+    for activation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| LLaMA / Acc$\uparrow$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-1-7B | FP16 | A16W16 | 33.60 | 31.10 | 38.20 | 38.40 | 35.20 | 0.00
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQunat | A8W8 | 33.80 | 30.32 | 37.63 | 39.08 | 35.14 | 0.06 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | A16W4 | 32.39 | 30.35 | 35.03 | 36.15 | 33.40 | 1.80 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FPTQ | A8W4 | 30.20 | 29.95 | 32.76 | 35.87 | 32.02 | 3.18 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | A16W16 | 31.27 | 30.53 | 36.79 | 35.90 | 33.50 | 0.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | A8W4 | 31.08 | 30.53 | 37.09 | 34.56 | 33.78 | -0.28 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours^† | A8W4 | 28.96 | 30.22 | 35.91 | 34.24 | 32.20 | 1.30 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-1-13B | FP16 | A16W16 | 44.60 | 37.10 | 54.00 | 53.50 | 47.10 | 0.00
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQunat | A8W8 | 44.14 | 36.51 | 54.05 | 52.65 | 46.64 | 0.54 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | W4A16 | 46.01 | 39.00 | 54.01 | 53.36 | 47.96 | -0.86 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FPTQ | W4A8 | 40.96 | 34.19 | 49.72 | 49.75 | 43.46 | 3.64 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | A16W16 | 40.73 | 38.31 | 54.60 | 54.04 | 47.06 | 0.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | A8W4 | 40.93 | 37.69 | 50.44 | 51.48 | 45.83 | 1.23 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours^† | A8W4 | 39.56 | 41.50 | 48.66 | 51.27 | 45.74 | 1.32 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-1-65B | FP16 | A16W16 | 61.80 | 52.00 | 73.30 | 67.60 | 63.50 | 0.00
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SmoothQunat | A8W8 | 61.32 | 50.50 | 71.69 | 66.90 | 62.56 | 0.94 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPTQ | A16W4 | 60.23 | 52.09 | 72.15 | 66.75 | 62.60 | 0.90 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FPTQ | A8W4 | 59.85 | 49.24 | 71.50 | 65.89 | 61.52 | 1.98 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| FP16 | A16W16 | 57.72 | 47.04 | 75.96 | 67.44 | 62.18 | 0.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | A8W4 | 56.76 | 43.62 | 75.07 | 65.62 | 61.21 | 0.97 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | Ours^† | A8W4 | 55.60 | 44.86 | 72.11 | 63.53 | 59.57 | 2.61 |'
+  prefs: []
+  type: TYPE_TB

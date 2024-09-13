@@ -1,0 +1,1853 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 19:04:46'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2405.16325](https://ar5iv.labs.arxiv.org/html/2405.16325)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Mohammad Mozaffari Amir Yazdanbakhsh Department of Compute Science Google DeepMind
+    University of Toronto Mountain View, USA [mmozaffari@cs.toronto.edu](mailto:)
+    [ayazdan@google.com](mailto:) Zhao Zhang Maryam Mehri Dehnavi Department of Electrical
+    and Computer Engineering Department of Compute Science Rutgers University University
+    of Toronto [zhao.zhang@rutgers.edu](mailto:) [mmehride@cs.toronto.edu](mailto:)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: 'We propose SLoPe, a Double-Pruned Sparse Plus Lazy Low-rank Adapter Pretraining
+    method for LLMs that improves the accuracy of sparse LLMs while accelerating their
+    pretraining and inference and reducing their memory footprint. Sparse pretraining
+    of LLMs reduces the accuracy of the model, to overcome this, prior work uses dense
+    models during fine-tuning. SLoPe improves the accuracy of sparsely pretrained
+    models by adding low-rank adapters in the final 1% iterations of pretraining without
+    adding significant overheads to the model pretraining and inference. In addition,
+    SLoPe uses a double-pruned backward pass formulation that prunes the transposed
+    weight matrix using N:M sparsity structures to enable an accelerated sparse backward
+    pass. SLoPe accelerates the training and inference of models with billions of
+    parameters up to $1.14\times$ for training and inference respectively.¹¹1Code
+    and data for SLoPe is available at: [https://bit.ly/slope-llm](https://bit.ly/slope-llm)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Large Language Models (LLMs) demonstrate significant potential for natural language
+    understanding and generation; however, they are expensive to train and execute
+    because of their extensive parameter count and the substantial volume of training
+    data required. The training process of LLMs include a pretraining [[42](#bib.bib42)]
+    and a fine-tuning stage. In the pretraining phase, the model is trained on a large
+    high-quality text [[16](#bib.bib16), [1](#bib.bib1)] and then fine-tuned on different
+    downstream tasks [[52](#bib.bib52), [45](#bib.bib45)]. Both phases require significant
+    amounts of computation, memory, and communication.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Model sparsity, in which the less important parts of the model are pruned, can
+    reduce the computation and memory overheads of LLM pretraining [[21](#bib.bib21)].
+    Sparsity is unstructured if elements are removed from arbitrary locations in the
+    tensors. Unstructured sparsity is hard to accelerate due to non-existing hardware/software
+    support [[53](#bib.bib53)]. To resolve this, structured sparsity imposes constraints
+    on where the zero elements can appear [[25](#bib.bib25), [30](#bib.bib30)], creating
+    dense blocks of nonzeros in the matrix to leverage dense compute routines. The
+    drawback of the structured sparse methods is that they limit the choice for sparsity
+    patterns leading to a reduction in accuracy in the sparse model when compared
+    to dense [[8](#bib.bib8)]. NVIDIA has recently introduced sparse tensor cores
+    [[37](#bib.bib37)] to their hardware that accelerate more flexible structured
+    sparsity patterns, i.e. 2:4 sparsity; hardware support for N:M sparsity where
+    at most N out of M consecutive elements are zero is not yet available but machine
+    learning practitioners are developing algorithms for these patterns [[26](#bib.bib26),
+    [32](#bib.bib32), [44](#bib.bib44)] .
+  prefs: []
+  type: TYPE_NORMAL
+- en: Applying N:M sparse masks to a model leads to accuracy loss because of their
+    limited choice of sparsity patterns. Changing the sparsity mask dynamically throughout
+    pretraining is one of the approaches proposed to address this issue [[11](#bib.bib11)].
+    Zhou et al. [[56](#bib.bib56)] proposes a novel metric for finding the N:M sparsity
+    patterns that lead to higher accuracy in each iteration. [[26](#bib.bib26)] suggest
+    the use of decaying masks to further improve the accuracy of the models. STEP
+    [[32](#bib.bib32)] proposes a new optimizer that improves the convergence of models
+    with adaptive masks. While the adaptive methods can improve the accuracy of the
+    models, they require storing the dense weights and possibly additional metrics
+    for updating the new sparsity patterns, while wasting a portion of the training
+    computations to train the weights that will be pruned in later iterations. SPDF
+    [[51](#bib.bib51)] and Sparse-Dense Pretraining (SD-P) [[23](#bib.bib23)], one
+    can compensate for the loss imposed by sparsity with a dense fine-tuning. But
+    the dense fine-tuning stage will disable the memory and compute savings of sparse
+    methods at inference. Inspired by this, we introduce additional non-zeros to the
+    weight in the last steps of pretraining. To avoid storing a dense model during
+    inference while getting the same capabilities of a dense weight, we add the non-zeros
+    in the form of low-rank adapters [[22](#bib.bib22)]. Our experiments show that
+    using low rank adaptors leads to noticeably faster convergence compared to when
+    the same number of learnable parameters are added to the sparse weights.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The use of N:M sparsity in LLM pretraining is limited to accelerating the forward
+    pass in the training loop because the row-wise N:M structure in the weight sparsity
+    pattern will be lost when the weights are transposed in the backward pass. Prior
+    work [[24](#bib.bib24), [55](#bib.bib55), [23](#bib.bib23)] attempt to leverage
+    sparsity in both forward and backward passes by finding transposable masks through
+    various methods: greedy search algorithms, searching among random permutations,
+    and searching among the results of convolution. However, these transposable masks
+    reduce model accuracy and add significant runtime overheads [[23](#bib.bib23)],
+    often resulting to slow-downs (up to $\texttt{8.4}\times$). To address these issues,
+    we propose a double-pruned backward pass formulation with theoretical convergence
+    guarantees. Instead of enforcing the weight transpose to be N:M sparse, our approach
+    transposes the N:M weight matrix first and then imposes N:M sparsity. This allows
+    the weight matrices to exhibit a wider range of sparsity patterns, leading to
+    improved accuracy.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our method, SLoPe, is a Double-Pruned Sparse Plus Lazy Low-rank Adapter Pretraining
+    method for LLMs. It employs a *static* N:M sparsity mask with a double-pruned
+    backward pass formulation to accelerate both the forward and backward passes.
+    Key contributions of SLoPe are:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Double-Pruned backward pass $\rightarrow$ We propose to transpose an already
+    sparsifiedd N:M weight matrix (forward pass) before imposing another round of
+    N:M sparsity (backward pass), improving model quality and reducing mask search
+    overheads.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Lazy Low-Rank adapters $\rightarrow$ We introduce additional parameters with
+    minimal compute and memory overheads, merely for the last 1% iterations of pretraining,
+    improving model capacity (see Figure [1](#S1.F1 "Figure 1 ‣ 1 Introduction ‣ SLoPe:
+    Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs")).'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Optimized CUDA kernels $\rightarrow$, respectively.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/c82ebb0cadc4073ad403389095ac1c51.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: The sparse training pipeline in SLoPe. Here, $\mathcal{X}$ sparsification,
+    leading to extra imposed zeros. Blue elements represent non-zero values, while
+    white elements represent pruned values, and red elements indicate additional zeros
+    introduced during the backward pass.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2 Sparse plus low-rank pretraining of LLMs
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Equation [1](#S2.E1 "In 2 Sparse plus low-rank pretraining of LLMs ‣ SLoPe:
+    Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs"), [2](#S2.E2
+    "In 2 Sparse plus low-rank pretraining of LLMs ‣ SLoPe: Double-Pruned Sparse Plus
+    Lazy Low-Rank Adapter Pretraining of LLMs"), and [3](#S2.E3 "In 2 Sparse plus
+    low-rank pretraining of LLMs ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank
+    Adapter Pretraining of LLMs") depict the formulas for the forward and backward
+    pass of the $i$ refer to the input and output dimensions of the respective layer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathrm{FWD}\mathrel{\ooalign{$\rightarrow$\cr\kern-0.6458pt\raise 1.18399pt\hbox{\scalebox{1.0}[0.522]{$\mid$}}\cr}}\mathcal{Y}_{i}=\mathcal{X}_{i}\mathcal{W}_{i}^{T}$
+    |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\mathrm{BWD-1}\mathrel{\ooalign{$\rightarrow$\cr\kern-0.6458pt\raise
+    1.18399pt\hbox{\scalebox{1.0}[0.522]{$\mid$}}\cr}}\nabla_{W_{i}}\mathcal{L}=\nabla_{Y_{i}}\mathcal{L}^{T}\mathcal{X}_{i}$
+    |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\mathrm{BWD-2}\mathrel{\ooalign{$\rightarrow$\cr\kern-0.6458pt\raise
+    1.18399pt\hbox{\scalebox{1.0}[0.522]{$\mid$}}\cr}}\nabla_{X_{i}}\mathcal{L}=\nabla_{Y_{i}}\mathcal{L}\mathcal{W}_{i}$
+    |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: The dimension along which N:M pruning occurs corresponds to the reduction dimension
+    in Matrix-Matrix multiplication. Without this restriction, the sparse Matrix-Matrix
+    operation can not be accelerated on GPU [[39](#bib.bib39)]. With this restriction
+    in mind, to leverage weight sparsity in forward and backward pass, one needs to
+    prune elements along the columns of $\mathcal{W}_{i}^{T}$ along both row and column
+    dimensions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.1 Double-pruned backward pass
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Various approaches can be used to exploit N:M sparsity during both the forward
+    and backward passes. For example, one may prune the activation tensor $\mathcal{X}_{i}$
+    in BWD-2 along the column dimension. Although diverse combinations exist for pruning,
+    our focus in this study is primarily on the sparsification of weight tensors for
+    two reasons: (a) the sparsification of weight tensors directly impact the resource
+    required for model storage and serving, and (b) our initial findings indicate
+    that pruning weight tensors during both forward and backward passes has a comparatively
+    lesser adverse impact on the overall end-to-end model quality. More details on
+    our experiments can be found in [J](#A10 "Appendix J Sensitivity to the choice
+    of pruning matrix ‣ Appendix ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank
+    Adapter Pretraining of LLMs"). As such, we posit a double-pruned backward pass
+    formulation that can productively accelerate FWD and BWD-2 computations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In addition, we prove that such materialization of pruned weight tensors, despite
+    being lossy²²2We term this formulation “lossy” because the weight matrix undergoes
+    information loss during the backward pass compare to its state in the forward
+    pass., exhibits convergence properties. For the rest of this paper, we represent
+    the weight tensor subjected to row-wise pruning as $\mathcal{W}_{i}^{R}$. We rewrite
+    the training equations to accommodate these modifications, with proposed changes
+    highlighted in blue:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathrm{FWD}\mathrel{\ooalign{$\rightarrow$\cr\kern-0.6458pt\raise 1.18399pt\hbox{\scalebox{1.0}[0.522]{$\mid$}}\cr}}\mathcal{Y}_{i}=\mathcal{X}_{i}{\color[rgb]{0,0,1}{{{\mathcal{W}_{i}^{R}}}^{T}}}$
+    |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\mathrm{BWD-1}\mathrel{\ooalign{$\rightarrow$\cr\kern-0.6458pt\raise
+    1.18399pt\hbox{\scalebox{1.0}[0.522]{$\mid$}}\cr}}\nabla_{W_{i}}\mathcal{L}=\nabla_{Y_{i}}\mathcal{L}^{T}\mathcal{X}_{i}$
+    |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\mathrm{BWD-2}\mathrel{\ooalign{$\rightarrow$\cr\kern-0.6458pt\raise
+    1.18399pt\hbox{\scalebox{1.0}[0.522]{$\mid$}}\cr}}\nabla_{X_{i}}\mathcal{L}=\nabla_{Y_{i}}\mathcal{L}{\color[rgb]{0,0,1}{{\mathcal{W}_{i}^{R,C}}}}$
+    |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: Using this formulation for training, we can accelerate both forward and backward
+    passes owing to the existence of N:M sparsity along both dimensions of weight
+    tensors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Memory footprint analysis. Inducing N:M structured sparsity not only improves
+    computational efficiency of GEMM operations but also reduces the memory footprint
+    for storing sparse tensors. It is noteworthy, however, that the storage of auxiliary
+    meta-data becomes necessary, containing information about the locations of non-zero
+    elements in a supporting matrix. Equation [7](#S2.E7 "In 2.1 Double-pruned backward
+    pass ‣ 2 Sparse plus low-rank pretraining of LLMs ‣ SLoPe: Double-Pruned Sparse
+    Plus Lazy Low-Rank Adapter Pretraining of LLMs") delineates the requisite number
+    of bits for storing the indices in the N:M sparsity format, where $\lceil.\rceil$
+    denoting the ceiling function. We present the detailed results on the memory footprint
+    reduction in [section 3](#S3 "3 Experimental results ‣ SLoPe: Double-Pruned Sparse
+    Plus Lazy Low-Rank Adapter Pretraining of LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $n^{N:M}_{index}=\left\lceil{log\left({\binom{M}{N}}\right)}\right\rceil$
+    |  | (7) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Convergence analysis. [2.1](#S2.Thmtheorem1 "Lemma 2.1\. ‣ 2.1 Double-pruned
+    backward pass ‣ 2 Sparse plus low-rank pretraining of LLMs ‣ SLoPe: Double-Pruned
+    Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs") (proof in  [subsection O.1](#A15.SS1
+    "O.1 Lemma 2.1 ‣ Appendix O Proofs ‣ Appendix ‣ SLoPe: Double-Pruned Sparse Plus
+    Lazy Low-Rank Adapter Pretraining of LLMs")) shows the additional sparsity resulting
+    from double pruning to an initially row-wise N:M pruned matrix. Following this
+    lemma, we quantify the increased sparsity induced by double pruning with 1:2,
+    2:4, and 2:8 sparsity patterns as $12.5\%$, respectively. This observation underscores
+    that as the value of M in N:M increases, the surplus of zero elements in a double-pruned
+    matrix diminishes. This reduction in zero elements consequently implies a decrease
+    in computational errors, enhancing the robustness of the computations. We expound
+    further insights into this phenomenon in [Appendix I](#A9 "Appendix I Sparsity
+    ratio analysis of double-pruned backward pass ‣ Appendix ‣ SLoPe: Double-Pruned
+    Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lemma 2.1.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Consider a randomly initialized matrix $A$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $D(A^{R})-D(A^{R,C})=\sum_{j=N+1}^{M}{\binom{M}{j}}s^{j}(1-s)^{M-j}\frac{j-N}{M}$
+    |  | (8) |'
+  prefs: []
+  type: TYPE_TB
+- en: '[Theorem 2.2](#S2.Thmtheorem2 "Theorem 2.2\. ‣ 2.1 Double-pruned backward pass
+    ‣ 2 Sparse plus low-rank pretraining of LLMs ‣ SLoPe: Double-Pruned Sparse Plus
+    Lazy Low-Rank Adapter Pretraining of LLMs") states that the dynamic alteration
+    of the column-wise mask in [Equation 5](#S2.E5 "5 ‣ 2.1 Double-pruned backward
+    pass ‣ 2 Sparse plus low-rank pretraining of LLMs ‣ SLoPe: Double-Pruned Sparse
+    Plus Lazy Low-Rank Adapter Pretraining of LLMs") during each training iteration
+    does not exert a detrimental impact on the convergence of the optimizer. This
+    phenomenon can be attributed to the equivalence between the left-hand side of
+    [Equation 9](#S2.E9 "9 ‣ Theorem 2.2\. ‣ 2.1 Double-pruned backward pass ‣ 2 Sparse
+    plus low-rank pretraining of LLMs ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank
+    Adapter Pretraining of LLMs"), which corresponds to [Equation 3](#S2.E3 "3 ‣ 2
+    Sparse plus low-rank pretraining of LLMs ‣ SLoPe: Double-Pruned Sparse Plus Lazy
+    Low-Rank Adapter Pretraining of LLMs") [BWD-2], and the averaging effect achieved
+    through multiple training iterations of backpropagation with distinct sparsity
+    mask. However, for arbitrary values of N and M, [4](#S2.E4 "In 2.1 Double-pruned
+    backward pass ‣ 2 Sparse plus low-rank pretraining of LLMs ‣ SLoPe: Double-Pruned
+    Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs") and [5](#S2.E5 "In 2.1
+    Double-pruned backward pass ‣ 2 Sparse plus low-rank pretraining of LLMs ‣ SLoPe:
+    Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs") can be used
+    in the training with convergence guarantee (proof in  [subsection O.1](#A15.SS1
+    "O.1 Lemma 2.1 ‣ Appendix O Proofs ‣ Appendix ‣ SLoPe: Double-Pruned Sparse Plus
+    Lazy Low-Rank Adapter Pretraining of LLMs")).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Theorem 2.2.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Assuming a loss function $\mathcal{L(W_{i},X_{i}})$ is the element-wise multiplication.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (9) |'
+  prefs: []
+  type: TYPE_TB
+- en: 2.2 Lazy low-rank adapters
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Pruning weight tensors in FWD and BWD-2 computations is desirable for computational
+    efficiency but may have detrimental impact on quality. To mitigate this adverse
+    impact on model quality, we augment the doubly-pruned weight matrix with a low-rank
+    matrix. The decomposition of the doubly-pruned weight matrix, combined with the
+    low-rank matrix, maintains the computational efficiency of spare Matrix-Matrix
+    multiplication during forward and backward passes. Simultaneously, this approach
+    holds promise in alleviating the adverse effects of double pruning on overall
+    model quality.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Considering the dense weight matrix, denoted by $W_{dense}\in\mathbb{R}^{d_{out}\times
+    d_{in}}$ functions as a hyperparameter that controls the trade-offs between memory
+    footprint, computational efficiency, and model quality.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathcal{W}_{dense}=\mathcal{W}_{sparse}+\mathcal{L}\mathcal{R}$ |  |
+    (10) |'
+  prefs: []
+  type: TYPE_TB
+- en: The matrix decomposition of doubly-pruned matrix combined with a low-rank matrix
+    approximation reduces the memory footprint of $\mathcal{W}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We empirically show that the convergence rate of low-rank adapters surpasses
+    that of sparse weights. We attribute this behavior to the notably lower parameter
+    counts inherent in low-rank adapters. Leveraging this observation, we incorporate
+    low-rank adapters exclusively during the final 1% of the training iterations.
+    This confined usages of low-rank adapters results in additional reduction of training
+    cost, specifically in terms of total number of operations. We term the proposed
+    usage of low-rank adapters in the final steps of the training as lazy low-rank
+    adapters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.3 Sparse kernels
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: cuSPARSELt is a CUDA library designed explicitly for sparse Matrix-Matrix multiplication,
+    where one operand undergoes pruning with the 2:4 sparsity pattern. However, this
+    library does not offer APIs for other algebraic routines such as addition and
+    assignment for sparse tensors. We now delve into the details of different kernels
+    for training and overview our implementation methodology.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Algorithm [1](#alg1 "Algorithm 1 ‣ 2.3 Sparse kernels ‣ 2 Sparse plus low-rank
+    pretraining of LLMs ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining
+    of LLMs") shows the training process of a single linear layer taken from an attention-based
+    model. We assume the use of weight decay in the optimizers, and subsequently design
+    the requisite sparse APIs to facilitate the optimizer operations. The training
+    starts with matrix initialization (line 2) and setting up sparse formats to store
+    weight tensors and their corresponding transpose (line 3 and 4). Then, for every
+    mini-batch in the training set, we compute the forward pass following [Equation 4](#S2.E4
+    "4 ‣ 2.1 Double-pruned backward pass ‣ 2 Sparse plus low-rank pretraining of LLMs
+    ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs")
+    (line 8). As part of the backward pass, the derivative of the loss function with
+    respect to the output activation is computed (line 10). Subsequently, the gradients
+    of the loss function with respect to the weight tensor (line 11) and the input
+    activation (line 12) are computed using [Equation 2](#S2.E2 "2 ‣ 2 Sparse plus
+    low-rank pretraining of LLMs ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank
+    Adapter Pretraining of LLMs") and [Equation 5](#S2.E5 "5 ‣ 2.1 Double-pruned backward
+    pass ‣ 2 Sparse plus low-rank pretraining of LLMs ‣ SLoPe: Double-Pruned Sparse
+    Plus Lazy Low-Rank Adapter Pretraining of LLMs"), respectively. In order to circumvent
+    the necessity of updating weights with zero values and mitigate the associated
+    memory footprint overhead, we employ a strategy wherein we mask the gradients
+    for pruned weights. The computed values are stored in a sparse format (line 13).
+    Next, in order to implement weight decay in the optimizer and mitigate the impact
+    of gradient scaling, we compute the value of $\frac{1}{\gamma}\nabla_{W}\mathcal{L}+\alpha
+    W$ denotes the gradient scaling factor for numerical stability during the half-precision
+    backward pass. The updated values for the weight tensor are calculated according
+    to the optimizer update rule (line 16). Finally, the value of weight tensor and
+    its transpose are updated directly in a sparse format (line 17 and line 18). More
+    details about the implementation of the custom kernels used in Algorithm [1](#alg1
+    "Algorithm 1 ‣ 2.3 Sparse kernels ‣ 2 Sparse plus low-rank pretraining of LLMs
+    ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs")
+    can be found in Appendix [K](#A11 "Appendix K Implementation details ‣ Appendix
+    ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 1 Accelerated Sparse Pretraining Algorithm for a Linear Layer
+  prefs: []
+  type: TYPE_NORMAL
+- en: '1:  Input: Weight: $W$)16:     WNew = optimizer.updateWeight(g)17:     backend.updateSparseMatrix(WSparse,
+    WNew)18:     backend.updateSparseMatrix(WSparseTranspose, WNew.transpose())19:  end for'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 2.4 SLoPe runtime optimization
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: While SLoPe improves the training and inference of LLMs by introducing sparse
+    weights and low-rank adapters, a naïve implementation can hinder its full performance
+    improvement. Specifically, cuSPARSELt [[38](#bib.bib38)] SpMM kernels exhibit
+    sensitivity to input and weight tensor shapes, and introducing low-rank adapters
+    at inference increases can increase the number of calls during the forward pass
+    of each linear layer. This section covers our approach to optimize SLoPe’s implementation
+    and further improve model performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Efficient tiling of upsample tensors. Figure [3](#S3.F3 "Figure 3 ‣ 3.2 Pretraining
+    accuracy results ‣ 3 Experimental results ‣ SLoPe: Double-Pruned Sparse Plus Lazy
+    Low-Rank Adapter Pretraining of LLMs")-(a) showcases the speedup achieved by the
+    cuSPARSELt backend across a range of tensor shapes commonly used in LLMs. While
+    the speedup of SpMM in downsample tensors increases gradually as their sizes increase,
+    the speedup of upsample tensor drops off at around hidden dimension = 4000. To
+    overcome this limitation, we tile the upsample tensor into multiple smaller matrices
+    of equal size, each of which benefits from improved speedup when multiplied by
+    the input using 2:4 sparsity. By tuning the size of the tiles, we figured that
+    the best performance can be achieved by using square tiles. The results of these
+    multiplications are then concatenated. This optimization, as detailed in Appendix [E](#A5
+    "Appendix E Efficient weight tiling implementation ‣ Appendix ‣ SLoPe: Double-Pruned
+    Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs"), leads to a 12% improvement
+    in inference speed and a 4% increase in training speed with SLoPe.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Efficient kernel for combined SpMM+low-rank adapters. A straightforward implementation
+    of low-rank adapters requires four kernel calls: one for sparse matrix multiplication,
+    two for low-rank computations, and one for adding the results. In addition, our
+    experiments demonstrate that multiplying matrices with low-rank adapters does
+    not scale proportionally with the adapter’s rank, leading to significant overheads
+    due to their low arithmetic intensity (see Appendix [C](#A3 "Appendix C Low-Rank
+    Adapter Performance: Scaling and Arithmetic Intensity ‣ Appendix ‣ SLoPe: Double-Pruned
+    Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs")). To address this, we
+    introduce two optimizations: (1) concatenating the downsample tensor to the sparse
+    weight tensor, reducing kernel calls and increasing arithmetic intensity as in
+    Equation [11](#S2.E11 "In 2.4 SLoPe runtime optimization ‣ 2 Sparse plus low-rank
+    pretraining of LLMs ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining
+    of LLMs")-left, and (2) leveraging a cuBLAS fused matrix multiplication and addition
+    kernel, minimizing cache access and kernel calls as in Equation [11](#S2.E11 "In
+    2.4 SLoPe runtime optimization ‣ 2 Sparse plus low-rank pretraining of LLMs ‣
+    SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs")-right.
+    As demonstrated in Appendix [D](#A4 "Appendix D Efficient low-rank adapter implementation
+    ‣ Appendix ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining
+    of LLMs"), these optimizations collectively contribute to a speedup improvement
+    of up to 6% in the end-to-end inference speed.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $[Y_{1}&#124;Y_{2}]=X[W^{T}&#124;L];\hskip 40.0ptY=Y_{2}R+Y_{1}$ |  |
+    (11) |'
+  prefs: []
+  type: TYPE_TB
+- en: 3 Experimental results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This section evaluates the efficacy of SLoPe in accelerating the pretraining
+    while achieving memory savings. Due to the substantial computational resources
+    required for LLM pretraining, our accuracy evaluation is primarily focused on
+    smaller-scale LLMs up to 774M parameters. However, the speedup and memory reduction
+    results extend to a wider range of models, from 2.6B up to 66B parameters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '3.1 End-to-end speedup and memory saving: pretraining and inference'
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: We evaluate the speedup and memory reduction by SLoPe during pretraining and
+    inference across LLMs with different model parameter sizes. To demonstrate the
+    scalability and efficiency of SLoPe, we conducted extensive benchmarking on OPT
+    models (2.6 B to 66 B). In each of the speedup experiments, we have run the code
+    for 1000 iterations, and reported the median to reduce the effect of outliers.
+    We have run each memory reduction experiment five times and reported the median.³³3Since
+    benchmarking speedup and memory savings require fewer resources than complete
+    pretraining accuracy experiments, we use the class of OPT models that offers different
+    model parameter sizes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We compared our method against dense pretraining and inference directly in
+    PyTorch, which uses efficient cuBLAS backend. As the sparse pretraining benchmark,
+    we compare our work against Sparse-Dense Pretraining (SD-P) [[23](#bib.bib23)],
+    the state-of-the-art 2:4 pretraining method and the only semi-structured sparse
+    pretraining work that provides end-to-end speedups. Note that methods targeting
+    LLM pretraining with N:M sparsity often suffer from inefficiency due to mask search
+    overheads and/or compression setup. Appendix [H](#A8 "Appendix H Performance overhead
+    of bidirectional mask ‣ Appendix ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank
+    Adapter Pretraining of LLMs") and Appendix [B](#A2 "Appendix B cuSPARSELt Initialization
+    Overhead: Static vs. Dynamic Sparsity ‣ Appendix ‣ SLoPe: Double-Pruned Sparse
+    Plus Lazy Low-Rank Adapter Pretraining of LLMs") detail the profiling in Bi-Mask [[55](#bib.bib55)]
+    and SD-P [[23](#bib.bib23)], which similarly use N:M sparsity on both forward
+    and backward passes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Notably, our approach, SLoPe, diverges significantly from recent work Sparse-Dense
+    Pretraining (SD-P) [[23](#bib.bib23)] in two key aspects. Firstly, we comprehensively
+    prune all weights in the model, encompassing both MLP-Mixer and Self-Attention
+    modules, whereas SD-P only prunes weights in the MLP-Mixer modules. Secondly,
+    SD-P employs dynamic transposable weights, which introduce additional computation
+    and memory overhead during training. Finally, SD-P  necessitates dense fine-tuning,
+    thereby negating their speedup advantages during inference. In contrast, our approach
+    achieves efficient and accurate large language models during both training and
+    inference without such limitations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'SLoPe speedup for pretraining and inference. Table [1](#S3.T1 "Table 1 ‣ 3.1
+    End-to-end speedup and memory saving: pretraining and inference ‣ 3 Experimental
+    results ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining of
+    LLMs") summarizes the speedups achieved by our method during both training and
+    inference. Since over 99% of training occurs without low-rank adapters, the training
+    speedup is largely independent of the adapter rank. Conversely, inference speedup
+    is directly influenced by the adapter rank. Given the varying hidden dimensions
+    across different model sizes, we report the inference speedup for various adapter
+    rank ratios: $\frac{adapter-rank}{hidden-dimension}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: Comparative analysis of end-to-end pretraining and inference speedup
+    ($\times$) comparison between SLoPe and the latest work (SD-P) on accelerating
+    pretraining with 2:4 sparsity (ICML 2024) [[23](#bib.bib23)]. Note that the lack
+    of inference speedup in SD-P  is because of the final dense pretraining during
+    the final iterations, resulting in a dense model for inference.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Method | Training | Inference |'
+  prefs: []
+  type: TYPE_TB
+- en: '| No Adapter ($r$ = 0) | 1.56% Adapter | 6.25% Adapter |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-66B | SLoPe | 1.13 | 1.34 | 1.31 | 1.30 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SD-P | 1.07 | 1.00 | 1.00 | 1.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-30B | SLoPe | 1.14 | 1.32 | 1.28 | 1.27 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SD-P | 1.05 | 1.00 | 1.00 | 1.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-13B | SLoPe | 1.12 | 1.30 | 1.30 | 1.12 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SD-P | 1.08 | 1.00 | 1.00 | 1.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-6.6B | SLoPe | 1.08 | 1.21 | 1.13 | 1.12 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SD-P | 1.08 | 1.00 | 1.00 | 1.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-2.6B | SLoPe | 1.03 | 1.07 | 1.05 | 1.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SD-P | 1.05 | 1.00 | 1.00 | 1.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 2: Comparative analysis of end-to-end memory reductions ($\times$ show
+    memory overhead.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Method | Training | Inference |'
+  prefs: []
+  type: TYPE_TB
+- en: '| No Adapter ($r$ = 0) | 1.56% Adapter | 6.25% Adapter |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-66B | SLoPe | 0.77 | 0.63 | 0.65 | 0.70 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SD-P | 1.27 | 1.00 | 1.00 | 1.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-30B | SLoPe | 0.77 | 0.61 | 0.63 | 0.69 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SD-P | 1.25 | 1.00 | 1.00 | 1.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-13B | SLoPe | 0.78 | 0.51 | 0.62 | 0.68 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SD-P | 1.25 | 1.00 | 1.00 | 1.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-6.6B | SLoPe | 0.77 | 0.60 | 0.62 | 0.68 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SD-P | 1.28 | 1.00 | 1.00 | 1.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-2.6B | SLoPe | 0.77 | 0.62 | 0.64 | 0.70 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SD-P | 1.27 | 1.00 | 1.00 | 1.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Figure [3](#S3.F3 "Figure 3 ‣ 3.2 Pretraining accuracy results ‣ 3 Experimental
+    results ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining of
+    LLMs")-(a) illustrates that cuSPARSELt achieves higher speedups for large matrices
+    until it reaches its maximum performance capacity ($2\times$). A similar trend
+    is observed in the pretraining and inference speedups of the models. For small
+    matrices used in low-rank adapters, the lower arithmetic intensity of low-rank
+    adapter multiplication results in higher overhead relative to sparse multiplication.
+    This is because low arithmetic intensity limits the full utilization of GPU resources,
+    leading to inefficiencies.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'SLoPe memory reduction in pretraining and inference. During pretraining, the
+    size of the gradients and optimizer states is halved (2:4 sparsity), although
+    there is still an overhead for storing the binary masks. For weight matrices (See
+    Equation [7](#S2.E7 "In 2.1 Double-pruned backward pass ‣ 2 Sparse plus low-rank
+    pretraining of LLMs ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining
+    of LLMs")), the indexing overhead is $n^{2:4}_{index}=3$, respectively.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table [2](#S3.T2 "Table 2 ‣ 3.1 End-to-end speedup and memory saving: pretraining
+    and inference ‣ 3 Experimental results ‣ SLoPe: Double-Pruned Sparse Plus Lazy
+    Low-Rank Adapter Pretraining of LLMs") presents the memory reduction for different
+    low-rank adapter ranks and OPT model variants. The memory reduction is slightly
+    less than the theoretical expectation, primarily because of additional memory
+    usage from other model components, such as layer norms, and dense model parameters.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Pretraining accuracy results
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'To assess the impact of SLoPe on model accuracy, we conducted pretraining experiments
+    across various models and datasets (details in Appendix [N](#A14 "Appendix N Experiment
+    setup, hyperparameters, compute resources ‣ Appendix ‣ SLoPe: Double-Pruned Sparse
+    Plus Lazy Low-Rank Adapter Pretraining of LLMs")). In all experiments, the classifications
+    heads and the first linear layer following the input are dense.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: GPT2 (Small/Large). We pretrained both the small (117 M parameters) and large
+    (774 M parameters) variants of GPT2 [[43](#bib.bib43)] on the OpenWebText dataset [[1](#bib.bib1)].
+    For a fair comparison, we evaluate the validation perplexity following the same
+    experimental settings described in FlashAttention [[9](#bib.bib9), [7](#bib.bib7)].
+    We compare SLoPe against two state-of-the-art sparse pretraining methods, including
+    (a) WANDA [[48](#bib.bib48)] $\rightarrow$ a dynamic mask pretraining method for
+    N:M sparsity, which serves as the foundation of follow-up work [[24](#bib.bib24),
+    [55](#bib.bib55), [23](#bib.bib23)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/59af7653b3567b7bc315d2172f7424d5.png) ![Refer to caption](img/b8340d3cfeaec127117f380c4254c5fd.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Validation perplexity of GPT2-Small and GPT2-Large on OpenWebText.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure [2](#S3.F2 "Figure 2 ‣ 3.2 Pretraining accuracy results ‣ 3 Experimental
+    results ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining of
+    LLMs") compares the validation perplexity of GPT2-Small and GPT2-Large across
+    a range of sparse pretraining methods. While a gap in perplexity consistently
+    exists between sparse and dense models, SLoPe achieves a lower perplexity compared
+    to WANDA [[48](#bib.bib48)] and SR-STE [[56](#bib.bib56)]. This improved accuracy
+    stems from SLoPe’s efficient allocation of the training budget. Specifically,
+    SR-STE, with its dynamic pruning masks, expends a significant portion of its training
+    budget (e.g. gradient updates) updating weights that may be ultimately pruned
+    and not used at inference, leading to wasted resources. Appendix [A](#A1 "Appendix
+    A Comparison with Dynamic Sparsity: SR-STE ‣ Appendix ‣ SLoPe: Double-Pruned Sparse
+    Plus Lazy Low-Rank Adapter Pretraining of LLMs") provides further details and
+    supporting evidence for this observation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'BERT-Large-Uncased. We pretrain BERT-Large-Uncased [[12](#bib.bib12)] (355 M
+    parameters) and fine-tune it for various question-answering and text classification
+    tasks, following a similar approach to [[40](#bib.bib40), [33](#bib.bib33), [41](#bib.bib41)]
+    for both pretraining and fine-tuning. Appendix [G](#A7 "Appendix G BERT-Large-Uncased:
+    Pretraining and Downstream Evaluation ‣ Appendix ‣ SLoPe: Double-Pruned Sparse
+    Plus Lazy Low-Rank Adapter Pretraining of LLMs") provides details on the pretraining
+    and fine-tuning process. We evaluate the performance of BERT-Large-Uncased on
+    the SQuAD v1.1 [[45](#bib.bib45)] and GLUE [[52](#bib.bib52)] tasks. We report
+    the average metric score for GLUE and present the task-specific metrics in Appendix [L](#A12
+    "Appendix L Task-specific GLUE results ‣ Appendix ‣ SLoPe: Double-Pruned Sparse
+    Plus Lazy Low-Rank Adapter Pretraining of LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Effects of low-rank adapters. To understand the impact of low-rank adapters
+    on pretraining performance, we conducted ablations using low-rank adapter ranks
+    of 4, 16, and 64 for 1% of the total number of iterations. These ranks represent
+    up to 6.25% of the model’s hidden dimension. Table [3](#S3.T3 "Table 3 ‣ 3.2 Pretraining
+    accuracy results ‣ 3 Experimental results ‣ SLoPe: Double-Pruned Sparse Plus Lazy
+    Low-Rank Adapter Pretraining of LLMs") shows the results of these settings on
+    SQuAD and GLUE downstream tasks. We present per-task metrics for GLUE in Appendix [L](#A12
+    "Appendix L Task-specific GLUE results ‣ Appendix ‣ SLoPe: Double-Pruned Sparse
+    Plus Lazy Low-Rank Adapter Pretraining of LLMs"). As expected, adding low-rank
+    adapters improve the model’s final accuracy across all tasks. Additionally, higher
+    ranks improve the model’s performance at the cost of increased computational requirements.
+    It is also worth to note that incorporating low-rank adapters only in the final
+    iterations (1% of total iterations) is sufficient to recover pretraining accuracy.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Convergence rate of low-rank adapters. We hypothesized that low-rank adapters
+    would converge faster due to their significantly fewer learnable parameters. To
+    test this, we introduced low-rank adapters in the second phase of BERT-Large-Uncased
+    pretraining and monitored their convergence rate. Figure [3](#S3.F3 "Figure 3
+    ‣ 3.2 Pretraining accuracy results ‣ 3 Experimental results ‣ SLoPe: Double-Pruned
+    Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs") shows the cosine similarity
+    of the adapters, with the downsample adapter converging rapidly within 100 iterations
+    and the upsample adapter converging slightly slower. Despite this, limiting training
+    to 100 iterations still yields comparable results on downstream tasks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 3: SQuADv1.1 and GLUE results on BERT-Large-Uncased with different adapter
+    ranks. $r$ denotes the ratio of the low-rank adapter to the hidden dimension (1024).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Dataset | Dense | $r=0$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SQuAD | 90.44 | 89.1 | 89.1 | 89.2 | 89.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GLUE | 80.22 | 77.4 | 77.7 | 77.8 | 78.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '![Refer to caption](img/2905e92f0d624ea86e2ec3558d5154b0.png) ![Refer to caption](img/ccbba7c1df1509a4c8da4a0107ee5894.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: (a)                                                                                                                                    
+    (b)
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 3: (a) The speedup achieved using cuSPARSELt backend in PyTorch for
+    Attention ($d_{out}=d_{in}$) matrices with a batch size of 2048\. (b) The cosine
+    similarity of the low-rank adapters and the converged adapters for different layers
+    in the model. The cosine similarities are averaged among the 24 layers of BERT-Large-Uncased.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Effects of mixed N:M sparsity. To study the sensitivity of different blocks
+    to varying sparsity ratios and to assess their relative importance, we experiment
+    across a range of configurations: (a) [2:4-2:4] $\rightarrow$ we reverse the sparsity
+    ratios for the first and last 12 blocks. Note that, to reduce computational costs,
+    we use the same dense checkpoint for Phase-1 in all settings and a low-rank adapter
+    of rank 40 for all models. We also replicate this experiment using WANDA [[48](#bib.bib48)]
+    and report the comparison results.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 4: SQuADv1.1 results on BERT-Large-Uncased for different sparsity settings.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Sparsity Pattern | SQuAD | SQuAD | GLUE | GLUE |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| (First 12 blocks - Last 12 blocks) | SLoPe | WANDA | SLoPe | WANDA |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2:4-2:4 | 90.17 | 89.93 | 79.08 | 78.84 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2:4-2:8 | 89.85 | 89.55 | 79.03 | 77.24 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2:8-2:4 | 89.67 | 86.57 | 75.92 | 69.08 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table [4](#S3.T4 "Table 4 ‣ 3.2 Pretraining accuracy results ‣ 3 Experimental
+    results ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining of
+    LLMs") summarizes the GLUE and SQuAD results for these settings. As the results
+    show, increasing the sparsity ratio reduces the accuracy of the model on all tasks.
+    But when the first 12 blocks of the model are pruned, the accuracy drop is significantly
+    higher, especially on the GLUE dataset. We conclude that the first blocks of the
+    model are more sensitive to sparsity during pretraining, but one can sparsify
+    the last blocks of LLMs more aggressively. We observe a similar pattern in WANDA
+    results as well, but WANDA performs consistently worse than SLoPe in these cases.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Effects of sparsification on different modules. Each block in LLMs consists
+    of a self-attention module and an MLP mixer module, each containing multiple linear
+    layers. We have analyzed the sensitivity of SLoPe to pruning each of those modules.
+    Our results in Appendix [F](#A6 "Appendix F SLoPe sensitivity to pruning different
+    module in transformer ‣ Appendix ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank
+    Adapter Pretraining of LLMs") demonstrate that SLoPe can sustain competitive quality
+    results while pruning all modules in the model.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Conclusion
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In conclusion, SLoPe improves both pretraining and inference times while reducing
+    memory footprint with negligible impact on model performance. SLoPe achieves these
+    benefits by effectively using N:M sparsity and lazy low-rank adapters in both
+    forward and backward passes, supported by an efficient design of CUDA kernels.
+    Additionally, the use of lazy low-rank adapters allows for balancing memory footprint
+    and model accuracy across a wide range models. The results show that SLoPe achieve
+    up to 1.14$\times$ (inference).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Acknowledgments and Disclosure of Funding
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This work was also supported in part by NSERC Discovery Grants (RGPIN-06516,
+    DGECR00303), the Canada Research Chairs program, Ontario Early Researcher award,
+    the Canada Research Chairs program, the Ontario Early Researcher Award, and the
+    Digital Research Alliance of Canada ([www.alliancecan.ca](www.alliancecan.ca)).
+    Work of Zhao Zhang was supported by National Science Foundation OAC-2401246\.
+    We also acknowledge the Texas Advanced Computing Center (TACC) at The University
+    of Texas at Austin for providing HPC resources that have contributed to the research
+    results reported within this paper ([http://www.tacc.utexas.edu)](http://www.tacc.utexas.edu))).
+    We extend our gratitude towards David Fleet, Karolina Dziugaite, Suvinay Subramanian,
+    Cliff Young, and Faraz Shahsavan for reviewing the paper and providing insightful
+    feedback. We also thank the extended team at Google DeepMind who enabled and supported
+    this research direction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '[1] Ellie Pavlick Aaron Gokaslan, Vanya Cohen and Stefanie Tellex. OpenWebText
+    Corpus, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[2] Dimitris Bertsimas, Ryan Cory-Wright, and Nicholas AG Johnson. Sparse Plus
+    Low Rank Matrix Decomposition: A Discrete Optimization Approach. JMLR, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[3] Beidi Chen, Tri Dao, Eric Winsor, Zhao Song, Atri Rudra, and Christopher
+    Ré. Scatterbrain: Unifying Sparse and Low-rank Attention Approximation. arXiv
+    preprint arXiv:2110.15343, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[4] Stanley F Chen, Douglas Beeferman, and Roni Rosenfeld. Evaluation Metrics
+    for Language Models. Carnegie Mellon University, 1998.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[5] Zhaodong Chen, Zheng Qu, Yuying Quan, Liu Liu, Yufei Ding, and Yuan Xie.
+    Dynamic N:M Fine-grained Structured Sparse Attention Mechanism. In PPoPP, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[6] Compute Canada. Compute Canada. [https://computecanada.ca/](https://computecanada.ca/).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[7] Tri Dao. Flashattention-2: Faster Attention with Better Parallelism and
+    Work Partitioning. arXiv preprint arXiv:2307.08691, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[8] Tri Dao, Beidi Chen, Kaizhao Liang, Jiaming Yang, Zhao Song, Atri Rudra,
+    and Christopher Re. Pixelated Butterfly: Simple and Efficient Sparse Training
+    for Neural Network Models. arXiv preprint arXiv:2112.00029, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[9] Tri Dao, Daniel Y. Fu, Stefano Ermon, Atri Rudra, and Christopher Ré. FlashAttention:
+    Fast and Memory-Efficient Exact Attention with IO-Awareness. In NeurIPS, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[10] Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, and Luke Zettlemoyer. QLoRA:
+    Efficient Finetuning of Quantized LLMs. arXiv preprint arXiv:2305.14314, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[11] Tim Dettmers and Luke Zettlemoyer. Sparse Networks from Scratch: Faster
+    Training without Losing Performance. arXiv preprint arXiv:1907.04840, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[12] Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. BERT:
+    Pre-training of Deep Bidirectional Transformers for Language Understanding. arXiv
+    preprint arXiv:1810.04805, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[13] Jonathan Frankle, Gintare Karolina Dziugaite, Daniel Roy, and Michael
+    Carbin. Linear Mode Connectivity and the Lottery Ticket Hypothesis. In ICML, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[14] Elias Frantar and Dan Alistarh. SparseGPT: Massive Language Models can
+    be Accurately Pruned in One-shot. In ICML, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[15] Trevor Gale, Erich Elsen, and Sara Hooker. The State of Sparsity in Deep
+    Neural Networks. arXiv preprint arXiv:1902.09574, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[16] Leo Gao, Stella Biderman, Sid Black, Laurence Golding, Travis Hoppe, Charles
+    Foster, Jason Phang, Horace He, Anish Thite, Noa Nabeshima, et al. The Pile: An
+    800GB Dataset of Diverse Text for Language Modeling. arXiv preprint arXiv:2101.00027,
+    2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[17] Han Guo, Philip Greengard, Eric P Xing, and Yoon Kim. LQ-LoRA: Low-rank
+    Plus Quantized Matrix Decomposition for Efficient Language Model Finetuning. arXiv
+    preprint arXiv:2311.12023, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[18] Song Han, Huizi Mao, and William J Dally. Deep Compression: Compressing
+    Deep Neural Networks with Pruning, Trained Quantization and Huffman Coding. arXiv
+    preprint arXiv:1510.00149, 2015.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[19] Song Han, Jeff Pool, John Tran, and William Dally. Learning both Weights
+    and Connections for Efficient Neural Network. NeurIPS, 2015.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[20] Babak Hassibi and David Stork. Second Order Derivatives for Network Pruning:
+    Optimal Brain Surgeon. NeurIPS, 1992.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[21] Torsten Hoefler, Dan Alistarh, Tal Ben-Nun, Nikoli Dryden, and Alexandra
+    Peste. Sparsity in Deep Learning: Pruning and Growth for Efficient Inference and
+    Training in Neural Networks. JMLR, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[22] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li,
+    Shean Wang, Lu Wang, and Weizhu Chen. LoRA: Low-rank Adaptation of Large Language
+    Models. arXiv preprint arXiv:2106.09685, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[23] Yuezhou Hu, Kang Zhao, Weiyu Huang, Jianfei Chen, and Jun Zhu. Accelerating
+    Transformer Pre-Training with 2:4 Sparsity. In ICML, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[24] Itay Hubara, Brian Chmiel, Moshe Island, Ron Banner, Joseph Naor, and
+    Daniel Soudry. Accelerated Sparse Neural Training: A Provable and Efficient Method
+    to find N:M Transposable Masks. NeurIPS, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[25] Yu Ji, Ling Liang, Lei Deng, Youyang Zhang, Youhui Zhang, and Yuan Xie.
+    TETRIS: Tile-matching the Tremendous Irregular Sparsity. NeurIPS, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[26] Sheng-Chun Kao, Amir Yazdanbakhsh, Suvinay Subramanian, Shivani Agrawal,
+    Utku Evci, and Tushar Krishna. Training Recipe for N:M Structured Sparsity with
+    Decaying Pruning Mask. arXiv preprint arXiv:2209.07617, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[27] Yann LeCun, John Denker, and Sara Solla. Optimal Brain Damage. NeurIPS,
+    2, 1989.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[28] Yixiao Li, Yifan Yu, Qingru Zhang, Chen Liang, Pengcheng He, Weizhu Chen,
+    and Tuo Zhao. LoSparse: Structured Compression of Large Language Models based
+    on Low-Rank and Sparse Approximation. arXiv preprint arXiv:2306.11222, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[29] Hong Liu, Sang Michael Xie, Zhiyuan Li, and Tengyu Ma. Same Pre-training
+    Loss, Better Downstream: Implicit Bias Matters for Language Models. In ICML, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[30] Zechun Liu, Haoyuan Mu, Xiangyu Zhang, Zichao Guo, Xin Yang, Kwang-Ting
+    Cheng, and Jian Sun. MetaPruning: Meta Learning for Automatic Neural Network Channel
+    Pruning. In ICCV, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[31] Ilya Loshchilov and Frank Hutter. Decoupled Weight Decay Regularization.
+    arXiv preprint arXiv:1711.05101, 2017.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[32] Yucheng Lu, Shivani Agrawal, Suvinay Subramanian, Oleg Rybakov, Christopher
+    De Sa, and Amir Yazdanbakhsh. STEP: Learning N:M Structured Sparsity Masks from
+    Scratch with Precondition. arXiv preprint arXiv:2302.01172, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[33] Mohammad Mozaffari, Sikan Li, Zhao Zhang, and Maryam Mehri Dehnavi. MKOR:
+    Momentum-Enabled Kronecker-Factor-Based Optimizer Using Rank-1 Updates. In NeurIPS,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[34] Tan Nguyen, Vai Suliafu, Stanley Osher, Long Chen, and Bao Wang. FMMformer:
+    Efficient and Flexible Transformer via Decomposed Near-field and Far-field Attention.
+    In NeurIPS, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[35] Mahdi Nikdan, Soroush Tabesh, and Dan Alistarh. RoSA: Accurate Parameter-Efficient
+    Fine-Tuning via Robust Adaptation. arXiv preprint arXiv:2401.04679, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[36] NVIDIA, Péter Vingelmann, and Frank H.P. Fitzek. CUDA, release: 10.2.89,
+    2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[37] NVIDIA Corporation. NVIDIA Ampere Architecture In-Depth. [https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth](https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[38] NVIDIA Corporation. NVIDIA cuSPARSELt. [https://docs.nvidia.com/cuda/cusparselt/index.html](https://docs.nvidia.com/cuda/cusparselt/index.html).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[39] NVIDIA Corporation. NVIDIA cuSPARSELt Functions. [https://docs.nvidia.com/cuda/cusparselt/functions.html](https://docs.nvidia.com/cuda/cusparselt/functions.html).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[40] NVIDIA Corporation. NVIDIA Deep Learning Examples. [https://github.com/NVIDIA/DeepLearningExamples](https://github.com/NVIDIA/DeepLearningExamples).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[41] J Gregory Pauloski, Qi Huang, Lei Huang, Shivaram Venkataraman, Kyle Chard,
+    Ian Foster, and Zhao Zhang. KAISA: An Adaptive Second-order Optimizer Framework
+    for Deep Neural Networks. In SC, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[42] Alec Radford, Karthik Narasimhan, Tim Salimans, Ilya Sutskever, et al.
+    Improving Language Understanding by Generative Pre-training. OpenAI, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[43] Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, Ilya
+    Sutskever, et al. Language Models are Unsupervised Multitask Learners. OpenAI
+    blog, 1(8):9, 2019.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[44] Abhimanyu Rajeshkumar Bambhaniya, Amir Yazdanbakhsh, Suvinay Subramanian,
+    Sheng-Chun Kao, Shivani Agrawal, Utku Evci, and Tushar Krishna. Progressive Gradient
+    Flow for Robust N:M Sparsity Training in Transformers. arXiv e-prints, 2024.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[45] Pranav Rajpurkar, Jian Zhang, Konstantin Lopyrev, and Percy Liang. SQuAD:
+    100,000+ Questions for Machine Comprehension of Text. arXiv preprint arXiv:1606.05250,
+    2016.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[46] Victor Sanh, Thomas Wolf, and Alexander Rush. Movement Pruning: Adaptive
+    Sparsity by Fine-Tuning. NeurIPS, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[47] Seongjin Shin, Sang-Woo Lee, Hwijeen Ahn, Sungdong Kim, HyoungSeok Kim,
+    Boseop Kim, Kyunghyun Cho, Gichang Lee, Woomyoung Park, Jung-Woo Ha, et al. On
+    the Effect of Pretraining Corpora on In-context Learning by a Large-scale Language
+    Model. arXiv preprint arXiv:2204.13509, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[48] Mingjie Sun, Zhuang Liu, Anna Bair, and J Zico Kolter. A Simple and Effective
+    Pruning Approach for Large Language Models. arXiv preprint arXiv:2306.11695, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[49] Wei Sun, Aojun Zhou, Sander Stuijk, Rob Wijnhoven, Andrew O Nelson, Henk
+    Corporaal, et al. DominoSearch: Find Layer-wise Fine-grained N:M Sparse Schemes
+    from Dense Neural Networks. In NeurIPS, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[50] Texas Advanced Computing Center. Lonestar 6. [https://tacc.utexas.edu/systems/lonestar6/](https://tacc.utexas.edu/systems/lonestar6/).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[51] Vithursan Thangarasa, Abhay Gupta, William Marshall, Tianda Li, Kevin
+    Leong, Dennis DeCoste, Sean Lie, and Shreyas Saxena. SPDF: Sparse Pre-training
+    and Dense Fine-tuning for Large Language Models. arXiv preprint arXiv:2303.10464,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[52] Alex Wang, Amanpreet Singh, Julian Michael, Felix Hill, Omer Levy, and
+    Samuel R Bowman. GLUE: A Multi-Task Benchmark and Analysis Platform for Natural
+    Language Understanding. arXiv preprint arXiv:1804.07461, 2018.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[53] Lucas Wilkinson, Kazem Cheshmi, and Maryam Mehri Dehnavi. Register Tiling
+    for Unstructured Sparsity in Neural Network Inference. PLDI, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[54] Samuel Williams, Andrew Waterman, and David Patterson. Roofline: An Insightful
+    Visual Performance Model for Multicore Architectures. Communications of the ACM,
+    2009.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[55] Yuxin Zhang, Yiting Luo, Mingbao Lin, Yunshan Zhong, Jingjing Xie, Fei
+    Chao, and Rongrong Ji. Bi-directional Masks for Efficient N:M Sparse Training.
+    arXiv preprint arXiv:2302.06058, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[56] Aojun Zhou, Yukun Ma, Junnan Zhu, Jianbo Liu, Zhijie Zhang, Kun Yuan,
+    Wenxiu Sun, and Hongsheng Li. Learning N:M Fine-grained Structured Sparse Neural
+    Networks from Scratch. arXiv preprint arXiv:2102.04010, 2021.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: \doparttoc\faketableofcontents
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: \parttoc
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Appendix A Comparison with Dynamic Sparsity: SR-STE'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We pretrained GPT2-Small (Section [3.2](#S3.SS2 "3.2 Pretraining accuracy results
+    ‣ 3 Experimental results ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter
+    Pretraining of LLMs")) using the SR-STE method [[56](#bib.bib56)] and reported
+    the perplexity results in Figure [2](#S3.F2 "Figure 2 ‣ 3.2 Pretraining accuracy
+    results ‣ 3 Experimental results ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank
+    Adapter Pretraining of LLMs"). SR-STE aims to mitigate the Sparse Architecture
+    Divergence (SAD) by dynamically adjusting the sparsity mask throughout training.
+    We choose the hyperparameters in SR-STE, so that the update rule of the gradient
+    follows Equation [12](#A1.E12 "In Appendix A Comparison with Dynamic Sparsity:
+    SR-STE ‣ Appendix ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining
+    of LLMs"), where $M$ denotes the element-wise multiplication.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\nabla_{W}\mathcal{L}\xleftarrow{}M\odot\nabla_{W}\mathcal{L}$ |  | (12)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: To understand the performance gap between SR-STE and SLoPe (our method) for
+    the same training budget, we analyzed the mask dynamics in SR-STE. We plotted
+    the average number of mask elements changes during training compared to the final
+    converged mask sparsity pattern. High mask change values indicate that training
+    resources are spent on updating weights that ultimately get pruned and do not
+    necessarily contribute to the final model accuracy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure [4](#A1.F4 "Figure 4 ‣ Appendix A Comparison with Dynamic Sparsity:
+    SR-STE ‣ Appendix ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining
+    of LLMs") shows this average mask difference per iteration relative to the converged
+    model. As training progresses, the mask difference decreases, demonstrating SR-STE’s
+    convergence to a specific sparsity pattern. However, in SLoPe, where all resources
+    are dedicated to optimizing weights under a static mask⁴⁴4We determine the pruning
+    mask at the very first iteration and maintain it for the rest of training., SR-STE’s
+    dynamic approach leads to wasted computation (represented by the area under the
+    curve in Figure [4](#A1.F4 "Figure 4 ‣ Appendix A Comparison with Dynamic Sparsity:
+    SR-STE ‣ Appendix ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining
+    of LLMs")). Consequently, for the same training budget, SLoPe achieves a lower
+    perplexity in comparison to SR-STE due to its static mask approach.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/19afc5071fdce0d97562f81883e957f2.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: Average mask difference between each iteration and the converged
+    sparsity pattern in GPT2-Small pretraining using SR-STE. The highlighted area
+    shows the ratio of the resources used for updating weights that are pruned and
+    not used in the inference of the model.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Appendix B cuSPARSELt Initialization Overhead: Static vs. Dynamic Sparsity'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'This section analyzes the time breakdown of the cuSPARSELt SpMM pipeline, highlighting
+    the significant overheads associated with dynamically changing sparsity masks.
+    The cuSPARSELt SpMM operation consists of two main phases: (1) Setup and (2) Matrix
+    Multiplication. The setup phase involves initializing matrix handles and compressing
+    the 2:4 sparse matrix. This compression copies non-zero values into a contiguous
+    memory layout and generates indices for those values. The matrix multiplication
+    phase leverages this metadata to perform the sparse matrix-matrix multiplication.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure [5](#A2.F5 "Figure 5 ‣ Appendix B cuSPARSELt Initialization Overhead:
+    Static vs. Dynamic Sparsity ‣ Appendix ‣ SLoPe: Double-Pruned Sparse Plus Lazy
+    Low-Rank Adapter Pretraining of LLMs") shows the setup and multiplication time
+    for square matrices using the cuSPARSELt SpMM backend. As evident from the figure,
+    the setup overhead is significantly larger than the actual matrix multiplication
+    time. For SLoPe, which employs static sparsity masks, the setup cost is incurred
+    only once and becomes negligible compared to the numerous matrix multiplications
+    performed during training and inference. However, for dynamic sparsity patterns,
+    such as Sparse-Dense Pretraining [[23](#bib.bib23)], Bidirectional Masks [[55](#bib.bib55)],
+    and other similar methods[[24](#bib.bib24), [49](#bib.bib49), [32](#bib.bib32),
+    [56](#bib.bib56)], this setup overhead can be substantial, leading to reduced
+    speedup (as observed in Section [3.1](#S3.SS1 "3.1 End-to-end speedup and memory
+    saving: pretraining and inference ‣ 3 Experimental results ‣ SLoPe: Double-Pruned
+    Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs") for Sparse-Dense Pretraining)
+    or slowdowns in some configurations (as discussed in Appendix [H](#A8 "Appendix
+    H Performance overhead of bidirectional mask ‣ Appendix ‣ SLoPe: Double-Pruned
+    Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs")).⁵⁵5A recent work observed
+    a similar overhead using dynamic sparsity in cuSPARSELt SpMM pipeline [[5](#bib.bib5)].'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/d76492224c4376c10fe7a5fa79d81144.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 5: The setup and multiplication time for square matrices using the cuSPARSELt
+    SpMM backend.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Appendix C Low-Rank Adapter Performance: Scaling and Arithmetic Intensity'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'As discussed in Section [2.4](#S2.SS4 "2.4 SLoPe runtime optimization ‣ 2 Sparse
+    plus low-rank pretraining of LLMs ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank
+    Adapter Pretraining of LLMs"), the computation time of low-rank adapters does
+    *not* scale linearly with their rank. This section provides experimental results
+    to illustrate this behavior in more detail. The computational complexity of low-rank
+    matrix multiplications is $\mathcal{O}(brd)$-fold reduction in computation time.
+    However, in practice, this linearity does not hold. This deviation arises because
+    the assumption underlying this expectation – that matrix multiplication is compute-bound
+    – is not always true. Specifically, the arithmetic intensity of the operation
+    can fall below the machine’s balance point, as described in the Roofline model [[54](#bib.bib54)].
+    Figure [6](#A3.F6 "Figure 6 ‣ Appendix C Low-Rank Adapter Performance: Scaling
+    and Arithmetic Intensity ‣ Appendix ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank
+    Adapter Pretraining of LLMs") shows the speedup achieved for different low-rank
+    values using PyTorch’s matrix multiplication function, which relies on the CUBLAS
+    backend [[36](#bib.bib36)]. The figure demonstrates that the achieved speedups
+    are significantly lower than the ideal linear scaling, particularly when reducing
+    the rank. Moreover, it is evident that as the matrix dimensions increase, the
+    gap between the ideal speedup and the observed speedup diminishes. This behavior
+    can be attributed to the increased arithmetic intensity for larger matrices, leading
+    to better utilization of tensor cores.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/6607d017cbe83227d2219751661d8060.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6: The speedup achieved by low-rank adapters in comparison to a dense
+    matrix-multiplication.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix D Efficient low-rank adapter implementation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'As discussed in Section [2.4](#S2.SS4 "2.4 SLoPe runtime optimization ‣ 2 Sparse
+    plus low-rank pretraining of LLMs ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank
+    Adapter Pretraining of LLMs"), a naïve implementation of low-rank adapters can
+    lead to significant performance overheads due to the increased number of kernel
+    launches and the low arithmetic intensity of their multiplications. To address
+    these issues, we introduced two key optimizations: (1) concatenating one of the
+    low-rank adapters with the sparse weights, and (2) fusing the multiplication of
+    the other low-rank adapter with the subsequent result addition. These optimizations
+    reduce kernel calls and increase arithmetic intensity, leading to more efficient
+    utilization of GPU resources. Table [5](#A4.T5 "Table 5 ‣ Appendix D Efficient
+    low-rank adapter implementation ‣ Appendix ‣ SLoPe: Double-Pruned Sparse Plus
+    Lazy Low-Rank Adapter Pretraining of LLMs") summarizes the speedup improvements
+    achieved with these optimizations, demonstrating an inference speedup increase
+    of up to 6%.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 5: End-to-end speedup ($\times$) before (left) and after (right) efficient
+    implementation of low-rank adapters.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Inference | Inference |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | 1.56% Adapter | 6.25% Adapter |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-66B | 1.15-1.20 | 1.12-1.19 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-30B | 1.13-1.18 | 1.10-1.16 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-13B | 1.11-1.10 | 1.09-1.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-6.6B | 1.07-1.12 | 1.06-1.11 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-2.6B | 1.01-1.06 | 0.97-1.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix E Efficient weight tiling implementation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We observed that the dimensions and aspect ratios of matrices significantly
+    influence system speedup (Section [2.4](#S2.SS4 "2.4 SLoPe runtime optimization
+    ‣ 2 Sparse plus low-rank pretraining of LLMs ‣ SLoPe: Double-Pruned Sparse Plus
+    Lazy Low-Rank Adapter Pretraining of LLMs")). To mitigate this, we implemented
+    a matrix tiling strategy, dividing upsample matrices into multiple square matrices.
+    This approach significantly improves performance, as shown in Table [6](#A5.T6
+    "Table 6 ‣ Appendix E Efficient weight tiling implementation ‣ Appendix ‣ SLoPe:
+    Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs"). Our results
+    demonstrate that matrix tiling can enhance training speed by up to 4% and inference
+    speed by up to 12%, highlighting its effectiveness in optimizing system performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 6: End-to-end speedup ($\times$) before (left) and after (right) splitting
+    the upsample matrix. In both cases, the optimization discussed in [5](#A4.T5 "Table
+    5 ‣ Appendix D Efficient low-rank adapter implementation ‣ Appendix ‣ SLoPe: Double-Pruned
+    Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs") is used.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Training | Inference | Inference | Inference |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | No Adapter | 1.56% Adapter | 6.25% Adapter |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-66B | 1.10-1.13 | 1.22-1.34 | 1.20-1.31 | 1.19-1.30 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-30B | 1.09-1.14 | 1.23-1.32 | 1.18-1.28 | 1.16-1.27 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-13B | 1.10-1.12 | 1.23-1.30 | 1.10-1.30 | 1.10-1.12 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-6.6B | 1.08-1.08 | 1.21-1.19 | 1.12-1.13 | 1.11-1.12 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| OPT-2.6B | 1.03-1.02 | 1.02-1.07 | 1.06-1.05 | 1.00-1.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix F SLoPe sensitivity to pruning different module in transformer
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'LLMs typically consist of two main modules: the MLP mixer and the self-attention.
+    The attention module’s weights are represented as a matrix in $\mathbb{R}^{d\times
+    3d}$ pruning both MLP mixer and self-attention modules. Table [7](#A6.T7 "Table
+    7 ‣ Appendix F SLoPe sensitivity to pruning different module in transformer ‣
+    Appendix ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining
+    of LLMs") presents the SQuAD and GLUE results for these settings. As expected,
+    we observe a consistent, albeit slight, decrease in model quality as more modules
+    are sparsified. The marginal decrease in performance suggests that models are
+    relatively insensitive to the specific modules being pruned when using our SLoPe
+    pretraining method. This observation underscores the robustness of our approach
+    and its ability to maintain competitive quality across diverse sparsity configurations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 7: SQuADv1.1 results on BERT-Large-Uncased for different pruned modules.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Pruned Modules | SQuAD | GLUE |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Dense | 90.44 | 80.22 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MLP Mixer | 90.28 | 79.03 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MLP Mixer + Self-Attention | 89.35 | 77.72 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Appendix G BERT-Large-Uncased: Pretraining and Downstream Evaluation'
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'BERT-Large-Uncased pretraining consists of two phases, as illustrated in Figure
+    [7](#A7.F7 "Figure 7 ‣ Appendix G BERT-Large-Uncased: Pretraining and Downstream
+    Evaluation ‣ Appendix ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter
+    Pretraining of LLMs"). Phase 1 comprises 7,038 iterations with a global batch
+    size of 65,536 and a sequence length of 128\. Phase 2 includes 1,563 iterations
+    with a global batch size of 32,768 and a sequence length of 512.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure [7](#A7.F7 "Figure 7 ‣ Appendix G BERT-Large-Uncased: Pretraining and
+    Downstream Evaluation ‣ Appendix ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank
+    Adapter Pretraining of LLMs") shows the training loss for both phases under different
+    sparsity settings. We observe that higher sparsity ratios generally lead to higher
+    training loss in both phases. Interestingly, the loss/perplexity gap does not
+    directly correlate with the observed accuracy drops in downstream tasks [[4](#bib.bib4),
+    [29](#bib.bib29), [47](#bib.bib47)].'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/20ca3c513e0a87dd1aac3efe05abc86a.png)![Refer to caption](img/61f45d66595456c0c8da91cf4be4647c.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7: Training loss of BERT-Large-Uncased on WikiCorpus dataset for phase
+    1 and 2.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We evaluated the pretrained BERT-Large-Uncased models on the SQuAD v1.1 [[45](#bib.bib45)]
+    and GLUE [[52](#bib.bib52)] benchmarks. SQuAD v1.1, a comprehensive question-answering
+    dataset based on Wikipedia, is widely used for LLM training. We report the F1
+    score for SQuAD throughout the paper. GLUE, a diverse benchmark for natural language
+    understanding tasks, provides a single aggregated score across various challenges,
+    facilitating model comparisons. The paper presents the average metric score for
+    GLUE, while task-specific metrics are detailed in Appendix [L](#A12 "Appendix
+    L Task-specific GLUE results ‣ Appendix ‣ SLoPe: Double-Pruned Sparse Plus Lazy
+    Low-Rank Adapter Pretraining of LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix H Performance overhead of bidirectional mask
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Table [8](#A8.T8 "Table 8 ‣ Appendix H Performance overhead of bidirectional
+    mask ‣ Appendix ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining
+    of LLMs") presents the runtime results of Bidirectional Masks [[55](#bib.bib55)],
+    a state-of-the-art N:M sparsity method. Our analysis demonstrates that the mask
+    search and associated overheads of this approach result in significant slowdowns
+    compared to dense baselines. For these experiments, we utilized the repository
+    provided in [[55](#bib.bib55)] and employed the same models used in their evaluation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 8: End-to-end slow-down of Bi-directional Mask [[55](#bib.bib55)] in
+    comparison to the dense baseline.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Dataset | Slow-down ($\times$) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MobileNet v2 | CIFAR10 | 5.08 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ResNet-32 | CIFAR10 | 5.07 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| VGG19 | CIFAR10 | 8.41 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ReNet-18 | ImageNet | 3.66 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ResNet-50 | ImageNet | 3.01 |'
+  prefs: []
+  type: TYPE_TB
+- en: Appendix I Sparsity ratio analysis of double-pruned backward pass
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'As described in Section [2.1](#S2.SS1 "2.1 Double-pruned backward pass ‣ 2
+    Sparse plus low-rank pretraining of LLMs ‣ SLoPe: Double-Pruned Sparse Plus Lazy
+    Low-Rank Adapter Pretraining of LLMs"), our proposed sparse pretraining approach
+    involves pruning weights in both the forward and backward passes. During the backward
+    pass, we apply both row-wise and column-wise pruning, which introduces additional
+    zero values to the column-wise pruned weight matrices used in the forward pass.
+    Theorem [2.1](#S2.Thmtheorem1 "Lemma 2.1\. ‣ 2.1 Double-pruned backward pass ‣
+    2 Sparse plus low-rank pretraining of LLMs ‣ SLoPe: Double-Pruned Sparse Plus
+    Lazy Low-Rank Adapter Pretraining of LLMs") demonstrates that the resulting sparsity
+    ratio can be calculated using Equation [8](#S2.E8 "In Lemma 2.1\. ‣ 2.1 Double-pruned
+    backward pass ‣ 2 Sparse plus low-rank pretraining of LLMs ‣ SLoPe: Double-Pruned
+    Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs"). Figure [8](#A9.F8 "Figure
+    8 ‣ Appendix I Sparsity ratio analysis of double-pruned backward pass ‣ Appendix
+    ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs")
+    visualizes the imposed sparsity ratios for various N:M sparsity patterns. As expected,
+    smaller N/M ratios lead to lower imposed sparsity ratios. Moreover, in most cases,
+    the imposed sparsity ratio is significantly smaller than the original matrix’s
+    density ratio.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/44725ca5be3504efadec8e47b31df619.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8: The imposed sparsity ratio when pruning the weight matrices in the
+    backward pass.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix J Sensitivity to the choice of pruning matrix
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In linear layers, three matrices are involved in the forward and backward passes:
+    the input, the output gradient, and the weights. Pruning each of these matrices
+    can have distinct effects on model performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To identify the optimal pruning strategy, we conducted an experiment where we
+    pretrained GPT2-Small for 100,000 iterations (a quarter of the full pretraining)
+    while systematically applying both static and dynamic pruning to each of the three
+    matrices. Static pruning involves generating a random mask at initialization and
+    applying it throughout training. Dynamic pruning, on the other hand, prunes matrices
+    based on their magnitude at each iteration. For dynamic pruning, the dense matrix
+    values are computed and stored, and then pruned at every step.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure [9](#A10.F9 "Figure 9 ‣ Appendix J Sensitivity to the choice of pruning
+    matrix ‣ Appendix ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining
+    of LLMs") presents the validation perplexity for these experiments. Notably, pruning
+    the output gradient led to model divergence after a few iterations and is not
+    shown in the figure.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/7410848d4118b6579abccf6088f2c5c8.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 9: Validation perplexity on GPT2-Small pretraining for 100,000 iterations
+    for different matrix pruning settings. Pruning the output gradients leads to divergence
+    within the few iterations and hence is not reported.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Analysis. As shown in Figure [9](#A10.F9 "Figure 9 ‣ Appendix J Sensitivity
+    to the choice of pruning matrix ‣ Appendix ‣ SLoPe: Double-Pruned Sparse Plus
+    Lazy Low-Rank Adapter Pretraining of LLMs"), static pruning consistently achieved
+    lower perplexities. This behavior suggests that focusing computational resources
+    on elements that remain active throughout training can lead to improved performance.
+    Furthermore, pruning weights resulted in lower perplexities compared to pruning
+    inputs, indicating that weights are generally a better target for pruning.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Intuition. Pruning weights is analogous to removing connections between neurons.
+    Pruning activation tensors is similar to introducing a non-linear function (akin
+    to max-pooling) before each linear layer. Pruning output gradients, however, lacks
+    practical justification and introduces errors into the backward pass, leading
+    to model divergence.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix K Implementation details
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'This section details the implementation of the custom functions and CUDA kernels
+    used in Algorithm [1](#alg1 "Algorithm 1 ‣ 2.3 Sparse kernels ‣ 2 Sparse plus
+    low-rank pretraining of LLMs ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank
+    Adapter Pretraining of LLMs") to facilitate efficient sparse training.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Initialization, sparse matrix setup, and SpMM kernels. Before utilizing the
+    cuSPARSELt APIs, a crucial initialization phase ensures proper configuration of
+    essential variables for our computational task. Following initialization, we configure
+    the sparse data formats tailored for sparse matrices. This involves initializing
+    matrix descriptors, pruning the matrices, and compressing them into a more compact
+    representation. cuSPARSELt employs an automated search to determine the optimal
+    kernel for executing SpMM. While setting up these sparse data formats incurs a
+    non-negligible computational cost, this overhead is mitigated by the repetitive
+    nature of matrix multiplications during the training process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Prune and compress. The gradient of the loss function with respect to the weights
+    requires pruning using the same mask as the weight matrix. Consequently, it contains
+    50% extra zero values in the dense format. To address this redundancy, we developed
+    an optimized CUDA kernel, integrated into PyTorch, that masks the gradients accordingly,
+    eliminating the storage of unnecessary data and reducing memory usage. The output
+    of this operation is a new matrix in $\mathbb{R}^{d_{out}\times\frac{d_{in}}{2}}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sparse matrix addition. The cuSPARSELt sparse data format does not natively
+    support addition operations. However, for matrices $A$ are arbitrary user-defined
+    constants. This functionality is particularly useful for adding sparse weights
+    to gradients in optimizers that utilize weight decay.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Update Sparse Matrix. After the optimizer updates the weight tensor values based
+    on its rules, we need to update the sparse matrix format to reflect these changes.
+    We implemented an optimized CUDA kernel that copies the weight tensors from the
+    PyTorch format into the cuSPARSELt data type, enabling efficient storage and manipulation
+    of sparse weights.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix L Task-specific GLUE results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The GLUE benchmark [[52](#bib.bib52)] comprises eight distinct natural language
+    understanding classification tasks. While Section [3](#S3 "3 Experimental results
+    ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs")
+    presented the average GLUE score as a measure of overall model performance, this
+    section provides a more detailed analysis by presenting the complete task-specific
+    results for each training setting in Table [9](#A12.T9 "Table 9 ‣ Appendix L Task-specific
+    GLUE results ‣ Appendix ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter
+    Pretraining of LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  |  | First | Last |  |  |  |  |  |  |  |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Method | Phase | Rank | 12 | 12 | CoLA | SST-2 | MRPC | STS-B | QQP | RTE
+    | MNLI | QNLI |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  |  | Blocks | Blocks | (mcc) | (acc) | (f1) | (corr) | (f1) | (acc) |
+    (acc) | (acc) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Dense | 1,2 | 0 | 2:4 | 2:4 | 51.6 | 91.9 | 81.2 | 87.5 | 87.8 | 66.4 | 84.1
+    | 91.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SLoPe |  |  |  |  |  |  |  |  |  |  |  |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MLP Mixer | 2 | 0 | 2:4 | 2:4 | 41.8 | 91.4 | 88.7 | 87.2 | 85.9 | 65 | 82.1
+    | 90.1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Only |  |  |  |  |  |  |  |  |  |  |  |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SLoPe |  |  |  |  |  |  |  |  |  |  |  |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| MLP Mixer + | 2 | 0 | 2:4 | 2:4 | 38.8 | 90.4 | 85.9 | 86.4 | 85.9 | 63.5
+    | 81.5 | 89.3 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Self-Attention |  |  |  |  |  |  |  |  |  |  |  |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SLoPe with |  |  |  |  |  |  |  |  |  |  |  |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Non-Lazy | 2 | 40 | 2:4 | 2:4 | 43.3 | 90.8 | 89 | 87 | 86 | 64.6 | 82.3
+    | 89.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Adapters |  |  |  |  |  |  |  |  |  |  |  |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SLoPe with |  |  |  |  |  |  |  |  |  |  |  |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Non-Lazy | 2 | 40 | 2:8 | 2:4 | 29 | 89.7 | 83.7 | 85.6 | 85.2 | 66.8 | 79.9
+    | 87.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Adapters |  |  |  |  |  |  |  |  |  |  |  |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SLoPe with |  |  |  |  |  |  |  |  |  |  |  |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Non-Lazy | 2 | 40 | 2:4 | 2:8 | 44.1 | 91.1 | 89.8 | 86.6 | 86.3 | 62.5 |
+    82.3 | 89.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Adapters |  |  |  |  |  |  |  |  |  |  |  |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SLoPe | 1,2 | 0 | 2:4 | 2:4 | 37.9 | 91.4 | 85.4 | 86.6 | 85.8 | 62.5 | 80.7
+    | 88.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SLoPe | 1,2 | 4 | 2:4 | 2:4 | 38.5 | 91.4 | 85.8 | 86.8 | 85.8 | 63.9 | 80.8
+    | 88.4 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SLoPe | 1,2 | 16 | 2:4 | 2:4 | 39.2 | 91.3 | 86.4 | 86.6 | 86 | 63.5 | 80.8
+    | 88.2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| SLoPe | 1,2 | 64 | 2:4 | 2:4 | 42.7 | 90.3 | 85.1 | 86.8 | 85.7 | 66.4 |
+    80.3 | 88.5 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WANDA | N/A | 0 | 2:4 | 2:4 | 43.0 | 91.4 | 88.3 | 86.9 | 86.1 | 63.5 | 81.9
+    | 89.6 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WANDA | N/A | 0 | 2:8 | 2:4 | 4.6 | 0.88 | 81.3 | 81 | 83.3 | 53.8 | 76.7
+    | 83.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| WANDA | N/A | 0 | 2:4 | 2:8 | 42.1 | 91.7 | 84.4 | 87.2 | 85.6 | 63.5 | 81.5
+    | 81.9 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 9: GLUE results for each task in the experiments discussed in section
+    [3](#S3 "3 Experimental results ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank
+    Adapter Pretraining of LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix M Additional related work
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Model pruning. Pruning the models has been one of the most effective methods
+    to reduce the complexity of LLMs [[21](#bib.bib21)]. One can pretrain the LLMs
+    sparsely [[13](#bib.bib13)] or the pruning can happen after a dense pretraining
+    [[20](#bib.bib20), [27](#bib.bib27)], possibly followed by a fine-tuning stage
+    to recover part of the lost accuracy [[15](#bib.bib15), [18](#bib.bib18)]. Pruning
+    the models after pretraining can be costly [[46](#bib.bib46), [19](#bib.bib19)]
+    and typically fails to maintain their accuracy [[14](#bib.bib14), [48](#bib.bib48)].
+    While the sparse pretraining methods improve the accuracy of the model, they either
+    use unstructured sparsity patterns that cannot be accelerated with the current
+    hardware [[51](#bib.bib51)] or have significant overheads when searching for and
+    applying their structured sparse masks [[24](#bib.bib24), [55](#bib.bib55), [49](#bib.bib49)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: Low-rank adapters. Low-rank adapters have emerged as a promising method to reduce
+    the fine-tuning costs associated with pre-trained LLMs and enable more efficient
+    task switching [[22](#bib.bib22)]. Different quantization and initialization schemes
+    have been proposed to reduce their overheads in LLM fine-tuning [[10](#bib.bib10),
+    [17](#bib.bib17)]. Adding low-rank factors to sparse matrices is a low-weight
+    mechanism widely used to improve the accuracy of approximations of dense matrices
+    [[2](#bib.bib2)]. In machine learning, the sparse plus low-rank approximations
+    are limited to attention heads [[34](#bib.bib34), [3](#bib.bib3)] and pruning
+    after pretraining [[35](#bib.bib35), [28](#bib.bib28)], and the sparse plus low-rank
+    pretraining has not been investigated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix N Experiment setup, hyperparameters, compute resources
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Our experiments were conducted on the Narval and Mist clusters at Compute Canada [[6](#bib.bib6)]
+    and the Lonestar 6 cluster at the Texas Advanced Computing Center [[50](#bib.bib50)].
+    Each Narval node is equipped with four Nvidia A100 GPUs, each with 40GB of memory.
+    Mist nodes feature four Nvidia V100 GPUs, each with 32GB of memory, while Lonestar
+    6 nodes have three Nvidia A100 GPUs, each with 40GB of memory. For our accuracy
+    experiments, we emulated 2:4 and N:M sparsity using custom-designed, low-overhead
+    CUDA kernels to prune weights in both the forward and backward passes. We utilized
+    a mixture of available resources across the clusters, as model accuracy is not
+    hardware-dependent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our speedup and memory saving experiments were conducted on a single A100 GPU
+    in the Narval cluster. We ran 1000 iterations of training or inference to gather
+    the necessary statistics. For speedup experiments, we reported the median of the
+    1000 samples to mitigate the effects of outliers. Each memory reduction experiment
+    was run five times, and the median value was reported. We employed the default
+    hyperparameters found in the NVIDIA BERT codebase [[40](#bib.bib40)] and the FlashAttention
+    GPT codebase [[9](#bib.bib9), [7](#bib.bib7)]. Further tuning of hyperparameters
+    for sparse pretraining is left as a future direction. Training BERT-Large-Uncased
+    required approximately 32 hours on 64 A100-64GB GPUs. The pretraining of GPT2-Small/Large
+    took 32 and 111 hours, respectively, on 64 V100-32GB GPUs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix O Proofs
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'O.1 Lemma [2.1](#S2.Thmtheorem1 "Lemma 2.1\. ‣ 2.1 Double-pruned backward pass
+    ‣ 2 Sparse plus low-rank pretraining of LLMs ‣ SLoPe: Double-Pruned Sparse Plus
+    Lazy Low-Rank Adapter Pretraining of LLMs")'
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Proof. Considering a matrix with $N:M$ row-wise consecutive elements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $E[X]=\sum_{i=1}^{M-N}Pr[X=i]i$ |  | (13) |'
+  prefs: []
+  type: TYPE_TB
+- en: Replacing $Pr[X=i]=Pr[Y=N+i]$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (14) |'
+  prefs: []
+  type: TYPE_TB
+- en: Considering the definition of $Y$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $Pr[Y=j]={\binom{M}{j}}s^{j}(1-s)^{M-j};s\triangleq\frac{N}{M}$ |  | (15)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: 'By replacing Equation [15](#A15.E15 "In O.1 Lemma 2.1 ‣ Appendix O Proofs ‣
+    Appendix ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining
+    of LLMs") in Equation [14](#A15.E14 "In O.1 Lemma 2.1 ‣ Appendix O Proofs ‣ Appendix
+    ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs"),
+    we will get Equation [16](#A15.E16 "In O.1 Lemma 2.1 ‣ Appendix O Proofs ‣ Appendix
+    ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $E[X]=\sum_{j=N+1}^{M}{\binom{M}{j}]}s^{j}(1-s)^{M-j}(j-N)$ |  | (16)
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: Let’s define random variable $Z$, and hence Equation
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (17) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'O.2 Theorem [2.2](#S2.Thmtheorem2 "Theorem 2.2\. ‣ 2.1 Double-pruned backward
+    pass ‣ 2 Sparse plus low-rank pretraining of LLMs ‣ SLoPe: Double-Pruned Sparse
+    Plus Lazy Low-Rank Adapter Pretraining of LLMs")'
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Proof. In an optimization problem, we are aiming to find the optimal solution
+    to Equation [18](#A15.E18 "In O.2 Theorem 2.2 ‣ Appendix O Proofs ‣ Appendix ‣
+    SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining of LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\min_{W_{i}}E_{X}[\mathcal{L}(X,W_{i})]$ |  | (18) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'When using backpropagation, which is based on the chain rule in derivation,
+    we compute the gradient in Equation [19](#A15.E19 "In O.2 Theorem 2.2 ‣ Appendix
+    O Proofs ‣ Appendix ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining
+    of LLMs").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $.E_{X}[\nabla_{X_{i}}\mathcal{L}(X,W_{i})]=E_{X}[\nabla_{Y_{i}}\mathcal{L}W]$
+    |  | (19) |'
+  prefs: []
+  type: TYPE_TB
+- en: Let’s define random variable $M$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (20) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'By using the linearity of derivation and expectation operators, we can get
+    the result in Equation [21](#A15.E21 "In O.2 Theorem 2.2 ‣ Appendix O Proofs ‣
+    Appendix ‣ SLoPe: Double-Pruned Sparse Plus Lazy Low-Rank Adapter Pretraining
+    of LLMs"), which proves the theorem.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (21) |'
+  prefs: []
+  type: TYPE_TB

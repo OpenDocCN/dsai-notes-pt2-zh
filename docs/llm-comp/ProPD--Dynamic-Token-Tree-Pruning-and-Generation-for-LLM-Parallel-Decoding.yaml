@@ -1,0 +1,958 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 19:04:57'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'ProPD: Dynamic Token Tree Pruning and Generation for LLM Parallel Decoding'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2402.13485](https://ar5iv.labs.arxiv.org/html/2402.13485)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Shuzhang Zhong Peking UniversityBeijingChina ,  Zebin Yang Peking UniversityBeijingChina
+    ,  Meng Li Peking UniversityBeijingChina [meng.li@pku.edu.cn](mailto:meng.li@pku.edu.cn)
+    ,  Ruihao Gong Sensetime ResearchBeijingChina ,  Runsheng Wang Peking UniversityBeijingChina
+     and  Ru Huang Peking UniversityBeijingChina
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Recent advancements in generative large language models (LLMs) have significantly
+    boosted the performance in natural language processing tasks. However, their efficiency
+    is hampered by the inherent limitations in autoregressive token generation. While
+    parallel decoding with token tree verification, e.g., Medusa, has been proposed
+    to improve decoding parallelism and efficiency, it often struggles with maintaining
+    contextual relationships due to its independent token prediction approach and
+    incurs significant verification overhead, especially with large tree sizes and
+    batch processing. In this paper, we propose ProPD, an efficient LLM parallel decoding
+    framework based on dynamic token tree pruning and generation. ProPD features an
+    advanced early pruning mechanism to efficiently eliminate unpromising token sequences
+    to improve verification efficiency. Additionally, it introduces a dynamic token
+    tree generation algorithm to balance the computation and parallelism of the verification
+    phase in real-time and maximize the overall efficiency across different batch
+    sizes, sequence lengths, and tasks, etc. We verify ProPD across a diverse set
+    of datasets, LLMs, and batch sizes and demonstrate ProPD consistently outperforms
+    existing decoding algorithms by 1.1-3.2 $\times$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1\. Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Recent years have witnessed revolutionary advancements in generative large language
+    models (LLMs) (Brown et al., [2020](#bib.bib3)), which can achieve start-of-the-art
+    results in several generative natural language tasks, including summarization
+    (Fabbri et al., [2019](#bib.bib6)), machine translation (Hendy et al., [2023](#bib.bib7)),
+    question answering (Zaib et al., [2022](#bib.bib20)), etc. However, due to their
+    large parameter size, complex architectures, and high computation requirements,
+    it is extremely challenging to deploy these LLMs in real-world applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Modern LLMs generally leverage an autoregressive decoding algorithm (Radford
+    et al., [2018](#bib.bib13), [2019](#bib.bib14); Brown et al., [2020](#bib.bib3)):
+    they take as input a sequence of tokens and then, generate subsequent tokens one
+    at a time as shown in Figure [1](#S1.F1 "Figure 1 ‣ 1\. Introduction ‣ ProPD:
+    Dynamic Token Tree Pruning and Generation for LLM Parallel Decoding") (a). The
+    generation of each new token is conditioned on both the input tokens and the previously
+    generated tokens. While the decoding algorithm can fully capture the dependency
+    between tokens and preserve the context of the generated tokens, it suffers from
+    suboptimal runtime performance and limited GPU utilization. This is because the
+    degree of computation parallelism is very low and hence, resulting in severe memory
+    bottleneck(Kim et al., [2023](#bib.bib9)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/cacb0f24c614e2c874761de41f368499.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 1\. Workflow of (a) autoregressive decoding, (b) parallel decoding.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To address the inefficiency in autoregressive token generation, parallel decoding,
+    e.g., Medusa (Cai et al., [2023](#bib.bib4)), has been proposed and demonstrates
+    a promising speedup. Instead of decoding a single token each time, parallel decoding
+    first generates a sequence of token candidates, and then, verifies all the candidates
+    in parallel as shown in Figure [1](#S1.F1 "Figure 1 ‣ 1\. Introduction ‣ ProPD:
+    Dynamic Token Tree Pruning and Generation for LLM Parallel Decoding") (b). The
+    token candidates can be further organized as a tree structure to reduce the computation
+    in the verification phase. While parallel decoding increases the computation,
+    it still achieves around $2\times$ speedup. This is because, on the one hand,
+    LLM decoding is mainly limited by the memory bandwidth and thus, the introduced
+    computation incurs a small latency overhead; on the other hand, parallel decoding
+    can opportunistically accept more tokens at each step, and hence, reduces the
+    overall number of iterations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'However, we observe the existing parallel decoding method suffers from a high
+    latency overhead for batch decoding. Even for small batch sizes, e.g., 4, the
+    speedup of parallel decoding quickly diminishes. We observe the inefficiency of
+    parallel decoding mainly comes from two folds: 1) due to a lack of contextual
+    relationships among the tokens generated in parallel, a large number of tokens
+    need to be verified, especially for large batch sizes; 2) the generation pattern
+    of the token candidates is static and cannot consider the impact of batch sizes,
+    sequence lengths, tasks, etc.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this paper, we propose ProPD to enhance LLM parallel decoding with dynamic
+    token tree pruning and generation. To reduce the verification overhead, we observe
+    early LLM layers already demonstrate good predictive capabilities that can be
+    leveraged to prune token candidates. Hence, we propose a dynamic token tree pruning
+    algorithm to significantly reduce the number of candidates without harming the
+    number of accepted tokens. To improve the adaptability across different decoding
+    conditions, we propose a dynamic token tree generation algorithm that enables
+    to adapt the generated token tree in real-time during decoding. Our contributions
+    can be summarized as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We observe the inefficiency of the existing LLM parallel decoding algorithm
+    and propose ProPD to improve the decoding efficiency across different decoding
+    conditions.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We propose a dynamic token tree pruning algorithm to reduce the verification
+    computation by more than 2$\times$ without hurting the number of accepted tokens.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We propose a real-time algorithm to generate the token tree adaptively according
+    to the decoding conditions.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We verify ProPD across a diverse set of datasets, LLMs, and batch sizes, and
+    demonstrate ProPD consistently outperforms existing decoding algorithms by $1.1$.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 2\. Preliminary
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section, we introduce the existing parallel decoding algorithms and
+    review the related works. As introduced in Section [1](#S1 "1\. Introduction ‣
+    ProPD: Dynamic Token Tree Pruning and Generation for LLM Parallel Decoding"),
+    parallel decoding mitigates the inefficiency of autoregressive decoding by generating
+    and verifying token candidates in parallel. It generally has two phases, i.e.,
+    the prediction phase and the verification phase.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/c506cafc59415e5d83b8cd05c25a4423.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2\. Example of parallel decoding: (a) model architecture, (b) token
+    tree, (c) part of token tree mask.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Prediction
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: 'In the Prediction phase, sequences of token candidates are predicted with a
+    much lower cost compared to the baseline autoregressive decoding. Depending on
+    how the token candidates are generated, existing works can be roughly classified
+    into 2 categories. The first category of works leverages a much smaller LLM to
+    generate the candidates (sometimes referred to as speculative decoding) (Chen
+    et al., [2023](#bib.bib5); Leviathan et al., [2023](#bib.bib10); Spector and Re,
+    [2023](#bib.bib16)). While promising speedup has been demonstrated (Miao et al.,
+    [2023](#bib.bib11)), these works usually struggle to align the small LLM with
+    the full-scale LLM and the requirement to host two models in one system also drastically
+    increases the system complexity (Xu et al., [2023](#bib.bib19)). The second category
+    leverages the full-scale LLM directly to generate the candidates (Stern et al.,
+    [2018](#bib.bib17); Cai et al., [2023](#bib.bib4); Santilli et al., [2023](#bib.bib15);
+    Bae et al., [2023](#bib.bib2); Jiang et al., [2023](#bib.bib8)). A few extra model
+    heads are trained to simultaneously predict the candidates for multiple timesteps.
+    While these works benefit from the system’s simplicity, they also face an important
+    limitation: as shown in Figure [2](#S2.F2 "Figure 2 ‣ 2\. Preliminary ‣ ProPD:
+    Dynamic Token Tree Pruning and Generation for LLM Parallel Decoding"), the token
+    candidates for different timesteps are generated in parallel without considering
+    their contextual dependency. This leads to an exponential increase in the generated
+    token sequences with respect to the number of timesteps to predict and the number
+    of candidates at each step. For example, if we have parallel heads for $n$ for
+    each timestep.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Verification
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: 'Once a set of candidate token sequences is generated, the next step is to leverage
+    the full-scale LLM to verify each sequence. Due to the invocation of the full-scale
+    LLM, the verification phase is usually more time-consuming compared to the generation
+    phase. To improve the verification efficiency, existing methods(Cai et al., [2023](#bib.bib4);
+    Miao et al., [2023](#bib.bib11)) adopt token-tree verification strategies that
+    parallelize the evaluation of multiple candidate sequences. Token-tree verification
+    begins by exploiting common prefixes shared across candidate sequences as shown
+    in Figure [2](#S2.F2 "Figure 2 ‣ 2\. Preliminary ‣ ProPD: Dynamic Token Tree Pruning
+    and Generation for LLM Parallel Decoding")(b), enabling the LLM to compute the
+    initial attention and hidden states once for that prefix. Unlike traditional attention
+    mechanisms that compute scores in a linear sequence, tree attention needs to consider
+    the branching structure where multiple potential successor tokens may exist at
+    the same level. To manage this, attention masks are employed to allow each token
+    to attend only to its appropriate context as shown in Figure [2](#S2.F2 "Figure
+    2 ‣ 2\. Preliminary ‣ ProPD: Dynamic Token Tree Pruning and Generation for LLM
+    Parallel Decoding")(c).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3\. Motivation and Observation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The effectiveness of parallel decoding is concurrently influenced by both the
+    number of accepted token candidates (denoted as acceptance length) and the token
+    tree verification overhead. While a large token tree size increases the acceptance
+    length, it also drastically increases the verification iteration time. Hence,
+    in order to achieve maximum acceleration from parallel decoding, it is necessary
+    to strike a balance between the two impacting factors. Existing parallel decoding
+    algorithms cannot handle the two factors well due to a lack of contextual relationships
+    in the sequence (Stern et al., [2018](#bib.bib17); Cai et al., [2023](#bib.bib4)).
+    As introduced in Section [2](#S2 "2\. Preliminary ‣ ProPD: Dynamic Token Tree
+    Pruning and Generation for LLM Parallel Decoding"), while the candidate tokens
+    are generated in parallel, they have to be verified in sequences to capture the
+    context. Hence, directly verifying all the potential sequences results in an exponential
+    increase in computation complexity. We make the following observations that motivate
+    us to propose ProPD.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Observation 1: early LLM layers demonstrate strong predictive capabilities.
+    Figure [3](#S3.F3 "Figure 3 ‣ 3\. Motivation and Observation ‣ ProPD: Dynamic
+    Token Tree Pruning and Generation for LLM Parallel Decoding")(a) shows the prediction
+    accuracy of the early layers by training their own heads. While the early layers
+    did not exhibit high precision for their topmost predictions (Top-1), they showed
+    a remarkable increase in accuracy within a higher Top-K range. For example, in
+    Layer 2, the Top-1 accuracy was approximately 37%, but this accuracy increased
+    substantially when considering the top 50 tokens, hinting at the layers’ capacity
+    to filter out a significant number of implausible tokens. This trend supports
+    the hypothesis that early layers, while not fully equipped to make the final prediction,
+    are indeed effective in discerning a broad set of unlikely token candidates. Therefore,
+    tokens falling outside an optimal Top-$k$ range can be pruned early, reducing
+    the computational load in subsequent layers without significantly affecting the
+    overall predictive accuracy.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/097a58e9770cf9e7483fc7d1dc63a996.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3\. Iteration time and acceptance length under different scenarios:
+    (a) Top-$k$ accuracy under different early layers, (b) average iteration time
+    under different batch sizes and token tree sizes, (c) average iteration time under
+    different sequence lengths, (d) average acceptance length under different tasks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Observation 2: the expected speedup of parallel decoding depends on inference
+    batch size, sequence length, tasks, etc. As shown in Figure [3](#S3.F3 "Figure
+    3 ‣ 3\. Motivation and Observation ‣ ProPD: Dynamic Token Tree Pruning and Generation
+    for LLM Parallel Decoding")(b) to (d), given a fixed token tree size, the iteration
+    time of the verification phase varies with different batch sizes, sequence lengths,
+    and hardware platforms. Meanwhile, the token accept probability also changes for
+    different datasets. Hence, the expected speedup of parallel decoding is directly
+    impacted by all these factors. BPD (Stern et al., [2018](#bib.bib17)) proposes
+    to only verify the prediction with the highest probability for each token while
+    Medusa (Cai et al., [2023](#bib.bib4)) proposes a heuristic design for the token
+    tree, both of which are sub-optimal due to the fixed tree size. As shown in Figure [3](#S3.F3
+    "Figure 3 ‣ 3\. Motivation and Observation ‣ ProPD: Dynamic Token Tree Pruning
+    and Generation for LLM Parallel Decoding")(b), we further observe the verification
+    iteration time scales highly linearly with the token tree size. This is because
+    the computation of a transformer block, including both the fully connected layers
+    and the attention, increases proportionally with the token tree size.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Considering that batch size remains relatively stable and sequence length exhibits
+    only changes gradually, this linear scaling enables us to employ linear regression
+    models to predict the verification time based on token tree size accurately. This
+    predictive capability enables us to dynamically adjust the token tree size in
+    real time, optimizing for inference speed and computational efficiency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '4\. ProPD: Parallel Decoding with Token Tree Pruning and Generation'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The brief workflow of our framework is shown in [4](#S4.F4 "Figure 4 ‣ 4\.
+    ProPD: Parallel Decoding with Token Tree Pruning and Generation ‣ ProPD: Dynamic
+    Token Tree Pruning and Generation for LLM Parallel Decoding"). Given the baseline
+    parallel decoding framework, we first propose an early pruning algorithm to remove
+    unlikely token candidates in early LLM layers. The proposed early pruning algorithm
+    helps address the limitations of missing contextual relationships of parallel
+    decoding and reduces the computation of the verification phase. Then, we further
+    propose a dynamic token tree generation algorithm to enable real-time adjustment
+    of ProPD and enables to adapt ProPD to varying trade-offs in different decoding
+    conditions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/4e2fb56ef0c6037d3337be1421505247.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 4\. Overview of ProPD.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1\. Early Pruning Algorithm
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'As introduced in Section [2](#S2 "2\. Preliminary ‣ ProPD: Dynamic Token Tree
+    Pruning and Generation for LLM Parallel Decoding"), due to the lack of contextual
+    relationships, existing parallel decoding algorithms suffer from an exponential
+    increase in token tree size. While verifying the whole token tree naively incurs
+    significant computation overhead, Our first observation in Section [3](#S3 "3\.
+    Motivation and Observation ‣ ProPD: Dynamic Token Tree Pruning and Generation
+    for LLM Parallel Decoding") indicates early LLM layers demonstrate strong predictive
+    capabilities, which makes it possible for the early pruning of the token tree
+    to reduce the computation in the verification phase. We focus on answering the
+    following three questions concerning the early pruning algorithm: 1) how to select
+    the token candidates for pruning; 2) what are the key design choices to make for
+    the pruning; 3) how to reduce the pruning overhead to reduce decoding latency.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pruning Criterion
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: 'To select the pruning tokens, we add an early prediction head after a few LLM
+    layers as shown in Figure [5](#S4.F5 "Figure 5 ‣ Implementation Optimization ‣
+    4.1\. Early Pruning Algorithm ‣ 4\. ProPD: Parallel Decoding with Token Tree Pruning
+    and Generation ‣ ProPD: Dynamic Token Tree Pruning and Generation for LLM Parallel
+    Decoding"). We consider the following two criteria: Top-$k$ criterion.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pruning Process
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: 'Let $n$ denote the number of LLM layers before the pruning. Then, the early
+    pruning process can now be described as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Prediction of successor tokens: after $n$.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Token pruning: the next token $x_{i+1}$ is deemed contextually implausible.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Branch elimination: collect all the tokens that fail the Top-$k$ criterion
+    and their associated token sequences are pruned from the token tree.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: While token tree pruning will not impact the correctness of the decoding, the
+    selection of $n$ is crucial in balancing computational efficiency and acceptance
+    length in our early pruning structure. Earlier pruning layers reduce computational
+    load but may lead to less accurate pruning decisions. A larger K value increases
+    the likelihood of retaining contextually relevant sequences but also enlarges
+    the token tree, impacting computational efficiency. These parameters will be empirically
+    optimized in our experiments, aiming to find a balance that maximizes both the
+    efficiency and accuracy of the pruning process. The experimental results will
+    guide the final selection of these critical parameters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementation Optimization
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: In the branch elimination step, token branches are eliminated and new attention
+    masks need to be generated. We empirically find this step can be time-consuming
+    on GPU if naively implemented, e.g., re-generate the mask each time after pruning
+    and send the mask tensor from CPU to GPU. We propose to cache the mask on GPU
+    and also subsample the cached mask instead of generating a new one. Such simple
+    optimization enables to reduce the latency overhead significantly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/febfb0a76457a44da3629be14c4883e4.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5\. Early Pruning Algorithm of ProPD.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2\. Dynamic Token Tree Generation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'As analyzed in section [3](#S3 "3\. Motivation and Observation ‣ ProPD: Dynamic
+    Token Tree Pruning and Generation for LLM Parallel Decoding"), the effectiveness
+    of parallel decoding is influenced by both the acceptance length and the token
+    tree verification overhead, which are impacted by the decoding conditions, including
+    batch size, sequence length, etc. Thus, we propose the dynamic token tree generation
+    methodology to maximize decoding efficiency by balancing the length of accepted
+    predictions and the computational overhead. We focus on answering the following
+    two questions concerning the dynamic generation algorithm: 1) how to estimate
+    the computation overhead and 2) how to estimate the probable acceptance length.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2.1\. Verification Overhead Estimation
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Building on Observation 2 in Section [3](#S3 "3\. Motivation and Observation
+    ‣ ProPD: Dynamic Token Tree Pruning and Generation for LLM Parallel Decoding"),
+    which reveals a linear relationship between the token tree size and iteration
+    time, our framework adopts a weighted regression model for real-time estimation
+    of this relationship.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Model Formulation
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: We formalize the weighted regression model. We denote the average iteration
+    time for a token tree of size $i$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Estimation Process
+  prefs:
+  - PREF_H5
+  type: TYPE_NORMAL
+- en: 'The estimation involves several steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Update average iteration time: given newly collected data $(i,t_{i})$ as:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle T_{perf}^{i}\leftarrow(1-\alpha)T_{perf}^{i}+\alpha t_{i},$
+    |  |'
+  prefs:
+  - PREF_IND
+  type: TYPE_TB
+- en: where $\alpha$ exists.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Weighted regression: Next, we compute the weight for each token tree size and
+    prioritize recent updates:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle W_{i}=e^{-\lambda o_{i}}\quad\forall i\in S$ |  |'
+  prefs:
+  - PREF_IND
+  type: TYPE_TB
+- en: In this equation, $o_{i}$s with more frequent updates are more important since
+    they tend to be selected.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Solve the regression model: finally, the regression model parameters can be
+    determined as:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  |'
+  prefs:
+  - PREF_IND
+  type: TYPE_TB
+- en: $\hat{\beta_{0}},\hat{\beta_{1}}$ can be solved analytically with negligible
+    latency.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 4.2.2\. Probability Estimation
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'To estimate the probable acceptance length with a given token tree, we track
+    the output words from each head and record their accuracy in runtime. For each
+    head, when a token is decoded, the framework collects how often the actual token
+    was within the top-K predictions of that head, which is note as $P$ is finally
+    determined, the probability of the head i will be updated:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle P_{i}^{k}\leftarrow(1-\alpha)\cdot P_{i}^{k}+\alpha\cdot\mathrm{1}(x_{i+1}^{t}\in\mathrm{TopK}(x_{i}^{t})),$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $\mathrm{1}(\cdot)$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle p_{i}^{k}=P_{i}^{k}-P_{i}^{k-1}$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Given a random sequence seq = [$s_{0}^{k_{0}},s_{1}^{k_{1}},...s_{n}^{k_{n}}$
+    in sequence is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle l(\text{seq})=\prod_{i=0}^{n}p_{i}^{k_{i}}$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'in which $k_{i}$ token of head i. For example, in Figure [6](#S4.F6 "Figure
+    6 ‣ 4.2.2\. Probability Estimation ‣ 4.2\. Dynamic Token Tree Generation ‣ 4\.
+    ProPD: Parallel Decoding with Token Tree Pruning and Generation ‣ ProPD: Dynamic
+    Token Tree Pruning and Generation for LLM Parallel Decoding"), the average probabilities
+    of Top-2 tokens of the heads are shown in (a). Then, the expected acceptance length
+    of token ’b’ in sequence ’ab’ is 0.6, and the expected acceptance length of token
+    ’e’ in sequence ’abe’ is 0.06\. If we choose ’abd’ and ’ac’ as the token tree,
+    its estimated acceptance length is 1.88 as shown in Figure [6](#S4.F6 "Figure
+    6 ‣ 4.2.2\. Probability Estimation ‣ 4.2\. Dynamic Token Tree Generation ‣ 4\.
+    ProPD: Parallel Decoding with Token Tree Pruning and Generation ‣ ProPD: Dynamic
+    Token Tree Pruning and Generation for LLM Parallel Decoding")(b).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f36b48f0f950090e38ebea9f90d71cdf.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 6\. Probability estimation of token tree: (a) Top-$k$ probability of
+    each head, (b) expected accuracy of each token.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2.3\. Optimizing Efficiency
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'With the verification overhead estimation and accept probability estimation,
+    we can calculate the estimated speed of parallel decoding for each token tree
+    size i:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle v=l(i)/T_{est}^{i}$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Then we can swiftly identify the optimal token tree size for the fastest estimation
+    by scanning the list once. Note we do not need to invoke the dynamic token tree
+    generation each iteration during the decoding. Instead, it is invoked when the
+    batch sizes or sequence lengths change significantly. Hence, its efficiency impact
+    is minimal and it can help avoid expensive pre-characterization of different decoding
+    conditions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5\. Experimental Results
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 5.1\. Experiment Setup
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'ProPD is implemented based on the Medusa framework (Cai et al., [2023](#bib.bib4)).
+    We benchmark our framework on the open-source LLM Vicuna models (Zheng et al.,
+    [2023](#bib.bib21)), which is finetuned on LLAMA. We test the 7b, 13b, and 33b
+    models to demonstrate the scalability of ProPD under different model sizes. We
+    evaluate our framework against the autoregressive decoding baseline, BPD, and
+    Medusa. BPD (Stern et al., [2018](#bib.bib17)) is the first parallel decoding
+    framework. Medusa is the SOTA parallel decoding algorithm equipped with token-tree
+    attention. We evaluate different frameworks on three conversational datasets:
+    Mt Bench(Zheng et al., [2023](#bib.bib21)), ChatGPT Prompts(MohamedRashad, [[n. d.]](#bib.bib12)),
+    and Alpaca(Taori et al., [2023](#bib.bib18)). Following (Miao et al., [2023](#bib.bib11)),
+    we only use the questions from these datasets to form our input prompts to simulate
+    the real-world conversation trace. To make a fair comparison, all of the methods
+    take greedy decoding to guarantee the same output with the large model. We follow
+    (Cai et al., [2023](#bib.bib4)) and mainly evaluate the efficiency of ProPD based
+    on the number of generated tokens per second.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.2\. Main Results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/dda4a1319dd7018b43b909f2815a798f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7\. Inference speed comparison between ProPD and the baselines under
+    different model sizes, tasks and batch sizes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We investigate the generation performance of ProPD on various model sizes, datasets
+    and batch sizes. The experiments of the 7b model are conducted on A6000, and the
+    experiments of 13b and 33b are conducted on A100\. The 33b model under batch size
+    of 4 and 8 are loaded in 4 bit through the transformers library to satisfy the
+    memory limitation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As shown in figure [7](#S5.F7 "Figure 7 ‣ 5.2\. Main Results ‣ 5\. Experimental
+    Results ‣ ProPD: Dynamic Token Tree Pruning and Generation for LLM Parallel Decoding"),
+    the experimental results demonstrate the effectiveness of ProPD in enhancing the
+    efficiency of parallel decoding in LLMs. The method not only accelerates the decoding
+    process but also scales effectively with increased batch sizes, a crucial factor
+    for practical applications. The comparison with traditional autoregressive, Medusa,
+    and BPD methods across different model sizes and batch configurations consistently
+    illustrates ProPD’s superior performance, marking it as a significant advancement
+    in the field of efficient language model decoding. Table [1](#S5.T1 "Table 1 ‣
+    5.2\. Main Results ‣ 5\. Experimental Results ‣ ProPD: Dynamic Token Tree Pruning
+    and Generation for LLM Parallel Decoding") shows the average speedup of ProPD
+    against the autoregressive decoding method under different batch sizes and model
+    sizes. ProPD can achieve 1.33-1.95$\times$ speedup under various scenarios.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Table 1\. Average speedup against autoregressive decoding.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | Batch Size |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Model Size | 1 | 2 | 4 | 8 | 16 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 7b | 1.95$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 13b | 1.67$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 33b | 1.86$\times$ | / |'
+  prefs: []
+  type: TYPE_TB
+- en: 5.3\. Early Pruning Accuracy
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Table 2\. Early pruning rate, accuracy and generation speed under BS=4 of different
+    layers and Top-$k$ choice.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Layer | Top-K | Prune Rate | AccLength | Speed |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| w/o pruning | - | - | 2.46 | 28.43 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 1 | 50 | 79.0% | 2.26 | 43.26 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 100 | 73.0% | 2.32 | 43.19 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 150 | 68.6% | 2.35 | 42.98 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 200 | 64.7% | 2.41 | 42.87 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 | 50 | 77.3% | 2.32 | 43.01 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 100 | 70.9% | 2.37 | 42.94 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 150 | 65.5% | 2.42 | 42.85 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 200 | 61.5% | 2.44 | 42.67 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 3 | 50 | 76.6% | 2.32 | 42.66 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 100 | 68.3% | 2.44 | 42.69 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 150 | 63.0% | 2.43 | 42.48 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 200 | 59.0% | 2.46 | 42.28 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 | 50 | 74.0% | 2.43 | 42.28 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 100 | 66.9% | 2.45 | 42.20 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 150 | 62.1% | 2.48 | 42.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 200 | 57.6% | 2.49 | 41.94 |'
+  prefs: []
+  type: TYPE_TB
+- en: The target of the early pruning method is to maintain the original acceptance
+    length while pruning a substantial proportion of branches. This is a critical
+    aspect of our method’s efficacy, as it balances the need for computational efficiency
+    with the integrity of the generated token sequences.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table [2](#S5.T2 "Table 2 ‣ 5.3\. Early Pruning Accuracy ‣ 5\. Experimental
+    Results ‣ ProPD: Dynamic Token Tree Pruning and Generation for LLM Parallel Decoding")
+    shows the pruning rate and acceptance length of ProPD under different pruning
+    layers and topK choice. In the early layers, the acceptance length can remain
+    close to the baseline set by Medusa with a high pruning rate. Note that the average
+    acceptance length may increase after pruning, such as in layer 4 top 200\. This
+    is because pruning may change the sequence of positions at which the model performs
+    parallel decoding when it prune the correct tokens. It might end up generating
+    longer sequences at these certain positions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We finally chose to implement early pruning at the 4-th layer of the model,
+    with a TopK setting of 50 based on the experimental observation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.4\. Ablation Study
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Table 3\. Ablation study of ProPD.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Early Pruning | Dynamic Generation | 7b | 13b | 33b |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| BS=1 | BS=2 | BS=4 | BS=8 | BS=16 | BS=2 | BS=2 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| x | x | 1$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ✓ | x | 0.99$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| x | ✓ | 1.04$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ✓ | ✓ | 1.04$\times$ |'
+  prefs: []
+  type: TYPE_TB
+- en: 'We further conduct a breakdown analysis of the benefit brought by each of ProPD’s
+    techniques. Performance was measured across different batch sizes (BS=1 to BS=16)
+    and model sizes (7b, 13b, and 33b). The results are illustrated in figure [3](#S5.T3
+    "Table 3 ‣ 5.4\. Ablation Study ‣ 5\. Experimental Results ‣ ProPD: Dynamic Token
+    Tree Pruning and Generation for LLM Parallel Decoding").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.4.1\. Early Pruning Only
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Early pruning demonstrates excellent acceleration effects when the batch size
+    is large. However, a slight decrease in performance was observed at BS=1 in the
+    7b model configuration when early pruning was applied independently. This suggests
+    that the benefits of early pruning are less pronounced when the computational
+    overhead is minimal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.4.2\. Dynamic Generation Only
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: Dynamic generation alone consistently improved performance across all batch
+    sizes and models. This improvement underscores the efficacy of dynamic generation
+    in enhancing the model’s ability to handle multiple predictions simultaneously,
+    thus providing a clear performance boost.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5.4.3\. Combined Early Pruning and Dynamic Generation
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: The most significant performance improvements were observed when both early
+    pruning and dynamic generation were employed simultaneously. The synergistic effect
+    of these techniques was particularly evident at larger batch sizes (BS=4 and beyond),
+    where the combined approach outperformed all other configurations. For instance,
+    in the 7b model at BS=16, the performance index reached 3.28, indicating over
+    three times the baseline performance. This because when batch size is large, the
+    dynamic generation only method will lead to ultra small token tree and acceptance
+    length. The pruning method can enable our framework to take larger token tree
+    size and have bigger acceptance length.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6\. Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this paper, we propose ProPD, a framework that accelerates the parallel decoding
+    of generative LLMs. Existing parallel decoding methods suffer from a high latency
+    overhead for batch decoding due to a large computation overhead. ProPD leverages
+    a token tree early pruning algorithm to reduce the verification overhead and a
+    dynamic tree generation algorithm to adapt to different decoding conditions automatically.
+    We verify ProPD across a diverse set of datasets, LLMs, and batch sizes and demonstrate
+    $1.1-3.2\times$ speedup over existing parallel decoding algorithms, e.g., Medusa.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: (1)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Bae et al. (2023) Sangmin Bae, Jongwoo Ko, Hwanjun Song, and Se-Young Yun. 2023.
+    Fast and Robust Early-Exiting Framework for Autoregressive Language Models with
+    Synchronized Parallel Decoding. *arXiv preprint arXiv:2310.05424* (2023).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Brown et al. (2020) Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D
+    Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda
+    Askell, et al. 2020. Language models are few-shot learners. *Advances in neural
+    information processing systems* 33 (2020), 1877–1901.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Cai et al. (2023) Tianle Cai, Yuhong Li, Zhengyang Geng, Hongwu Peng, and Tri
+    Dao. 2023. Medusa: Simple framework for accelerating llm generation with multiple
+    decoding heads.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chen et al. (2023) Charlie Chen, Sebastian Borgeaud, Geoffrey Irving, Jean-Baptiste
+    Lespiau, Laurent Sifre, and John Jumper. 2023. Accelerating large language model
+    decoding with speculative sampling. *arXiv preprint arXiv:2302.01318* (2023).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Fabbri et al. (2019) Alexander R Fabbri, Irene Li, Tianwei She, Suyi Li, and
+    Dragomir R Radev. 2019. Multi-news: A large-scale multi-document summarization
+    dataset and abstractive hierarchical model. *arXiv preprint arXiv:1906.01749*
+    (2019).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hendy et al. (2023) Amr Hendy, Mohamed Abdelrehim, Amr Sharaf, Vikas Raunak,
+    Mohamed Gabr, Hitokazu Matsushita, Young Jin Kim, Mohamed Afify, and Hany Hassan
+    Awadalla. 2023. How good are gpt models at machine translation? a comprehensive
+    evaluation. *arXiv preprint arXiv:2302.09210* (2023).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Jiang et al. (2023) Yufan Jiang, Qiaozhi He, Xiaomin Zhuang, Zhihua Wu, Kunpeng
+    Wang, Wenlai Zhao, and Guangwen Yang. 2023. RecycleGPT: An Autoregressive Language
+    Model with Recyclable Module. arXiv:2308.03421 [cs.CL]'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kim et al. (2023) Sehoon Kim, Coleman Hooper, Thanakul Wattanawong, Minwoo
+    Kang, Ruohan Yan, Hasan Genc, Grace Dinh, Qijing Huang, Kurt Keutzer, Michael W
+    Mahoney, et al. 2023. Full stack optimization of transformer inference: a survey.
+    *arXiv preprint arXiv:2302.14017* (2023).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Leviathan et al. (2023) Yaniv Leviathan, Matan Kalman, and Yossi Matias. 2023.
+    Fast inference from transformers via speculative decoding. In *International Conference
+    on Machine Learning*. PMLR, 19274–19286.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Miao et al. (2023) Xupeng Miao, Gabriele Oliaro, Zhihao Zhang, Xinhao Cheng,
+    Zeyu Wang, Rae Ying Yee Wong, Zhuoming Chen, Daiyaan Arfeen, Reyna Abhyankar,
+    and Zhihao Jia. 2023. SpecInfer: Accelerating Generative LLM Serving with Speculative
+    Inference and Token Tree Verification. *arXiv preprint arXiv:2305.09781* (2023).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: MohamedRashad ([n. d.]) MohamedRashad. [n. d.]. *Chatgpt-prompts*. [https://huggingface.co/datasets/MohamedRashad/ChatGPT-prompts](https://huggingface.co/datasets/MohamedRashad/ChatGPT-prompts)
+    2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Radford et al. (2018) Alec Radford, Karthik Narasimhan, Tim Salimans, Ilya Sutskever,
+    et al. 2018. Improving language understanding by generative pre-training. (2018).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Radford et al. (2019) Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario
+    Amodei, Ilya Sutskever, et al. 2019. Language models are unsupervised multitask
+    learners. *OpenAI blog* 1, 8 (2019), 9.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Santilli et al. (2023) Andrea Santilli, Silvio Severino, Emilian Postolache,
+    Valentino Maiorca, Michele Mancusi, Riccardo Marin, and Emanuele Rodolà. 2023.
+    Accelerating Transformer Inference for Translation via Parallel Decoding. *arXiv
+    preprint arXiv:2305.10427* (2023).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Spector and Re (2023) Benjamin Spector and Chris Re. 2023. Accelerating llm
+    inference with staged speculative decoding. *arXiv preprint arXiv:2308.04623*
+    (2023).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Stern et al. (2018) Mitchell Stern, Noam Shazeer, and Jakob Uszkoreit. 2018.
+    Blockwise parallel decoding for deep autoregressive models. *Advances in Neural
+    Information Processing Systems* 31 (2018).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Taori et al. (2023) Rohan Taori, Ishaan Gulrajani, Tianyi Zhang, Yann Dubois,
+    Xuechen Li, Carlos Guestrin, Percy Liang, and Tatsunori B. Hashimoto. 2023. Stanford
+    Alpaca: An Instruction-following LLaMA model. [https://github.com/tatsu-lab/stanford_alpaca](https://github.com/tatsu-lab/stanford_alpaca).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xu et al. (2023) Daliang Xu, Wangsong Yin, Xin Jin, Ying Zhang, Shiyun Wei,
+    Mengwei Xu, and Xuanzhe Liu. 2023. LLMCad: Fast and Scalable On-device Large Language
+    Model Inference. *arXiv preprint arXiv:2309.04255* (2023).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Zaib et al. (2022) Munazza Zaib, Wei Emma Zhang, Quan Z Sheng, Adnan Mahmood,
+    and Yang Zhang. 2022. Conversational question answering: A survey. *Knowledge
+    and Information Systems* 64, 12 (2022), 3151–3195.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Zheng et al. (2023) Lianmin Zheng, Wei-Lin Chiang, Ying Sheng, Siyuan Zhuang,
+    Zhanghao Wu, Yonghao Zhuang, Zi Lin, Zhuohan Li, Dacheng Li, Eric. P Xing, Hao
+    Zhang, Joseph E. Gonzalez, and Ion Stoica. 2023. Judging LLM-as-a-judge with MT-Bench
+    and Chatbot Arena. arXiv:2306.05685 [cs.CL]
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

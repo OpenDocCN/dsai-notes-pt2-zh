@@ -1,0 +1,1211 @@
+- en: <!--yml
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'category: 未分类'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'date: 2024-09-08 18:52:27'
+  prefs: []
+  type: TYPE_NORMAL
+- en: -->
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'ExCP: Extreme LLM Checkpoint Compression via Weight-Momentum Joint Shrinking'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 来源：[https://ar5iv.labs.arxiv.org/html/2406.11257](https://ar5iv.labs.arxiv.org/html/2406.11257)
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Wenshuo Li    Xinghao Chen    Han Shu    Yehui Tang    Yunhe Wang
+  prefs: []
+  type: TYPE_NORMAL
+- en: Abstract
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: Large language models (LLM) have recently attracted significant attention in
+    the field of artificial intelligence. However, the training process of these models
+    poses significant challenges in terms of computational and storage capacities,
+    thus compressing checkpoints has become an urgent problem. In this paper, we propose
+    a novel Extreme Checkpoint Compression (ExCP) framework, which significantly reduces
+    the required storage of training checkpoints while achieving nearly lossless performance.
+    We first calculate the residuals of adjacent checkpoints to obtain the essential
+    but sparse information for higher compression ratio. To further excavate the redundancy
+    parameters in checkpoints, we then propose a weight-momentum joint shrinking method
+    to utilize another important information during the model optimization, i.e.,
+    momentum. In particular, we exploit the information of both model and optimizer
+    to discard as many parameters as possible while preserving critical information
+    to ensure optimal performance. Furthermore, we utilize non-uniform quantization
+    to further compress the storage of checkpoints. We extensively evaluate our proposed
+    ExCP framework on several models ranging from 410M to 7B parameters and demonstrate
+    significant storage reduction while maintaining strong performance. For instance,
+    we achieve approximately $70\times$ compression for the Pythia-410M model, with
+    the final performance being as accurate as the original model on various downstream
+    tasks. Codes will be available at https://github.com/Gaffey/ExCP.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Machine Learning, ICML
+  prefs: []
+  type: TYPE_NORMAL
+- en: 1 Introduction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Large Language Model (LLM) (Brown et al., [2020](#bib.bib3); Touvron et al.,
+    [2023](#bib.bib27); [Wang et al.,](#bib.bib28) ; Chowdhery et al., [2023](#bib.bib6);
+    Team et al., [2023](#bib.bib26)) has attracted the attention of the vast majority
+    of academia and industry concentrated on Artificial Intelligence (AI). The current
+    LLM can conduct daily conversations with humans, ask questions and answer questions,
+    help humans extract information from articles and charts, and even complete professional-related
+    tasks such as consultation and programming, which greatly improves the efficiency
+    of human-computer interaction. Thousands of laboratories and companies are involved
+    in the training of the LLMs. Computing power and storage have become key resources
+    in the LLM era. Training an LLM requires up to thousands of GPUs or computing
+    cards like TPUs or Ascends, and it is difficult to keep such a large computing
+    cluster running completely smoothly. At the same time, researchers are also faced
+    with the need to interrupt training at any time to adjust training data and hyperparameters.
+    Sometimes it is even necessary to go back to earlier checkpoints to solve problems
+    introduced during training. Therefore, frequent saving of checkpoints has become
+    a must during the whole training process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/f17129329fe31f22dc35c7e191faf0f9.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 1: The number of parameters of some LLMs and the general training process
+    of LLMs. (a) Parameters of some recent LLMs, most of them contain billions of
+    weights and keep getting larger in trend. (b) The training of LLMs consists of
+    several stages with variety of schemes and data. A large quantity of checkpoints
+    would be stored in each stage. Considering the magnitude of LLMs’ parameters,
+    extremely high capacity storage is needed for training of LLMs, which could cost
+    tens of millions of dollars.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Take the open source model Pythia (Biderman et al., [2023](#bib.bib2)) as an
+    example, the checkpoint of the largest version Pythia-12B model takes more than
+    24GB to save. Not to mention the relevant momentum states of the optimizer. Adam
+    optimizer requires twice the storage space of the weight. The training process
+    of Pythia-12B saves 154 checkpoints which requires about 11TB storage, which would
+    cost $5000 a month on a general cloud server to store these checkpoints. And this
+    is just an entry-level scenario for large company. Conservative estimates suggest
+    that the largest models of the most advanced LLMs, such as the GPT series and
+    Gemini series, has the number of parameters on the order of hundreds to thousands
+    of billions. Some publicly available data is shown Figure [1](#S1.F1 "Figure 1
+    ‣ 1 Introduction ‣ ExCP: Extreme LLM Checkpoint Compression via Weight-Momentum
+    Joint Shrinking"). Larger models also require more checkpoints and longer training
+    time. So the total cost of storage for a cutting-edge LLM may grow to tens of
+    millions of dollars.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In view of the above problems, compressing model checkpoints has become a very
+    urgent need. Model compression itself is not a new topic. The model size is compressed
+    to reduce the storage occupied by checkpoints (Han et al., [2015](#bib.bib14);
+    Hu et al., [2020](#bib.bib15); Eisenman et al., [2022](#bib.bib11); Chen et al.,
+    [2020](#bib.bib5); Jin et al., [2023](#bib.bib17); Agrawal et al., [2023](#bib.bib1))
+    or compress the calculation amount of the model to improve the model’s inference
+    performance (Liu et al., [2017](#bib.bib19); Tang et al., [2020](#bib.bib25);
+    Dettmers et al., [2022](#bib.bib9); Xiao et al., [2023](#bib.bib31); Chen et al.,
+    [2022](#bib.bib4); Shu et al., [2023](#bib.bib23); Wu et al., [2023](#bib.bib30)).
+    These researches have drawn attentions of researchers in the past ten years. However,
+    previous checkpoints compression work concerns more about the size of weight checkpoints
+    instead of the whole training states, so there is a lack of relevant researches
+    on momentum states compression. In addition, the similarity of adjacent checkpoints
+    should also be considered in the compression pipeline. This feature can improve
+    the pruning ratio instead of simply reducing the final size using some encoding
+    techniques.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this paper, we propose a checkpoints compression framework that does not
+    rely on training code and information. We calculate the residual value of adjacent
+    checkpoints, apply weight-momentum joint pruning, and then non-uniformly quantize
+    the weights and momentum states to extremely compress the checkpoints. Meanwhile,
+    our residual compression strategy ensures that we can resume the training from
+    compressed checkpoints nearly lossless. Our main contributions are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We propose a checkpoints compression framework which contains residual calculation,
+    weight-momentum joint pruning and non-uniform quantization. This framework makes
+    full use of the characteristics of checkpoints compression, achieving almost lossless
+    training recovery while achieving a high compression ratio.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We derive a weight-momentum joint pruning method, and prove the convergence
+    of the optimizer under this pruning method. This is the first work to our knowledge
+    that jointly considers both weights and momentum states pruning.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: •
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We conduct experiments on various models and evaluation benchmarks. Our compressed
+    model achieves up to 70$\times$ nearly lossless compression on Pythia-410M model,
+    which could largely reduce the storage of saving checkpoints.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 2 Related Work
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 2.1 Large Language Model
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Recently, the emergence of large language model and the corresponding strong
+    capabilities in various natural language processing (NLP) applications have drawn
+    widespread attention in research society. The demonstrated powerful abilities
+    by the model scaling have furthermore increased the parameters of large language
+    models. The remarkable work GPT3 (Brown et al., [2020](#bib.bib3)) shows impressive
+    performance on solving real-world NLP tasks. However, as shown in Table [1](#S2.T1
+    "Table 1 ‣ 2.1 Large Language Model ‣ 2 Related Work ‣ ExCP: Extreme LLM Checkpoint
+    Compression via Weight-Momentum Joint Shrinking"), the model contains 175 billion
+    parameters and requires large amount of hardware resources to be trained and stored.
+    A single training checkpoint of GPT3 can reach up to 2.3TB. Following large language
+    models such as PaLM (Chowdhery et al., [2023](#bib.bib6)) and LLaMA (Touvron et al.,
+    [2023](#bib.bib27)) consume comparable or even more hardware resources. Due to
+    the huge resource consumption and common training failures, the checkpoints of
+    LLMs should be updated and stored frequently, which could occupy much more resources
+    of the communication bandwidth and storage devices. Thus, the exploration of redundancy
+    in LLM checkpoint is meaningful and necessary, which can save the memory consumption
+    in great extent and make the training procedure more efficient and more affordable.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 1: The parameter and checkpoint size of part LLMs. High-capacity storage
+    devices are essential for checkpoints for LLM training process.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Param. | Storage |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| GPT3 (Brown et al., [2020](#bib.bib3)) | 175B | 2.3TB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PaLM (Chowdhery et al., [2023](#bib.bib6)) | 540B | $\sim$7TB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| LLaMA-70B (Touvron et al., [2023](#bib.bib27)) | 75B | 1.0TB |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PanGu-$\pi$  ([Wang et al.,](#bib.bib28) ) | 7B | 99GB |'
+  prefs: []
+  type: TYPE_TB
+- en: 2.2 Compression Method
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Data Compression Methods. Compression methods for efficient storage of data
+    have been investigated for long decades. These previous methods can be categorized
+    into two types, the lossy and the lossless. Lossy compression methods like JPEG (Rao
+    & Hwang, [1996](#bib.bib20)) and MP3 (Sterne, [2012](#bib.bib24)) are widely used
+    in the compression of image and video data which does not require precise restoration.
+    Huffman coding (Huffman, [1952](#bib.bib16)) is a classic lossless compression
+    method, which statisticizes the frequency of the characters to get an optimized
+    coding length according to different frequency of occurrence. The lossless compression
+    method can be easily applied to the checkpoints of LLMs. However, the generalizability
+    of the data compression method determines that the compression rate would be relatively
+    low when applied to LLM checkpoints. Specialized compression method should be
+    investigated and designed to achieve a higher compression rate for heavy intrinsic
+    redundancy of LLM checkpoint.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Neural Network Compression Methods. The neural network compression methods have
+    been explored by many work due to the increasing model size and computation resources.
+    DeepCompression (Han et al., [2015](#bib.bib14)) utilizes network pruning, quantization
+    and huffman coding to obtain a compact neural network. Llm (Dettmers et al., [2022](#bib.bib9))
+    and Smoothquant (Xiao et al., [2023](#bib.bib31)) adopt the quantization to compress
+    the large language models. These network compression methods could reduce the
+    quantity or bit-width of parameters in neural networks but are often highly related
+    to the training targets. Thus, these methods cannot be generally applied to compress
+    the checkpoints with various task background. Moreover, re-training or finetuning
+    is often necessary for compression methods like network pruning (Liu et al., [2017](#bib.bib19))
+    and quantization-aware training (Esser et al., [2019](#bib.bib12)), which could
+    be extremely computationally expensive especially for large language models with
+    huge training data and huge amount of network parameters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compression methods for checkpoints. As the deep neural network model getting
+    larger and the training cost getting more expensive, some research work begin
+    to focus on the compression of checkpoints. LC-Checkpoint (Chen et al., [2020](#bib.bib5))
+    proposes a lossy compression scheme for checkpoint constructions on the assumption
+    of SGD optimizer. Check-N-Run (Eisenman et al., [2022](#bib.bib11)) applies differential
+    and quantization for recommendation models. Delta-DNN  (Hu et al., [2020](#bib.bib15))
+    focuses on the storage of floating point numbers and records the differential
+    of two neighboring versions. QD-Compressor (Jin et al., [2023](#bib.bib17)) further
+    develops a layer-based quantization and achieves higher compression ratio. When
+    these methods applied on large-scale models of LLM, undesirable accuracy degradation
+    would occur due to the uniform and constant quantization strategy during training
+    procedure. Recent DynaQuant (Agrawal et al., [2023](#bib.bib1)) tackles this issue
+    by precisely compressing model parameters based on different contributions to
+    the final result quality with an efficient dynamic quantization configuration
+    and a quantization-aware delta encoding scheme. However, most of previous work
+    focus on the compression of model parameters while ignoring the momentum states
+    of optimizer, which occupy more memory storage and exist more redundancy in LLM
+    checkpoints.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3 Our Method
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/9339295cdae03d9936a18ef26d44aae1.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 2: Framework of our proposed compression process. We calculate the residual
+    $\Delta\mathcal{W}_{t}$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A checkpoint $\mathcal{P}_{t}$ of the optimizer momentum.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathcal{P}_{t}=\{\mathcal{W}_{t},\mathcal{O}_{t}\}.$ |  | (1) |'
+  prefs: []
+  type: TYPE_TB
+- en: Saving checkpoints for $T$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathcal{P}=\{\mathcal{P}_{1},\mathcal{P}_{2},\cdots,\mathcal{P}_{t}\,\cdots,\mathcal{P}_{T}\}.$
+    |  | (2) |'
+  prefs: []
+  type: TYPE_TB
+- en: For the widely used Adam optimizer, the parameters with most significant storage
+    cost are the first-order and second-order moments $v_{t}$, i.e.,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\mathcal{O}_{t}=\{v_{t},m_{t}\}.$ |  | (3) |'
+  prefs: []
+  type: TYPE_TB
+- en: Note that some variables such as learning rate and weight decay etc. are also
+    stored in the optimizer checkpoint, but can be simply neglected when compared
+    with moments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the traditional pruning-related work, researchers only concern about the
+    weights of models, since the main purpose of pruning is reducing the overhead
+    of calculation and storage during the inference stage. However, when we turn to
+    the checkpoint compression during the training process, the pruning of momentum
+    is also important to reduce the total size of training checkpoints. Take the most
+    general optimizer Adam used in LLM training as an example, it saves the first-order
+    and second-order moment of gradients which require double storage of weights.
+    Therefore, we have to take both model weights and optimizer momentum states into
+    consideration for extreme compression of model training checkpoints.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.1 Residual Checkpoint
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: During the $t^{th}$ is defined as
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\Delta\mathcal{P}_{t}=\{\Delta\mathcal{W}_{t},\mathcal{O}_{t}\}=\{\mathcal{W}_{t}-\mathcal{W}_{t-1},\mathcal{O}_{t}\}.$
+    |  | (4) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'There is a comparison between the pruning on residual checkpoint and pruning
+    on original checkpoint in Figure [3](#S3.F3 "Figure 3 ‣ 3.1 Residual Checkpoint
+    ‣ 3 Our Method ‣ ExCP: Extreme LLM Checkpoint Compression via Weight-Momentum
+    Joint Shrinking"). We plot the histogram of the original weights, weights after
+    direct pruning and weights after pruning on residual checkpoints. We find that
+    pruning the residual checkpoint has almost no impact on the parameter distribution.
+    This helps us to further prune the parameters.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Refer to caption](img/192eafad1944a52c11629981639119a2.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 3: Weights distribution for original weights, pruning on residual checkpoints
+    and pruning on original weights. We plot the histogram of random 100k non-zero
+    weights of each case for clarity. The range of bins are bounded by (mean - 3 *
+    std, mean + 3 * std) and 256 bins are used.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 Joint Weight-Momentum Pruning
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Weight pruning is a common way to discard unimportant values while maintaining
+    the performance to the maximum extent. For the checkpoint compression, we need
+    to obtain the corresponding pruning masks for model weights and momentum states,
+    which are denoted as $\mathcal{M}_{w}$, respectively. Intuitive way for pruning
+    model weights and momentum states is to discard values with some pre-defined metric.
+    However, this separate strategy leads to sub-optimal solution since there are
+    strong relations between model weights and momentum states. Therefore, in this
+    paper we propose a novel joint weight-momentum pruning method that obtains better
+    performance for checkpoint compression.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Weight Pruning. For weights pruning, using the magnitude or the gradients of
+    weights as an indicator is the common practice. There is a little difference between
+    our weight pruning task and the general one. As we introduced in Section [3.1](#S3.SS1
+    "3.1 Residual Checkpoint ‣ 3 Our Method ‣ ExCP: Extreme LLM Checkpoint Compression
+    via Weight-Momentum Joint Shrinking"), we need to prune the residual values of
+    weights of two adjacent checkpoints instead of the original value of weights.
+    Thus we recommend to use the second-order moment of gradients of weights as an
+    indicator, since they can represent the statistical average of the weight change
+    during training process. We use the indicator to calculate the pruning threshold
+    of each layer and the formula is shown below,'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $$r_{w}=\frac{\alpha}{\sqrt{m_{t}}}\times\text{median}(\mathcal{W}),\\
+    \mathcal{M}_{w}(i)=\mathds{1}_{w_{t}(i)></math> |  | (5) |'
+  prefs: []
+  type: TYPE_TB
+- en: In which $\mathcal{W}$ is a hyperparameter. After determining the pruning threshold
+    of each layer, we prune the residual of weights to zero by magnitude for each
+    layer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Momentum Pruning. For momentum pruning, we use the first-order moment as an
+    indicator to determine whether to prune this momentum states or not. We give a
+    brief proof in the next section to explain why we choose it. Besides, if a specific
+    location of weights is pruned, intuitively it is not important to preserve the
+    corresponding momentum states. We prune the parameters of momentum following the
+    formula below, in which $\beta$ is a hyper-parameter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | <math id=$$ |  | (6) |'
+  prefs: []
+  type: TYPE_TB
+- en: Convergence Analysis. Since we prune both the model weights and momentum states
+    during training, it is important to analyze whether the whole training with checkpoint
+    compression still have convergence guarantee.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Theorem 3.1.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: According the convergence analysis in Adam (Kingma & Ba, [2014](#bib.bib18)),
+    assume that the function $f_{t}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\tilde{R}(T)\leq$ |  | (7) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Compared with the original convergence analysis of Adam (Kingma & Ba, [2014](#bib.bib18)),
+    the regret bound for our checkpoint compression method has an additional term:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\Delta\tilde{R}(T)$ |  | (8) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle=\frac{D^{2}}{2\alpha\left(1-\beta_{1}\right)}\sum_{i=1}^{d}(\sqrt{T\widehat{v}_{\tau,i}(1-\mathcal{M}_{o})}).$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Since we only prune the values that $v$ is relatively small, thus the regret
+    bound is quite close to that of original training process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Similar to the original optimization process of Adam, the average regret of
+    our method also converges. Denote the regret bound of original Adam as $R(T)$,
+    thus we have
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\lim_{T\rightarrow\infty}\frac{\tilde{R}(T)}{T}\leq\lim_{T\rightarrow\infty}\frac{R(T)+\Delta\tilde{R}(T)}{T}=0$
+    |  | (9) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Therefore, our pruning method for momentum also achieves the following guarantee
+    for all $T\geq 1$:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\frac{R(T)}{T}=O\left(\frac{1}{\sqrt{T}}\right)$ |  | (10) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'This indicates that our method also has good convergence rate as that of training
+    without checkpoint compression. Detailed analysis can be found in Appendix [A](#A1
+    "Appendix A Convergence Analysis. ‣ ExCP: Extreme LLM Checkpoint Compression via
+    Weight-Momentum Joint Shrinking").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It should be noted that Sashank et al. (Sashank et al., [2018](#bib.bib21))
+    point out the potential problem with the proof of convergence in (Kingma & Ba,
+    [2014](#bib.bib18)) and tremendous efforts (Shi & Li, [2021](#bib.bib22); Zhang
+    et al., [2022](#bib.bib32); Défossez et al., [2020](#bib.bib8)) have been taken
+    for better analysis of convergence of Adam algorithm. In the above section, we
+    provide an proof-of-concept analysis for the convergence of our checkpoint compression
+    framework. Incorporating newer convergence analysis of Adam into our framework
+    should be feasible since we only modify the moments in a specific iteration. Extensive
+    experiments also demonstrate the convergence of our proposed method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 Quantization
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Besides pruning, quantization is also a common used method to compress the models
+    or reduce the overhead of calculations. In our task, we only concern about the
+    size of checkpoint, so we can choose non-uniform quantization method, which has
+    better compression ratio but cannot accelerate the inference process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Shown in Figure [2](#S3.F2 "Figure 2 ‣ 3 Our Method ‣ ExCP: Extreme LLM Checkpoint
+    Compression via Weight-Momentum Joint Shrinking"), we quantize weights and momentum
+    states separately. We leave the pruned weights or momentum states to zero, and
+    apply K-means algorithm on other weights or momentum states to cluster them to
+    $2^{n}-1$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.4 Compressing and Reconstructing Checkpoints
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Based on the methods we describe on the above sections, we here give a detailed
+    introduction of our compressing and reconstructing process. During the whole training
+    process, once we reach a saving node, we start our compression process independent
+    of the main training process. We always keep a reconstructed version of the last
+    checkpoint, for fast compression and training recovery. With this reconstructed
+    version, the compressing process is described in Algorithm [1](#alg1 "Algorithm
+    1 ‣ 3.4 Compressing and Reconstructing Checkpoints ‣ 3 Our Method ‣ ExCP: Extreme
+    LLM Checkpoint Compression via Weight-Momentum Joint Shrinking").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 1 Compressing process
+  prefs: []
+  type: TYPE_NORMAL
+- en: 0:  last reconstructed weight checkpoint $\hat{\mathcal{W}}_{t-1}$
+  prefs: []
+  type: TYPE_NORMAL
+- en: In which $\mathcal{I}$ to save the storage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 2 Reconstructing process
+  prefs: []
+  type: TYPE_NORMAL
+- en: 0:  last reconstructed weight checkpoint $\hat{\mathcal{W}}_{t-1}$
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can reconstruct a weight checkpoint $\hat{\mathcal{W}}_{t}$ following the
+    Algorithm [2](#alg2 "Algorithm 2 ‣ 3.4 Compressing and Reconstructing Checkpoints
+    ‣ 3 Our Method ‣ ExCP: Extreme LLM Checkpoint Compression via Weight-Momentum
+    Joint Shrinking").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Algorithm 3 Reconstructing arbitrary checkpoints
+  prefs: []
+  type: TYPE_NORMAL
+- en: 0:  random seed $s$  end while
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once we finished the whole training process, only the random seed for initialize
+    weights and the compressed checkpoints are required to be saved, which are significantly
+    smaller than the whole weights and optimizer checkpoint. If we want to reconstruct
+    arbitrary checkpoints, we can follow the Algorithm [3](#alg3 "Algorithm 3 ‣ 3.4
+    Compressing and Reconstructing Checkpoints ‣ 3 Our Method ‣ ExCP: Extreme LLM
+    Checkpoint Compression via Weight-Momentum Joint Shrinking").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4 Experiments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Table 2: Results of ViT-L32 model on ImageNet-1K dataset. CR represents the
+    compression ratio. M2W pruning represents the Momentum-to-Weights pruning shown
+    in equation [5](#S3.E5 "Equation 5 ‣ 3.2 Joint Weight-Momentum Pruning ‣ 3 Our
+    Method ‣ ExCP: Extreme LLM Checkpoint Compression via Weight-Momentum Joint Shrinking").
+    No check means that the weights are pruned with a setting threshold instead of
+    $\frac{\alpha}{\sqrt{m_{t}}}$. * We estimate the results of the other work in
+    terms of the checkpoint size of momentum being twice the weights.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Method | M2W pruning | W2M pruning | Top-1 Accuracy(%) | CR(Weights) | CR(Weights
+    & Momentum) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| baseline |  |  | 71.36 | 1 | 1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| CNR+ |  |  | 71.57 | 7.82 | 1.41* |'
+  prefs: []
+  type: TYPE_TB
+- en: '| QD+ |  |  | 71.24 | 16.31 | 1.45* |'
+  prefs: []
+  type: TYPE_TB
+- en: '| DynaQuant |  |  | 71.82 | 26.19 | 1.47* |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ExCP(Ours) |  |  | 71.51 | - | 19.88 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ExCP(Ours) | ✓ |  | 71.53 | - | 25.54 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ExCP(Ours) |  | ✓ | 71.80 | - | 22.76 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ExCP(Ours) | ✓ | ✓ | 71.69 | - | 35.21 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 3: Results of Pythia-410M models. We achieve almost lossless results
+    while the storage is reduce by $\sim$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Method | Size | Tasks |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| hellaswag | arc-e | piqa | C3 | csl | lambada | Avg |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- | --- | --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Pythia-410M | Original model | 4.53G | 32.52 | 35.80 | 62.13 | 37.21 | 53.75
+    | 37.22 | 43.11 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Residual+7Zip | 3.40G | 32.52 | 35.80 | 62.13 | 37.21 | 53.75 | 37.22 | 43.11
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ExCP (Ours) | 0.06G | 31.95 | 37.04 | 62.62 | 36.22 | 52.50 | 37.24 | 42.93
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 4: Results of PanGu-$\pi$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Model | Size | Examination | Knowledge | Reasoning | Understanding | Avg
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| C-Eval | CMMLU | MMLU | AGI-Eval | BoolQ | AX-b | PIQA | CSL | EPRSTMT |
+    XSum | LCSTS |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PanGu-$\pi$-1B | Ori | 14.64G | 38.05 | 37.86 | 34.96 | 30.42 | 58.62 | 43.75
+    | 62.02 | 56.25 | 55.62 | 16.00 | 14.60 | 40.74 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 0.59G | 36.71 | 38.65 | 37.13 | 31.87 | 59.30 | 42.66 | 61.10 | 55.00
+    | 56.25 | 16.31 | 14.14 | 40.83 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| PanGu-$\pi$-7B | Ori | 98.59G | 59.91 | 59.97 | 61.84 | 54.04 | 64.59 | 56.88
+    | 77.31 | 63.12 | 90.00 | 19.59 | 16.61 | 56.71 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Ours | 4.10G | 61.32 | 60.14 | 62.37 | 55.11 | 68.44 | 52.90 | 77.91 | 63.75
+    | 90.00 | 19.24 | 16.77 | 57.09 |'
+  prefs: []
+  type: TYPE_TB
+- en: '![Refer to caption](img/c67301da53ba17626de9dfc27efec418.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 4: Comparison of training loss and checkpoint size between original
+    models and our methods.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Models and Datasets
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We conduct our experiments on ViT-L32 (Dosovitskiy et al., [2020](#bib.bib10)),
+    Pythia-410M (Biderman et al., [2023](#bib.bib2)), PanGu-$\pi$ series models are
+    trained following the training details of their paper (Wang et al., [2023](#bib.bib29)),
+    which are trained on about 1.6 trillion tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For evaluation, we use opencompass (Contributors, [2023](#bib.bib7)) as the
+    evaluation framework. We choose HellaSwag, ARC-easy, PIQA, C3, CSL and LAMBADA
+    tasks to evaluate the performance of Pythia-410M, since these evaluation benchmarks
+    are sensitive to model performance. And we evaluate the PanGu-$\pi$ series models
+    following their paper (Wang et al., [2023](#bib.bib29)) which uses 11 benchmarks
+    belonging to 4 categories, examination, knowledge, reasoning and understanding.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 Implementation Details
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: During the training process, we save checkpoints every epoch for ViT-L32 and
+    every 1000 iterations for LLMs, and compress the checkpoints in the meantime.
+    We break our training process periodically, and then we resume the training from
+    our compressed checkpoints until we finish the whole training process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unless otherwise specified, we set the $\alpha$ is set as 4 in experiments.
+    We combine two int4 number into one int8 number while saving. 7zip compression
+    algorithm is used for further storage reduction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 Experimental Results
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'First we evaluate the effectiveness of our methods on ViT-L32 models to make
+    a comparison with other checkpoint compression methods shown in Table [2](#S4.T2
+    "Table 2 ‣ 4 Experiments ‣ ExCP: Extreme LLM Checkpoint Compression via Weight-Momentum
+    Joint Shrinking"). The accuracies of CNR+, QD+ and DynaQuant are all from Dynaquant (Agrawal
+    et al., [2023](#bib.bib1)). We follow the same setting as Dynaquant that we break
+    and resume the training process from compressed checkpoints every 15 epochs. The
+    results show that our method achieve better compression ratio which reachs more
+    than 30$\times$. Moreover, previous work do not compress the momentum of optimizer,
+    which means that they achieve even less compression ratio while considering both
+    weights and momentum. We also evaluate our joint pruning strategy. Using both
+    M2W and W2M pruning achieve the best results.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next we evaluate the performance of our methods on a relatively smaller LLM
+    Pythia-410M. The results are shown in Table [3](#S4.T3 "Table 3 ‣ 4 Experiments
+    ‣ ExCP: Extreme LLM Checkpoint Compression via Weight-Momentum Joint Shrinking").
+    The period of breaking is set to 5000 iterations. From the results, we can find
+    that our methods achieve nearly lossless compression with $\sim$ compression ratio
+    even the model itself is small enough in LLMs. Besides, our evaluation results
+    on downstream tasks are even a little bit better than that of the original model.
+    We think this is the improvement in generalization ability brought by the introduction
+    of additional regularizers during the compression process.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The training loss curve and the comparison of storage of each checkpoint during
+    the training process is shown in Figure [4](#S4.F4 "Figure 4 ‣ 4 Experiments ‣
+    ExCP: Extreme LLM Checkpoint Compression via Weight-Momentum Joint Shrinking").
+    We plot the training loss every 100 iterations. We can find that our training
+    curve fits well with the original one, with only a small loss increase. Meanwhile,
+    we achieve $\sim 70\times$ compression in every node. When the learning rate is
+    large, the stored checkpoint is relatively large. When the learning rate is small,
+    the model size decreases since the model tends to be stable. This is related to
+    our strategy of compressing residuals.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We also evaluate the PanGu-$\pi$ series models are originally saved in float16
+    format, so the compression ratio would be less than that of Pythia series models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '<svg id="S4.F5.1.p1.pic1" class="ltx_picture" height="486.45" overflow="visible"
+    version="1.1" width="629.92"><g transform="translate(0,486.45) matrix(1 0 0 -1
+    0 0)" fill="#000000" stroke="#000000" stroke-width="0.4pt"><g fill-opacity="1.0"
+    transform="matrix(1.0 0.0 0.0 1.0 20.79 12.92)"><foreignobject width="588.34"
+    height="460.62" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible" color="#000000">Question:
+    What kind of exercise do you suggest I do indoors? Original PanGu-$\pi$-1B: There
+    are a lot of great exercises you can do indoors to help improve your fitness,
+    such as: 1\. Yoga: Yoga is a great way to improve flexibility, strength, and balance.
+    There are many online videos and classes available that can help you learn the
+    basics. 2\. Bodyweight exercises: You can do bodyweight exercises such as push-ups,
+    squats, lunges, and planks to build strength and improve your overall fitness.
+    3\. Dancing: Dancing is a fun way to improve your cardiovascular fitness, coordination,
+    and balance. There are many online tutorials and classes available that can help
+    you learn the basics. 4\. Yoga for beginners: If you’re new to yoga, there are
+    many beginner classes available that can help you learn the basics. 5\. Pilates:
+    Pilates is a great way to improve your core strength, flexibility, and balance.
+    There are many online videos and classes available that can help you learn the
+    basics. Remember to start slow and gradually increase the intensity and duration
+    of your workouts as you get stronger and more confident.</foreignobject></g></g></svg>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 5: Q&A example to show the difference between our compressed model and
+    the original model.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We show a question & answer results for PanGu-$\pi$-1B model in Figure [5](#S4.F5
+    "Figure 5 ‣ 4.3 Experimental Results ‣ 4 Experiments ‣ ExCP: Extreme LLM Checkpoint
+    Compression via Weight-Momentum Joint Shrinking") to show the difference between
+    our compressed model and the original model. In this example, our compressed model
+    shows a better understanding to the limit indoors and gives a better answer. It
+    proves that our compressed model perfroms even better than the original one in
+    some cases. More results are shown in the Appendix [B](#A2 "Appendix B More Visualization
+    of Compressed LLM. ‣ ExCP: Extreme LLM Checkpoint Compression via Weight-Momentum
+    Joint Shrinking").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4 Ablation Studies
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Table 5: Ablation study of our methods. Applying residual, joint-prune and
+    quantization together achieves the best size while the average accuracy is almost
+    lossless.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| method | Size | Avg Acc |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| residual | prune | quant |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  |  | 4070M | 43.11 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ✓ |  |  | 3484M | 43.11 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | ✓ |  | 324M | 29.95 |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | ✓ | 492M | 40.17 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ✓ | ✓ |  | 276M | 42.92 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ✓ |  | ✓ | 493M | 42.94 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ✓ | ✓ | ✓ | 61M | 42.93 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'We also do some ablation studies to show that every method in our compression
+    pipeline is of vital importance. The results are shown in Table [5](#S4.T5 "Table
+    5 ‣ 4.4 Ablation Studies ‣ 4 Experiments ‣ ExCP: Extreme LLM Checkpoint Compression
+    via Weight-Momentum Joint Shrinking"). Although calculating the residual of adjacent
+    models cannot bring a significant storage reduce, it plays an important role in
+    the whole pipeline. Directly pruning weights may harm the accuracy largely, while
+    the residual of adjacent models does not have this problem. Joint-pruning and
+    quantization on residual checkpoint separately compress the model by 15$\times$.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 6: Ablation study of different quantization bins. We choose 4 bit in
+    all other experiments since it achieves better performance-size trade-off.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Quant bins | Size | Avg Acc |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 2 bit | 43M | 42.46 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 4 bit | 61M | 42.93 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 8 bit | 87M | 42.90 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'We explore the influence of different quantization bins. From Table [6](#S4.T6
+    "Table 6 ‣ 4.4 Ablation Studies ‣ 4 Experiments ‣ ExCP: Extreme LLM Checkpoint
+    Compression via Weight-Momentum Joint Shrinking"), we can find that quantization
+    below 4 bit cannot bring a significant storage reduce, so we choose 4 bit which
+    achieves better performance-size trade-off. In some cases which extreme small
+    checkpoint size is required, 2 bit could be used to further compress the checkpoints
+    a little bit more.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Table 7: Comparison of different compression algorithms. We choose 7zip in
+    all other experiments since it outperforms other algorithms.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | zip | rar | rar4 | bz2 | 7z |'
+  prefs: []
+  type: TYPE_TB
+- en: '| size | 73M | 70M | 69M | 64M | 61M |'
+  prefs: []
+  type: TYPE_TB
+- en: 'We also evaluate different compression algorithms to compact the final checkpoint
+    files. The results are shown in Table [7](#S4.T7 "Table 7 ‣ 4.4 Ablation Studies
+    ‣ 4 Experiments ‣ ExCP: Extreme LLM Checkpoint Compression via Weight-Momentum
+    Joint Shrinking"). The 7zip compression with LZMA2 algorithm achieves the best
+    compression ratio, which leads to about 20% less storage, and we apply 7zip with
+    the ultra compression ratio on all other experiments.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 5 Conclusion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this paper, we discuss the extreme compression of LLM checkpoint. We propose
+    a checkpoint compression framework which contains residual calculation, weights-momentum
+    joint pruning and non-uniform quantization. We derive the criterion for weight-momentum
+    joint-pruning and prove the convergence of the pruned momentum states. Experimental
+    results show the effectiveness of our methods. We compress Pythia-410M by $\sim
+    70\times$ while achieving nearly lossless results on down-stream evaluations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the future, we would try to extend the experiments to different tasks such
+    as multi-modal large models and visual large models. And different types of neural
+    networks including transformers, CNNs and RNNs would be taken into consideration.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Impact Statement
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This paper presents work whose goal is to advance the field of Machine Learning.
+    There are many potential societal consequences of our work, none which we feel
+    must be specifically highlighted here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Agrawal et al. (2023) Agrawal, A., Reddy, S., Bhattamishra, S., Nookala, V.
+    P. S., Vashishth, V., Rong, K., and Tumanov, A. Dynaquant: Compressing deep learning
+    training checkpoints via dynamic quantization. *arXiv preprint arXiv:2306.11800*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Biderman et al. (2023) Biderman, S., Schoelkopf, H., Anthony, Q. G., Bradley,
+    H., O’Brien, K., Hallahan, E., Khan, M. A., Purohit, S., Prashanth, U. S., Raff,
+    E., et al. Pythia: A suite for analyzing large language models across training
+    and scaling. In *International Conference on Machine Learning*, pp. 2397–2430\.
+    PMLR, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Brown et al. (2020) Brown, T., Mann, B., Ryder, N., Subbiah, M., Kaplan, J. D.,
+    Dhariwal, P., Neelakantan, A., Shyam, P., Sastry, G., Askell, A., et al. Language
+    models are few-shot learners. *Advances in neural information processing systems*,
+    33:1877–1901, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chen et al. (2022) Chen, X., Zhang, Y., and Wang, Y. Mtp: multi-task pruning
+    for efficient semantic segmentation networks. In *2022 IEEE International Conference
+    on Multimedia and Expo (ICME)*, pp.  1–6\. IEEE, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Chen et al. (2020) Chen, Y., Liu, Z., Ren, B., and Jin, X. On efficient constructions
+    of checkpoints. *arXiv preprint arXiv:2009.13003*, 2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Chowdhery et al. (2023) Chowdhery, A., Narang, S., Devlin, J., Bosma, M., Mishra,
+    G., Roberts, A., Barham, P., Chung, H. W., Sutton, C., Gehrmann, S., et al. Palm:
+    Scaling language modeling with pathways. *Journal of Machine Learning Research*,
+    24(240):1–113, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Contributors (2023) Contributors, O. Opencompass: A universal evaluation platform
+    for foundation models. [https://github.com/open-compass/opencompass](https://github.com/open-compass/opencompass),
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Défossez et al. (2020) Défossez, A., Bottou, L., Bach, F., and Usunier, N. A
+    simple convergence proof of adam and adagrad. *arXiv preprint arXiv:2003.02395*,
+    2020.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dettmers et al. (2022) Dettmers, T., Lewis, M., Belkada, Y., and Zettlemoyer,
+    L. Llm. int8 (): 8-bit matrix multiplication for transformers at scale. *arXiv
+    preprint arXiv:2208.07339*, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Dosovitskiy et al. (2020) Dosovitskiy, A., Beyer, L., Kolesnikov, A., Weissenborn,
+    D., Zhai, X., Unterthiner, T., Dehghani, M., Minderer, M., Heigold, G., Gelly,
+    S., et al. An image is worth 16x16 words: Transformers for image recognition at
+    scale. *arXiv preprint arXiv:2010.11929*, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Eisenman et al. (2022) Eisenman, A., Matam, K. K., Ingram, S., Mudigere, D.,
+    Krishnamoorthi, R., Nair, K., Smelyanskiy, M., and Annavaram, M. $\{$: A checkpointing
+    system for training deep learning recommendation models. In *19th USENIX Symposium
+    on Networked Systems Design and Implementation (NSDI 22)*, pp.  929–943, 2022.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Esser et al. (2019) Esser, S. K., McKinstry, J. L., Bablani, D., Appuswamy,
+    R., and Modha, D. S. Learned step size quantization. *arXiv preprint arXiv:1902.08153*,
+    2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Gao et al. (2020) Gao, L., Biderman, S., Black, S., Golding, L., Hoppe, T.,
+    Foster, C., Phang, J., He, H., Thite, A., Nabeshima, N., et al. The pile: An 800gb
+    dataset of diverse text for language modeling. *arXiv preprint arXiv:2101.00027*,
+    2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Han et al. (2015) Han, S., Mao, H., and Dally, W. J. Deep compression: Compressing
+    deep neural networks with pruning, trained quantization and huffman coding. *arXiv
+    preprint arXiv:1510.00149*, 2015.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Hu et al. (2020) Hu, Z., Zou, X., Xia, W., Jin, S., Tao, D., Liu, Y., Zhang,
+    W., and Zhang, Z. Delta-dnn: Efficiently compressing deep neural networks via
+    exploiting floats similarity. In *Proceedings of the 49th International Conference
+    on Parallel Processing*, pp.  1–12, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Huffman (1952) Huffman, D. A. A method for the construction of minimum-redundancy
+    codes. *Proceedings of the IRE*, 40(9):1098–1101, 1952.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Jin et al. (2023) Jin, H., Wu, D., Zhang, S., Zou, X., Jin, S., Tao, D., Liao,
+    Q., and Xia, W. Design of a quantization-based dnn delta compression framework
+    for model snapshots and federated learning. *IEEE Transactions on Parallel and
+    Distributed Systems*, 34(3):923–937, 2023.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kingma & Ba (2014) Kingma, D. P. and Ba, J. Adam: A method for stochastic optimization.
+    *arXiv preprint arXiv:1412.6980*, 2014.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Liu et al. (2017) Liu, Z., Li, J., Shen, Z., Huang, G., Yan, S., and Zhang,
+    C. Learning efficient convolutional networks through network slimming. In *Proceedings
+    of the IEEE international conference on computer vision*, pp.  2736–2744, 2017.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Rao & Hwang (1996) Rao, K. R. and Hwang, J. J. *Techniques and standards for
+    image, video, and audio coding*. Prentice-Hall, Inc., 1996.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sashank et al. (2018) Sashank, J. R., Satyen, K., and Sanjiv, K. On the convergence
+    of adam and beyond. In *International conference on learning representations*,
+    volume 5, 2018.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Shi & Li (2021) Shi, N. and Li, D. Rmsprop converges with proper hyperparameter.
+    In *International conference on learning representation*, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Shu et al. (2023) Shu, H., Li, W., Tang, Y., Zhang, Y., Chen, Y., Li, H., Wang,
+    Y., and Chen, X. Tinysam: Pushing the envelope for efficient segment anything
+    model. *arXiv preprint arXiv:2312.13789*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Sterne (2012) Sterne, J. *MP3: The meaning of a format*. Duke University Press,
+    2012.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Tang et al. (2020) Tang, Y., Wang, Y., Xu, Y., Tao, D., Xu, C., Xu, C., and
+    Xu, C. Scop: Scientific control for reliable neural network pruning. *Advances
+    in Neural Information Processing Systems*, 33:10936–10947, 2020.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Team et al. (2023) Team, G., Anil, R., Borgeaud, S., Wu, Y., Alayrac, J.-B.,
+    Yu, J., Soricut, R., Schalkwyk, J., Dai, A. M., Hauth, A., et al. Gemini: a family
+    of highly capable multimodal models. *arXiv preprint arXiv:2312.11805*, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Touvron et al. (2023) Touvron, H., Lavril, T., Izacard, G., Martinet, X., Lachaux,
+    M.-A., Lacroix, T., Rozière, B., Goyal, N., Hambro, E., Azhar, F., et al. Llama:
+    Open and efficient foundation language models. *arXiv preprint arXiv:2302.13971*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '(28) Wang, Y., Chen, H., Tang, Y., Guo, T., Han, K., Nie, Y., Wang, X., Hu,
+    H., Bai, Z., Wang, Y., et al. Pangu-$\pi$: Enhancing language model architectures
+    via nonlinearity compensation.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wang et al. (2023) Wang, Y., Chen, H., Tang, Y., Guo, T., Han, K., Nie, Y.,
+    Wang, X., Hu, H., Bai, Z., Wang, Y., et al. Pangu–$\pi$: Enhancing language model
+    architectures via nonlinearity compensation. *arXiv preprint arXiv:2312.17276*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Wu et al. (2023) Wu, X., Zeng, F., Wang, X., Wang, Y., and Chen, X. Ppt: Token
+    pruning and pooling for efficient vision transformers. *arXiv preprint arXiv:2310.01812*,
+    2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xiao et al. (2023) Xiao, G., Lin, J., Seznec, M., Wu, H., Demouth, J., and
+    Han, S. Smoothquant: Accurate and efficient post-training quantization for large
+    language models. In *International Conference on Machine Learning*, pp. 38087–38099\.
+    PMLR, 2023.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Zhang et al. (2022) Zhang, Y., Chen, C., Shi, N., Sun, R., and Luo, Z.-Q. Adam
+    can converge without any modification on update rules. *Advances in neural information
+    processing systems*, 35:28386–28399, 2022.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Appendix A Convergence Analysis.
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Theorem A.1.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: According the convergence analysis in Adam (Kingma & Ba, [2014](#bib.bib18)),
+    assume that the function $f_{t}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\tilde{R}(T)\leq$ |  | (11) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Proof.
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+- en: According the convergence analysis in Adam (Kingma & Ba, [2014](#bib.bib18)),
+    assume that the function $f_{t}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $1$2 |  | (12) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where $R(T)$ is the regret:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $R(T)=\sum_{t=1}^{T}[f_{t}(\theta_{t})-f_{t}(\theta^{*})]$ |  | (13) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'This theorem could be obtained by the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle R(T)\leq$ |  | (14) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle+\sum_{i=1}^{d}\sum_{t=1}^{T}\frac{\beta_{1,t}}{2\alpha_{t}\left(1-\beta_{1,t}\right)}\left(\theta_{,i}^{*}-\theta_{t,i}\right)^{2}\sqrt{\widehat{v}_{t,i}}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle R(T)\leq$ |  | (15) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  | $\displaystyle\leq$ |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: In our method, we prune some variables for the momentum, i.e., a mask $\mathcal{M}_{o}$.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'From Eq. [14](#A1.E14 "Equation 14 ‣ Proof. ‣ Appendix A Convergence Analysis.
+    ‣ ExCP: Extreme LLM Checkpoint Compression via Weight-Momentum Joint Shrinking"),
+    we have:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\tilde{R}(T)\leq$ |  | (16) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $\displaystyle+\sum_{i=1}^{d}\sum_{t=1}^{T}\frac{\beta_{1,t}}{2\alpha_{t}\left(1-\beta_{1,t}\right)}\left(\theta_{,i}^{*}-\theta_{t,i}\right)^{2}\sqrt{\widehat{v}_{t,i}}$
+    |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Under similar assumption as Eq. [17](#A1.E17 "Equation 17 ‣ Proof. ‣ Appendix
+    A Convergence Analysis. ‣ ExCP: Extreme LLM Checkpoint Compression via Weight-Momentum
+    Joint Shrinking"), we could have the following regret bound:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  | $\displaystyle\tilde{R}(T)\leq$ |  | (17) |'
+  prefs: []
+  type: TYPE_TB
+- en: '|  |  | $1$2 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: ∎
+  prefs: []
+  type: TYPE_NORMAL
+- en: Appendix B More Visualization of Compressed LLM.
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Here we show more visualization results in Figure [6](#A2.F6 "Figure 6 ‣ Appendix
+    B More Visualization of Compressed LLM. ‣ ExCP: Extreme LLM Checkpoint Compression
+    via Weight-Momentum Joint Shrinking") and Figure [7](#A2.F7 "Figure 7 ‣ Appendix
+    B More Visualization of Compressed LLM. ‣ ExCP: Extreme LLM Checkpoint Compression
+    via Weight-Momentum Joint Shrinking").'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '<svg id="A2.F6.1.p1.pic1" class="ltx_picture" height="320.41" overflow="visible"
+    version="1.1" width="629.92"><g transform="translate(0,320.41) matrix(1 0 0 -1
+    0 0)" fill="#000000" stroke="#000000" stroke-width="0.4pt"><g fill-opacity="1.0"
+    transform="matrix(1.0 0.0 0.0 1.0 20.79 12.92)"><foreignobject width="588.34"
+    height="294.57" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible" color="#000000">Question:
+    What is the area of a circle with a radius of two meters? Original PanGu-$\pi$-1B:
+    The seven continents are: 1\. Asia 2\. Africa 3\. North America 4\. South America
+    5\. Antarctica 6\. Europe 7\. Australia</foreignobject></g></g></svg>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 6: Q&A example to show the difference between our compressed model and
+    the original model.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '<svg id="A2.F7.1.p1.pic1" class="ltx_picture" height="984.59" overflow="visible"
+    version="1.1" width="629.92"><g transform="translate(0,984.59) matrix(1 0 0 -1
+    0 0)" fill="#000000" stroke="#000000" stroke-width="0.4pt"><g fill-opacity="1.0"
+    transform="matrix(1.0 0.0 0.0 1.0 20.79 12.92)"><foreignobject width="588.34"
+    height="958.75" transform="matrix(1 0 0 -1 0 16.6)" overflow="visible" color="#000000">Question:
+    How to find a suitable picnic spot? Original PanGu-$\pi$-1B: 1\. Understand your
+    environment: Be sure to study your chosen location, the time and weather, and
+    the type of subject you are photographing. 2\. Choose the right camera: Not all
+    cameras are created equal, so take the time to research and choose the camera
+    that best suits your needs. 3\. Get the right lighting: The lighting can dramatically
+    affect the mood and tone of your photos. Try to capture the light sources that
+    are most effective for your subject. 4\. Experiment with composition: Composition
+    is an essential part of photography, so experiment with different angles, vantage
+    points, and compositions to see what works best for your subject. 5\. Edit your
+    photos: Once you have your compelling landscape photos, it’s time to edit them.
+    You can use software to add filters, adjust brightness and contrast, and enhance
+    the overall look of your photos. 6\. Share your photos: Take a camera and post
+    your photos on social media platforms like Instagram, Facebook, and YouTube. This
+    will allow others to view and appreciate your work, and also help you gain more
+    followers.</foreignobject></g></g></svg>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Figure 7: Q&A example to show the difference between our compressed model and
+    the original model.'
+  prefs: []
+  type: TYPE_NORMAL
