@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《深度学习导论(6.S191)》课程(2021) - P3：Convolutional Neural Networks - 爱可可-爱生活 - BV1jo4y1d7R6
+# P3：Convolutional Neural Networks - 爱可可-爱生活 - BV1jo4y1d7R6
 
 大家好，欢迎回到MIT 6。S191！今天我们要谈论的是我最喜欢的一个。
 

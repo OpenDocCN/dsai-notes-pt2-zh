@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《深度学习导论(6.S191)》课程(2021) - P11：Towards AI for 3D Content Creation - 爱可可-爱生活 - BV1jo4y1d7R6
+# P11：Towards AI for 3D Content Creation - 爱可可-爱生活 - BV1jo4y1d7R6
 
 伟大，是啊，是啊，谢谢你的介绍，我要和你谈谈三D内容创作，尤其是深度学习技术，以促进三维内容的创建，我要谈的大部分工作是工作，嗯，我和我在英伟达的团队以及合作者，但这也将是我在UT的一点工作。
 

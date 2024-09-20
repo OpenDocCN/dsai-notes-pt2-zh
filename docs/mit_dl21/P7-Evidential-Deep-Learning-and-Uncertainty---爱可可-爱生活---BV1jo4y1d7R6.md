@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《深度学习导论(6.S191)》课程(2021) - P7：Evidential Deep Learning and Uncertainty - 爱可可-爱生活 - BV1jo4y1d7R6
+# P7：Evidential Deep Learning and Uncertainty - 爱可可-爱生活 - BV1jo4y1d7R6
 
 大家好，欢迎回到今天的讲座，在91年的前六堂课上，我们尝到了一些基本的深度学习算法和模型，在接下来的两节课中，我们实际上会深入到更多的细节，特别关注现代深度学习研究中两个至关重要的热门话题领域。
 

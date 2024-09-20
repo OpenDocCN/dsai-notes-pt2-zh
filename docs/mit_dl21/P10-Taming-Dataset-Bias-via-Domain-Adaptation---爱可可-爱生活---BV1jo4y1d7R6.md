@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《深度学习导论(6.S191)》课程(2021) - P10：Taming Dataset Bias via Domain Adaptation - 爱可可-爱生活 - BV1jo4y1d7R6
+# P10：Taming Dataset Bias via Domain Adaptation - 爱可可-爱生活 - BV1jo4y1d7R6
 
 我很高兴今天在这里，和你们谈谈我非常兴奋和感兴趣的事情，因为这是我的研究领域，所以总是很有趣，讲一个关于自己的研究的话题，所以我的话题是驯服数据集，通过领域适应性um和我相信。
 

@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《深度学习导论(6.S191)》课程(2021) - P6：Deep Learning New Frontiers - 爱可可-爱生活 - BV1jo4y1d7R6
+# P6：Deep Learning New Frontiers - 爱可可-爱生活 - BV1jo4y1d7R6
 
 大家好，欢迎来到MIT 6。S191的第六堂课！这是我绝对的最爱之一，课程中的讲座，我们将集中讨论一些局限性，深度学习算法以及该领域的一些新兴研究前沿，在我们深入探讨技术内容之前。
 

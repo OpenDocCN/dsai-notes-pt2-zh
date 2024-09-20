@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《深度学习导论(6.S191)》课程(2021) - P9：Deep CPCFG for Information Extraction - 爱可可-爱生活 - BV1jo4y1d7R6
+# P9：Deep CPCFG for Information Extraction - 爱可可-爱生活 - BV1jo4y1d7R6
 
 谢谢，所以我在全球eui带领呃，今天，我们将与您讨论我们已经完成的一些工作，信息提取专门针对深层cpcfg，因此希望如此，我们将介绍一些您可能以前从未遇到过的概念，在我们开始之前，可能会免除一些意见。
 

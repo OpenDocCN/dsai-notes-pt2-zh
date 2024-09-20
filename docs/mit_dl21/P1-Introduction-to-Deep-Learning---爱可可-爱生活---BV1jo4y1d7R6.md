@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《深度学习导论(6.S191)》课程(2021) - P1：Introduction to Deep Learning - 爱可可-爱生活 - BV1jo4y1d7R6
+# P1：Introduction to Deep Learning - 爱可可-爱生活 - BV1jo4y1d7R6
 
 大家下午好欢迎收看麻省理工6S 91深度学习入门，我叫亚历山大•阿米尼，我很高兴今年能成为你们的导师，以及这种新的虚拟格式的Ava Soleimani，我们将在两周内覆盖一吨材料，所以我认为对我们来说。
 
