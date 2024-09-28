@@ -1,4 +1,4 @@
-# [中英字幕] UC Berkeley 深度无监督学习 CS294-158-SP24  ｜ 2024年春 （更新至0824） - P12：13b 神经辐射场 - AInsight - BV17W421P7QA
+# P12：13b 神经辐射场 - AInsight - BV17W421P7QA
 
 ![](img/36030d6f1805a3f3a35e636be872e388_0.png)
 

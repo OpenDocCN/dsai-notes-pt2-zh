@@ -1,4 +1,4 @@
-# [中英字幕] UC Berkeley 深度无监督学习 CS294-158-SP24  ｜ 2024年春 （更新至0824） - P10：10 半监督学习和无监督分布对齐 - AInsight - BV17W421P7QA
+# P10：10 半监督学习和无监督分布对齐 - AInsight - BV17W421P7QA
 
 ![](img/23ab4eb27a67ab4bec06d09f1d9bc61f_0.png)
 
