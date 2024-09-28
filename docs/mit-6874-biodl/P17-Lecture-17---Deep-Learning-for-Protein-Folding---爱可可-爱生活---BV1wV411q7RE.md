@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《面向生命科学的深度学习》课程(2021) by Manolis Kellis - P17：Lecture 17 - Deep Learning for Protein Folding - 爱可可-爱生活 - BV1wV411q7RE
+# P17：Lecture 17 - Deep Learning for Protein Folding - 爱可可-爱生活 - BV1wV411q7RE
 
 ![](img/2a7a47831a263908ca3f58806b67ffd1_0.png)
 

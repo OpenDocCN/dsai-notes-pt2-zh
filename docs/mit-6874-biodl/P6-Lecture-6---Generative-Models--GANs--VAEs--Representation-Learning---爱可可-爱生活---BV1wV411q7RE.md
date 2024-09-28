@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《面向生命科学的深度学习》课程(2021) by Manolis Kellis - P6：Lecture 6 - Generative Models, GANs, VAEs, Representation Learning - 爱可可-爱生活 - BV1wV411q7RE
+# P6：Lecture 6 - Generative Models, GANs, VAEs, Representation Learning - 爱可可-爱生活 - BV1wV411q7RE
 
 ![](img/e8d4e92eab64c0ad91f8fa5773adbcf4_0.png)
 

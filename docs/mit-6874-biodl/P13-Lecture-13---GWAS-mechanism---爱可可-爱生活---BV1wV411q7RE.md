@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《面向生命科学的深度学习》课程(2021) by Manolis Kellis - P13：Lecture 13 - GWAS mechanism - 爱可可-爱生活 - BV1wV411q7RE
+# P13：Lecture 13 - GWAS mechanism - 爱可可-爱生活 - BV1wV411q7RE
 
 ![](img/b56dac9667a1c4b19fbae02533b1d22f_0.png)
 

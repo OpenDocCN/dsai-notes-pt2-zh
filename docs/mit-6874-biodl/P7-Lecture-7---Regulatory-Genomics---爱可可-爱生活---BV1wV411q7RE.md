@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《面向生命科学的深度学习》课程(2021) by Manolis Kellis - P7：Lecture 7 - Regulatory Genomics - 爱可可-爱生活 - BV1wV411q7RE
+# P7：Lecture 7 - Regulatory Genomics - 爱可可-爱生活 - BV1wV411q7RE
 
 ![](img/67f11b5eb9d39ed9049b8b55e579bc02_0.png)
 

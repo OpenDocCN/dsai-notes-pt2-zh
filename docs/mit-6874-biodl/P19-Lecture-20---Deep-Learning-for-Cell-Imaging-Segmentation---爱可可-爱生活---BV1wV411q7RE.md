@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《面向生命科学的深度学习》课程(2021) by Manolis Kellis - P19：Lecture 20 - Deep Learning for Cell Imaging Segmentation - 爱可可-爱生活 - BV1wV411q7RE
+# P19：Lecture 20 - Deep Learning for Cell Imaging Segmentation - 爱可可-爱生活 - BV1wV411q7RE
 
 欢迎大家，所以今天我们继续我们的图像分析深度学习之旅，我们真的很幸运有芬克·卡萨多和我们在一起，就在街对面的布罗德研究所，包括深度学习，我真的很想，很高兴你能来，非常感谢你让我来这里，对我来说。
 

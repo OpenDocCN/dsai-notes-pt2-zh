@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《面向生命科学的深度学习》课程(2021) by Manolis Kellis - P1：Lecture 01 - Course Intro, AI, ML - 爱可可-爱生活 - BV1wV411q7RE
+# P1：Lecture 01 - Course Intro, AI, ML - 爱可可-爱生活 - BV1wV411q7RE
 
 好的，好，所以欢迎大家，很高兴你们这么多人在这里，我对新学期感到非常非常兴奋，所以让我潜入其中。
 

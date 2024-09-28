@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《面向生命科学的深度学习》课程(2021) by Manolis Kellis - P14：Lecture 14 - Systems Genetics - 爱可可-爱生活 - BV1wV411q7RE
+# P14：Lecture 14 - Systems Genetics - 爱可可-爱生活 - BV1wV411q7RE
 
 ![](img/277959df681817a4e4333bb037191e41_0.png)
 

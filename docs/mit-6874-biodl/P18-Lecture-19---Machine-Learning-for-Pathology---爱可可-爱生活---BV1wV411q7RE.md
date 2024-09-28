@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《面向生命科学的深度学习》课程(2021) by Manolis Kellis - P18：Lecture 19 - Machine Learning for Pathology - 爱可可-爱生活 - BV1wV411q7RE
+# P18：Lecture 19 - Machine Learning for Pathology - 爱可可-爱生活 - BV1wV411q7RE
 
 ![](img/cb000db6c61ac11abfd5fd2ac71adda8_0.png)
 

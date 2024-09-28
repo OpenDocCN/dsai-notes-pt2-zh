@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《面向生命科学的深度学习》课程(2021) by Manolis Kellis - P21：Lecture 22 - Electronic health records - 爱可可-爱生活 - BV1wV411q7RE
+# P21：Lecture 22 - Electronic health records - 爱可可-爱生活 - BV1wV411q7RE
 
 ![](img/dc0954030ab89cd7d30b99a1247c2c2f_0.png)
 

@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《面向生命科学的深度学习》课程(2021) by Manolis Kellis - P8：Lecture 8 - Regulator binding, Transcription Factors - 爱可可-爱生活 - BV1wV411q7RE
+# P8：Lecture 8 - Regulator binding, Transcription Factors - 爱可可-爱生活 - BV1wV411q7RE
 
  Today we're going to be talking about TF binding。
 

@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《面向生命科学的深度学习》课程(2021) by Manolis Kellis - P15：Lecture 15 - Graph Neural Networks - 爱可可-爱生活 - BV1wV411q7RE
+# P15：Lecture 15 - Graph Neural Networks - 爱可可-爱生活 - BV1wV411q7RE
 
 ![](img/205a632fe32cca3f2bf8a39eef51e9ac_0.png)
 

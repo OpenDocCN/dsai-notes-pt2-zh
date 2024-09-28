@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《面向生命科学的深度学习》课程(2021) by Manolis Kellis - P12：Lecture 12 - Disease Circuitry Dissection GWAS - 爱可可-爱生活 - BV1wV411q7RE
+# P12：Lecture 12 - Disease Circuitry Dissection GWAS - 爱可可-爱生活 - BV1wV411q7RE
 
 ![](img/aacedd20d2e05ff2df9c433cd3b0612c_0.png)
 

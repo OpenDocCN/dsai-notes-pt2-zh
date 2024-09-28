@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《面向生命科学的深度学习》课程(2021) by Manolis Kellis - P10：Lecture 10 -Single Cell Genomics - 爱可可-爱生活 - BV1wV411q7RE
+# P10：Lecture 10 -Single Cell Genomics - 爱可可-爱生活 - BV1wV411q7RE
 
 ![](img/13802c60c7f8dff00f53051fd617da11_0.png)
 

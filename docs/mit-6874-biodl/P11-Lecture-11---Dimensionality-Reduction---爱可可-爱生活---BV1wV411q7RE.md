@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《面向生命科学的深度学习》课程(2021) by Manolis Kellis - P11：Lecture 11 - Dimensionality Reduction - 爱可可-爱生活 - BV1wV411q7RE
+# P11：Lecture 11 - Dimensionality Reduction - 爱可可-爱生活 - BV1wV411q7RE
 
 ![](img/292790cc750c687fbb1f997bf1ec9b46_0.png)
 

@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《面向生命科学的深度学习》课程(2021) by Manolis Kellis - P2：Lecture 02 - Machine Learning Foundations - 爱可可-爱生活 - BV1wV411q7RE
+# P2：Lecture 02 - Machine Learning Foundations - 爱可可-爱生活 - BV1wV411q7RE
 
 ![](img/f137a35d4fd2a95130d810e83863f578_0.png)
 

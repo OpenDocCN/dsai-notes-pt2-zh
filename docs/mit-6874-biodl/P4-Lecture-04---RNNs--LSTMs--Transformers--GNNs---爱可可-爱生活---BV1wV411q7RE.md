@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《面向生命科学的深度学习》课程(2021) by Manolis Kellis - P4：Lecture 04 - RNNs, LSTMs, Transformers, GNNs - 爱可可-爱生活 - BV1wV411q7RE
+# P4：Lecture 04 - RNNs, LSTMs, Transformers, GNNs - 爱可可-爱生活 - BV1wV411q7RE
 
  Today we're covering recurrent neural networks and long short-term memory modules and transformers。
 

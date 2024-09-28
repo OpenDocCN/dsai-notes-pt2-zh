@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《面向生命科学的深度学习》课程(2021) by Manolis Kellis - P22：Lecture 23 - Deep Learning and Neuroscience - 爱可可-爱生活 - BV1wV411q7RE
+# P22：Lecture 23 - Deep Learning and Neuroscience - 爱可可-爱生活 - BV1wV411q7RE
 
 所以欢迎大家，很荣幸向大家介绍吉米卡特，今天谁会给你，这让我们以一种非常互补的方式，到目前为止我们一直在做的事情，所以我们一直专注于深度学习，适用于理解各种事物，包括你知道的大脑，包括许多不同的疾病。
 

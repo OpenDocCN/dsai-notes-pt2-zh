@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《面向生命科学的深度学习》课程(2021) by Manolis Kellis - P20：Lecture 21 - Deep Learning Image Registration and Analysis - 爱可可-爱生活 - BV1wV411q7RE
+# P20：Lecture 21 - Deep Learning Image Registration and Analysis - 爱可可-爱生活 - BV1wV411q7RE
 
 ![](img/e31e841d62946c9dd67f13066f3700a8_0.png)
 

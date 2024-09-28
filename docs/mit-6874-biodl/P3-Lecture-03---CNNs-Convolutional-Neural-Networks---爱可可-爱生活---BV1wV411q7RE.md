@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《面向生命科学的深度学习》课程(2021) by Manolis Kellis - P3：Lecture 03 - CNNs Convolutional Neural Networks - 爱可可-爱生活 - BV1wV411q7RE
+# P3：Lecture 03 - CNNs Convolutional Neural Networks - 爱可可-爱生活 - BV1wV411q7RE
 
 ![](img/3b263122c558ceb4d331a0262ed660d5_0.png)
 

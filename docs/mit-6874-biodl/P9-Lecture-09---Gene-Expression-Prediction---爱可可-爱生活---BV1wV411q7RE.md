@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《面向生命科学的深度学习》课程(2021) by Manolis Kellis - P9：Lecture 09 - Gene Expression Prediction - 爱可可-爱生活 - BV1wV411q7RE
+# P9：Lecture 09 - Gene Expression Prediction - 爱可可-爱生活 - BV1wV411q7RE
 
  Welcome everyone。 Today we're diving into predicting gene expression and slicing。
 

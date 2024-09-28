@@ -1,4 +1,4 @@
-# 【双语字幕】MIT《面向生命科学的深度学习》课程(2021) by Manolis Kellis - P16：Lecture 16 - AI for Drug Design - 爱可可-爱生活 - BV1wV411q7RE
+# P16：Lecture 16 - AI for Drug Design - 爱可可-爱生活 - BV1wV411q7RE
 
 ![](img/264caf3b0c488a7079dc74e96830fb4f_0.png)
 
