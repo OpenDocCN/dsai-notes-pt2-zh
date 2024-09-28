@@ -1,4 +1,4 @@
-# CS188 伯克利最新AI课程--人工智能入门推荐 - P10：[CS188 SP23] Lecture 9 - Games_ Trees, Minimax, Pruning - 是阿布波多啊 - BV1cc411g7CM
+# P10：[CS188 SP23] Lecture 9 - Games_ Trees, Minimax, Pruning - 是阿布波多啊 - BV1cc411g7CM
 
 ![](img/2063fd3be34e717cc7c6baa4fd68bc08_0.png)
 

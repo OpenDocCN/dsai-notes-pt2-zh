@@ -1,4 +1,4 @@
-# CS188 伯克利最新AI课程--人工智能入门推荐 - P23：[CS188 SP23] Lecture 22 - Utility Theory, Rationality, Decisions - 是阿布波多啊 - BV1cc411g7CM
+# P23：[CS188 SP23] Lecture 22 - Utility Theory, Rationality, Decisions - 是阿布波多啊 - BV1cc411g7CM
 
 好的，让我们开始吧，嗯，所以今天我要讲的是，就像它说的，理性决策，所以我们会明白，实际上这些数字是从哪里来的，我们在MDPS中使用的，比如说，那些奖励的东西是什么，为什么我们要把奖励加起来。
 

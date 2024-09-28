@@ -1,4 +1,4 @@
-# CS188 伯克利最新AI课程--人工智能入门推荐 - P18：[CS188 SP23] Lecture 17 - Bayes Nets_ Variable Elimination - 是阿布波多啊 - BV1cc411g7CM
+# P18：[CS188 SP23] Lecture 17 - Bayes Nets_ Variable Elimination - 是阿布波多啊 - BV1cc411g7CM
 
 我们有技术，好的，上次我们讨论了Bayes的语法和语义，渔网，以及它们如何被用来，用相对较少的参数以非常自然的方式写出非常复杂的概率分布，即使不是专家也能生成贝叶斯网络结构来描述相当复杂的问题，嗯。
 

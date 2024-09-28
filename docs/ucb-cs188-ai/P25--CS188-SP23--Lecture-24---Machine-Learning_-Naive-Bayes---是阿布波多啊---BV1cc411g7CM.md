@@ -1,4 +1,4 @@
-# CS188 伯克利最新AI课程--人工智能入门推荐 - P25：[CS188 SP23] Lecture 24 - Machine Learning_ Naive Bayes - 是阿布波多啊 - BV1cc411g7CM
+# P25：[CS188 SP23] Lecture 24 - Machine Learning_ Naive Bayes - 是阿布波多啊 - BV1cc411g7CM
 
  Okay， cool。 Let's get started。 So it is the start of the machine learning unit。 Oh， fancy。
 

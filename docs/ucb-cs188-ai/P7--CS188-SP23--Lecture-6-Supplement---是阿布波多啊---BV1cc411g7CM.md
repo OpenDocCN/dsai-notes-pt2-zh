@@ -1,4 +1,4 @@
-# CS188 伯克利最新AI课程--人工智能入门推荐 - P7：[CS188 SP23] Lecture 6 Supplement - 是阿布波多啊 - BV1cc411g7CM
+# P7：[CS188 SP23] Lecture 6 Supplement - 是阿布波多啊 - BV1cc411g7CM
 
 ![](img/f36694504fc067b5f4ac1808ad730e5c_0.png)
 

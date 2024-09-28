@@ -1,4 +1,4 @@
-# CS188 伯克利最新AI课程--人工智能入门推荐 - P2：[CS188 SP23] Lecture 2 - State Spaces, Uninformed Search - 是阿布波多啊 - BV1cc411g7CM
+# P2：[CS188 SP23] Lecture 2 - State Spaces, Uninformed Search - 是阿布波多啊 - BV1cc411g7CM
 
 ![](img/e1d2ce286e74109f12497a67122d73ee_0.png)
 

@@ -1,4 +1,4 @@
-# CS188 伯克利最新AI课程--人工智能入门推荐 - P28：[CS188 SP23] Lecture 26 - Neural Networks, AI Ethics - 是阿布波多啊 - BV1cc411g7CM
+# P28：[CS188 SP23] Lecture 26 - Neural Networks, AI Ethics - 是阿布波多啊 - BV1cc411g7CM
 
 ![](img/04052ed1fbf8f86383cca03e4014dd8d_0.png)
 

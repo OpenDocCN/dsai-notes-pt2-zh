@@ -1,4 +1,4 @@
-# CS188 伯克利最新AI课程--人工智能入门推荐 - P12：[CS188 SP23] Lecture 11 - Markov Decision Processes_ Intro - 是阿布波多啊 - BV1cc411g7CM
+# P12：[CS188 SP23] Lecture 11 - Markov Decision Processes_ Intro - 是阿布波多啊 - BV1cc411g7CM
 
 ![](img/c71e8363844e89afe601b190feb84835_0.png)
 

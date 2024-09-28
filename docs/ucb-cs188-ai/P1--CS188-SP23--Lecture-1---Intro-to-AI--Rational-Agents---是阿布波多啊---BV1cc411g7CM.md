@@ -1,4 +1,4 @@
-# CS188 伯克利最新AI课程--人工智能入门推荐 - P1：[CS188 SP23] Lecture 1 - Intro to AI, Rational Agents - 是阿布波多啊 - BV1cc411g7CM
+# P1：[CS188 SP23] Lecture 1 - Intro to AI, Rational Agents - 是阿布波多啊 - BV1cc411g7CM
 
 ![](img/5a4f23c25143c318f66a1489cfe6b76c_0.png)
 

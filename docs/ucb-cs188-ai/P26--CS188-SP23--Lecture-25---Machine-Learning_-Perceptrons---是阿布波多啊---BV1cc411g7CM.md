@@ -1,4 +1,4 @@
-# CS188 伯克利最新AI课程--人工智能入门推荐 - P26：[CS188 SP23] Lecture 25 - Machine Learning_ Perceptrons - 是阿布波多啊 - BV1cc411g7CM
+# P26：[CS188 SP23] Lecture 25 - Machine Learning_ Perceptrons - 是阿布波多啊 - BV1cc411g7CM
 
  Okay， I'm going to quickly finish up something from last time， and then we'll talk about。
 

@@ -1,4 +1,4 @@
-# CS188 伯克利最新AI课程--人工智能入门推荐 - P5：[CS188 SP23] Lecture 5 - Local Search, Propositional Logic and Planning - 是阿布波多啊 - BV1cc411g7CM
+# P5：[CS188 SP23] Lecture 5 - Local Search, Propositional Logic and Planning - 是阿布波多啊 - BV1cc411g7CM
 
 最优解作为起始点。
 

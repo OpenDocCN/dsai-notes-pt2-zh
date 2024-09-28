@@ -1,4 +1,4 @@
-# CS188 伯克利最新AI课程--人工智能入门推荐 - P3：[CS188 SP23] Lecture 3 - Informed Search_ A_ and Heuristics - 是阿布波多啊 - BV1cc411g7CM
+# P3：[CS188 SP23] Lecture 3 - Informed Search_ A_ and Heuristics - 是阿布波多啊 - BV1cc411g7CM
 
 我按下录音键。
 

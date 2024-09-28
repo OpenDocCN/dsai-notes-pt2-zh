@@ -1,4 +1,4 @@
-# CS188 伯克利最新AI课程--人工智能入门推荐 - P11：[CS188 SP23] Lecture 10 - Games_ Expectimax, Monte Carlo Tree Search - 是阿布波多啊 - BV1cc411g7CM
+# P11：[CS188 SP23] Lecture 10 - Games_ Expectimax, Monte Carlo Tree Search - 是阿布波多啊 - BV1cc411g7CM
 
 ![](img/9891664f11ca7c1c50f392f46ac84772_0.png)
 

@@ -1,4 +1,4 @@
-# CS188 伯克利最新AI课程--人工智能入门推荐 - P27：[CS188 SP23] Lecture 26 - Machine Learning_ Neural Networks - 是阿布波多啊 - BV1cc411g7CM
+# P27：[CS188 SP23] Lecture 26 - Machine Learning_ Neural Networks - 是阿布波多啊 - BV1cc411g7CM
 
 ![](img/996b1338c02565f47da85217d7260b60_0.png)
 

@@ -1,4 +1,4 @@
-# CS188 伯克利最新AI课程--人工智能入门推荐 - P17：[CS188 SP23] Lecture 16 - Bayes Nets_ Syntax and Semantics - 是阿布波多啊 - BV1cc411g7CM
+# P17：[CS188 SP23] Lecture 16 - Bayes Nets_ Syntax and Semantics - 是阿布波多啊 - BV1cc411g7CM
 
 不需要在这里，所以我只是，哦耶，我不知道。
 

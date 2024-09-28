@@ -1,4 +1,4 @@
-# CS188 伯克利最新AI课程--人工智能入门推荐 - P15：[CS188 SP23] Lecture 14 - Reinforcement Learning II - 是阿布波多啊 - BV1cc411g7CM
+# P15：[CS188 SP23] Lecture 14 - Reinforcement Learning II - 是阿布波多啊 - BV1cc411g7CM
 
 ![](img/7b70b09e7df55a29f76f2862566eb717_0.png)
 

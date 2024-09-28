@@ -1,4 +1,4 @@
-# CS188 伯克利最新AI课程--人工智能入门推荐 - P22：[CS188 SP23] Lecture 21 - Dynamic Bayes Nets and Particle Filters - 是阿布波多啊 - BV1cc411g7CM
+# P22：[CS188 SP23] Lecture 21 - Dynamic Bayes Nets and Particle Filters - 是阿布波多啊 - BV1cc411g7CM
 
 我想是的，好的，我想我们不妨开始，我希望你们都有一个愉快的春假，嗯，我花了我的飞行到新加坡和回来，用于，呃，实际上是一个很有趣的伯克利筹款活动，和所有来自东南亚的校友，这是我第一次来新加坡。
 

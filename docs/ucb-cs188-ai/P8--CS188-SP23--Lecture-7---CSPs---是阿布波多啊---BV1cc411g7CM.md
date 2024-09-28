@@ -1,4 +1,4 @@
-# CS188 伯克利最新AI课程--人工智能入门推荐 - P8：[CS188 SP23] Lecture 7 - CSPs - 是阿布波多啊 - BV1cc411g7CM
+# P8：[CS188 SP23] Lecture 7 - CSPs - 是阿布波多啊 - BV1cc411g7CM
 
 ![](img/2c690b61e462e71a8f2f836a836f07a3_0.png)
 

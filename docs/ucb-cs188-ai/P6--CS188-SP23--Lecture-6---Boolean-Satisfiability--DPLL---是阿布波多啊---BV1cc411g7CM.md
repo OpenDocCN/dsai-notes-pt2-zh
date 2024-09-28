@@ -1,4 +1,4 @@
-# CS188 伯克利最新AI课程--人工智能入门推荐 - P6：[CS188 SP23] Lecture 6 - Boolean Satisfiability, DPLL - 是阿布波多啊 - BV1cc411g7CM
+# P6：[CS188 SP23] Lecture 6 - Boolean Satisfiability, DPLL - 是阿布波多啊 - BV1cc411g7CM
 
 这是一个很好的观点，是这样吗，否，它不是，哦，这没关系，只是，我们必须重新加入，我只是在测试。
 

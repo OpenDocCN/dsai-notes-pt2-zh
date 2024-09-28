@@ -1,4 +1,4 @@
-# CS188 伯克利最新AI课程--人工智能入门推荐 - P4：[CS188 SP23] Lecture 4 - Local Search - 是阿布波多啊 - BV1cc411g7CM
+# P4：[CS188 SP23] Lecture 4 - Local Search - 是阿布波多啊 - BV1cc411g7CM
 
 ![](img/f8c01ab51da23ef135ace1e4460bc3ce_0.png)
 
