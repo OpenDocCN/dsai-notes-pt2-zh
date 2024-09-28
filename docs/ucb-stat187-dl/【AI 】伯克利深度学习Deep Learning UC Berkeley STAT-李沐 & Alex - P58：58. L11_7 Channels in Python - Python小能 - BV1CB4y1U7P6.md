@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P58：58. L11_7 Channels in Python - Python小能 - BV1CB4y1U7P6
+# P58：58. L11_7 Channels in Python - Python小能 - BV1CB4y1U7P6
 
  Let's have a look at multiple input and output channels when we do this in Python。
 

@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P5：5. L1_5 Linear Algebra in Jupyter - Python小能 - BV1CB4y1U7P6
+# P5：5. L1_5 Linear Algebra in Jupyter - Python小能 - BV1CB4y1U7P6
 
  Okay， after all this theory， let's actually see how this works in practice。
 

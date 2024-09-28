@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P90：90. L16_5 SSD and YOLO - Python小能 - BV1CB4y1U7P6
+# P90：90. L16_5 SSD and YOLO - Python小能 - BV1CB4y1U7P6
 
  So first let's talk about the SSD。 It's called single-shot， multi-box detections。
 

@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P56：56. L11_5 Padding and Stride in Python - Python小能 - BV1CB4y1U7P6
+# P56：56. L11_5 Padding and Stride in Python - Python小能 - BV1CB4y1U7P6
 
  Okay。 So， what we're doing here is we're just implementing a very simple thing， namely。
 

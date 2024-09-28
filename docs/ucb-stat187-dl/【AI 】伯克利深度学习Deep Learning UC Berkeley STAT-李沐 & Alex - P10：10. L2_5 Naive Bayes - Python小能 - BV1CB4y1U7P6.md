@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P10：10. L2_5 Naive Bayes - Python小能 - BV1CB4y1U7P6
+# P10：10. L2_5 Naive Bayes - Python小能 - BV1CB4y1U7P6
 
  And stuff。 So， naive base。 I guess， OK， who's heard of naive base before？
 

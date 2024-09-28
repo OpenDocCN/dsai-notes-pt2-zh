@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P61：61. L12_1 LeNet - Python小能 - BV1CB4y1U7P6
+# P61：61. L12_1 LeNet - Python小能 - BV1CB4y1U7P6
 
  In this lecture， we're going to talk about convolutional neural networks。 In the previous lectures。
 

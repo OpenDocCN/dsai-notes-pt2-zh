@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P40：40. L9_2 Covariate Shift - Python小能 - BV1CB4y1U7P6
+# P40：40. L9_2 Covariate Shift - Python小能 - BV1CB4y1U7P6
 
  >> Qouserative correction。
 

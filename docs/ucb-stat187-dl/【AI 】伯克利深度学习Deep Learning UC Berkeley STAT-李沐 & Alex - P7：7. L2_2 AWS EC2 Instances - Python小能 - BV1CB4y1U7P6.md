@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P7：7. L2_2 AWS EC2 Instances - Python小能 - BV1CB4y1U7P6
+# P7：7. L2_2 AWS EC2 Instances - Python小能 - BV1CB4y1U7P6
 
  So in the office hours， I had a whole bunch of people come to me and ask me， "Oh my god。
 

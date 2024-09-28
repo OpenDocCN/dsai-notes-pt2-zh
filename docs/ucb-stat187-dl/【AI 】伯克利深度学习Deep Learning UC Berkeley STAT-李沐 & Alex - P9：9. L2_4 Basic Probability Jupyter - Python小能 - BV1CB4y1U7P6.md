@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P9：9. L2_4 Basic Probability Jupyter - Python小能 - BV1CB4y1U7P6
+# P9：9. L2_4 Basic Probability Jupyter - Python小能 - BV1CB4y1U7P6
 
  OK。 So we can just， you know， do our usual thing， import MXNet。
 

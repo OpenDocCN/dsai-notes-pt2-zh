@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P50：50. L10_3 Managing Parameters - Python小能 - BV1CB4y1U7P6
+# P50：50. L10_3 Managing Parameters - Python小能 - BV1CB4y1U7P6
 
  Once you define the network， another important thing， how to access the parameters。
 

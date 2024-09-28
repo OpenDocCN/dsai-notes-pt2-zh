@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P2：2. L1_2 Deep Learning Overview - Python小能 - BV1CB4y1U7P6
+# P2：2. L1_2 Deep Learning Overview - Python小能 - BV1CB4y1U7P6
 
  Let's get started with deep learning。 Of course， this is just really a really quick overview。
 

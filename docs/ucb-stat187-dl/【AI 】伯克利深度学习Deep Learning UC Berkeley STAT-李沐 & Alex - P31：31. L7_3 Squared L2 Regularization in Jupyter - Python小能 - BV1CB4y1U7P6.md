@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P31：31. L7_3 Squared L2 Regularization in Jupyter - Python小能 - BV1CB4y1U7P6
+# P31：31. L7_3 Squared L2 Regularization in Jupyter - Python小能 - BV1CB4y1U7P6
 
  The weight decay we also like import something， we can ignore that。 Here we can fit a high。
 

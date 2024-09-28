@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P75：75. L13_8 DenseNet in Python - Python小能 - BV1CB4y1U7P6
+# P75：75. L13_8 DenseNet in Python - Python小能 - BV1CB4y1U7P6
 
  Let's look at the insnets in practice。 Remember this is essentially this function expansion， X。
 

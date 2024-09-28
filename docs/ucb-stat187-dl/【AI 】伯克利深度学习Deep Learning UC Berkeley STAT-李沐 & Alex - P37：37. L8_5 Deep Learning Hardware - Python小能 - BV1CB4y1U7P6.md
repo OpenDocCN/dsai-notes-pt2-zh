@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P37：37. L8_5 Deep Learning Hardware - Python小能 - BV1CB4y1U7P6
+# P37：37. L8_5 Deep Learning Hardware - Python小能 - BV1CB4y1U7P6
 
  During our office hour， we get a few questions about， "Well， I have a GPU on the laptop。
 

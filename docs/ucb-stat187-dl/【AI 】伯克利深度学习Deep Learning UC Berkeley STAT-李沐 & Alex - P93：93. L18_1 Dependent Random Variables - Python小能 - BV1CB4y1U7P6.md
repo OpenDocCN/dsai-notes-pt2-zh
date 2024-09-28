@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P93：93. L18_1 Dependent Random Variables - Python小能 - BV1CB4y1U7P6
+# P93：93. L18_1 Dependent Random Variables - Python小能 - BV1CB4y1U7P6
 
  Okay。
 

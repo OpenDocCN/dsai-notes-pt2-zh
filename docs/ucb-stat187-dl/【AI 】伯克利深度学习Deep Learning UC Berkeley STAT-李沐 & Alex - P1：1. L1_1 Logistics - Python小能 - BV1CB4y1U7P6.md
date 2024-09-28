@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P1：1. L1_1 Logistics - Python小能 - BV1CB4y1U7P6
+# P1：1. L1_1 Logistics - Python小能 - BV1CB4y1U7P6
 
  Welcome to this class on deep learning。 This is the first lecture for the statistics 157 course for the spring semester at UC Berkeley。
 

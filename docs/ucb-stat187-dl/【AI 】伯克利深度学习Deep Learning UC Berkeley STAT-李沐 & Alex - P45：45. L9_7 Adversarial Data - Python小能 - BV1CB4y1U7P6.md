@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P45：45. L9_7 Adversarial Data - Python小能 - BV1CB4y1U7P6
+# P45：45. L9_7 Adversarial Data - Python小能 - BV1CB4y1U7P6
 
  One more topic， adversarial data。
 

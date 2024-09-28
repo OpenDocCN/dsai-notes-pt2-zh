@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P25：25. L5_8b Softmax Classification in Python (Gluon version) - Python小能 - BV1CB4y1U7P6
+# P25：25. L5_8b Softmax Classification in Python (Gluon version) - Python小能 - BV1CB4y1U7P6
 
  >> Okay。
 

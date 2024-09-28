@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P79：79. L14_6 Multi-GPU Training in Python - Python小能 - BV1CB4y1U7P6
+# P79：79. L14_6 Multi-GPU Training in Python - Python小能 - BV1CB4y1U7P6
 
  For multi-GPU， you need to guarantee that you have multiple GPUs。 So you can run things here。
 

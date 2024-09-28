@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P22：22. L5_6 Information Theory - Python小能 - BV1CB4y1U7P6
+# P22：22. L5_6 Information Theory - Python小能 - BV1CB4y1U7P6
 
  So， okay。 So remember before that we had terms like cross entropy loss and so on thrown， around。
 

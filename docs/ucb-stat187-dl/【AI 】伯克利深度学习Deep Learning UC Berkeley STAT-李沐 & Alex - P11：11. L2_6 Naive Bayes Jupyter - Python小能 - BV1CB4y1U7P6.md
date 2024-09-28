@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P11：11. L2_6 Naive Bayes Jupyter - Python小能 - BV1CB4y1U7P6
+# P11：11. L2_6 Naive Bayes Jupyter - Python小能 - BV1CB4y1U7P6
 
  [LAUGHTER]。
 

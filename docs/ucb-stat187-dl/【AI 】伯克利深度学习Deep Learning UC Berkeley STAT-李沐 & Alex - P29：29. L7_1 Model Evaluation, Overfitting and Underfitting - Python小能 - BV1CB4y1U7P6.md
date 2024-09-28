@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P29：29. L7_1 Model Evaluation, Overfitting and Underfitting - Python小能 - BV1CB4y1U7P6
+# P29：29. L7_1 Model Evaluation, Overfitting and Underfitting - Python小能 - BV1CB4y1U7P6
 
  Today we're going to talk about model selection and two recognizations。
 

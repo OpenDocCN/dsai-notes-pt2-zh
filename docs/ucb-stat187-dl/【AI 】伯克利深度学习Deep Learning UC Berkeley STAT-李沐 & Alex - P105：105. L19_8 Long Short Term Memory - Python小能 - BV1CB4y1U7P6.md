@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P105：105. L19_8 Long Short Term Memory - Python小能 - BV1CB4y1U7P6
+# P105：105. L19_8 Long Short Term Memory - Python小能 - BV1CB4y1U7P6
 
  So long short-term memory。 So this， there's a fun story to it， or several stories。
 

@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P81：81. L15_1 Image Augmentation - Python小能 - BV1CB4y1U7P6
+# P81：81. L15_1 Image Augmentation - Python小能 - BV1CB4y1U7P6
 
  OK， let's cover all image augmentations。 So here， I'm going to show you a real story at this year。
 

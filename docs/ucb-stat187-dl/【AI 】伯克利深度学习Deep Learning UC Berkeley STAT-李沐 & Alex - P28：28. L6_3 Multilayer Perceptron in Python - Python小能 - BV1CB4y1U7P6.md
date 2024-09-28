@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P28：28. L6_3 Multilayer Perceptron in Python - Python小能 - BV1CB4y1U7P6
+# P28：28. L6_3 Multilayer Perceptron in Python - Python小能 - BV1CB4y1U7P6
 
  So let's implement an MLP from scratch。 So I'm going to just do the usual thing。 I， you know。
 

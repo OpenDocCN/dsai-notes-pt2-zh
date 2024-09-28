@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P23：23. L5_7 Information Theory Recap - Python小能 - BV1CB4y1U7P6
+# P23：23. L5_7 Information Theory Recap - Python小能 - BV1CB4y1U7P6
 
  So here's a little bit of a background and recap of the information theory part that we didn't quite get covered on Tuesday。
 

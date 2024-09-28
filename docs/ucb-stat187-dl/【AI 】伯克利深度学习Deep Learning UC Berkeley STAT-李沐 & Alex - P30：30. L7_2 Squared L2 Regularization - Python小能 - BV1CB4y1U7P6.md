@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P30：30. L7_2 Squared L2 Regularization - Python小能 - BV1CB4y1U7P6
+# P30：30. L7_2 Squared L2 Regularization - Python小能 - BV1CB4y1U7P6
 
  OK。
 

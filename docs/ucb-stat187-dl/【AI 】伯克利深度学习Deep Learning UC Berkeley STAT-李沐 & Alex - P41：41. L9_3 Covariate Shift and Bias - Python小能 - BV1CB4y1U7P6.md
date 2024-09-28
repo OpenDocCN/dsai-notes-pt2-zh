@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P41：41. L9_3 Covariate Shift and Bias - Python小能 - BV1CB4y1U7P6
+# P41：41. L9_3 Covariate Shift and Bias - Python小能 - BV1CB4y1U7P6
 
  Let's talk about fairness and bias in the news。 So you may have heard some things about how maybe one sister。
 

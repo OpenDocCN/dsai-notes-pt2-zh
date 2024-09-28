@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P64：64. L12_4 AlexNet in Python - Python小能 - BV1CB4y1U7P6
+# P64：64. L12_4 AlexNet in Python - Python小能 - BV1CB4y1U7P6
 
  Now that we looked at the net， let's have a look at AlexNet， which is a considerably。
 

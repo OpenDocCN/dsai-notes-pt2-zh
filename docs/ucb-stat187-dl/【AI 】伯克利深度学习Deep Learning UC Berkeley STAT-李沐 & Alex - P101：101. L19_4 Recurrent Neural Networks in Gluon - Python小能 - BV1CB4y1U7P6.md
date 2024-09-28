@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P101：101. L19_4 Recurrent Neural Networks in Gluon - Python小能 - BV1CB4y1U7P6
+# P101：101. L19_4 Recurrent Neural Networks in Gluon - Python小能 - BV1CB4y1U7P6
 
  And so the blue one version of this is actually very， very brief。
 

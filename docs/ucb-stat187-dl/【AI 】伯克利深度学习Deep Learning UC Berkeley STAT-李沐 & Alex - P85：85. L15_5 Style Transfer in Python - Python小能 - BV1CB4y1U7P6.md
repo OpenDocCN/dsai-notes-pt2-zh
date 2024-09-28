@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P85：85. L15_5 Style Transfer in Python - Python小能 - BV1CB4y1U7P6
+# P85：85. L15_5 Style Transfer in Python - Python小能 - BV1CB4y1U7P6
 
  OK， so neo-star in Python。
 

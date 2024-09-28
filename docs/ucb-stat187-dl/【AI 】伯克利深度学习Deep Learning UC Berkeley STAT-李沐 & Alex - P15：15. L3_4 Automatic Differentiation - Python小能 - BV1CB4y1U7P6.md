@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P15：15. L3_4 Automatic Differentiation - Python小能 - BV1CB4y1U7P6
+# P15：15. L3_4 Automatic Differentiation - Python小能 - BV1CB4y1U7P6
 
  So a lot less storage， some basic metric calculus。
 

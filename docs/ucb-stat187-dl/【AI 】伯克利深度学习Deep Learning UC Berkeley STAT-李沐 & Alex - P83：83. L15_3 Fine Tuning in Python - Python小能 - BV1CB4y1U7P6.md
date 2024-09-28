@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P83：83. L15_3 Fine Tuning in Python - Python小能 - BV1CB4y1U7P6
+# P83：83. L15_3 Fine Tuning in Python - Python小能 - BV1CB4y1U7P6
 
  Okay， here we show how do we actually do fine tuning。 That's important because the next homework。
 

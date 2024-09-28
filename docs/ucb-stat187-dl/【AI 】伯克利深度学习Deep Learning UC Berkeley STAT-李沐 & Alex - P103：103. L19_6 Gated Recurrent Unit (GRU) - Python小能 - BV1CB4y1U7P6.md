@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P103：103. L19_6 Gated Recurrent Unit (GRU) - Python小能 - BV1CB4y1U7P6
+# P103：103. L19_6 Gated Recurrent Unit (GRU) - Python小能 - BV1CB4y1U7P6
 
  are ready to talk about the GRU。 So this is the first non-trivial recurrent system that we're going to encounter。
 

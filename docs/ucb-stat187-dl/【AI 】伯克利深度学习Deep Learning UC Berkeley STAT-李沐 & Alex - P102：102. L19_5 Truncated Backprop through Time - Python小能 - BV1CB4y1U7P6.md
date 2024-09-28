@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P102：102. L19_5 Truncated Backprop through Time - Python小能 - BV1CB4y1U7P6
+# P102：102. L19_5 Truncated Backprop through Time - Python小能 - BV1CB4y1U7P6
 
  It's time to look at truncated backprop。 So we actually already encountered truncated backprop。
 

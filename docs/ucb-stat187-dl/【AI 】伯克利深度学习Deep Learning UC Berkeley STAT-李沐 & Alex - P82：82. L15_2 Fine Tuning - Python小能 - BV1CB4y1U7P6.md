@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P82：82. L15_2 Fine Tuning - Python小能 - BV1CB4y1U7P6
+# P82：82. L15_2 Fine Tuning - Python小能 - BV1CB4y1U7P6
 
  We're going to first finish the fine-tuning part。 So fine-tuning is probably the most important。
 

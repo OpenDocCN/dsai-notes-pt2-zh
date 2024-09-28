@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P91：91. L16_6 Bag of Tricks for CNN Training - Python小能 - BV1CB4y1U7P6
+# P91：91. L16_6 Bag of Tricks for CNN Training - Python小能 - BV1CB4y1U7P6
 
  So far we talk about the basic idea， how to get a network。
 

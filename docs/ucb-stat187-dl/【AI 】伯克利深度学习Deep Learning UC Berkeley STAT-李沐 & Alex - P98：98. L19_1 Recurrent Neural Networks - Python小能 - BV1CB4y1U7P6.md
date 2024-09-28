@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P98：98. L19_1 Recurrent Neural Networks - Python小能 - BV1CB4y1U7P6
+# P98：98. L19_1 Recurrent Neural Networks - Python小能 - BV1CB4y1U7P6
 
  Okay， so welcome to another course on recurrent neural networks。 So last week。
 

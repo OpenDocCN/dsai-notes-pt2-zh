@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P53：53. L10_7 Deferred Initialization - Python小能 - BV1CB4y1U7P6
+# P53：53. L10_7 Deferred Initialization - Python小能 - BV1CB4y1U7P6
 
  It's got deferred initialization。 So here， we create the network here。 Again。
 

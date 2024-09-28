@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P49：49. L10_2 Blocks and Layers - Python小能 - BV1CB4y1U7P6
+# P49：49. L10_2 Blocks and Layers - Python小能 - BV1CB4y1U7P6
 
  So， okay， let's first look at how to construct new networks。
 

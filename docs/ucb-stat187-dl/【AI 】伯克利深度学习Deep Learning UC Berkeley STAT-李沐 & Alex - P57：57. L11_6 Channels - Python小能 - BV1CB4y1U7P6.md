@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P57：57. L11_6 Channels - Python小能 - BV1CB4y1U7P6
+# P57：57. L11_6 Channels - Python小能 - BV1CB4y1U7P6
 
  Let's talk about channels in convolutional neural networks。
 

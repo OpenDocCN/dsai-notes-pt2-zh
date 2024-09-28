@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P4：4. L1_4 Linear Algebra - Python小能 - BV1CB4y1U7P6
+# P4：4. L1_4 Linear Algebra - Python小能 - BV1CB4y1U7P6
 
  The first tool that we'll need to cover when we want to deep learning is linear algebra。 Well。
 

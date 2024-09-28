@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P36：36. L8_4 Numerical Stability Notebook - Python小能 - BV1CB4y1U7P6
+# P36：36. L8_4 Numerical Stability Notebook - Python小能 - BV1CB4y1U7P6
 
  So far， we talked about multiple methods to make the numerical stability。
 

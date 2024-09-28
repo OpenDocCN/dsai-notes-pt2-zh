@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P68：68. L13_1 Inception (GoogLeNet) - Python小能 - BV1CB4y1U7P6
+# P68：68. L13_1 Inception (GoogLeNet) - Python小能 - BV1CB4y1U7P6
 
  So welcome to the second part of the convolutional network， Zoo。
 

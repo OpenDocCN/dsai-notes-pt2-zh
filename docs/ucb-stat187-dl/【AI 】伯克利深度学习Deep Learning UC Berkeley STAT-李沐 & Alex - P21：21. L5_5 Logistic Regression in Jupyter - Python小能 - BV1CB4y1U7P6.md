@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P21：21. L5_5 Logistic Regression in Jupyter - Python小能 - BV1CB4y1U7P6
+# P21：21. L5_5 Logistic Regression in Jupyter - Python小能 - BV1CB4y1U7P6
 
  The first thing is， I'm going to look at some data that you can actually work with。
 

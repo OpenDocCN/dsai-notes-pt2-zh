@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P46：46. L9_8 Nonstationary Environment - Python小能 - BV1CB4y1U7P6
+# P46：46. L9_8 Nonstationary Environment - Python小能 - BV1CB4y1U7P6
 
  So last part， nonstational environments。 So when you're deploying a machine learning system。
 

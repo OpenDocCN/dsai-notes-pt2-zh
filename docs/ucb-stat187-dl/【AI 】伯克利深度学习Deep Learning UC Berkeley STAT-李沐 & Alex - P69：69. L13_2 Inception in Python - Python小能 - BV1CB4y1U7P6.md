@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P69：69. L13_2 Inception in Python - Python小能 - BV1CB4y1U7P6
+# P69：69. L13_2 Inception in Python - Python小能 - BV1CB4y1U7P6
 
  Okay， so this is now my notebook running on a gpu。
 

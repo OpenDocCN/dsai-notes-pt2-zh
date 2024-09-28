@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P27：27. L6_2 Multilayer Perceptron - Python小能 - BV1CB4y1U7P6
+# P27：27. L6_2 Multilayer Perceptron - Python小能 - BV1CB4y1U7P6
 
  So in the exo problem， we had the issue that a linear， separator isn't going to be able to separate。
 

@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P78：78. L14_3 Hybridization in Python - Python小能 - BV1CB4y1U7P6
+# P78：78. L14_3 Hybridization in Python - Python小能 - BV1CB4y1U7P6
 
  So let's start with， let me do， to min a little bit。
 

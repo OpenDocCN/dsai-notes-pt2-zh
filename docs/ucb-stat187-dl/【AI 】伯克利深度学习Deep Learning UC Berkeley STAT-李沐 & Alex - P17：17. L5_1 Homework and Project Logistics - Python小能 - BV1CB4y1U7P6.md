@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P17：17. L5_1 Homework and Project Logistics - Python小能 - BV1CB4y1U7P6
+# P17：17. L5_1 Homework and Project Logistics - Python小能 - BV1CB4y1U7P6
 
  Okay。 So， welcome to today's class。 Okay， so welcome to today。 A couple of things。
 

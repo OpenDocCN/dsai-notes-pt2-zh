@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P59：59. L11_8 Pooling - Python小能 - BV1CB4y1U7P6
+# P59：59. L11_8 Pooling - Python小能 - BV1CB4y1U7P6
 
  The last part of our conversation about convolutional layers is the pooling layer。
 

@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P39：39. L9_1 Empirical and Expected Risk - Python小能 - BV1CB4y1U7P6
+# P39：39. L9_1 Empirical and Expected Risk - Python小能 - BV1CB4y1U7P6
 
  Today we'll be talking about covariate shift and the environment。
 

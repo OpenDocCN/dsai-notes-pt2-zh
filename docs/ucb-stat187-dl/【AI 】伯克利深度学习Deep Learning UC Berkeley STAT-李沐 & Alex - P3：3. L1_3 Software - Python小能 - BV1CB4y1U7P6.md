@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P3：3. L1_3 Software - Python小能 - BV1CB4y1U7P6
+# P3：3. L1_3 Software - Python小能 - BV1CB4y1U7P6
 
  Now， this is a class on deep learning， both theory and practice。
 

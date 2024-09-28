@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P33：33. L7_5 Dropout in Jupyter - Python小能 - BV1CB4y1U7P6
+# P33：33. L7_5 Dropout in Jupyter - Python小能 - BV1CB4y1U7P6
 
  Again， we impose on libraries。
 

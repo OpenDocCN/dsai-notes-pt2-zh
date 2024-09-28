@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P66：66. L12_7 Network in Network (NiN) - Python小能 - BV1CB4y1U7P6
+# P66：66. L12_7 Network in Network (NiN) - Python小能 - BV1CB4y1U7P6
 
  So let's talk about how we can actually make those networks a little bit smaller。
 

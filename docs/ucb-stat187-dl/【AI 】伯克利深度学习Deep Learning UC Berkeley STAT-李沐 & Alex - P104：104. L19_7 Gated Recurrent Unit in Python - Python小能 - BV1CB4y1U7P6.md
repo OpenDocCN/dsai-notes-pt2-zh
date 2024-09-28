@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P104：104. L19_7 Gated Recurrent Unit in Python - Python小能 - BV1CB4y1U7P6
+# P104：104. L19_7 Gated Recurrent Unit in Python - Python小能 - BV1CB4y1U7P6
 
  Okay。 So this is the famous GRU of， well， Joel， but annoying others。 Well。
 

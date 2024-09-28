@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P72：72. L13_5 ResNet (Residual Networks) - Python小能 - BV1CB4y1U7P6
+# P72：72. L13_5 ResNet (Residual Networks) - Python小能 - BV1CB4y1U7P6
 
  So let's talk about resnets。 So if you had to pick like a worry free off the shelf network right now。
 

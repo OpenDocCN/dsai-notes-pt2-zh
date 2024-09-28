@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P24：24. L5_8 Softmax Classification in Python - Python小能 - BV1CB4y1U7P6
+# P24：24. L5_8 Softmax Classification in Python - Python小能 - BV1CB4y1U7P6
 
  So remember， last time fashion MNIST didn't quite download in the right way。 Okay， this was fixed。
 

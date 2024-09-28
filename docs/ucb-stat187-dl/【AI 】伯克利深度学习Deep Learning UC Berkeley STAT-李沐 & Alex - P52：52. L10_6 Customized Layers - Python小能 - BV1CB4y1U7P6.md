@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P52：52. L10_6 Customized Layers - Python小能 - BV1CB4y1U7P6
+# P52：52. L10_6 Customized Layers - Python小能 - BV1CB4y1U7P6
 
  Okay， here's how to define a cosmous layer。
 

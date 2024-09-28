@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P13：13. L3_2 Sampling in Jupyter - Python小能 - BV1CB4y1U7P6
+# P13：13. L3_2 Sampling in Jupyter - Python小能 - BV1CB4y1U7P6
 
  Okay， so now let's look at what actually happens when we sample。 Okay。
 

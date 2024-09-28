@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P16：16. L4_1 Linear Regression - Python小能 - BV1CB4y1U7P6
+# P16：16. L4_1 Linear Regression - Python小能 - BV1CB4y1U7P6
 
  Okay， so this is about implementing linear regression from scratch。 So first of all。
 

@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P55：55. L11_4 Padding and Stride - Python小能 - BV1CB4y1U7P6
+# P55：55. L11_4 Padding and Stride - Python小能 - BV1CB4y1U7P6
 
  Okay。 Padding and stride。 So remember， when we do this convolution， right， then， you know。
 

@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P14：14. L3_3 Setting up a GPU instance on AWS - Python小能 - BV1CB4y1U7P6
+# P14：14. L3_3 Setting up a GPU instance on AWS - Python小能 - BV1CB4y1U7P6
 
  Okay， so the first thing we do is we go to a WS dot Amazon。com and I've already logged。
 

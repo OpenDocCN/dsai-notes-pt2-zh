@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P89：89. L16_4 Region-based CNNs - Python小能 - BV1CB4y1U7P6
+# P89：89. L16_4 Region-based CNNs - Python小能 - BV1CB4y1U7P6
 
  So， R3N is pretty the oldest detection family。 It's maybe the first success for deep learning based detection。
 

@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P80：80. L14_7 Multi-Machine Training - Python小能 - BV1CB4y1U7P6
+# P80：80. L14_7 Multi-Machine Training - Python小能 - BV1CB4y1U7P6
 
  Okay， so let's move to single machine multi-gpues to multi-mushings with multiple GPUs。
 

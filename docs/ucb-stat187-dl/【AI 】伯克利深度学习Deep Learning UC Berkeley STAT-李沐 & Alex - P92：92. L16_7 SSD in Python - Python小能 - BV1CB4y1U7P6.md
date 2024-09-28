@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P92：92. L16_7 SSD in Python - Python小能 - BV1CB4y1U7P6
+# P92：92. L16_7 SSD in Python - Python小能 - BV1CB4y1U7P6
 
  So we will dive deeper into how to implement SSD。 So， you know it's very similar。 But fast-d。
 

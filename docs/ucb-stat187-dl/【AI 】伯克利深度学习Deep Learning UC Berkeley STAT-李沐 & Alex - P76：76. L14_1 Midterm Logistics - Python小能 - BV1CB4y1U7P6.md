@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P76：76. L14_1 Midterm Logistics - Python小能 - BV1CB4y1U7P6
+# P76：76. L14_1 Midterm Logistics - Python小能 - BV1CB4y1U7P6
 
  So a little bit of exam logistics just in case you're concerned because this is important for next Tuesday。
 

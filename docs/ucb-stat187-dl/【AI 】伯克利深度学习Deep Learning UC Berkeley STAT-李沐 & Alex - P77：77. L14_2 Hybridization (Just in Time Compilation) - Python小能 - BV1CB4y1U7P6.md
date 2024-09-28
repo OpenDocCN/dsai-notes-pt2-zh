@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P77：77. L14_2 Hybridization (Just in Time Compilation) - Python小能 - BV1CB4y1U7P6
+# P77：77. L14_2 Hybridization (Just in Time Compilation) - Python小能 - BV1CB4y1U7P6
 
  >> Yeah， let's continue。 I like to talk about a lot about network stuff。 If you did homework。
 

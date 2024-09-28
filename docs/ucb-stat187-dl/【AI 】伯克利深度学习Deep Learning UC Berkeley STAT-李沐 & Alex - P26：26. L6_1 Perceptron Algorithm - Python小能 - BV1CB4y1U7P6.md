@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P26：26. L6_1 Perceptron Algorithm - Python小能 - BV1CB4y1U7P6
+# P26：26. L6_1 Perceptron Algorithm - Python小能 - BV1CB4y1U7P6
 
  OK， so far we dealt with really boring stuff， so this was essentially state of the art， 1950， 1960。
 

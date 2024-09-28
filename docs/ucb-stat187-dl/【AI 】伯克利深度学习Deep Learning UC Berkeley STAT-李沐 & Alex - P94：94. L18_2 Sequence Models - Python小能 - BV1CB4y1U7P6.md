@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P94：94. L18_2 Sequence Models - Python小能 - BV1CB4y1U7P6
+# P94：94. L18_2 Sequence Models - Python小能 - BV1CB4y1U7P6
 
  Sequence models。 Okay， so， with so far we just saw， yeah， the data isn't the ID。
 

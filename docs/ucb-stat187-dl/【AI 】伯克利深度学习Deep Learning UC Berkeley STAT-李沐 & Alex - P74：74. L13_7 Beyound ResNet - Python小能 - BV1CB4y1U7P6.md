@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P74：74. L13_7 Beyound ResNet - Python小能 - BV1CB4y1U7P6
+# P74：74. L13_7 Beyound ResNet - Python小能 - BV1CB4y1U7P6
 
  Well， an obvious thing that you can ask yourself is what comes after ResNet， right？
 

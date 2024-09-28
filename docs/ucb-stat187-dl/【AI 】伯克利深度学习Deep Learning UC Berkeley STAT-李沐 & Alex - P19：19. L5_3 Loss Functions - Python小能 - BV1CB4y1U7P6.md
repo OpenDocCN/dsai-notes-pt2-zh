@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P19：19. L5_3 Loss Functions - Python小能 - BV1CB4y1U7P6
+# P19：19. L5_3 Loss Functions - Python小能 - BV1CB4y1U7P6
 
  Loss functions。 Yeah， so， you know， what can we optimize over？ Well。
 

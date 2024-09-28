@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P87：87. L16_2 Bounding and Anchor Boxes - Python小能 - BV1CB4y1U7P6
+# P87：87. L16_2 Bounding and Anchor Boxes - Python小能 - BV1CB4y1U7P6
 
  Okay， let's look at exactly how a bundle box works。 Because this is a key concept。
 

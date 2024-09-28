@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P38：38. L8_6 Advanced Deep Learning Hardware - Python小能 - BV1CB4y1U7P6
+# P38：38. L8_6 Advanced Deep Learning Hardware - Python小能 - BV1CB4y1U7P6
 
  with more hardware。
 

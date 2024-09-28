@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P73：73. L13_6 ResNet in Python - Python小能 - BV1CB4y1U7P6
+# P73：73. L13_6 ResNet in Python - Python小能 - BV1CB4y1U7P6
 
  OK， so the thing that we didn't get a chance to cover last Thursday was， you know， how。
 

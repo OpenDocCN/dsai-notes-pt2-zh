@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P86：86. L16_1 Object Detection - Python小能 - BV1CB4y1U7P6
+# P86：86. L16_1 Object Detection - Python小能 - BV1CB4y1U7P6
 
  So in image classification， we're trying to identify the main objects on the image。
 

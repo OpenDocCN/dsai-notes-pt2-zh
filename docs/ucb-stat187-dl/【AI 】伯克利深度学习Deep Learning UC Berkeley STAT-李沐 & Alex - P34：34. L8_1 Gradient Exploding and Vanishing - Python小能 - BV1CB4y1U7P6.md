@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P34：34. L8_1 Gradient Exploding and Vanishing - Python小能 - BV1CB4y1U7P6
+# P34：34. L8_1 Gradient Exploding and Vanishing - Python小能 - BV1CB4y1U7P6
 
  This is a re-record of Nx8。
 

@@ -1,4 +1,4 @@
-# 【AI 】伯克利深度学习Deep Learning UC Berkeley STAT-李沐 & Alex - P8：8. L2_3 Basic Probability - Python小能 - BV1CB4y1U7P6
+# P8：8. L2_3 Basic Probability - Python小能 - BV1CB4y1U7P6
 
  OK。 So what we're going to do today， and probably on Monday， is we'll look at basic statistics。
 
