@@ -1,0 +1,8 @@
++   [MIT 6.S087 生成式人工智能笔记](README.md)
++   [P1：1、MIT 6.S087 Foundation Models & Generative AI. INTRODUCTION - Moss学长 - BV114tLemEdn](P1-1-MIT-6-S087-Foundation-Models---Generative-AI--INTRODUCTION---Moss学长---BV114tLemEdn.md)
++   [P2：2、MIT 6.S087 Foundation Models & Generative AI. HOW IT WORKS - Moss学长 - BV114tLemEdn](P2-2-MIT-6-S087-Foundation-Models---Generative-AI--HOW-IT-WORKS---Moss学长---BV114tLemEdn.md)
++   [P3：3、MIT 6.S087 Foundation Models & Generative AI. CHAT-GPT & LLMs - Moss学长 - BV114tLemEdn](P3-3-MIT-6-S087-Foundation-Models---Generative-AI--CHAT-GPT---LLMs---Moss学长---BV114tLemEdn.md)
++   [P4：4、MIT 6.S087 Foundation Models & Generative AI. IMAGE GENERATION - Moss学长 - BV114tLemEdn](P4-4-MIT-6-S087-Foundation-Models---Generative-AI--IMAGE-GENERATION---Moss学长---BV114tLemEdn.md)
++   [P5：5、MIT 6.S087 Foundation Models & Generative AI. ECOSYSTEM - Moss学长 - BV114tLemEdn](P5-5-MIT-6-S087-Foundation-Models---Generative-AI--ECOSYSTEM---Moss学长---BV114tLemEdn.md)
++   [P6：6、MIT 6.S087 Foundation Models & Generative AI. BIOLOGY - Moss学长 - BV114tLemEdn](P6-6-MIT-6-S087-Foundation-Models---Generative-AI--BIOLOGY---Moss学长---BV114tLemEdn.md)
++   [P7：7、MIT 6.S087 Foundation Models & Generative AI.AUTONOMY - Moss学长 - BV114tLemEdn](P7-7-MIT-6-S087-Foundation-Models---Generative-AI-AUTONOMY---Moss学长---BV114tLemEdn.md)
