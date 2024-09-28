@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P18：CS 182- Lecture 6- Part 2- Convolutional Networks - 爱可可-爱生活 - BV1PK4y1U751
+# P18：CS 182- Lecture 6- Part 2- Convolutional Networks - 爱可可-爱生活 - BV1PK4y1U751
 
 就在讲座的下一部分，让我们谈谈如何在实践中实际实现卷积层，总结一下关于卷积的主要思想，从第一部分开始，一个卷积层基本上是，这是一种避免图像需要数百万个参数的方法。
 

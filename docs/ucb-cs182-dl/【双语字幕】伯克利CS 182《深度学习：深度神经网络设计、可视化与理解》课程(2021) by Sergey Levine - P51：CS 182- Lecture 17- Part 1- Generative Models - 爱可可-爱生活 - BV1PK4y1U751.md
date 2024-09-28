@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P51：CS 182- Lecture 17- Part 1- Generative Models - 爱可可-爱生活 - BV1PK4y1U751
+# P51：CS 182- Lecture 17- Part 1- Generative Models - 爱可可-爱生活 - BV1PK4y1U751
 
 欢迎来到CS第十七课，今天我们将讨论生成建模，到目前为止，在这门课程中，我们已经讨论了监督学习，休息之前，我们还讨论了强化学习，从今天开始，我们将讨论无监督学习，但在我们这样做之前。
 

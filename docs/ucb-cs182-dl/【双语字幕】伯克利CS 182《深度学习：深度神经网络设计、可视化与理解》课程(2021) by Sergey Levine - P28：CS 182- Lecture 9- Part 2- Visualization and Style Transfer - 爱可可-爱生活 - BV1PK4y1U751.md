@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P28：CS 182- Lecture 9- Part 2- Visualization and Style Transfer - 爱可可-爱生活 - BV1PK4y1U751
+# P28：CS 182- Lecture 9- Part 2- Visualization and Style Transfer - 爱可可-爱生活 - BV1PK4y1U751
 
 所有的权利，在下一节中，让我们更多地讨论如何可视化特性，甚至可能是带有反向传播的整个类，所以我们要讨论的下一个想法是超越，只是想把渐变形象化，导数，如果我们试着优化图像呢，呃。
 

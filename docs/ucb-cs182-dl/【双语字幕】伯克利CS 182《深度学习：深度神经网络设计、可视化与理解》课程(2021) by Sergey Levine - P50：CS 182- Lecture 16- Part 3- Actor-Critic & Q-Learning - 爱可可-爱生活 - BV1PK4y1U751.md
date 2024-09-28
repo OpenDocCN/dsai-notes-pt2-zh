@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P50：CS 182- Lecture 16- Part 3- Actor-Critic & Q-Learning - 爱可可-爱生活 - BV1PK4y1U751
+# P50：CS 182- Lecture 16- Part 3- Actor-Critic & Q-Learning - 爱可可-爱生活 - BV1PK4y1U751
 
 在今天讲座的最后一部分，我们将导出一个完整的深度Q学习算法。
 

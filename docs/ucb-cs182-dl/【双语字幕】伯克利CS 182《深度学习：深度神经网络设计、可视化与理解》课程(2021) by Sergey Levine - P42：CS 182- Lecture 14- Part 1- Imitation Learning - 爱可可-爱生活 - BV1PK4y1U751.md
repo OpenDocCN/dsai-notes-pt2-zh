@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P42：CS 182- Lecture 14- Part 1- Imitation Learning - 爱可可-爱生活 - BV1PK4y1U751
+# P42：CS 182- Lecture 14- Part 1- Imitation Learning - 爱可可-爱生活 - BV1PK4y1U751
 
 欢迎来到今天的课程一八十二的第十四课，我们将开始一个以学习为基础的控制的三堂课单元，它将涵盖强化学习和模仿学习，到目前为止，我们学到的所有深度学习方法都集中在学习预测。
 

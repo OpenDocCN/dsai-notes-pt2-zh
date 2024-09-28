@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P63：CS 182- Lecture 20- Part 3- Adversarial Examples - 爱可可-爱生活 - BV1PK4y1U751
+# P63：CS 182- Lecture 20- Part 3- Adversarial Examples - 爱可可-爱生活 - BV1PK4y1U751
 
 在今天讲座的最后一部分，我们将实际讨论如何构建对抗性的例子，做一点数学，然后在最后简短地讨论如何防御它们，所以为了开始创建对抗性的例子，我们需要引入一个正式的定义，所以我们不只是想修改图像威利。
 

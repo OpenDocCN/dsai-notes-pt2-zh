@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P34：CS 182- Lecture 11- Part 2- Sequence to Sequence - 爱可可-爱生活 - BV1PK4y1U751
+# P34：CS 182- Lecture 11- Part 2- Sequence to Sequence - 爱可可-爱生活 - BV1PK4y1U751
 
 所以有一件事我们还没有详细讨论，但这对各种RNN都很重要，尤其是序列到序列模型和语言模型是如何实际执行解码。
 

@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P32：CS 182- Lecture 10- Part 3- Recurrent Neural Networks - 爱可可-爱生活 - BV1PK4y1U751
+# P32：CS 182- Lecture 10- Part 3- Recurrent Neural Networks - 爱可可-爱生活 - BV1PK4y1U751
 
 在今天讲座的最后一部分，我们将利用我们在，第一部分和第二部分，实际上谈论如何，我们可以使用RNNS来建立解决实际问题的实用模型，我们要讨论的第一件事实际上很重要，是自回归模型和结构化预测。
 

@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P56：CS 182- Lecture 18- Part 3- Latent Variable Models - 爱可可-爱生活 - BV1PK4y1U751
+# P56：CS 182- Lecture 18- Part 3- Latent Variable Models - 爱可可-爱生活 - BV1PK4y1U751
 
 好的，现在，让我们把东西放在一起，通过完整的变分自动编码器，所以变分自动编码器是一个潜在的变量模型，具有高斯先验的潜在变量z，它观察到变量x，可能是一个图像，它有一个编码器来执行推理，也就是q5。
 

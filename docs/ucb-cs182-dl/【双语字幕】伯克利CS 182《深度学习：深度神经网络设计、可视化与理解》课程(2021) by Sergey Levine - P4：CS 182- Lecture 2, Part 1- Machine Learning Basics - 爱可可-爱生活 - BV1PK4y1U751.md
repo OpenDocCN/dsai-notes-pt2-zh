@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P4：CS 182- Lecture 2, Part 1- Machine Learning Basics - 爱可可-爱生活 - BV1PK4y1U751
+# P4：CS 182- Lecture 2, Part 1- Machine Learning Basics - 爱可可-爱生活 - BV1PK4y1U751
 
 所有的权利，呃，欢迎来到CS一课的第二课，在今天的讲座中，我们将复习机器学习中的一些基本概念，在以后的讲座中，这将与深度学习联系起来，所以让我们从第一个问题开始，我们如何制定学习问题，在机器学习中。
 

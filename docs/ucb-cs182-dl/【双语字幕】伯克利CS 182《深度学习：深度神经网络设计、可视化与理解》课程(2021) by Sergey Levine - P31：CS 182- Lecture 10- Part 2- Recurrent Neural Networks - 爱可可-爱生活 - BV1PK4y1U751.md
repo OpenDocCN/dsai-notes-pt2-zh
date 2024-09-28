@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P31：CS 182- Lecture 10- Part 2- Recurrent Neural Networks - 爱可可-爱生活 - BV1PK4y1U751
+# P31：CS 182- Lecture 10- Part 2- Recurrent Neural Networks - 爱可可-爱生活 - BV1PK4y1U751
 
 现在我们已经讨论了rnns如何工作的基本知识，让我们来谈谈我们如何有效地训练他们。
 

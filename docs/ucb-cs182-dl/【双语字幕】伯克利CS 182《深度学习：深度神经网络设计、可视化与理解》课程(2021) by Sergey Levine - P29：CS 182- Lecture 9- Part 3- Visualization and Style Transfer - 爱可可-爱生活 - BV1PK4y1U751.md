@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P29：CS 182- Lecture 9- Part 3- Visualization and Style Transfer - 爱可可-爱生活 - BV1PK4y1U751
+# P29：CS 182- Lecture 9- Part 3- Visualization and Style Transfer - 爱可可-爱生活 - BV1PK4y1U751
 
 所有的权利，所以在今天讲座的最后一部分，我们要稍微换档，而不是谈论可视化过滤器，我们将讨论使用一些类似的技术来修改图像，所以在我们想问这个问题之前，给定一张特定的图片，五层的十七频道是什么。
 

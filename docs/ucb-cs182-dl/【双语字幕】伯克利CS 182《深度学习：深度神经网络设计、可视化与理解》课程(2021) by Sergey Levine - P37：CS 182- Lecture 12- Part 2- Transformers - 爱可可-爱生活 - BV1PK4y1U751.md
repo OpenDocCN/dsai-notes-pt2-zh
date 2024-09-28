@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P37：CS 182- Lecture 12- Part 2- Transformers - 爱可可-爱生活 - BV1PK4y1U751
+# P37：CS 182- Lecture 12- Part 2- Transformers - 爱可可-爱生活 - BV1PK4y1U751
 
 让我们把我们需要处理的每一件事都说一遍，为了把这个基本的自我注意机制变成一个实用的序列模型。
 

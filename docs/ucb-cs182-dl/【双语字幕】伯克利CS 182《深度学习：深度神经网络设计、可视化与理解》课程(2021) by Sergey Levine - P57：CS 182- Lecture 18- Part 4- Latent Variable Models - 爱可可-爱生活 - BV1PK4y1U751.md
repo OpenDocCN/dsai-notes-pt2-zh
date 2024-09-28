@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P57：CS 182- Lecture 18- Part 4- Latent Variable Models - 爱可可-爱生活 - BV1PK4y1U751
+# P57：CS 182- Lecture 18- Part 4- Latent Variable Models - 爱可可-爱生活 - BV1PK4y1U751
 
 在今天讲座的最后一部分，我们将讨论一种不同的模型，在结构上有点类似于变分自动编码器，但训练起来要简单得多，所以这个想法是这样的，而不是让解码器表示x上的分布，给定z，我们实际上会有一个确定性解码器。
 

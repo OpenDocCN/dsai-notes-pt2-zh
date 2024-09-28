@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P48：CS 182- Lecture 16- Part 1- Actor-Critic & Q-Learning - 爱可可-爱生活 - BV1PK4y1U751
+# P48：CS 182- Lecture 16- Part 1- Actor-Critic & Q-Learning - 爱可可-爱生活 - BV1PK4y1U751
 
 欢迎来到CS第十六课，在今天的讲座中，我们将继续讨论强化学习，学习演员，批判性算法与Q学习方法，所以回顾一下周一的上一次，我们了解策略梯度，脉搏，经典的策略梯度算法被称为增强，由三个步骤组成。
 

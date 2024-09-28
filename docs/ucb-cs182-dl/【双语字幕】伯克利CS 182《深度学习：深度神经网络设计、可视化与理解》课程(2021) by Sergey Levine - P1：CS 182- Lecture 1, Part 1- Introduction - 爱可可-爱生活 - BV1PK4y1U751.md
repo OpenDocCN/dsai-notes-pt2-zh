@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P1：CS 182- Lecture 1, Part 1- Introduction - 爱可可-爱生活 - BV1PK4y1U751
+# P1：CS 182- Lecture 1, Part 1- Introduction - 爱可可-爱生活 - BV1PK4y1U751
 
 ![](img/8b875805165ad14b2914b5a3c4ab7ca4_0.png)
 

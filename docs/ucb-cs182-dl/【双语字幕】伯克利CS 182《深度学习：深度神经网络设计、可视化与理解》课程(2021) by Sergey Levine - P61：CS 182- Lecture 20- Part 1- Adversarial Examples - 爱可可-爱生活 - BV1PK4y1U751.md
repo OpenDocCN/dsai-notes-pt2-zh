@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P61：CS 182- Lecture 20- Part 1- Adversarial Examples - 爱可可-爱生活 - BV1PK4y1U751
+# P61：CS 182- Lecture 20- Part 1- Adversarial Examples - 爱可可-爱生活 - BV1PK4y1U751
 
 欢迎大家来到今天的CS一八二，我们将讨论深度神经网络和对抗性示例中的泛化，让我们从一个非常基本的问题开始，一个对任何人都很重要的问题，他正在考虑使用深度神经网络模型，深度网络泛化了吗。
 

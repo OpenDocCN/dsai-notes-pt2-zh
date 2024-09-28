@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P21：CS 182- Lecture 7- Part 2- Initialization, Batch Normalization - 爱可可-爱生活 - BV1PK4y1U751
+# P21：CS 182- Lecture 7- Part 2- Initialization, Batch Normalization - 爱可可-爱生活 - BV1PK4y1U751
 
 在今天讲座的下一部分，我们将讨论权重初始化，现在，主题，在我们关于权重初始化的讨论中，将与主题非常相似，当我们谈到正常化时，在选择初始化方案时，我们要做的主要事情是，就是确保网络中的梯度看起来合理。
 

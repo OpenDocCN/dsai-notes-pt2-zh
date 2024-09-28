@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P35：CS 182- Lecture 11- Part 3- Sequence to Sequence - 爱可可-爱生活 - BV1PK4y1U751
+# P35：CS 182- Lecture 11- Part 3- Sequence to Sequence - 爱可可-爱生活 - BV1PK4y1U751
 
 今天这堂课我要讨论的最后一个话题，将作为下节课的一个过渡，所以呃，下一节课，我们将更多地讨论注意力，但我只想介绍寻求模型的注意力概念。
 

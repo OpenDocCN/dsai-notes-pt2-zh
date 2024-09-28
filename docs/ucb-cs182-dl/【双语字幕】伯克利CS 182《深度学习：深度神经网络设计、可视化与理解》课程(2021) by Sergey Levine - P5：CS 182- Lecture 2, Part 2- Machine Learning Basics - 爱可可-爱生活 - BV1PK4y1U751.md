@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P5：CS 182- Lecture 2, Part 2- Machine Learning Basics - 爱可可-爱生活 - BV1PK4y1U751
+# P5：CS 182- Lecture 2, Part 2- Machine Learning Basics - 爱可可-爱生活 - BV1PK4y1U751
 
 让我们来谈谈监督学习，所以这实际上是今天讲座的主要主题，监督学习是最常用的机器学习形式之一，尤其是如果你在工业中寻找实际的应用，因此，工业上使用的绝大多数机器学习都是在监督下进行的，学习。
 

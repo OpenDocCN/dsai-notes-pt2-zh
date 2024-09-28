@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P52：CS 182- Lecture 17- Part 2- Generative Models - 爱可可-爱生活 - BV1PK4y1U751
+# P52：CS 182- Lecture 17- Part 2- Generative Models - 爱可可-爱生活 - BV1PK4y1U751
 
 在讲座的下一部分，我将谈谈一种不同的模型，叫做自动编码器，现在自动编码器是，你知道的，用于各种无监督学习任务的非常广泛使用的模型类，并非所有的自动编码器都是生成型的，事实上。
 

@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P62：CS 182- Lecture 20- Part 2- Adversarial Examples - 爱可可-爱生活 - BV1PK4y1U751
+# P62：CS 182- Lecture 20- Part 2- Adversarial Examples - 爱可可-爱生活 - BV1PK4y1U751
 
 在今天讲座的第二部分，我们将讨论一种特殊的情况，神经网络会犯错误，称为对抗性例子，所以在第一部分，我们主要讨论了图像的自然扰动，相关性，像这样的分配转移，在这一部分，我们将讨论一些非自然的扰动。
 

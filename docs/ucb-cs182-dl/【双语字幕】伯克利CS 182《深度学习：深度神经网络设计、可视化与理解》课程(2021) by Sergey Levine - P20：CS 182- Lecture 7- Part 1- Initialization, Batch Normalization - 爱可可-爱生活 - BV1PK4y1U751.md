@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P20：CS 182- Lecture 7- Part 1- Initialization, Batch Normalization - 爱可可-爱生活 - BV1PK4y1U751
+# P20：CS 182- Lecture 7- Part 1- Initialization, Batch Normalization - 爱可可-爱生活 - BV1PK4y1U751
 
 所有的权利，欢迎收看第七讲，今天一八十二，我们将讨论如何让神经网络更好地训练。
 

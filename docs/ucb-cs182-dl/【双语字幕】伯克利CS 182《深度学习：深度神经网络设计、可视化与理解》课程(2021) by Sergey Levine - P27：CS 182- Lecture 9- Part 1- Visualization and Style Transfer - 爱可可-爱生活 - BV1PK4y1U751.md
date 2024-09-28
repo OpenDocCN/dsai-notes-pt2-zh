@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P27：CS 182- Lecture 9- Part 1- Visualization and Style Transfer - 爱可可-爱生活 - BV1PK4y1U751
+# P27：CS 182- Lecture 9- Part 1- Visualization and Style Transfer - 爱可可-爱生活 - BV1PK4y1U751
 
 欢迎收看第八十二节第九课，今天我们要谈谈如何理解，卷积神经网络在做什么，以及如何实际使用它们来生成图片，在我们进入卷积网络的细节之前，让我们简单地谈谈一些实验。
 

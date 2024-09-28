@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P30：CS 182- Lecture 10- Part 1- Recurrent Neural Networks - 爱可可-爱生活 - BV1PK4y1U751
+# P30：CS 182- Lecture 10- Part 1- Recurrent Neural Networks - 爱可可-爱生活 - BV1PK4y1U751
 
 欢迎收看今天的第十节课，我们将开始讨论递归神经网络，然后它将过渡到一个关于序列模型和自然语言处理冒险的单元，这将跨越接下来的几周，所以我想在这节课开始的问题是，如果我们有一个可变大小的输入，到目前为止。
 

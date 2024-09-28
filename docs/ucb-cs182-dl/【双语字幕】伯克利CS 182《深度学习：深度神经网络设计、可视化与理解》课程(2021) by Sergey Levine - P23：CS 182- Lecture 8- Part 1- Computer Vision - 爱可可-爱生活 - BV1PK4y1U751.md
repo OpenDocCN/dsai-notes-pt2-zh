@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P23：CS 182- Lecture 8- Part 1- Computer Vision - 爱可可-爱生活 - BV1PK4y1U751
+# P23：CS 182- Lecture 8- Part 1- Computer Vision - 爱可可-爱生活 - BV1PK4y1U751
 
 欢迎来到第八讲，到目前为止在这门课程中，我们已经讨论了深度学习的核心思想，卷积，反向传播，优化的基础，今天的讲座以此类推，我们将更多地关注应用程序，今天，我们要讨论。
 

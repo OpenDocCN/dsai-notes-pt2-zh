@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P6：CS 182- Lecture 2, Part 3- Machine Learning Basics - 爱可可-爱生活 - BV1PK4y1U751
+# P6：CS 182- Lecture 2, Part 3- Machine Learning Basics - 爱可可-爱生活 - BV1PK4y1U751
 
 所以在今天讲座的下一部分，我们将讨论损失函数。
 

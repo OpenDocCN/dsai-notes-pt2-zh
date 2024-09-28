@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P14：CS 182- Lecture 5- Part 1- Backpropagation - 爱可可-爱生活 - BV1PK4y1U751
+# P14：CS 182- Lecture 5- Part 1- Backpropagation - 爱可可-爱生活 - BV1PK4y1U751
 
 欢迎来到今天的课程五，我们将讨论反向传播和神经网络。
 

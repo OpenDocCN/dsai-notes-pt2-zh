@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P8：CS 182 Lecture 3- Part 1- Error Analysis - 爱可可-爱生活 - BV1PK4y1U751
+# P8：CS 182 Lecture 3- Part 1- Error Analysis - 爱可可-爱生活 - BV1PK4y1U751
 
 大家好，欢迎来到CS的第三讲，今天我们将讨论偏见。
 

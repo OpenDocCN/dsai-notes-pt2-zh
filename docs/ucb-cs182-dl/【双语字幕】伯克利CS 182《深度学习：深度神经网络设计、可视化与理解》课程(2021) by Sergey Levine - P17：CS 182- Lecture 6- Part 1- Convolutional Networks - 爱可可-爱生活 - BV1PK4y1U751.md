@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P17：CS 182- Lecture 6- Part 1- Convolutional Networks - 爱可可-爱生活 - BV1PK4y1U751
+# P17：CS 182- Lecture 6- Part 1- Convolutional Networks - 爱可可-爱生活 - BV1PK4y1U751
 
 今天我们将讨论如何建立神经网络，可以处理图像的。
 

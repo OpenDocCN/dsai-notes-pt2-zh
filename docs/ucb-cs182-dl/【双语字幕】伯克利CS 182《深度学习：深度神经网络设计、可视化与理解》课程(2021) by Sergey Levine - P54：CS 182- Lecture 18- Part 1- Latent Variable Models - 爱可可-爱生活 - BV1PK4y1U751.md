@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P54：CS 182- Lecture 18- Part 1- Latent Variable Models - 爱可可-爱生活 - BV1PK4y1U751
+# P54：CS 182- Lecture 18- Part 1- Latent Variable Models - 爱可可-爱生活 - BV1PK4y1U751
 
 欢迎收看第一讲第十八课，在今天的讲座中，我们将从星期一开始继续讨论生成模型，具体谈谈潜在变量模型，我们将讨论变分自动编码器和另一种潜在变量模型。
 

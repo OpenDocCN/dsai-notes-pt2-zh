@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P33：CS 182- Lecture 11- Part 1- Sequence to Sequence - 爱可可-爱生活 - BV1PK4y1U751
+# P33：CS 182- Lecture 11- Part 1- Sequence to Sequence - 爱可可-爱生活 - BV1PK4y1U751
 
 欢迎来到今天的第十一讲，我们将讨论如何使用递归神经网络，我们上次学过的，实际上解决了一些有趣的问题，然后呃，今天讲座的结合将是，我们如何训练和利用序列到序列模型。
 

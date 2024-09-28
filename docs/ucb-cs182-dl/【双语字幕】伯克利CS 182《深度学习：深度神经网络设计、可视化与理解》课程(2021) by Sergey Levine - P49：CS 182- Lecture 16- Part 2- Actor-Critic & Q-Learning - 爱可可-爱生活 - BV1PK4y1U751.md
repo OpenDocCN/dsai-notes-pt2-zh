@@ -1,4 +1,4 @@
-# 【双语字幕】伯克利CS 182《深度学习：深度神经网络设计、可视化与理解》课程(2021) by Sergey Levine - P49：CS 182- Lecture 16- Part 2- Actor-Critic & Q-Learning - 爱可可-爱生活 - BV1PK4y1U751
+# P49：CS 182- Lecture 16- Part 2- Actor-Critic & Q-Learning - 爱可可-爱生活 - BV1PK4y1U751
 
 在今天演讲的下一部分中，我已经报道了演员评论家，呃，我们实际上将进一步建立在值函数和q函数的思想上，开发根本不需要演员的算法，最终达到所谓的Q学习方法，所以我们要问的问题是，我们能完全省略保单分级吗。
 
