@@ -1,4 +1,4 @@
-# 【斯坦福大学】CS221 人工智能原理与技术 · 2019秋（完结·中英字幕·人工校对中) - P12：Lecture 12 Factor Graphs 2 - Conditional Independence - 鬼谷良师 - BV16E411J7AQ
+# P12：Lecture 12 Factor Graphs 2 - Conditional Independence - 鬼谷良师 - BV16E411J7AQ
 
  Today we're going to be coming to CSPs， but possibly just as importantly you're all halfway。
 

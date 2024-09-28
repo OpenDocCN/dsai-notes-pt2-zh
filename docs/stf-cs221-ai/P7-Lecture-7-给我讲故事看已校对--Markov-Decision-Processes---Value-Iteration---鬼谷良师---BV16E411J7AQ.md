@@ -1,4 +1,4 @@
-# 【斯坦福大学】CS221 人工智能原理与技术 · 2019秋（完结·中英字幕·人工校对中) - P7：Lecture 7（给我讲故事看已校对） Markov Decision Processes - Value Iteration - 鬼谷良师 - BV16E411J7AQ
+# P7：Lecture 7（给我讲故事看已校对） Markov Decision Processes - Value Iteration - 鬼谷良师 - BV16E411J7AQ
 
  Okay， let's start guys。
 

@@ -1,4 +1,4 @@
-# 【斯坦福大学】CS221 人工智能原理与技术 · 2019秋（完结·中英字幕·人工校对中) - P6：Lecture 6（给我讲故事看已校对）Search 2 - 鬼谷良师 - BV16E411J7AQ
+# P6：Lecture 6（给我讲故事看已校对）Search 2 - 鬼谷良师 - BV16E411J7AQ
 
  Okay， so hi everyone。
 

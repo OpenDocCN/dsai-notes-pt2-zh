@@ -1,4 +1,4 @@
-# 【斯坦福大学】CS221 人工智能原理与技术 · 2019秋（完结·中英字幕·人工校对中) - P16：Lecture 16 Logic 1 - Propositional Logic - 鬼谷良师 - BV16E411J7AQ
+# P16：Lecture 16 Logic 1 - Propositional Logic - 鬼谷良师 - BV16E411J7AQ
 
  All right， let's get started。
 

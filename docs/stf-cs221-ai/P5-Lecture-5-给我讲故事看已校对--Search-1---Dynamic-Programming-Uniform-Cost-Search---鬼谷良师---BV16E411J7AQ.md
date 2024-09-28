@@ -1,4 +1,4 @@
-# 【斯坦福大学】CS221 人工智能原理与技术 · 2019秋（完结·中英字幕·人工校对中) - P5：Lecture 5（给我讲故事看已校对） Search 1 - Dynamic Programming Uniform Cost Search - 鬼谷良师 - BV16E411J7AQ
+# P5：Lecture 5（给我讲故事看已校对） Search 1 - Dynamic Programming Uniform Cost Search - 鬼谷良师 - BV16E411J7AQ
 
  Hi everyone， I'm Dorsa and this week I'll be teaching the state-based models and the。
 

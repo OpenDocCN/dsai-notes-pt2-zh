@@ -1,4 +1,4 @@
-# 【斯坦福大学】CS221 人工智能原理与技术 · 2019秋（完结·中英字幕·人工校对中) - P2：Lecture 2 Machine Learning 1 - Linear Classifiers SGD - 鬼谷良师 - BV16E411J7AQ
+# P2：Lecture 2 Machine Learning 1 - Linear Classifiers SGD - 鬼谷良师 - BV16E411J7AQ
 
  Okay， so let's get started with the actual technical content。
 

@@ -1,4 +1,4 @@
-# 【斯坦福大学】CS221 人工智能原理与技术 · 2019秋（完结·中英字幕·人工校对中) - P4：Lecture 4（给我讲故事看已校对） Machine Learning 3 - Generalization K-means - 鬼谷良师 - BV16E411J7AQ
+# P4：Lecture 4（给我讲故事看已校对） Machine Learning 3 - Generalization K-means - 鬼谷良师 - BV16E411J7AQ
 
  Homework one， hard deadline。
 

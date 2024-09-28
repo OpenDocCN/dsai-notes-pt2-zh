@@ -1,4 +1,4 @@
-# 【斯坦福大学】CS221 人工智能原理与技术 · 2019秋（完结·中英字幕·人工校对中) - P10：Lecture 10 Game Playing 2 - TD Learning Game Theory - 鬼谷良师 - BV16E411J7AQ
+# P10：Lecture 10 Game Playing 2 - TD Learning Game Theory - 鬼谷良师 - BV16E411J7AQ
 
  Let's start guys。
 

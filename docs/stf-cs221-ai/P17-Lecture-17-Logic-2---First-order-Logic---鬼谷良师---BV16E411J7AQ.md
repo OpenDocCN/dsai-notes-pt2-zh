@@ -1,4 +1,4 @@
-# 【斯坦福大学】CS221 人工智能原理与技术 · 2019秋（完结·中英字幕·人工校对中) - P17：Lecture 17 Logic 2 - First-order Logic - 鬼谷良师 - BV16E411J7AQ
+# P17：Lecture 17 Logic 2 - First-order Logic - 鬼谷良师 - BV16E411J7AQ
 
  Okay， let's get started。
 

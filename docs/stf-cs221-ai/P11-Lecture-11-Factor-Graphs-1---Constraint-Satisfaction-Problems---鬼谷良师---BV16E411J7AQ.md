@@ -1,4 +1,4 @@
-# 【斯坦福大学】CS221 人工智能原理与技术 · 2019秋（完结·中英字幕·人工校对中) - P11：Lecture 11 Factor Graphs 1 - Constraint Satisfaction Problems - 鬼谷良师 - BV16E411J7AQ
+# P11：Lecture 11 Factor Graphs 1 - Constraint Satisfaction Problems - 鬼谷良师 - BV16E411J7AQ
 
  Two countries， Austria and-。
 

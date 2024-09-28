@@ -1,4 +1,4 @@
-# 【斯坦福大学】CS221 人工智能原理与技术 · 2019秋（完结·中英字幕·人工校对中) - P13：Lecture 13 Bayesian Networks 1 - Inference - 鬼谷良师 - BV16E411J7AQ
+# P13：Lecture 13 Bayesian Networks 1 - Inference - 鬼谷良师 - BV16E411J7AQ
 
  All right， let's get started。
 

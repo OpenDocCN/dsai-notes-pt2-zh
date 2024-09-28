@@ -1,4 +1,4 @@
-# 【斯坦福大学】CS221 人工智能原理与技术 · 2019秋（完结·中英字幕·人工校对中) - P8：Lecture 8（给我讲故事看已校对） Markov Decision Processes - Reinforcement Learning - 鬼谷良师 - BV16E411J7AQ
+# P8：Lecture 8（给我讲故事看已校对） Markov Decision Processes - Reinforcement Learning - 鬼谷良师 - BV16E411J7AQ
 
  So this lecture is going to be on reinforcement learning。
 

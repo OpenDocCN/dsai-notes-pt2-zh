@@ -1,4 +1,4 @@
-# 【斯坦福大学】CS221 人工智能原理与技术 · 2019秋（完结·中英字幕·人工校对中) - P3：Lecture 3 Machine Learning 2 - Features Neural Networks - 鬼谷良师 - BV16E411J7AQ
+# P3：Lecture 3 Machine Learning 2 - Features Neural Networks - 鬼谷良师 - BV16E411J7AQ
 
  Okay。 Welcome back everyone。 This is the second lecture on machine learning。 So just before。
 
