@@ -1,4 +1,4 @@
-# 【深度生成模型 CS236 2023】斯坦福—中英字幕 - P16：p16 Stanford CS236： Deep Generative Models I 2023 I Lecture 16 - Sc - 加加zero - BV1NjH4eYE1v
+# P16：p16 Stanford CS236： Deep Generative Models I 2023 I Lecture 16 - Sc - 加加zero - BV1NjH4eYE1v
 
 ![](img/14a63638c04871a964089afedbb6ce18_0.png)
 

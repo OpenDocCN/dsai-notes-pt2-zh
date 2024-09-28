@@ -1,4 +1,4 @@
-# 【深度生成模型 CS236 2023】斯坦福—中英字幕 - P6：p6 Stanford CS236： Deep Generative Models I 2023 I Lecture 6 - VAEs - 加加zero - BV1NjH4eYE1v
+# P6：p6 Stanford CS236： Deep Generative Models I 2023 I Lecture 6 - VAEs - 加加zero - BV1NjH4eYE1v
 
 ![](img/98a7989aafdb1db5fe5a6608042c1211_0.png)
 

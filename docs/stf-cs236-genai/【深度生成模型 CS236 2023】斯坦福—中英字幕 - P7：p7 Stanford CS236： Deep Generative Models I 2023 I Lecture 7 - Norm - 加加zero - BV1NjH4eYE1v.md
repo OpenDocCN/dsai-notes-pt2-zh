@@ -1,4 +1,4 @@
-# 【深度生成模型 CS236 2023】斯坦福—中英字幕 - P7：p7 Stanford CS236： Deep Generative Models I 2023 I Lecture 7 - Norm - 加加zero - BV1NjH4eYE1v
+# P7：p7 Stanford CS236： Deep Generative Models I 2023 I Lecture 7 - Norm - 加加zero - BV1NjH4eYE1v
 
 ![](img/f9f6d7faf7044248ae17573ec32a9d68_0.png)
 
