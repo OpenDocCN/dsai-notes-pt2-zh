@@ -1,4 +1,4 @@
-# 【斯坦福大学】博弈论 （全） - P15：【斯坦福大学】博弈论（14）Hardness Beyond 2x2 Games - Basic - 自洽音梦 - BV1644y1D7dD
+# P15：【斯坦福大学】博弈论（14）Hardness Beyond 2x2 Games - Basic - 自洽音梦 - BV1644y1D7dD
 
 所以说，让我们来谈谈，在普通的手机游戏中计算纳什均衡有多难。
 
