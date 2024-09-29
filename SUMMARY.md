@@ -1,4 +1,5 @@
 +   [智源大会 2024](docs/baai24/README.md)
++   [MIT 18.03 面向初学者的微积分](docs/calc4b/README.md)
 +   [MIT 6.874 生物科学深度学习笔记](docs/mit-6874-biodl/README.md)
 +   [MIT 6.S087 生成式人工智能笔记](docs/mit-6s087-genai/README.md)
 +   [MIT 6.S91 深度学习导论 2021 中文笔记](docs/mit-6s091-dl21/README.md)
