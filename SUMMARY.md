@@ -4,6 +4,7 @@
 +   [MIT 6.S087 生成式人工智能笔记](docs/mit-6s087-genai/README.md)
 +   [MIT 6.S91 深度学习导论 2021 中文笔记](docs/mit-6s091-dl21/README.md)
 +   [MIT 6.S897 医疗机器学习 2019 中文笔记](docs/mit-6s897-medml/README.md)
++   [吴恩达大模型教程笔记](docs/ng-llm/README.md)
 +   [斯坦福 CS221 人工智能导论笔记](docs/stf-cs221-ai/README.md)
 +   [斯坦福 CS224W 图机器学习笔记](docs/stf-cs224w-gnn/README.md)
 +   [斯坦福 CS234 强化学习笔记](docs/stf-cs234-rl/README.md)
