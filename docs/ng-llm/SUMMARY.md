@@ -1,3 +1,4 @@
++   [吴恩达大模型教程笔记](README.md)
 +   [【LangChain大模型应用开发】DeepLearning.AI - P1：基于LangChain的大语言模型应用开发1——介绍 - 吴恩达大模型 - BV1iZ421M79T](--LangChain大模型应用开发-DeepLearning-AI---P1-基于LangChain的大语言模型应用开发1--介绍---吴恩达大模型---BV1iZ421M79T.md)
 +   [【LangChain大模型应用开发】DeepLearning.AI - P10：2——文档加载 - 吴恩达大模型 - BV1iZ421M79T](--LangChain大模型应用开发-DeepLearning-AI---P10-2--文档加载---吴恩达大模型---BV1iZ421M79T.md)
 +   [【LangChain大模型应用开发】DeepLearning.AI - P11：3——文档分割 - 吴恩达大模型 - BV1iZ421M79T](--LangChain大模型应用开发-DeepLearning-AI---P11-3--文档分割---吴恩达大模型---BV1iZ421M79T.md)
@@ -145,4 +146,3 @@
 +   [LangChain_微调ChatGPT提示词_RAG模型应用_agent_生成式AI - P96：5.L4-rerank.zh - 吴恩达大模型 - BV1gLeueWE5N](LangChain_微调ChatGPT提示词_RAG模型应用_agent_生成式AI---P96-5-L4-rerank-zh---吴恩达大模型---BV1gLeueWE5N.md)
 +   [LangChain_微调ChatGPT提示词_RAG模型应用_agent_生成式AI - P97：6.L5-generating answer.zh - 吴恩达大模型 - BV1gLeueWE5N](LangChain_微调ChatGPT提示词_RAG模型应用_agent_生成式AI---P97-6-L5-generating-answer-zh---吴恩达大模型---BV1gLeueWE5N.md)
 +   [LangChain_微调ChatGPT提示词_RAG模型应用_agent_生成式AI - P98：7.Conclusion.zh - 吴恩达大模型 - BV1gLeueWE5N](LangChain_微调ChatGPT提示词_RAG模型应用_agent_生成式AI---P98-7-Conclusion-zh---吴恩达大模型---BV1gLeueWE5N.md)
-+   [吴恩达大模型教程笔记](吴恩达大模型教程笔记.md)
