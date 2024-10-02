@@ -1,4 +1,4 @@
-# SciPy 2018视频专辑 - P3：SciPy 2018视频专辑 (P3. Bringing ipywidgets Support to plotly.py _ SciPy 2018 _ Jon - GalileoHua - BV1TE411n7Ny
+# P3：SciPy 2018视频专辑 (P3. Bringing ipywidgets Support to plotly.py _ SciPy 2018 _ Jon - GalileoHua - BV1TE411n7Ny
 
  So， I'm John Mies， and I'm looking forward to having a chance to talk with you all today。
 

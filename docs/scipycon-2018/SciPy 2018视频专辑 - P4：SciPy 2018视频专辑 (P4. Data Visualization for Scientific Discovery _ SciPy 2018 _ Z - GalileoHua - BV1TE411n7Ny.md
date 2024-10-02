@@ -1,4 +1,4 @@
-# SciPy 2018视频专辑 - P4：SciPy 2018视频专辑 (P4. Data Visualization for Scientific Discovery _ SciPy 2018 _ Z - GalileoHua - BV1TE411n7Ny
+# P4：SciPy 2018视频专辑 (P4. Data Visualization for Scientific Discovery _ SciPy 2018 _ Z - GalileoHua - BV1TE411n7Ny
 
  [APPLAUSE]。
 

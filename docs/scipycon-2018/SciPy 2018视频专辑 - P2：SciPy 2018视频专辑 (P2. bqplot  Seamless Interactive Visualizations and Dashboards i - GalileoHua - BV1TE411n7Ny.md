@@ -1,4 +1,4 @@
-# SciPy 2018视频专辑 - P2：SciPy 2018视频专辑 (P2. bqplot  Seamless Interactive Visualizations and Dashboards i - GalileoHua - BV1TE411n7Ny
+# P2：SciPy 2018视频专辑 (P2. bqplot  Seamless Interactive Visualizations and Dashboards i - GalileoHua - BV1TE411n7Ny
 
  >> Thanks， Jason。 Thanks everyone for being here。 Welcome to the data visualization track of which should be the last one of the conference。
 

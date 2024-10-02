@@ -1,4 +1,4 @@
-# SciPy 2018视频专辑 - P5：SciPy 2018视频专辑 (P5. Development of MetPy’s Declarative Plotting Interface _ SciP - GalileoHua - BV1TE411n7Ny
+# P5：SciPy 2018视频专辑 (P5. Development of MetPy’s Declarative Plotting Interface _ SciP - GalileoHua - BV1TE411n7Ny
 
  Good， well it's not quite afternoon yet， but I don't want to be the last thing standing between you guys and lunch。
 

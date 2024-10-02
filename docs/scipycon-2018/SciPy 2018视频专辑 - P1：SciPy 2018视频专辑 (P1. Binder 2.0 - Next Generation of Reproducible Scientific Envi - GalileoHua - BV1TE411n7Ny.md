@@ -1,4 +1,4 @@
-# SciPy 2018视频专辑 - P1：SciPy 2018视频专辑 (P1. Binder 2.0 - Next Generation of Reproducible Scientific Envi - GalileoHua - BV1TE411n7Ny
+# P1：SciPy 2018视频专辑 (P1. Binder 2.0 - Next Generation of Reproducible Scientific Envi - GalileoHua - BV1TE411n7Ny
 
  My name is Chris Olgraf。 I'm a fellow at the Berkeley Institute for Data Science。
 

@@ -1,4 +1,4 @@
-# SciPy 2018视频专辑 - P7：SciPy 2018视频专辑 (P7. Interactive Data Visualization Leveraging Jupyter, Rust and - GalileoHua - BV1TE411n7Ny
+# P7：SciPy 2018视频专辑 (P7. Interactive Data Visualization Leveraging Jupyter, Rust and - GalileoHua - BV1TE411n7Ny
 
  Thank you Chelsea。 Yeah， so that's a really long title。
 

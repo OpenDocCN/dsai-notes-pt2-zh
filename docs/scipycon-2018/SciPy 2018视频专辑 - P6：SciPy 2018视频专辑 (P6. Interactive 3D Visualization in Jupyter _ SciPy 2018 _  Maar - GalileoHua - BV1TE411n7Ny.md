@@ -1,4 +1,4 @@
-# SciPy 2018视频专辑 - P6：SciPy 2018视频专辑 (P6. Interactive 3D Visualization in Jupyter _ SciPy 2018 _  Maar - GalileoHua - BV1TE411n7Ny
+# P6：SciPy 2018视频专辑 (P6. Interactive 3D Visualization in Jupyter _ SciPy 2018 _  Maar - GalileoHua - BV1TE411n7Ny
 
  Hello everybody， my name is Matt Bredos and I'm gonna talk about well interactive 3D。
 

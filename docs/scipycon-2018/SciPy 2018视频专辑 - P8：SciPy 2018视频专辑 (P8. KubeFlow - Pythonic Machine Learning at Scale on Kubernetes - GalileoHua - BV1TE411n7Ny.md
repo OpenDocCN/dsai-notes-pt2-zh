@@ -1,4 +1,4 @@
-# SciPy 2018视频专辑 - P8：SciPy 2018视频专辑 (P8. KubeFlow - Pythonic Machine Learning at Scale on Kubernetes - GalileoHua - BV1TE411n7Ny
+# P8：SciPy 2018视频专辑 (P8. KubeFlow - Pythonic Machine Learning at Scale on Kubernetes - GalileoHua - BV1TE411n7Ny
 
  Excellent。 Thank you so much。 And I think we just have the one mic up here。 So if at any。
 

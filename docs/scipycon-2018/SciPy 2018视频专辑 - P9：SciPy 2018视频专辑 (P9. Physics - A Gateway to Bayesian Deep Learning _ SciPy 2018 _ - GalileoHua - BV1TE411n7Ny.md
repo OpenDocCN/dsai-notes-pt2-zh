@@ -1,4 +1,4 @@
-# SciPy 2018视频专辑 - P9：SciPy 2018视频专辑 (P9. Physics - A Gateway to Bayesian Deep Learning _ SciPy 2018 _ - GalileoHua - BV1TE411n7Ny
+# P9：SciPy 2018视频专辑 (P9. Physics - A Gateway to Bayesian Deep Learning _ SciPy 2018 _ - GalileoHua - BV1TE411n7Ny
 
  My name is Senator Kolachi。
 
