@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P16：nbgrader   A Tool for Creating and Grading Assignments in the Jupyter Notebook - 哒哒哒儿尔 - BV1Cs411A76Y
+# P16：nbgrader   A Tool for Creating and Grading Assignments in the Jupyter Notebook - 哒哒哒儿尔 - BV1Cs411A76Y
 
  [APPLAUSE]， All right， thanks everyone for coming。
 

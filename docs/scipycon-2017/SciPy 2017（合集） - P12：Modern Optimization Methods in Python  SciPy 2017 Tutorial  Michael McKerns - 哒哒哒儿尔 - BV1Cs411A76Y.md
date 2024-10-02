@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P12：Modern Optimization Methods in Python  SciPy 2017 Tutorial  Michael McKerns - 哒哒哒儿尔 - BV1Cs411A76Y
+# P12：Modern Optimization Methods in Python  SciPy 2017 Tutorial  Michael McKerns - 哒哒哒儿尔 - BV1Cs411A76Y
 
  Good morning everybody。 This is modern optimization methods in Python。 Welcome to the SciPy 2017。
 

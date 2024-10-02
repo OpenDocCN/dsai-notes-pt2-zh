@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P10：The Jupyter Interactive Widget Ecosystem  SciPy 2017 Tutorial  Matt Craig Sylvai - 哒哒哒儿尔 - BV1Cs411A76Y
+# P10：The Jupyter Interactive Widget Ecosystem  SciPy 2017 Tutorial  Matt Craig Sylvai - 哒哒哒儿尔 - BV1Cs411A76Y
 
  My name is Matt Craig， I teach at Minnesota State University。
 

@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P30：Scientific Analysis at Scale - a Comparison of Five Systems  SciPy 2017  Jake Va - 哒哒哒儿尔 - BV1Cs411A76Y
+# P30：Scientific Analysis at Scale - a Comparison of Five Systems  SciPy 2017  Jake Va - 哒哒哒儿尔 - BV1Cs411A76Y
 
  So thanks everyone。 It's great to be here。 Great to be talking on this topic。
 

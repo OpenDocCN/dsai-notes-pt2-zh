@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P28：SciSheets   Providing the Power of Programming with the Simplicity of Spreadshee - 哒哒哒儿尔 - BV1Cs411A76Y
+# P28：SciSheets   Providing the Power of Programming with the Simplicity of Spreadshee - 哒哒哒儿尔 - BV1Cs411A76Y
 
  Hi， oh。 I usually think that plos is premature， so we'll see how things go。 First of all。
 

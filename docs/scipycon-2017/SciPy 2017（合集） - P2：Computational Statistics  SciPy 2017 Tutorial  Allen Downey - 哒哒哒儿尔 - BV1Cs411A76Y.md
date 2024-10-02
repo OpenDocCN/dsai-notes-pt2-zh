@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P2：Computational Statistics  SciPy 2017 Tutorial  Allen Downey - 哒哒哒儿尔 - BV1Cs411A76Y
+# P2：Computational Statistics  SciPy 2017 Tutorial  Allen Downey - 哒哒哒儿尔 - BV1Cs411A76Y
 
  Okay， if you are coming in now， I just talked to a couple of people who sound like they。
 

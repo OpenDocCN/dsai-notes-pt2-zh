@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P27：Keynote - Coding for Science and Innovation  SciPy 2017  Gaël Varoquaux - 哒哒哒儿尔 - BV1Cs411A76Y
+# P27：Keynote - Coding for Science and Innovation  SciPy 2017  Gaël Varoquaux - 哒哒哒儿尔 - BV1Cs411A76Y
 
  So really， there's one thing I'd like to add to Prebrii's really moving introduction is。
 

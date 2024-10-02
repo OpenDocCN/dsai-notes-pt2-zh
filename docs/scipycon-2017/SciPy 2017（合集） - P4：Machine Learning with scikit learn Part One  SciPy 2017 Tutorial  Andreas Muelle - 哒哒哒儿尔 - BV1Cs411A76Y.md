@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P4：Machine Learning with scikit learn Part One  SciPy 2017 Tutorial  Andreas Muelle - 哒哒哒儿尔 - BV1Cs411A76Y
+# P4：Machine Learning with scikit learn Part One  SciPy 2017 Tutorial  Andreas Muelle - 哒哒哒儿尔 - BV1Cs411A76Y
 
  So good morning。 It's going to be a long day， hopefully a productive day。 So I'm Alex， Confer。
 

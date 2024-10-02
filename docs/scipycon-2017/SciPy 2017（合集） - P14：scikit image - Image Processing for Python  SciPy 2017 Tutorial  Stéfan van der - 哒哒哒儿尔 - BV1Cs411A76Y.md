@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P14：scikit image - Image Processing for Python  SciPy 2017 Tutorial  Stéfan van der - 哒哒哒儿尔 - BV1Cs411A76Y
+# P14：scikit image - Image Processing for Python  SciPy 2017 Tutorial  Stéfan van der - 哒哒哒儿尔 - BV1Cs411A76Y
 
  Good afternoon everyone。 Welcome to this afternoon's scikit image tutorial。 Thank you for being。
 

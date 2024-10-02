@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P29：The Spyder Ecosystem of Plugins  SciPy 2017  Carlos Cordoba - 哒哒哒儿尔 - BV1Cs411A76Y
+# P29：The Spyder Ecosystem of Plugins  SciPy 2017  Carlos Cordoba - 哒哒哒儿尔 - BV1Cs411A76Y
 
  Well， as Antonis said， my name is Carlos Cordova and my talk is going to be about the。
 

@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P33：Signal Processing and Communications Hands On Using scikit dsp comm  SciPy 2017 - 哒哒哒儿尔 - BV1Cs411A76Y
+# P33：Signal Processing and Communications Hands On Using scikit dsp comm  SciPy 2017 - 哒哒哒儿尔 - BV1Cs411A76Y
 
  I'm about ready to get started with just some general discussion。
 

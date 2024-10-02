@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P15：A Python API for Earth  SciPy 2017  Sam Skillman - 哒哒哒儿尔 - BV1Cs411A76Y
+# P15：A Python API for Earth  SciPy 2017  Sam Skillman - 哒哒哒儿尔 - BV1Cs411A76Y
 
  Good morning everyone。 So I'm Sam Sculman。 I'm a computational scientist and the head of。
 

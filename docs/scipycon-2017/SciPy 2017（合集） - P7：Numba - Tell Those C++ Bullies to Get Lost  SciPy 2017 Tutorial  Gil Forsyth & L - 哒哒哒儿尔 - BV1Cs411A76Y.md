@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P7：Numba - Tell Those C++ Bullies to Get Lost  SciPy 2017 Tutorial  Gil Forsyth & L - 哒哒哒儿尔 - BV1Cs411A76Y
+# P7：Numba - Tell Those C++ Bullies to Get Lost  SciPy 2017 Tutorial  Gil Forsyth & L - 哒哒哒儿尔 - BV1Cs411A76Y
 
  So， I'm Gil。 Hi。 That's Professor Barba。 I am a graduate student at George Washington University。
 

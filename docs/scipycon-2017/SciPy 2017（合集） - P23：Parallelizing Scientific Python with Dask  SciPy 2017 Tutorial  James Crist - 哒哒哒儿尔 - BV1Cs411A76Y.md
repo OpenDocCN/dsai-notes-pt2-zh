@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P23：Parallelizing Scientific Python with Dask  SciPy 2017 Tutorial  James Crist - 哒哒哒儿尔 - BV1Cs411A76Y
+# P23：Parallelizing Scientific Python with Dask  SciPy 2017 Tutorial  James Crist - 哒哒哒儿尔 - BV1Cs411A76Y
 
  Good morning。 Welcome to a paralyzing scientific Python with， Dask。 My name is Jim Christ。
 

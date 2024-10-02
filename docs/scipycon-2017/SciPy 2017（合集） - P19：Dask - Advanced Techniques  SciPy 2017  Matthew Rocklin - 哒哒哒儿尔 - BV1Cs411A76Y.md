@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P19：Dask - Advanced Techniques  SciPy 2017  Matthew Rocklin - 哒哒哒儿尔 - BV1Cs411A76Y
+# P19：Dask - Advanced Techniques  SciPy 2017  Matthew Rocklin - 哒哒哒儿尔 - BV1Cs411A76Y
 
  >> Good morning， everyone。 Morning， Tom。 Morning， everyone。 So my name is Matt Rockman。
 

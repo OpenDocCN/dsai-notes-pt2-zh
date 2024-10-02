@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P8：Deploying Interactive Jupyter Dashboards for Visualizing Hundreds of Millions of - 哒哒哒儿尔 - BV1Cs411A76Y
+# P8：Deploying Interactive Jupyter Dashboards for Visualizing Hundreds of Millions of - 哒哒哒儿尔 - BV1Cs411A76Y
 
  All right。 Hi， everyone。 My name is Philip Rydiger， and I work for Continuum Analytics。
 

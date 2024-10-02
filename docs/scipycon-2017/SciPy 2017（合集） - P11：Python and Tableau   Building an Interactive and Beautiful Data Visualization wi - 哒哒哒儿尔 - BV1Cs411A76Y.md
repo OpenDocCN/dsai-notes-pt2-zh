@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P11：Python and Tableau   Building an Interactive and Beautiful Data Visualization wi - 哒哒哒儿尔 - BV1Cs411A76Y
+# P11：Python and Tableau   Building an Interactive and Beautiful Data Visualization wi - 哒哒哒儿尔 - BV1Cs411A76Y
 
  I know everybody here is really excited talking about all the exciting thing about Python。
 

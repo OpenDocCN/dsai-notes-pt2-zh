@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P18：Machine Learning with scikit learn Part Two  SciPy 2017 Tutorial  Andreas Muelle - 哒哒哒儿尔 - BV1Cs411A76Y
+# P18：Machine Learning with scikit learn Part Two  SciPy 2017 Tutorial  Andreas Muelle - 哒哒哒儿尔 - BV1Cs411A76Y
 
  Yeah， I think we can get started。 So I'm just asking the Slack channel。
 

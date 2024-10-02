@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P31：Deep Learning with Geospatial Data  SciPy 2017  Shane Grigsby - 哒哒哒儿尔 - BV1Cs411A76Y
+# P31：Deep Learning with Geospatial Data  SciPy 2017  Shane Grigsby - 哒哒哒儿尔 - BV1Cs411A76Y
 
  So thank you。 As Jonathan mentioned， my name is Shane Grigsby。
 

@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P24：HDF5 take 2 - h5py & PyTables  SciPy 2017 Tutorial  Tom Kooij - 哒哒哒儿尔 - BV1Cs411A76Y
+# P24：HDF5 take 2 - h5py & PyTables  SciPy 2017 Tutorial  Tom Kooij - 哒哒哒儿尔 - BV1Cs411A76Y
 
  Good afternoon。 You're already。 So welcome to the HDF5 Take 2 tutorial。 We'll be talking。
 

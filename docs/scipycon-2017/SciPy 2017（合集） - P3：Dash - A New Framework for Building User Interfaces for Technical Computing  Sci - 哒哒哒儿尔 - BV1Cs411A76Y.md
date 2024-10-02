@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P3：Dash - A New Framework for Building User Interfaces for Technical Computing  Sci - 哒哒哒儿尔 - BV1Cs411A76Y
+# P3：Dash - A New Framework for Building User Interfaces for Technical Computing  Sci - 哒哒哒儿尔 - BV1Cs411A76Y
 
  I'm Chris Palmer。 I'm a co-founder of Plotly and， Today I'm going to present a project that I just released three weeks ago。
 

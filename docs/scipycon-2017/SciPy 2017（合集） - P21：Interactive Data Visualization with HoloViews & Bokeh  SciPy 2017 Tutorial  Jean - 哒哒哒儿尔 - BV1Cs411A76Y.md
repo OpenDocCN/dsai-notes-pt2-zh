@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P21：Interactive Data Visualization with HoloViews & Bokeh  SciPy 2017 Tutorial  Jean - 哒哒哒儿尔 - BV1Cs411A76Y
+# P21：Interactive Data Visualization with HoloViews & Bokeh  SciPy 2017 Tutorial  Jean - 哒哒哒儿尔 - BV1Cs411A76Y
 
  My name is Brian Vandivan and I work with Sean Luke。
 

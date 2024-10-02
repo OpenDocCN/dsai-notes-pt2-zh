@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P26：pomegranate  Fast and Flexible Probabilistic Modeling in Python  SciPy 2017  Jac - 哒哒哒儿尔 - BV1Cs411A76Y
+# P26：pomegranate  Fast and Flexible Probabilistic Modeling in Python  SciPy 2017  Jac - 哒哒哒儿尔 - BV1Cs411A76Y
 
  Hello everybody。 So I'm going to get started a little bit early because I have a little。
 

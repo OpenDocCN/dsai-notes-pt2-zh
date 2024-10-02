@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P6：Fully Convolutional Networks for Image Segmentation  SciPy 2017  Daniil Pakhomov - 哒哒哒儿尔 - BV1Cs411A76Y
+# P6：Fully Convolutional Networks for Image Segmentation  SciPy 2017  Daniil Pakhomov - 哒哒哒儿尔 - BV1Cs411A76Y
 
  >> I first want to apologize that I changed the name of the topic。 So first。
 

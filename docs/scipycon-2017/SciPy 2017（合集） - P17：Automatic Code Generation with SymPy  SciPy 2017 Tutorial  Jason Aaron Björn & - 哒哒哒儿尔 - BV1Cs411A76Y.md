@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P17：Automatic Code Generation with SymPy  SciPy 2017 Tutorial  Jason Aaron Björn & - 哒哒哒儿尔 - BV1Cs411A76Y
+# P17：Automatic Code Generation with SymPy  SciPy 2017 Tutorial  Jason Aaron Björn & - 哒哒哒儿尔 - BV1Cs411A76Y
 
  Okay， so who are we？ My name is Aaron Muir。 I'm a researcher at the University of California。
 

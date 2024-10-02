@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P34：Bringing the Generic Mapping Tools to Python  SciPy 2017  Leonardo Uieda & Paul - 哒哒哒儿尔 - BV1Cs411A76Y
+# P34：Bringing the Generic Mapping Tools to Python  SciPy 2017  Leonardo Uieda & Paul - 哒哒哒儿尔 - BV1Cs411A76Y
 
  >> Good morning， everyone。 Thank you for coming。 Today I'm going to be talking about a project。
 

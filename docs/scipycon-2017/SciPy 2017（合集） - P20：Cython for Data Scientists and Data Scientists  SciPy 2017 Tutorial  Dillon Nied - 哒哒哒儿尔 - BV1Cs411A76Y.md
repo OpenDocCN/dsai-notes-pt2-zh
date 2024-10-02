@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P20：Cython for Data Scientists and Data Scientists  SciPy 2017 Tutorial  Dillon Nied - 哒哒哒儿尔 - BV1Cs411A76Y
+# P20：Cython for Data Scientists and Data Scientists  SciPy 2017 Tutorial  Dillon Nied - 哒哒哒儿尔 - BV1Cs411A76Y
 
  >> Good morning， everyone。 So I apologize for the delays in getting started。
 

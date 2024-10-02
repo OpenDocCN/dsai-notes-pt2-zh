@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P32：Sacred   How I Learned to Stop Worrying and Love the Research  SciPy 2017  Klaus - 哒哒哒儿尔 - BV1Cs411A76Y
+# P32：Sacred   How I Learned to Stop Worrying and Love the Research  SciPy 2017  Klaus - 哒哒哒儿尔 - BV1Cs411A76Y
 
  So hello everyone， welcome to my talk about Sacred or how I learned to stop worrying and。
 

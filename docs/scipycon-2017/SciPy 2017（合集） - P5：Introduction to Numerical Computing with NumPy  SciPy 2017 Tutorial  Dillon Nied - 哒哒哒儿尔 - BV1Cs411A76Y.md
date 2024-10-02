@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P5：Introduction to Numerical Computing with NumPy  SciPy 2017 Tutorial  Dillon Nied - 哒哒哒儿尔 - BV1Cs411A76Y
+# P5：Introduction to Numerical Computing with NumPy  SciPy 2017 Tutorial  Dillon Nied - 哒哒哒儿尔 - BV1Cs411A76Y
 
  So I'd like to take this moment to wish you all a very good morning。
 

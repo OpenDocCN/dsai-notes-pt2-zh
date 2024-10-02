@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P22：Software Carpentry Scientific Python Course Part 1  SciPy 2017 Tutorial  Maxim B - 哒哒哒儿尔 - BV1Cs411A76Y
+# P22：Software Carpentry Scientific Python Course Part 1  SciPy 2017 Tutorial  Maxim B - 哒哒哒儿尔 - BV1Cs411A76Y
 
  Good morning everyone。 I'm not beginning just yet so this is just before we begin。 I had a question。
 

@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P13：Parallel Data Analysis in Python  SciPy 2017 Tutorial  Matthew Rocklin Ben Zaitl - 哒哒哒儿尔 - BV1Cs411A76Y
+# P13：Parallel Data Analysis in Python  SciPy 2017 Tutorial  Matthew Rocklin Ben Zaitl - 哒哒哒儿尔 - BV1Cs411A76Y
 
  Good morning， everyone。 We've got to see you here。 So this is the parallel data analysis tutorial。
 

@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P25：Keynote - Drilling the Chicxulub Impact Structure - Study of Large Impact Format - 哒哒哒儿尔 - BV1Cs411A76Y
+# P25：Keynote - Drilling the Chicxulub Impact Structure - Study of Large Impact Format - 哒哒哒儿尔 - BV1Cs411A76Y
 
  First of all， I want to thank Eric and Enthot and SIPI in general for the invite to do a keynote。
 

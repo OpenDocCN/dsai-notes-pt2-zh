@@ -1,4 +1,4 @@
-# SciPy 2017（合集） - P9：Anatomy of Matplotlib  SciPy 2017 Tutorial  Ben Root - 哒哒哒儿尔 - BV1Cs411A76Y
+# P9：Anatomy of Matplotlib  SciPy 2017 Tutorial  Ben Root - 哒哒哒儿尔 - BV1Cs411A76Y
 
  Hello， my name is Ben Root。 I am a quote unquote core dev of Matplotlib。 Yeah。
 
