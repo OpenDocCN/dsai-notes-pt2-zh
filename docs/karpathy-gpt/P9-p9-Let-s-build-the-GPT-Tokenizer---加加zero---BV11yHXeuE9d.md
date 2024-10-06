@@ -1,4 +1,4 @@
-# 【Andrej Karpathy：从零开始构建 GPT 系列】 - P9：p9 Let's build the GPT Tokenizer - 加加zero - BV11yHXeuE9d
+# P9：p9 Let's build the GPT Tokenizer - 加加zero - BV11yHXeuE9d
 
  Hi everyone。 So in this video， I'd like us to cover the process of tokenization in large。
 

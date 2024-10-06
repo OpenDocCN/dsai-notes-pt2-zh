@@ -1,4 +1,4 @@
-# 【Andrej Karpathy：从零开始构建 GPT 系列】 - P10：p10 Let's reproduce GPT-2 (124M) - 加加zero - BV11yHXeuE9d
+# P10：p10 Let's reproduce GPT-2 (124M) - 加加zero - BV11yHXeuE9d
 
  Hi everyone。 So today we are going to be continuing our Zero2Hero series and in particular today we are going to reproduce the GPT-2 model。
 

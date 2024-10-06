@@ -1,4 +1,4 @@
-# 【Andrej Karpathy：从零开始构建 GPT 系列】 - P4：p4 Building makemore Part 3： Activations & Gradients, BatchNorm - 加加zero - BV11yHXeuE9d
+# P4：p4 Building makemore Part 3： Activations & Gradients, BatchNorm - 加加zero - BV11yHXeuE9d
 
  Hi everyone。 Today we are continuing our implementation of Makemore。
 

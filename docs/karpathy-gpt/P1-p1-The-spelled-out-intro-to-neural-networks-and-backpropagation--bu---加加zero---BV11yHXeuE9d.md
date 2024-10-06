@@ -1,4 +1,4 @@
-# 【Andrej Karpathy：从零开始构建 GPT 系列】 - P1：p1 The spelled-out intro to neural networks and backpropagation： bu - 加加zero - BV11yHXeuE9d
+# P1：p1 The spelled-out intro to neural networks and backpropagation： bu - 加加zero - BV11yHXeuE9d
 
  Hello， my name is Andre and I've been training deep neural networks for a bit more than a decade and in this lecture。
 

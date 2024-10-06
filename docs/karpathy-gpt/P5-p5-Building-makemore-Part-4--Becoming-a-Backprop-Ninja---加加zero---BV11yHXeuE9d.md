@@ -1,4 +1,4 @@
-# 【Andrej Karpathy：从零开始构建 GPT 系列】 - P5：p5 Building makemore Part 4： Becoming a Backprop Ninja - 加加zero - BV11yHXeuE9d
+# P5：p5 Building makemore Part 4： Becoming a Backprop Ninja - 加加zero - BV11yHXeuE9d
 
  Hi everyone。 So today we are once again continuing our implementation of make more。
 

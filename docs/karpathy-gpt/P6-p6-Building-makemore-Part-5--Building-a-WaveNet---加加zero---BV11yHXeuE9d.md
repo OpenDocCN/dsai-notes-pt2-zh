@@ -1,4 +1,4 @@
-# 【Andrej Karpathy：从零开始构建 GPT 系列】 - P6：p6 Building makemore Part 5： Building a WaveNet - 加加zero - BV11yHXeuE9d
+# P6：p6 Building makemore Part 5： Building a WaveNet - 加加zero - BV11yHXeuE9d
 
 大家好，今天我们将继续我们的实现，让我们的最喜欢的角色级别语言模型更加完善。
 

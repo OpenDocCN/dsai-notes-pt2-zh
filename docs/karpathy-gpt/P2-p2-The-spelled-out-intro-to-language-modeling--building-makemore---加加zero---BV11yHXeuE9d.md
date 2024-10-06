@@ -1,4 +1,4 @@
-# 【Andrej Karpathy：从零开始构建 GPT 系列】 - P2：p2 The spelled-out intro to language modeling： building makemore - 加加zero - BV11yHXeuE9d
+# P2：p2 The spelled-out intro to language modeling： building makemore - 加加zero - BV11yHXeuE9d
 
  Hi everyone， hope you're well。 And next up what I'd like to do is I'd like to build out MakeMore。
 

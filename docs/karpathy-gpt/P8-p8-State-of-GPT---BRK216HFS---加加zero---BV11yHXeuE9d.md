@@ -1,4 +1,4 @@
-# 【Andrej Karpathy：从零开始构建 GPT 系列】 - P8：p8 State of GPT ｜ BRK216HFS - 加加zero - BV11yHXeuE9d
+# P8：p8 State of GPT ｜ BRK216HFS - 加加zero - BV11yHXeuE9d
 
 请欢迎人工智能研究者和OpenAI的创始成员安德烈·卡帕蒂，大家好，我很高兴来到这里，告诉你们GPT的现状，更广泛地说，关于正在迅速增长的大型语言模型生态系统，所以我想把演讲分成两部分，在第一部分。
 

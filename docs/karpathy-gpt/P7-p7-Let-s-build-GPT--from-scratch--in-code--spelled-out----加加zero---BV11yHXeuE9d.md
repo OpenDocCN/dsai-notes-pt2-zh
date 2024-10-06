@@ -1,4 +1,4 @@
-# 【Andrej Karpathy：从零开始构建 GPT 系列】 - P7：p7 Let's build GPT： from scratch, in code, spelled out. - 加加zero - BV11yHXeuE9d
+# P7：p7 Let's build GPT： from scratch, in code, spelled out. - 加加zero - BV11yHXeuE9d
 
  Hi everyone。 So by now you have probably heard of chat GPT。
 

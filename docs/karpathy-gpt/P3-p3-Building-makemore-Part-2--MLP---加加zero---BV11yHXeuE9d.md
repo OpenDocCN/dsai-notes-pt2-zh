@@ -1,4 +1,4 @@
-# 【Andrej Karpathy：从零开始构建 GPT 系列】 - P3：p3 Building makemore Part 2： MLP - 加加zero - BV11yHXeuE9d
+# P3：p3 Building makemore Part 2： MLP - 加加zero - BV11yHXeuE9d
 
 大家好，今天我们将继续我们的实现'现在多做些'项目，在上一节课中，我们实现了大词袋模型，并且我们实现了它，我们使用计数和也使用了一个非常简单的神经网络，该网络只有一个线性层。
 
