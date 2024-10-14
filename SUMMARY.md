@@ -22,4 +22,4 @@
 +   [UCB CS285 深度强化学习笔记](docs/ucb-cs285-rl/README.md)
 +   [UCB CS294 深度无监督学习笔记](docs/ucb-cs294-unsup/README.md)
 +   [UCB STAT187 深度学习笔记](docs/ucb-stat187-dl/README.md)
-+   [沃顿商学院全套课程笔记](docs/wharton_bizai/README.md)
++   [沃顿商学院商业人工智能笔记](docs/wharton_bizai/README.md)
