@@ -1,3 +1,4 @@
++   [沃顿商学院全套课程笔记](README.md)
 +   [沃顿商学院《AI用于商业：AI基础／市场营销+财务／人力／管理》（中英字幕） - P100：37_课程总结.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK]( P100：37_课程总结.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK.md)
 +   [沃顿商学院《AI For Business（AI用于商业：AI基础／市场营销+财务／人力／管理）》- P101：0_AI战略简介.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK]( P101：0_AI战略简介.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK.md)
 +   [沃顿商学院《AI For Business（AI用于商业：AI基础／市场营销+财务／人力／管理）》（中英字幕） - P102：1_AI驱动的业务转型.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK]( P102：1_AI驱动的业务转型.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK.md)
