@@ -64,7 +64,7 @@
 +   [沃顿商学院《AI For Business（AI用于商业：AI基础／市场营销+财务／人力／管理）》（中英字幕） - P35：1_模块简介.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK]( P35：1_模块简介.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK.md)
 +   [沃顿商学院《AI用于商业：AI基础／市场营销+财务／人力／管理》（中英字幕） - P36：2_客户体验.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK]( P36：2_客户体验.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK.md)
 +   [沃顿商学院《AI For Business（AI用于商业：AI基础／市场营销+财务／人力／管理）》（中英字幕） - P37：3_缩短客户体验周期.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK]( P37：3_缩短客户体验周期.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK.md)
-+   [沃顿商学院《AI For Business（AI用于商业：AI基础/市场营销+财务/人力/管理）》 - P38：4_向上游移动客户体验.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK]( P38：4_向上游移动客户体验.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK.md)
++   [ P38：4_向上游移动客户体验.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK]( P38：4_向上游移动客户体验.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK.md)
 +   [沃顿商学院《AI For Business（AI用于商业：AI基础／市场营销+财务／人力／管理）》（中英字幕） - P39：5_利用机器智能识别新的风险形式.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK]( P39：5_利用机器智能识别新的风险形式.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK.md)
 +   [沃顿商学院《AI For Business（AI用于商业：AI基础／市场营销+财务／人力／管理）》（中英字幕） - P3：2_大数据概述.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK]( P3：2_大数据概述.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK.md)
 +   [沃顿商学院《AI For Business（AI用于商业：AI基础／市场营销+财务／人力／管理）》（中英字幕） - P40：6_面向分析的组织架构.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK]( P40：6_面向分析的组织架构.zh_en - GPT中英字幕课程资源 - BV1Ju4y157dK.md)
