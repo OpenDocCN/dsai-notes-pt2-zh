@@ -1,29 +1,23 @@
-# P30：RL for Stock Trading - Week Welcome Video - 兰心飞侠 - BV14P4y1u7TB
+# P30：股票交易的强化学习 - 第四周欢迎视频 - 兰心飞侠 - BV14P4y1u7TB
 
- Welcome to the fourth and the last week of our course on reinforcement learning and finance。
+欢迎来到我们关于强化学习与金融课程的第四周，也是最后一周。
 
 ![](img/668a26270abe2b899d271e1e2e5e49b5_1.png)
 
-
-
 ![](img/668a26270abe2b899d271e1e2e5e49b5_2.png)
-
-
 
 ![](img/668a26270abe2b899d271e1e2e5e49b5_3.png)
 
- In the last week we saw how the problem of option pricing and hedging can be formulated。 as a reinforcement learning model。 In this week we will talk about applications of reinforcement learning for stock trading。 We will discuss various problems in quantitative trading that amounts to reinforcement learning。 tasks。 We will talk about such problems as optimal portfolio execution。
+在上周，我们看到了如何将期权定价和对冲问题表述为强化学习模型。本周我们将讨论强化学习在股票交易中的应用。我们将讨论定量交易中的各种问题，这些问题可以归结为强化学习任务。我们将讨论诸如最优投资组合执行等问题。
 
- dynamic portfolio management and， index tracking。 Then we will develop a simple portfolio model that allows us to address all these problems。 in the same modeling framework。 We will then introduce reinforcement learning approach to such problems that learns optimal。
+动态投资组合管理和指数跟踪。然后我们将开发一个简单的投资组合模型，使我们能够在相同的建模框架中解决所有这些问题。接着，我们将介绍强化学习方法，来解决这些问题，从而学习最优解。
 
- trading or execution policy directly from data made of states， actions and rewards。 Then we will discuss an inverse reinforcement learning setting for these problems where we。 do not observe rewards and we will see why it may be more useful than direct reinforcement。 learning setting in many problems of practical interest。
+直接从由状态、动作和奖励组成的数据中学习交易或执行策略。然后我们将讨论这些问题的逆强化学习设置，在这种设置中我们不能观察奖励，并且我们将看到为什么在许多实际问题中，这种方法比直接强化学习方法更有用。
 
- We will then see how inverse reinforcement learning works in this setting and how it can。 be applied to learn a reward function， also called a utility function of an investor or。 even of a market。 And finally we will look at the same model but apply it this time to all investors simultaneously。 and show how we can use inverse reinforcement learning to learn market optimal trading strategies。
+然后我们将看到逆强化学习在这种环境下如何工作，以及它如何被应用于学习奖励函数，也就是投资者或市场的效用函数。最后，我们将看到同样的模型，但这次将其应用于所有投资者，并展示如何使用逆强化学习来学习市场最优交易策略。
 
- So I hope it's going to be an interesting week。 Also please keep in mind that as we already did a few times in this specialization。 this， week will simultaneously serve as an introduction to the last course in this specialization where。 we will talk about more involved applications of reinforcement learning to problems of finance。
-
-
+希望这一周会很有趣。同时请记住，就像我们在这个专业中的几次介绍一样，本周也将作为最后一门课程的引言，届时我们将讨论更多强化学习在金融问题中的应用。
 
 ![](img/668a26270abe2b899d271e1e2e5e49b5_5.png)
 
- So let's start。 [BLANK_AUDIO]。
+那么让我们开始吧。[BLANK_AUDIO]。

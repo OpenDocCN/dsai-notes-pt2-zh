@@ -1,195 +1,149 @@
-# P37：RL for Stock Trading -RL Equations - 兰心飞侠 - BV14P4y1u7TB
+# P37：股票交易的强化学习 - 强化学习方程 - 兰心飞侠 - BV14P4y1u7TB
 
- Now we can put together everything that we produce so far and derive a self-consistent system of equations for the G and F functions。
+现在我们可以将迄今为止所有内容组合在一起，推导出 G 和 F 函数的自洽方程组。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_1.png)
 
-
-
 ![](img/3f3f30b689cc39b29f242a484144d590_2.png)
 
- We have obtained in the last video the explicit relation between the G function and the F function。
+在上一期视频中，我们已经得到了 G 函数和 F 函数之间的明确关系。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_4.png)
 
- I show you this equation again here in the first line。 Now this is a functional of policy pi。 We can maximize it with respect to policy pi。 And this produces an expression shown in equation 38。 It is given by the prior policy pi zero times the exponent of beta times the G function and divided by an harmonization factor Zt。
-
-
+我在这里的第一行再次给你展示这个方程。现在这是一个关于策略 pi 的泛函。我们可以针对策略 pi 进行最大化。这将产生方程 38 中显示的表达式。该表达式由先前的策略 pi zero 乘以 beta 乘以 G 函数的指数，并除以一个归一化因子 Zt。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_6.png)
 
- This harmonization factor is just the sum of the numerator over all possible values of 18。
+这个归一化因子就是将分子对所有可能值 18 求和的结果。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_8.png)
 
- Therefore the whole expression will produce one if we sum it over all values of 18。 which means that pi a is appropriately normalized distribution。 If you're familiar with variational calculus you could easily derive the second equation from the first one。 But if you not you can simply think of variational d with respect to pi as a usual d with respect to a letter pi。
+因此，整个表达式如果我们对所有值的 18 求和，将产生 1。这意味着 pi a 是一个适当归一化的分布。如果你熟悉变分法，你可以轻松地从第一个方程推导出第二个方程。但如果你不熟悉，你可以简单地将变分对 pi 的求导看作是对字母 pi 的常规求导。
 
- By doing such formal differentiation you would also be able to derive the second equation from the first one。
+通过做这样的形式化求导，你也可以从第一个方程推导出第二个方程。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_10.png)
 
- Now if we plug this optimal policy pi back into the previous expression for the free energy F we will get the optimal free energy shown in equation 39。
+现在，如果我们将这个最优策略 pi 插回到自由能 F 的之前表达式中，我们将得到方程 39 中显示的最优自由能。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_12.png)
 
- So this equation means that the log of Zt is equal to beta times the F function。 And therefore we can replace Zt in the optimal policy expression by an exponent of this expression and put the optimal policy pi in the form shown in equation 40。 Now the optimal policy depends on both the G function and the F function。 And in addition these two functions are related between themselves as we just saw before。
-
-
-
-
+所以这个方程意味着 Zt 的对数等于 beta 乘以 F 函数。因此，我们可以将 Zt 在最优策略表达式中替换为该表达式的指数，并将最优策略 pi 以方程 40 中显示的形式表示。现在，最优策略依赖于 G 函数和 F 函数。此外，这两个函数彼此之间是相互关联的，正如我们刚才所看到的那样。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_14.png)
 
- Now we can summarize and put everything together。 We have three equations for three functions G。 F and pi that should be solved self consistently。 This should be done a teach step of the backward recursion starting from T equal to capital T minus one and going all the way down to T equal zero。
+现在我们可以总结并将所有内容放在一起。我们有三个方程，分别是三个函数 G、F 和 pi，它们应该被自洽地求解。这应该在反向递归的每个步骤中完成，从 T 等于大写 T 减一开始，一直到 T 等于零。
 
- In general this is a rather involved system of equations。 In the original paper by Tichbian co-workers this system was solved in a discrete space tabulated setting。 But here we deal with a high dimensional continuous space and continuous action problem。 Still it turns out that for our simple portfolio model this system of equations can be solved relatively easy。
-
-
-
-
+一般来说，这是一个相当复杂的方程组。在 Tichbian 和同事的原始论文中，这个系统是在离散空间的表格设置中求解的。但在这里，我们处理的是一个高维连续空间和连续行动问题。尽管如此，事实证明，对于我们的简单投资组合模型，这个方程组可以相对容易地求解。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_16.png)
 
- Let me give you a brief sketch of how this is done。 I will skip many details but you will find them easily in a paper referenced for this week along with explicit forms of all coefficients and matrices that I'm going to show you next。
+让我简要说明一下这是如何完成的。我将跳过很多细节，但你会在本周参考的论文中轻松找到它们，以及接下来我要展示的所有系数和矩阵的显式形式。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_18.png)
 
- What is more important than a specific form of this coefficients is the general structure of a computational scheme that I'm going now to sketch。
+比这组系数的具体形式更重要的是，我现在要描述的计算方案的整体结构。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_20.png)
 
-
-
 ![](img/3f3f30b689cc39b29f242a484144d590_21.png)
-
-
 
 ![](img/3f3f30b689cc39b29f242a484144d590_22.png)
 
- The first observation is that if we substitute the equation for e-torns into the equation for x sub T plus one that we obtained before we will get the dynamics equations shown in the first equation in this slide。
+第一个观察是，如果我们将e-torns的方程代入之前得到的x sub T加一的方程中，我们将得到本幻灯片中第一个方程所示的动态方程。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_24.png)
 
-
-
 ![](img/3f3f30b689cc39b29f242a484144d590_25.png)
 
- It has two linear terms a t times x t and a t times u t but most importantly it has two quadratic terms proportional to the matrix of market inputs m。
+它有两个线性项a t乘以x t和a t乘以u t，但最重要的是它有两个二次项，与市场输入矩阵m成比例。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_27.png)
 
- Therefore our model has nonlinear and more exactly quadratic dynamics。 Therefore it cannot be solved exactly in the presence of market inputs but rather should be solved approximately。
+因此，我们的模型具有非线性，准确来说是二次动态。因此，在存在市场输入的情况下，它不能精确求解，而应通过近似求解。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_29.png)
 
-
-
 ![](img/3f3f30b689cc39b29f242a484144d590_30.png)
 
- This is done using linearization of the dynamics。 Let's assume that we are given some deterministic trajectory that we will denote by upper bars like x bar and u bar。 So given a trajectory we have a set of pairs x t bar u t bar for all values of t。 Next we define increments delta x t and delta u t as shown in equation 43。
-
-
+这是通过对动态进行线性化来完成的。假设我们给定了一条确定的轨迹，我们将其表示为上标条，如x bar和u bar。给定一条轨迹，我们就有一组x t bar和u t bar的对，适用于所有t值。接下来，我们定义增量delta x t和delta u t，如方程43所示。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_32.png)
 
- Now we can substitute these relations back into the dynamical equation for x t plus one and keep on linear terms in delta x and delta u assuming that quadratic terms are small as we expand around a given trajectory。
+现在，我们可以将这些关系代入x t加一的动态方程中，并保留增量delta x和delta u的线性项，假设二次项在围绕给定轨迹展开时较小。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_34.png)
 
- This gives us a linearized state equation number 44。 So what we see is that if we express the dynamics in terms of the increments delta x and delta u we can get a linearized equation for the increment delta x。
+这给出了线性化的状态方程44。由此我们看到，如果我们以增量delta x和delta u表示动态系统，我们可以得到关于增量delta x的线性化方程。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_36.png)
 
- Now we express everything in terms of increments。 We assume that the f function is a quadratic function of delta x as shown in equation 45。 It's parameterized by a matrix dt vector h t and a scalar f t that can all depend on x bar。 Now at the planning horizon t the terminal states x t are fixed therefore we can use it to fix the terminal values of all these coefficients。
-
-
+现在，我们将所有内容以增量的形式表示。我们假设f函数是delta x的二次函数，如方程45所示。它由矩阵dt向量h t和标量f t参数化，这些都可能依赖于x bar。现在在规划视野t时，终端状态x t是固定的，因此我们可以用它来固定所有这些系数的终端值。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_38.png)
 
- For all other times we use backward recursion by going backwards in time starting from t minus one then t minus two and so on。
+对于所有其他时间，我们通过从t减一开始，向后递归，依次进行t减二等操作来进行回溯。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_40.png)
 
- So the first thing we do for any such value of t is to compute the expectation of the next period f function。
+因此，我们对任何此类t值所做的第一件事是计算下一期f函数的期望。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_42.png)
 
- This can be easily done and it produces the expression shown at the bottom of this slide。 The important fact is that it's a quadratic function of expected value of the next period increment delta x which we denote it here as delta x t plus one hat。
+这可以很容易地完成，并且会生成此幻灯片底部显示的表达式。重要的事实是，这是一个关于下一周期增量delta x期望值的二次函数，我们在这里将其表示为delta x t加一的估计值。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_44.png)
 
- Now if we use the previous equation then we can write this equation using previous expressions。 We can write this equation as a quadratic function of current time increments delta x and delta u with coefficients f at f x t f x t f x t f u t and a free form free term f sub t plus one。
-
-
-
-
+现在，如果我们使用之前的方程，我们可以用先前的表达式写出这个方程。我们可以将这个方程写成当前时间增量delta x和delta u的二次函数，系数为f在f x t、f x t、f x t、f u t以及一个自由项f sub t加一。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_46.png)
 
-
-
 ![](img/3f3f30b689cc39b29f242a484144d590_47.png)
-
-
 
 ![](img/3f3f30b689cc39b29f242a484144d590_48.png)
 
- Each of these coefficients can now be explicitly computed in terms of previously computed coefficients。
+现在，这些系数可以根据之前计算的系数明确计算出来。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_50.png)
 
- At the next step we introduce a similar parameterization of the g function as a quadratic function of delta x and delta u。
+在下一步，我们引入一个类似的g函数参数化，将其表示为delta x和delta u的二次函数。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_52.png)
 
- But this time coefficients of this expansion are unknown and will be computed next。 The last thing we can also express the reward in terms of the increments using its explicit form。 And this gives a question 47 shown here。 Again this expression is a quadratic function of the increments。
-
-
+但是这时，这个展开式的系数是未知的，接下来会计算。最后，我们也可以通过其显式形式表达奖励，使用增量形式。这给出了问题47，如此处所示。同样，这个表达式是增量的二次函数。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_54.png)
 
- Now everything is ready to set up a recursive scheme to compute both the g function and f function in terms of their coefficients。
+现在，一切都准备好设置递归方案，以计算g函数和f函数及其系数。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_56.png)
 
- What we do is take the Bellman equation for the g function shown again here in equation 48。 plug all previous expressions for the g function reward and the f function and then equate the coefficients in front of the like powers of delta x and delta u in the resulting expression。
-
-
-
-
+我们所做的是取贝尔曼方程，针对g函数再次在方程48中显示，代入所有关于g函数、奖励和f函数的先前表达式，然后将所得表达式中delta x和delta u的各项系数进行等式比较。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_58.png)
 
- And this produces the relations for coefficients of the g function that are shown here。
+这产生了g函数系数的关系，如此处所示。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_60.png)
 
- Now if rewards are observable then all terms in the right hand side of these equations are known at time t because the coefficients in f terms in the right hand side are known from time t plus one。 Therefore these relations give us coefficients for the g function at time t。
+现在，如果奖励是可观察的，那么这些方程右侧的所有项在时间t时都是已知的，因为右侧f项中的系数在时间t加一时已知。因此，这些关系为我们提供了时间t时g函数的系数。
 
- And now when we computed the g function at time t we can compute the f function at time t。 And to do this we use equation 39 that I repeated here in the top line。
+现在，当我们计算了时间t时的g函数后，我们可以计算时间t时的f函数。为此，我们使用了我在顶部行中重复的方程39。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_62.png)
 
- We plug the resulting expression for the g function here and compute the sum over all a k which is in fact not a sum but an integral because we work with continuous actions。
+我们将得到的g函数表达式代入这里，并计算所有a k的和，实际上这不是一个和，而是一个积分，因为我们使用的是连续动作。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_64.png)
 
-
-
 ![](img/3f3f30b689cc39b29f242a484144d590_65.png)
 
- But what is very important here is that in our model this integral is Gaussian therefore it can be easily computed。 When we compute this integral and simplify we get equation 49 for the f function which now has the same form as before but this time all coefficients are fixed as shown in the formulas below。
-
-
-
-
+但这里非常重要的一点是，在我们的模型中，这个积分是高斯型的，因此可以轻松计算。当我们计算这个积分并简化后，我们得到f函数的方程49，它现在与之前的形式相同，但这次所有的系数都已固定，如下面的公式所示。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_67.png)
 
-
-
 ![](img/3f3f30b689cc39b29f242a484144d590_68.png)
 
- [BLANK_AUDIO]。
+[BLANK_AUDIO]。
 
 ![](img/3f3f30b689cc39b29f242a484144d590_70.png)

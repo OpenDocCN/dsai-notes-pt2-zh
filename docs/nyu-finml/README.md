@@ -1,1 +1,1 @@
-# 纽约大学金融强化学习笔记
+# New York University Financial Reinforcement Learning Notes

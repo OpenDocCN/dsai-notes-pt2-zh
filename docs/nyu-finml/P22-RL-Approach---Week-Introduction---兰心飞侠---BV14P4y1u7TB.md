@@ -1,27 +1,23 @@
-# P22：RL Approach - Week Introduction - 兰心飞侠 - BV14P4y1u7TB
+# P22：RL 方法 - 周次介绍 - 兰心飞侠 - BV14P4y1u7TB
 
- Welcome to the third week of our course on reinforcement learning and finance。
+欢迎来到我们强化学习与金融课程的第三周。
 
 ![](img/62c1f18e71db8d94877788fe39e23dd2_1.png)
 
-
-
 ![](img/62c1f18e71db8d94877788fe39e23dd2_2.png)
-
-
 
 ![](img/62c1f18e71db8d94877788fe39e23dd2_3.png)
 
- This week is going to be very interesting。 As in this week we will leave a model-based approach of dynamic programming and move to。 data-driven and model-independent ways to solve our problem of optimal option pricing and hedging。 Now I need to specify what I mean by model-independent here。 given that we still discuss a model for， a Markov decision process。
+本周将非常有趣。因为我们将离开基于模型的动态规划方法，转向数据驱动和与模型无关的方式来解决最优期权定价和对冲问题。现在我需要说明一下这里所说的“与模型无关”的意思，尽管我们仍然会讨论一个模型，即马尔可夫决策过程。
 
- What is meant in this context by model-independence is that in a data-driven setting we only keep。 the general structure of the model but we do not assume that transition probabilities and。 reward functions are known。 The traditional paradigm of quantitative finance is that in order to optimally price and hedge。 financial assets we first have to build and estimate a model of the world。
+在这个语境下，“与模型无关”意味着在数据驱动的环境中，我们只保留模型的一般结构，但不假设转移概率和奖励函数是已知的。传统的定量金融范式认为，为了最优定价和对冲金融资产，我们首先需要构建并估算一个世界模型。
 
- But reinforcement learning paradigm is different and it allows us to focus directly on our。 prime goal of optimal control。 Depending on the particular algorithm that we use。 the task may or may not involve the， problem of building a model of the world first。 Methods that we are going to discuss in this week actually let us do things in a model-independent。
+但强化学习范式是不同的，它使我们能够直接关注我们的主要目标——最优控制。根据我们使用的具体算法，任务可能涉及也可能不涉及先构建世界模型的问题。本周我们讨论的方法实际上让我们能够以“与模型无关”的方式进行操作。
 
- way。 We will start with a look at batch-mode reinforcement learning and then we will introduce Q-learning。 one of the most famous algorithms of reinforcement learning。 After presenting the basic version of the algorithm we will discuss its more practical。 version called fit-of-cute-ration。 All these will be presented not in an abstract way but rather directly within our MGP model。
+我们将从批量模式强化学习开始，然后介绍Q学习，这是强化学习中最著名的算法之一。在介绍了算法的基本版本后，我们将讨论它的更实用版本，称为适应性-优化算法（fit-of-cute-ration）。所有这些内容将不仅以抽象的方式呈现，而是直接在我们的MGP模型中展开。
 
- of option pricing so we will immediately see how they work in a financial setting。 In your homework for this week you will implement these solutions and see how they work in practice。
+期权定价方面，我们将立即看到它们在金融环境中的应用。在你本周的作业中，你将实现这些解决方案，并看到它们在实践中的表现。
 
 ![](img/62c1f18e71db8d94877788fe39e23dd2_5.png)
 
- So let's get started。 [BLANK_AUDIO]。
+那么，让我们开始吧。[BLANK_AUDIO]。

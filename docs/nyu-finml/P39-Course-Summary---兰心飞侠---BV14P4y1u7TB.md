@@ -1,37 +1,33 @@
-# P39：Course Summary - 兰心飞侠 - BV14P4y1u7TB
+# P39：课程总结 - 兰心飞侠 - BV14P4y1u7TB
 
- Now let's make a summary of what we have learned in the four weeks of this course。
+现在，让我们总结一下我们在这门课程四周中所学到的内容。
 
 ![](img/663254042621c8f7a9896dc14fc14f08_1.png)
 
-
-
 ![](img/663254042621c8f7a9896dc14fc14f08_2.png)
 
- What we did in this course is we took two most fundamental problems of quantitative。 finance and then showed that not only reinforcement learning can be used for these problems， but。 rather these problems themselves can be formulated in terms of reinforcement learning tasks。
-
-
+在这门课程中，我们讨论了两个最基本的量化金融问题，并展示了强化学习不仅可以应用于这些问题，而且这些问题本身可以用强化学习任务的方式来表述。
 
 ![](img/663254042621c8f7a9896dc14fc14f08_4.png)
 
- We started with the problem of option pricing and hedging and showed how this problem can。
+我们从期权定价和对冲的问题开始，展示了如何解决这个问题。
 
 ![](img/663254042621c8f7a9896dc14fc14f08_6.png)
 
- be reformulated as a discrete time mark of decision process。 Then we learned about methods of reinforcement learning such as Q learning and fitted Q iteration。
+可以重新表述为一个离散时间的马尔可夫决策过程。然后，我们学习了强化学习的方法，如Q学习和拟合Q迭代。
 
 ![](img/663254042621c8f7a9896dc14fc14f08_8.png)
 
- and so how they apply to this model。 We found that the whole scheme in the case of a single option is rather simple computationally。 To compute the optimal price and hedge of an option we only need a bunch of linear regressions。 and nothing else。 The model learns directly from trading data from a replication portfolio for such option。 because it's a reinforcement learning model。 We used model based reinforcement learning where the reward function is a quadratic function。
+并且它们如何应用于该模型。我们发现，在单一选项的情况下，整个方案在计算上相当简单。为了计算期权的最优价格和对冲，我们只需要一堆线性回归，其他什么都不需要。这个模型直接从期权的复制投资组合的交易数据中学习，因为它是一个强化学习模型。我们使用了基于模型的强化学习，其中奖励函数是一个二次函数。
 
- of its argument and this is what made the model very tractable。 In particular we did not need fancy functional approximation methods such as neural networks。 for such simple settings。 Then in this week of the course we look at the different and very large class of portfolio。 optimization problems。 Here again the first built a simple portfolio model that can be applied to all such tasks。
+它的参数，使得模型变得非常易处理。特别是，在这种简单的设置下，我们不需要像神经网络这样复杂的函数逼近方法。然后，在本周的课程中，我们研究了一个非常大的投资组合优化问题类。我们再次首先构建了一个简单的投资组合模型，可以应用于所有此类任务。
 
- including optimal portfolio liquidation， optimal investment portfolio and index tracking。 And using this model we learned new topics in reinforcement learning itself including stochastic。 policies and entropy regularized reinforcement learning。 Such entropy regularized reinforcement learning is very useful for learning and noise environment。
+包括最优投资组合清算、最优投资组合和指数跟踪。通过这个模型，我们学习了强化学习本身的新话题，包括随机策略和熵正则化强化学习。这种熵正则化强化学习在学习和噪声环境中非常有用。
 
- which is almost always the case in finance。 And finally we saw how we can do inverse reinforcement learning with the same dynamic。 portfolio model and how we can use it to inform market views and values of private signals。 much in the spirit of the famous Black-Lieterman model。 Because the model is quite simple we again managed to proceed in this model without invoking。
+这在金融中几乎总是适用。最后，我们看到了如何通过相同的动态投资组合模型进行逆向强化学习，以及如何使用它来提供市场观点和私有信号的价值，这与著名的Black-Lieterman模型的精神非常相似。由于模型相当简单，我们再次能够在不调用其他复杂方法的情况下推进这个模型。
 
- sophisticated functional approximation methods such as neural networks。 As we will see in our next course other problems of reinforcement learning in finance do use。 neural networks and in particular deep neural networks producing deep reinforcement learning。 We will talk more about deep reinforcement learning in the next course of this specialization。
+复杂的函数逼近方法，例如神经网络。正如我们将在下一门课程中看到的，强化学习在金融中的其他问题确实使用了神经网络，特别是深度神经网络，从而产生了深度强化学习。我们将在这门课程的下一部分详细讨论深度强化学习。
 
- And for now I wish you good luck with your course project and see you in the next course。
+目前，祝你在课程项目中好运，下一门课程再见。
 
 ![](img/663254042621c8f7a9896dc14fc14f08_10.png)

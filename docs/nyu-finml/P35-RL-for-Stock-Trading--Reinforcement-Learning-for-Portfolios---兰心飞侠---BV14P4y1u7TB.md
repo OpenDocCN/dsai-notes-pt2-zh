@@ -1,143 +1,113 @@
-# P35：RL for Stock Trading -Reinforcement Learning for Portfolios - 兰心飞侠 - BV14P4y1u7TB
+# P35：股票交易中的强化学习 - 投资组合的强化学习 - 兰心飞侠 - BV14P4y1u7TB
 
- Okay， we have defined in a previous video the problem of dynamic portfolio optimization。
+好的，我们在之前的视频中已经定义了动态投资组合优化的问题。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_1.png)
 
-
-
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_2.png)
 
- which we formulated as a mark of decision process with a quadratic one-step reward function。
+我们将其表述为一个马尔可夫决策过程，其中包含一个二次一阶奖励函数。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_4.png)
 
- And as we said many times in this specialization， as long as we have an MGP problem， we can。 solve it using a model as in dynamic program and approach， or we can use reinforcement。 learning and solve the model using samples from data。 In both these approaches we looked。 for an optimal policy， which we defined as a function that is a map from the space of。
+正如我们在这个专业课程中多次提到的，只要我们有一个MGP问题，我们就可以使用动态规划中的模型方法来解决，或者我们也可以使用强化学习，通过数据样本来解决模型。在这两种方法中，我们都在寻找一个最优策略，我们将其定义为一个函数，表示从状态空间到行动空间的映射。
 
- states onto a space of actions。 So such function gives you one fixed number for each possible。 state and this value would be the action prescribed by this policy。 Now in reinforcement learning。 such policies are called deterministic policies。 We can view a deterministic policy as a probability。 distribution given by a Dirac delta function as shown in equation 24。 Here A t star is a。
-
-
-
-
+状态空间到行动空间的映射。所以这样一个函数会给你每个可能状态对应的一个固定数字，这个值就是该策略所规定的行动。现在在强化学习中，这种策略被称为确定性策略。我们可以将确定性策略视为由狄拉克单位冲击函数给出的概率分布，如公式24所示。在这里，A t star 是一个通过解决投资组合优化问题得到的确定性最优行动。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_6.png)
 
- deterministic optimal action that is obtained by solving the portfolio optimization problem。 Clearly saying that we have a deterministic policy is equivalent to saying that we have。 a stochastic policy whose distribution is a delta function。 But we could consider more。
-
-
+确定性最优行动是通过解决投资组合优化问题得到的。显然，称我们有一个确定性策略等同于说我们有一个随机策略，其分布是单位冲击函数。但我们也可以考虑更多的情况。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_8.png)
 
- interesting probability distributions than delta functions to describe stochastic policies。
+更有趣的概率分布，而不是单位冲击函数，用于描述随机策略。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_10.png)
 
-
-
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_11.png)
 
- The only question is why we should do this。 And the answer to this question is that truly。 deterministic policies hardly exist and therefore hardly relevant for finance。 Let me explain。
+唯一的问题是为什么我们要这样做。这个问题的答案是，实际上，确定性策略几乎不存在，因此几乎与金融无关。让我解释一下。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_13.png)
 
- you this statement。 First， assume that you have some deterministic policy pi， parameterized。 by some parameters theta。 Now because these parameters are found from a finite sample of， data。 they are themselves random。 Therefore any result in deterministic policy would be， random de facto。 A good example is given by the same Markovitz portfolio model that we， mentioned above。
+你可以这样理解这个说法。首先，假设你有一个确定性策略π，它由一些参数θ来参数化。现在，因为这些参数是从有限的数据样本中得出的，它们本身就是随机的。因此，任何确定性策略的结果实际上都是随机的。一个很好的例子是我们上面提到的马尔可夫兹投资组合模型。
 
- Markovitz optimal portfolio allocation depends on expected stochlear， terms。 Because they are estimated from data， these estimates are themselves random numbers。 Therefore the Markovitz portfolio allocation is in fact random even though the model itself。 does not explicitly stated。 So because the world is random， it would be a very good idea。
+马尔可夫兹最优投资组合配置依赖于预期的随机变量项。因为这些项是从数据中估计出来的，所以这些估计本身就是随机的。因此，马尔可夫兹投资组合配置实际上是随机的，即使模型本身并没有明确指出这一点。所以因为世界是随机的，考虑这一点将是一个非常好的想法。
 
- also to have some measure of uncertainty or confidence in model recommendations regarding。 asset allocations。 If a model gives you just one number， you have no idea how confident。 the model is regarding this number。 The other reason to work with stochastic policies is。 that most of the time， any real data is not strictly optimal and sometimes may be even。
+还可以对模型推荐的资产配置有一定的不确定性或置信度评估。如果一个模型仅给出一个数字，那么你就无法知道模型对这个数字有多大信心。使用随机策略的另一个原因是，大多数情况下，任何真实数据都不是严格最优的，有时甚至可能是次优的。
 
- quite suboptimal。 There might be many reasons why demonstrated data are suboptimal。 For， example。 a model mis-specifications， model timing legs， human errors and so on。 If we。 insisted on deterministic policies， such data would have probability zero under such， models。 But because such nearly optimal or suboptimal data are everywhere， we better。
+这种做法相当次优。示范数据次优的原因可能有很多，例如模型错误规格、模型时间延迟、人为错误等等。如果我们坚持使用确定性策略，那么在这种模型下，这样的数据的概率将为零。但因为这样的近乎最优或次优数据无处不在，我们最好。
 
- should get tools to work with such imperfect data rather than insist that the world should。 match our imperfect models。 So what are stochastic policies in reinforcement learning？ Stochastic。
+我们应该使用工具来处理这种不完美的数据，而不是坚持要求世界匹配我们的不完美模型。那么，强化学习中的随机策略是什么？随机。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_15.png)
 
- policy is any valid probability distribution pi for action 18， which is conditional on the。 current state x team and in general can be parameterized by some parameter vector theta。 as shown in this formula。 In addition， the policy pi can depend on external predictors， the team。 which we omit here for braids。 So what are new insights that we can get using。
+策略是任何有效的动作概率分布 pi，它依赖于当前状态 x 团队，并且通常可以通过某个参数向量 theta 来参数化，如公式所示。此外，策略 pi 还可以依赖于外部预测器，团队，在此我们省略了对于这种情况的说明。那么，通过使用这些新的见解，我们可以得到什么呢？
 
- stochastic policies instead of deterministic policies？ New insights are possible with stochastic。 policies precisely because they are stochastic。 Stochastic policy pi means that we have a probabilistic。
+随机策略而不是确定性策略？随机策略带来的新见解正是因为它们是随机的。随机策略 pi 意味着我们有一个概率分布。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_17.png)
 
- model for actions。 And these can be used for pass data to build a probabilistic model of， data。 But again， because this is a probabilistic model， we can also generate future data using。 simulations with this model。 In other words， probabilistic models are generative models。
-
-
+这些可以用于传递数据以建立数据的概率模型。但同样，因为这是一个概率模型，我们也可以使用该模型进行模拟来生成未来数据。换句话说，概率模型是生成模型。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_19.png)
 
- Now let's see how we can change our problem of portfolio optimization if we use stochastic。
+现在，让我们看看如果我们使用随机模型来进行行动，如何改变我们的投资组合优化问题。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_21.png)
 
- policy instead of deterministic policy。 A new optimization problem formulation is shown。
+策略而不是确定性策略。一个新的优化问题公式已显示。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_23.png)
 
- in these equations。 Let's go over them one by one and see what changes some hate in comparison。
+在这些方程式中。让我们一一过一遍，看看与某些变化相比，有什么不同。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_25.png)
 
- with the previous formulation。 First， we again have an expectation of some of discounted future。 rewards as before。 But this time， the expectation sign is different。 The expectation this time。
+使用之前的公式。首先，我们再次有一个关于某些折扣未来奖励的期望，和之前一样。但这次，期望符号不同。此次的期望值。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_27.png)
 
- is done with respect to the whole path probability， Q pi， which is given by the third line in this。 equation。 We have a product of terms for each time step here。 For the first time step， we have。 the action probability pi of a zero。 And then for each next step， the joint probability is。 decomposed into a product of an action probability times the transition probability to the next。
+这是关于整个路径概率 Q pi 的计算，公式中的第三行给出了这个值。在这里，我们对于每个时间步骤都有一个项的乘积。对于第一个时间步骤，我们有零的动作概率 pi。然后，对于每一个后续步骤，联合概率被分解为动作概率与到下一个状态的过渡概率的乘积。
 
- step， next state x t plus one， conditional on the previous state and the action。 And because。 pi of a t should be a valid probability distribution。 we should add the normalization constraint for， pi of a t to this optimization。 So what we did with this probabilistic formulation is。
-
-
-
-
+步骤，下一状态 x t+1，条件是前一个状态和动作。因为 pi of a t 应该是一个有效的概率分布，我们应该为 pi of a t 添加归一化约束条件。因此，通过这种概率论的公式化，我们做了以下操作。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_29.png)
 
- sounding pretty drastic。 We replaced optimization in a function space by optimization in the space。 of probability distributions。 Now， of course， the main question is how to do such optimization。 in probability spaces。 We will discuss this shortly。 But before doing that， we have to。 introduce another important concept here， which is the notion of a reference policy。
-
-
-
-
+听起来相当激进。我们将函数空间中的优化替换为概率分布空间中的优化。当然，主要问题是如何在概率空间中进行这样的优化。我们稍后将讨论这个问题。但在此之前，我们需要介绍另一个重要概念——参考策略的概念。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_31.png)
 
- So what is a reference policy？ We can think of a reference policy as a prior policy that we would。 be thinking of using before we see any data。 A common approach in Bayesian statistics and Bayesian。
+那么什么是参考策略？我们可以将参考策略视为在看到任何数据之前会考虑使用的先验策略。这是贝叶斯统计和贝叶斯方法中的一种常见方法。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_33.png)
 
- learning is to start with a prior distribution for data and then update it using the data。
+学习的过程是从数据的先验分布开始，然后使用数据对其进行更新。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_35.png)
 
- Here we will do the same and later we will build a method that modifies prior or reference policy。 such that a new updated posterior policy will be consistent with the data。 Now， to keep things。 structural， we will use very simple Gaussian reference policy， which we will call pi zero。 This policy has the mean a hat， which is a linear function of the state x t。 You find by two。
-
-
-
-
+在这里，我们将做同样的事情，稍后我们将构建一种方法，修改先验或参考策略，使得更新后的后验策略与数据一致。现在，为了保持结构性，我们将使用非常简单的高斯参考策略，我们称之为 pi zero。该策略的均值是 a hat，这是状态 x t 的线性函数。你可以通过两个步骤找到它。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_37.png)
 
- coefficients a zero and a one with the covariance matrix sigma a。 In principle。 this coefficient a zero and a one could depend on the signals as a team。 But this is not necessary。 because such dependence will appear as a result of Bayesian updates。 As we will see later。 Therefore。
-
-
+系数 a zero 和 a one 与协方差矩阵 sigma a 一起。在原则上，系数 a zero 和 a one 可以依赖于信号的变化。但这并不是必须的，因为这种依赖关系将作为贝叶斯更新的结果出现。正如我们稍后将看到的那样。因此。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_39.png)
 
- we can keep things simple and take just constant coefficients a zero and a one for the prior。
+我们可以保持简单，只为先验设置常数系数零和一。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_41.png)
 
- For the covariance matrix sigma a， we can also take a simple matrix。 For example， use the same。
+对于协方差矩阵 sigma a，我们也可以使用一个简单的矩阵。例如，使用相同的矩阵。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_43.png)
 
-
-
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_44.png)
 
- variance and the same correlation for all stocks。 And in this case， the whole matrix would be。 parameterized by just two numbers。 Okay， now we have all the tools that we need。 And in the next video， we will see how we can work with stochastic policies and how the reference or prior policy appears in。 this procedure。
-
-
+方差和所有股票相同的相关性。在这种情况下，整个矩阵将只由两个数字来参数化。好了，现在我们拥有了所有需要的工具。在下一个视频中，我们将看到如何使用随机策略，以及参考或先验策略在此过程中是如何出现的。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_46.png)
 
- Okay， so， let's go。 You， [BLANK_AUDIO]。
+好的，开始吧。你，[BLANK_AUDIO]。
 
 ![](img/1609815f75ad65b2acccd2e7d59a4a5e_48.png)

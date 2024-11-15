@@ -1,163 +1,131 @@
-# P29：RL Approach - RL Solution- Discussion and Examples - 兰心飞侠 - BV14P4y1u7TB
+# P29：RL方法 - RL解决方案 - 讨论与示例 - 兰心飞侠 - BV14P4y1u7TB
 
- Now it's time to summarize what we have obtained so far without reinforcement learning solution。
+现在是总结我们迄今为止得到的结果的时候，前提是没有强化学习解决方案。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_1.png)
 
- to the MGP model for option pricing and hedging。
+应用于期权定价和对冲的MGP模型。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_3.png)
 
- We can summarize it on two counts。 First by considering it as an reinforcement learning problem and second by considering。 the financial aspects of the model that we developed here。
+我们可以从两个方面总结它。首先是将其视为强化学习问题，其次是考虑我们在此开发的模型的金融方面。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_5.png)
 
-
-
 ![](img/52992958f978b2343c4d9969cac06ef6_6.png)
 
- Let's start with the reinforcement learning and machine learning side。 On the side of machine learning we formulated the discrete time black shows model as a Markov。 decision process model。 Then we produced two solutions for this model。 The first one is a dynamic programming solution that can be applied when the model is known。
-
-
-
-
+让我们从强化学习和机器学习方面开始。对于机器学习，我们将离散时间的黑-斯科尔斯模型表述为马尔可夫决策过程模型。然后我们为这个模型提供了两种解决方案。第一种是动态规划解决方案，当模型已知时可以应用。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_8.png)
 
- We implemented this solution in a Monte Carlo setting where we first simulate paths of the。 stock and then solve the optimal control problem by doing backward recursion。
+我们在蒙特卡洛设置中实现了这个解决方案，首先模拟股票的路径，然后通过反向递归来解决最优控制问题。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_10.png)
 
- Using expansions in basis functions for function approximation for the optimal action and optimal。 Q function。 This gives us a benchmark solution for the Bell-Monetimality equation。 We can also check that the solution obtained by such dynamic programming method reproduces。 the classical results of the black shows model when time steps are very small and the risk。
+使用基函数展开来近似最优行动和最优Q函数的函数逼近。这为我们提供了贝尔曼最优性方程的基准解决方案。我们还可以检查，使用这种动态规划方法得到的解决方案是否能在时间步长非常小且风险厌恶因子λ趋近于零时重现经典的黑-斯科尔斯模型结果。
 
- aversion lambda goes to zero。 Then we turned to a completely data driven model independent way of solving the same。 MGP model。 Because our model can be solved using Q learning and it's more practical version for batch。 in force modernity called fitted-tutoration such data driven solution of the model is actually。 feasible。 This means that the model can be used with the actual stock price data and data obtained。
+然后，我们转向完全基于数据驱动的模型独立求解方式来解决相同的MGP模型。因为我们的模型可以使用Q学习来求解，并且它的更实际版本是批量强化学习方法，称为拟合指导，因此这种数据驱动的模型解决方案实际上是可行的。这意味着该模型可以使用实际的股票价格数据以及获得的数据来进行。
 
- from an option trading desk。 Because Q learning and fitted-tutoration are off-policy methods it means that the recorded。 detection and reward data should not necessarily correspond to optimal actions。 The algorithm can learn from sub-optimal actions as well。 But now a very nice property of our MGP model is that it can be solved by both the dynamic。
+来自期权交易台。因为Q学习和拟合指导是离策略方法，这意味着记录的检测和奖励数据不一定对应于最优的行动。算法也可以从次优的行动中学习。但是现在我们MGP模型的一个非常好的特性是，它可以通过动态规划进行求解。
 
- programming and reinforcement learning methods。 Therefore。 the dynamic programming solution can be used as a benchmark which we can use。 for testing of any reinforcement learning methods and not only the fitted-tutoration method。 More to this， while so far we consider it the model only with a single stock and hence a。
-
-
-
-
+编程和强化学习方法。因此，动态规划解决方案可以作为基准，我们可以用来测试任何强化学习方法，而不仅仅是拟合指导方法。此外，尽管到目前为止我们仅考虑了单一股票模型，但我们可以扩展这个框架来包括更复杂的动态。然后，在这种设定下，动态规划解决方案可以用作基准，以测试各种强化学习算法。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_12.png)
 
- single risk factor we can extend this framework to include more complex dynamics。 Then in such setting the dynamic programming solution can be used as a benchmark to test。 various reinforcement learning algorithms。
+对于单一风险因素，我们可以扩展这个框架，以包括更复杂的动态。在这种设定下，动态规划解决方案可以作为基准，测试各种强化学习算法。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_14.png)
 
- The other nice thing about the reinforcement learning and DP solutions to the model is that。
+关于强化学习和 DP 解法在该模型中的另一个优点是：
 
 ![](img/52992958f978b2343c4d9969cac06ef6_16.png)
 
- both of them are very simple and involve only simple linear algebra。 Because the model is very simple optimization is performed analytically in both solutions。 which makes the model reasonably fast。 Now after we discussed these machine learning aspects let's talk about financial modeling。
-
-
+它们两个都非常简单，只涉及简单的线性代数。因为该模型非常简单，所以两种解法都可以通过解析方法进行优化，这使得模型运行速度相对较快。现在，讨论完这些机器学习方面的内容后，我们来谈谈金融建模。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_18.png)
 
- aspects of our MGP model。
+我们 MGP 模型的各个方面。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_20.png)
 
- On the financial side we found that the famous Blacksholes option pricing model can be understood。 as a continuous time limit of another famous financial model namely the Markovitz portfolio。
+在金融方面，我们发现著名的 Black-Scholes 期权定价模型可以理解为另一个著名金融模型——即 Markowitz 投资组合的连续时间极限。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_22.png)
 
-
-
 ![](img/52992958f978b2343c4d9969cac06ef6_23.png)
 
- model albeit applied in a very special setting。 This is because in our MGP problem the problem of optimal hedging and pricing of an option。
+尽管该模型应用于一个非常特殊的环境中。 这是因为在我们的 MGP 问题中，存在期权的最佳对冲和定价问题。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_25.png)
 
- amounts to a multi-period version of the Markovitz theory where the investment portfolio is very。 simple and consists of only one stock and cash。
+这相当于 Markowitz 理论的多期版本，其中投资组合非常简单，只包括一只股票和现金。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_27.png)
 
- The dynamics of the world is assumed in this model to be log normal as in a Blacksholes， model。 Now what we found is that if this investment portfolio matches the option payoff at maturity。 capital T then the option price and hedge can be computed from this portfolio by doing。 a dynamic optimization of risky just returns exactly as in the classical Markovitz portfolio。
-
-
-
-
+在这个模型中，假设世界的动态是对数正态分布，就像在 Black-Scholes 模型中一样。现在我们发现，如果这个投资组合在期权到期时能够匹配期权的收益，那么期权价格和对冲策略可以通过对这个投资组合进行动态优化来计算，就像在经典的 Markowitz 投资组合中一样。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_29.png)
 
- theory。 By making the replication portfolio for the option Markovitz optimal we reproduce the。 Blacksholes model in the limit of vanishing time steps and risk aversion lambda。 So the classical Blacksholes model is matched in this limit which is good but the present。 model does much more than the Blacksholes model or for this sake than other more complex。
+理论。通过使期权的复制投资组合达到 Markowitz 最优，我们在时间步长趋近于零和风险厌恶系数 lambda 的极限下重现了 Black-Scholes 模型。因此，在这个极限下，经典的 Black-Scholes 模型得以匹配，这很好，但目前的模型不仅仅是重现了 Black-Scholes 模型，或者说比其他更复杂的模型做得更多。
 
- models of mathematical finance do。 Our MGP model produces both the price and the optimal hedge for an option that incorporate。
+数学金融模型确实如此。我们的 MGP 模型不仅生成期权的价格，还给出包含最佳对冲策略的期权定价。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_31.png)
 
- actual risk in options which always persists in options because they are never re-haged。
+期权中的实际风险总是存在的，因为期权从未重新对冲。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_33.png)
 
-
-
 ![](img/52992958f978b2343c4d9969cac06ef6_34.png)
 
- continuously。 Models of mathematical finance such as Blacksholes model or various local or stochastic volatility。 models focus on the so-called fair or risk neutral option price。 Given that hedge errors are second order effects relative to the expected cost of hedge which。 is just equal to the fair option price in this model。
+持续进行。 数学金融模型如 Black-Scholes 模型或各种局部或随机波动性模型专注于所谓的公平或风险中性期权价格。鉴于对冲误差是相对于对冲的预期成本的二阶效应，而该成本在此模型中正好等于公平期权价格。
 
- But the reality is that in many cases such second order effects are as large as the first。 order effects and risk in option becomes a first class citizen in such models。
+但现实是，在许多情况下，二阶效应和一阶效应一样大，期权中的风险在这些模型中成为了一个重要的因素。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_36.png)
 
- The MGP model that represented here captures this risk in the model independent and data。 driven way。 More to this in this formulation pricing and hedging are consistent as they are both obtained。
+这里表示的MGP模型以模型无关和数据驱动的方式捕捉了这种风险。更重要的是，在这种表述中，定价和对冲是一致的，因为它们都是通过相同的方式获得的。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_38.png)
 
- from maximization of the same objective function。 Such consistency is important especially given the fact that many previous models of discrete。 time risk option pricing did not provide explicit link between the option price and the option。 hedge。 So the different option prices could correspond to the same hedging method。 But in the framework that we presented risk option prices fully consistent with the risk。
+来自同一目标函数最大化的结果。这样的结果一致性非常重要，特别是考虑到许多先前的离散时间风险期权定价模型并未提供期权价格与期权对冲之间的明确联系。因此，不同的期权价格可能对应相同的对冲方法。但在我们提出的框架下，风险期权价格与风险解完全一致。
 
- minimization of option hedge。 Also because our approach is model independent it frees us from the need to construct and。 calibrate some complex model of stock dynamics which is actually one of the main objectives。 of models in traditional and mathematical finance。 Alright。 now after this summary of the MGP option pricing model let's take a look at some， examples。
-
-
-
-
+最小化期权对冲。此外，因为我们的方法是模型无关的，它使我们无需构建和校准某些复杂的股票动态模型，而这实际上是传统数学金融模型的主要目标之一。好了，现在让我们总结一下MGP期权定价模型，并看看一些示例。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_40.png)
 
- In the first set of experiments we test the performance of fitted curation for on policy， setting。 In this case we simply use the optimal hedge and the words obtained with the dynamic programming。
+在第一组实验中，我们测试了拟合数据在策略设置中的表现。在此情况下，我们简单地使用通过动态规划获得的最优对冲和词汇。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_42.png)
 
- solution as data for fitted curation。
+作为拟合数据的解决方案。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_44.png)
 
- And the results are shown on these graphs for two sets of Monte Carlo simulations shown respectively。 in the left and right columns。 Because we deal here with on policy learning the resulting optimal Q function and its optimal。 value QT star at A star which are shown in the second and third rows respectively are。 virtually identical in the graph。 The option price for these parameter values used in this example is 490 plus or minus。
+结果显示在这些图表中，分别展示了两组蒙特卡洛模拟结果，左列和右列中各自显示。因为我们这里处理的是在策略学习，因此图中显示的最优Q函数及其最优值QT*和A*，几乎完全一致。该示例中使用的这些参数值的选项价格为490正负。
 
- point 12 which is identical to the option value obtained with the dynamic programming， method。 And the block shoals option price for this case is 4。53 and this number can be recovered。 if we take a smaller value of risk aversion lambda。 We can also test the performance of fitted Q iteration for off policy learning。
-
-
-
-
+第12点与使用动态规划方法获得的选项值相同。此情况下的区块浅滩选项价格为4.53，并且通过减少风险厌恶系数lambda的值，可以恢复此数字。我们还可以测试拟合Q迭代在离策略学习中的表现。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_46.png)
 
- To make off policy data we multiply optimal hedges computed by the DP solution of the。 model by a random uniform number in the interval from 1 minus eta to 1 plus eta where eta would。 be parameter between 0 and 1 that controls the noise level in the data。
-
-
+为了生成离策略数据，我们将通过DP解决方案计算的最优对冲乘以一个位于1-eta到1+eta区间内的随机均匀数，其中eta是控制数据噪声水平的参数，介于0和1之间。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_48.png)
 
- In our experiment we consider it develop eta equal 0。15， 0。25， 0。35 and 0。15 to test the。
+在我们的实验中，我们考虑了eta等于0.15、0.25、0.35和0.15的情况来测试。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_50.png)
 
-
-
 ![](img/52992958f978b2343c4d9969cac06ef6_51.png)
 
- noise tolerance of our algorithms。 In this figure you can see the results obtained for off policy learning for eta equal to 50。 percent with 5 different scenarios of suboptimal actions。 We observe some non-monotonicity in these graphs but this is due to a low number of， scenarios。 But please note that the impact of suboptimality of actions in the recorded data is rather。
+我们算法的噪声容忍度。在这张图中，您可以看到在不同子最优动作情境下，使用50%的η值进行离策略学习所获得的结果。我们在这些图表中观察到一些非单调性，但这是由于情境数较少所致。但请注意，记录数据中子最优动作的影响是相对。
 
- mild at least for a moderate level of noise in actions。 And this is expected as long as fitted Q iteration is an off policy algorithm。 This means that when data set is large enough our MDP model can learn even from data with。 purely random actions。 And in particular it can even learn the black show model itself if the world is block normal。
+至少对于动作噪声的适度水平而言，这种影响是轻微的。这是可以预期的，因为拟合Q迭代是一个离策略算法。这意味着当数据集足够大时，我们的MDP模型甚至能够从纯随机动作的数据中学习。而且特别地，如果世界是块正常的，它甚至能够学习黑盒模型本身。
 
- because Q learning is a model free method。 So this concludes our third week of this course and in your homework you will implement the。 fitted Q iteration and also evaluate the performance of the algorithm in both on policy and off。 policy setting。
+因为Q学习是一种无模型方法。所以这就结束了我们课程的第三周，在你们的作业中，你们将实现拟合Q迭代，并评估该算法在离策略和在策略设置下的表现。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_53.png)
 
- Good luck with this work and see you next week。 [ Silence ]。
+祝你在这项工作中好运，下周见。[ Silence ]。
 
 ![](img/52992958f978b2343c4d9969cac06ef6_55.png)

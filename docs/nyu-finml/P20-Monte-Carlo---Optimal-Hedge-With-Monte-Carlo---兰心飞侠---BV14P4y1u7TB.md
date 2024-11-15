@@ -1,39 +1,39 @@
-# P20：Monte Carlo - Optimal Hedge With Monte-Carlo - 兰心飞侠 - BV14P4y1u7TB
+# P20：蒙特卡罗 - 使用蒙特卡罗进行最佳对冲 - 兰心飞侠 - BV14P4y1u7TB
 
- Now， after we introduce basis functions and saw how they can be constructed。 let's come back to our original problem of implementing the backward recursion for the optimal Q function with Monte Carlo。 We said earlier that conditioning on FT in conditional expectations that appear in our formulas for the backward recursion should be understood as conditioning on the whole set of all Monte Carlo paths。 Now， we get a great method to compute such expectations using the approach of basis functions。
+现在，在我们介绍了基函数并看到它们如何构建之后，让我们回到原始问题，即如何使用蒙特卡罗实现最优Q函数的回溯递归。我们之前提到，条件期望中的条件FT应被理解为对所有蒙特卡罗路径的全集进行条件化。现在，我们获得了一种很好的方法来计算这样的期望，这种方法使用了基函数的方式。
 
- Let's assume that we defined a set of basis functions， phi n of x。 where the argument x would be the current value of the state variable。 We can and actually will choose these points that we discussed in the last video as such functions。 But we will keep the notation general so that other basis functions。
+假设我们定义了一组基函数，phi n(x)，其中参数x为当前状态变量的值。我们可以选择并且实际上会选择我们在上一视频中讨论的这些点作为这些函数。但我们将保持符号的通用性，以便其他基函数也可以使用。
 
- phi n of x can be picked if needed as well。 In particular。 we could incorporate some external risk factors of stock prices into our set of basis functions。 For example， we could include the S&P 500 index price or volatility indexes such as VIX as such risk factors that describe the state of the market。 In other words， our stock hands can impact the price of a particular stock。
+如果需要，phi n(x)也可以被选用。特别地，我们可以将一些股票价格的外部风险因子纳入我们的基函数集合中。例如，我们可以包括标准普尔500指数的价格或波动性指数（如VIX）作为描述市场状态的风险因子。换句话说，我们的股票头寸可以影响特定股票的价格。
 
- We could also use some combinations of these factors with stock prices。 This could capture some interaction effects between stock prices and the factors。 In short。 there is substantial freedom in how to choose the basis functions。 so we will continue with the general formulation。 So we have two unknown functions in our problem。
+我们还可以使用这些因子与股票价格的组合。这可以捕捉股票价格和因子之间的相互作用效应。简而言之，在选择基函数时有很大的自由度，因此我们将继续使用一般形式。这样，我们的问题中有两个未知函数。
 
- The optimal action， A* of x and the optimal Q function， Q* of x。 Now， if our set of basis functions。 phi n of x is representative enough， we can use it to approximate both functions A* of x and Q* of x。 Respectively， we represent both as expansions in the same set phi n of x。 Also。 because our problem is time dependent， we make coefficients of these expansions time dependent。
+最优动作A* of x和最优Q函数Q* of x。如果我们的基函数集合phi n(x)足够具有代表性，我们可以用它来近似这两个函数A* of x和Q* of x。分别地，我们将两者表示为同一集合phi n(x)的展开式。此外，由于我们的问题是时间依赖的，我们使这些展开式的系数随时间变化。
 
- So we have two expansions with coefficients phi n， t and omega n。 t for the optimal action and optimal Q function respectively。 Now。 the problem of option pricing and hedging amounts to finding these coefficients。 And overall。 we have two M unknown coefficients in total。 So， if we have， say， 12 basis functions。
+所以我们有两个展开式，分别为最优动作和最优Q函数的系数phi n，t和omega n，t。现在，期权定价和对冲问题就转化为寻找这些系数。总体来说，我们总共有2M个未知系数。因此，如果我们有，比如说12个基函数。
 
- then it means that M is equal to 12， and in this case。 we will have 24 unknown coefficients to compute。 This reduces the original infinite dimensional function optimization for functions A* of x and Q* of x to a finite dimensional optimization with a small number of parameters。
+那么这意味着M等于12，在这种情况下，我们将有24个未知系数需要计算。这将原本的无限维函数优化（用于A* of x和Q* of x）简化为一个有限维度的优化问题，只有少量参数。
 
- The backward recursion should now be reformulated as a scheme to compute coefficients phi and t and omega n。 t by going backwards in time starting from time capital T-1。 Let's start with computing coefficients phi and t of the optimal action。 To this end。 let's look again at the backward recursion formula for the Q function that we derived earlier。
+现在，回溯递归应重新表述为一个方案，用来计算系数phi、t和omega n。t，t通过从时间T-1开始反向推导来计算。我们从计算最佳动作的系数phi和t开始。为此，让我们再次查看我们之前推导的Q函数的回溯递归公式。
 
- As we mentioned before， the right-hand side of this relation is a quadratic function of A*t。 Therefore， it will also be a quadratic function of K-fissian's phi and t。 And to compute these coefficients with Monte Carlo， we do several things with this relation。 First。 we plug here the expansion for A*t， then replace all expectations by Monte Carlo averages and also drop all terms that are independent of A*t。
+如我们之前所提到的，这个关系的右侧是A*t的二次函数。因此，它也将是K-fissian的phi和t的二次函数。为了通过蒙特卡洛计算这些系数，我们对这个关系做了几件事。首先，我们在这里代入A*t的展开式，然后将所有期望值替换为蒙特卡洛平均值，并且去掉所有与A*t无关的项。
 
- Then we flip the sign of the whole expression to turn the maximization problem for A*t into a minimization problem。 And this gives us the objective function gt of phi shown here。 which we should minimize to find optimal coefficients phi and t。 Now。 the good news is that because this is a quadratic function of phi and t。
+然后我们翻转整个表达式的符号，将A*t的最大化问题转化为最小化问题。这为我们提供了phi的目标函数gt，如这里所示，我们应该最小化它以找到最优的phi和t系数。现在，值得高兴的是，因为这是phi和t的二次函数。
 
- it can be minimized semi-analytically。 By setting the derivative of this expression with respect to some value of phi of m t to 0 and rearranging terms。 we get a system of linear equations for K-fissian's phi and t that is shown here。 It's defined in terms of a square matrix A of dimension m by m and a vector B of length m that are computed as shown in these two formulas。 The matrix A is positive definite or it can be made positive definite by regularization as we will discuss in a moment。
+它可以通过半解析方法来最小化。通过对这个表达式对某个phi和m t的导数取零并重新排列项，我们得到一个关于K-fissian的phi和t的线性方程组，如这里所示。它以一个m×m维度的平方矩阵A和一个长度为m的向量B的形式定义，这些都是通过这两个公式计算得出的。矩阵A是正定的，或者可以通过正则化使其变为正定，如我们稍后讨论的那样。
 
- so it has an inverse。 Therefore， the solution for K-fissian's phi and t is simply given by the product of the inverse of matrix A and vector B。 So， the whole calculation is as easy as the previous analytical formula。 but now we have a computable expression for the optimal action A* rather than a theoretical formula involving two conditional expectations。 We can in fact compare our resulting expression with the previous analytical formulas in a bit more details。
+因此，它有一个逆矩阵。所以，K-fissian的phi和t的解仅仅是矩阵A的逆与向量B的乘积。因此，整个计算与之前的解析公式一样简单，但现在我们有了一个可计算的最优行动A*的表达式，而不是一个涉及两个条件期望的理论公式。我们实际上可以更详细地将我们的结果表达式与之前的解析公式进行比较。
 
- Let's write it once again as a product of the inverse of matrix A and the vector B。 One thing that should be noted here is that because this involves a matrix inversion。 it might be a good idea to supplement this calculation by a regularization for matrix A to prevent possible numerical instabilities。 A simplest practical adjustment would be to add a unit matrix with a small regularization parameter epsilon to matrix A as shown here。
+我们再次将其写成矩阵A的逆与向量B的乘积。需要注意的一点是，由于涉及到矩阵求逆，可能最好为矩阵A添加一个正则化项，以防止可能的数值不稳定。一个最简单的实际调整方法是像这里一样，向矩阵A中添加一个单位矩阵并加上一个小的正则化参数epsilon。
 
- Another point to note is that the resulting expression looks very similar to our previous analytical formula for the optimal hedge。 Indeed， both the numerator and denominator in both formulas look very similar。 the only difference being in the presence of basis functions in these expressions。 These basis functions in this formula do exactly what we want them to do。 Namely。
+另一个需要注意的点是，得到的表达式与我们之前的最优对冲的解析公式非常相似。实际上，两个公式中的分子和分母非常相似，唯一的区别是在这些表达式中基函数的存在。这些基函数在这个公式中正好做到了我们想要它们做的事情。也就是说。
 
- they implement conditioning on the whole set of Monte Carlo parts that we needed to compute optimal hedges。 Now our formula for phi and t gives us a solution for the optimal action A* of x at time step t when substituted back to the expansion of A* in basis functions。
+他们对我们需要计算最优对冲的整个蒙特卡洛路径集合进行了条件化。现在，我们的phi和t的公式为我们提供了最优行动A*的解，当它被代入到A*的基函数展开式中时，得到时间步t时的最优解。
 
- Our next task therefore will be to find a way to compute coefficients omega and t that determine the optimal Q function。 Let's do it to our next video。
+因此，我们的下一个任务是找到一种方法来计算系数omega和t，这些系数决定了最优Q函数。让我们在下一个视频中继续这个任务。
 
 ![](img/1ec91f7b6e8e4c9c805717f3bb5fc033_1.png)
 
- [BLANK_AUDIO]。
+[BLANK_AUDIO]。
 
 ![](img/1ec91f7b6e8e4c9c805717f3bb5fc033_3.png)

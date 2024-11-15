@@ -1,39 +1,39 @@
-# P17：MDP for BSM - Optimal Action From Q Function - 兰心飞侠 - BV14P4y1u7TB
+# P17：MDP for BSM - 最优行动来自Q函数 - 兰心飞侠 - BV14P4y1u7TB
 
- All right， now after we verified that our formulas correctly。 reproduce the black-shulls model in the limit of zero lambda， and vanishing time steps。 let's go back to a more general case， when lambda and delta t are both non-zero。 So let's look again at the Bellman-Eptimality equation， that we obtained。
+好的，现在在验证了我们的公式能够正确地在lambda趋近零、时间步长趋近零的极限下重现黑-肖尔斯模型后，我们回到一个更一般的情况，当lambda和delta t都不为零时。让我们再次查看我们得到的贝尔曼最优方程。
 
- One thing that stands out here is that because they reward， Rt is quadratic in at。 the Q function is also quadratic in at， as can be seen in this equation。 Therefore。 it means that the Q function can be maximized， analytically。 We just have to compute the derivative of the Q function。
+这里突出的一个方面是，由于回报Rt是关于at的二次方，Q函数也是关于at的二次方，正如这个方程所示。因此，这意味着Q函数可以通过解析方式最大化。我们只需计算Q函数的导数。
 
- with respect to at and equated to zero to find the optimal， action at。 This is very easy to do as the whole expression is quadratic， in 18。 So by differentiating it。 we get the second expression shown， here。 This should be set to zero and solved for 18 in order to find。 the optimal action。 So by doing this simple rearrangement， we get our resulting。
+关于at并将其设为零以找到最优行动at。这非常容易做到，因为整个表达式是关于18的二次方。因此，通过对其求导，我们得到此处显示的第二个表达式。这个应该设为零并求解18以找到最优行动。通过做这个简单的变换，我们得到了结果。
 
- expression for the optimal hedge。 It should already look familiar to us。 The optimal hedge is given by a ratio of two conditional， expectations。 One involving the next step portfolio value， pi sub t plus， one。 and another one involving the square of the increments， delta as t。
+最优对冲的表达式。这应该已经对我们来说是熟悉的。最优对冲由两个条件期望的比率给出，一个涉及下一步的投资组合价值，pi sub t 加 1，另一个涉及增量的平方，delta as t。
 
- We had a very similar expression in our discrete time， black-shoules model。 Let me remind you this expression。 We wrote it before as a ratio of conditional covariance。 and conditional variance。 But you can also rewrite it as a ratio of two conditional。 expectations as shown in the second form of the second， equation on this slide。
+我们在离散时间黑-肖尔斯模型中有一个非常相似的表达式。让我提醒你这个表达式。我们之前将其写成条件协方差和条件方差的比率。但是你也可以将其重写为两个条件期望的比率，如本幻灯片第二个方程的第二种形式所示。
 
- So the only difference between these two expressions is in。 the second term in the numerator of the first formula。 We can note several interesting things about this， additional term。 First。 let's look at them from a mathematical perspective。 If we take small time steps。
+所以这两个表达式之间的唯一区别在于第一个公式中分子中的第二项。我们可以注意到关于这个附加项的几件有趣的事情。首先，从数学的角度来看，如果我们采取小的时间步长。
 
- then the expectation of delta as， t will be proportional to the difference of mu minus r。 This means that we can make the second term in the numerator。 vanish if we either set mu equal to r or we take a formal。 limit of lambda going to infinity in this expression。 In this case。
+然后，delta as t的期望将与mu减去r的差成正比。这意味着，如果我们将mu等于r，或者在这个表达式中将lambda趋向于无穷大，我们可以使分子中的第二项消失。在这种情况下。
 
- the optimal hedge obtained by maximization of， the Q function will coincide with the optimal hedge obtained。 in our discrete time black-shoules model。 So this is a formal mathematical statement。 But what about a financial interpretation of these results？ To answer this question。 we can go back to our model， formulation。 Let's recall that we defined the value function V_t as a sum of。
+通过最大化Q函数得到的最优对冲，将与我们离散时间黑-肖尔斯模型中得到的最优对冲一致。所以这是一个正式的数学陈述。但这些结果的财务解释是什么呢？为了回答这个问题，我们可以回到我们的模型公式。让我们回顾一下我们将值函数V_t定义为一个总和。
 
- expected portfolio value and a sum of discounted variances of， the hedge portfolio at re-h times。 As a consequence of this specification， the expected， reward in our formulation has two terms。 Proportional to the expected drift and variance of the hedge。 portfolio as shown in the second equation here。 When we maximize this expression with respect to A_t。
+期望的投资组合价值和对冲投资组合在重新调整时的折现方差的总和。作为这种规定的结果，我们的公式中的期望回报有两项，分别与对冲投资组合的期望漂移和方差成正比，如第二个方程所示。当我们最大化这个表达式关于A_t时。
 
- mathematically it's identical to the setting of Markovitz， portfolio analysis。 which maximizes risk adjusted， portfolio returns for the case of stock analysis。 So the objective function here looks simultaneously at the。 risk and retrains of the hedge portfolio。 And clearly。
+从数学上讲，这与马克维茨投资组合分析的设置是相同的，马克维茨分析最大化股票分析中风险调整后的投资组合回报。所以这里的目标函数同时考虑了对冲投资组合的风险和回报。显然，
 
- this is different from the discrete time black-shoules， model。 where we only looked at the risk of the hedge， portfolio。 But if we want to benchmark our model formulation against the， discrete time black-shoules model。 we can simply zero out， this additional term by setting their mu equal to R or。
+这与离散时间的布莱克-斯科尔斯模型不同。在该模型中，我们只关注对冲投资组合的风险。但如果我们想将我们的模型与离散时间布莱克-斯科尔斯模型进行基准比较，我们可以通过将它们的mu设为R或零来简单地消除这一附加项。
 
- alternatively by taking the limit of lambda going to infinity。 Both limits will achieve the same goal。 That is they will enforce a pure risk-based view of the。 hedging and therefore will be consistent with our previous， discrete time black-shoules model。 So our hedge formula reproduces the pure risk-based hedge of the， discrete time black-shoules model。
+另外，通过取lambda趋于无穷大的极限，这两个极限将达到相同的目标。也就是说，它们将强制执行纯粹基于风险的对冲视角，因此与我们之前的离散时间布莱克-斯科尔斯模型一致。因此，我们的对冲公式再现了离散时间布莱克-斯科尔斯模型中的纯粹风险对冲。
 
- but it can also be used， when we not only looking at the risk in the option。 For example。 if options are used as investment vehicles， then we would need to look at both risk and retrains of。 options。 The classical black-shoules model is not able to address this。 case as it directly goes to the continuous time limit where， everything。
+但它也可以在我们不仅仅关注期权风险的情况下使用。例如，如果期权被用作投资工具，那么我们就需要同时考虑期权的风险和回报。经典的布莱克-斯科尔斯模型无法处理这种情况，因为它直接进入连续时间极限，在那里一切都
 
- including all stocks and all options， has the， same risk-creature return R。 Therefore。 when people try to have a framework for speculation。 with options starting with the black-shoules model， they have。 to rely on various ad hoc modifications of the original， model。
+包括所有股票和所有期权，具有相同的风险调整回报R。因此，当人们尝试为期权投机建立框架时，通常会从布莱克-斯科尔斯模型开始，但他们必须依赖于对原始模型的各种临时修改。
 
- But here we do not need any such ad hoc modifications because， our setting here is more general。 And in the general case， it optimizes a risk-adjusted。 return of the hedge portfolio rather than just risk。 So a pure hedge-based hedging of the classical black-shoules。
+但在这里我们不需要任何此类临时修改，因为我们的设置更为一般化。在一般情况下，它优化的是对冲投资组合的风险调整回报，而不仅仅是风险。因此，经典布莱克-斯科尔斯模型的纯对冲对冲。
 
- model is just a special case here which can be reproduced by。 setting mu equal to R in the optimal hedge formula。 。 。
+该模型只是这里的一个特例，可以通过在最优对冲公式中将mu设为R来再现。
 
 ![](img/d57037930e994e9b3e649ab1c5c21ebf_1.png)
 
- 。 。 you， [BLANK_AUDIO]。
+。 。 你，[BLANK_AUDIO]。
 
 ![](img/d57037930e994e9b3e649ab1c5c21ebf_3.png)

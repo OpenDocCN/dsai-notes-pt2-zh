@@ -1,41 +1,41 @@
-# P24：RL Approach - Stochastic Approximations - 兰心飞侠 - BV14P4y1u7TB
+# P24：RL方法 - 随机逼近 - 兰心飞侠 - BV14P4y1u7TB
 
- So in the last video we talked about the setting of batch reinforcement learning and what sort of data it works with。 Now let's talk about how reinforcement learning works。 When the model is unknown。 we still deal with the same Bauleman-Optimality equation that we had before。 To remind you this equation， it says that the time t optimal q function is equal to the expected optimal reward。
+在上一段视频中，我们讨论了批量强化学习的设置以及它使用的数据类型。现在让我们谈谈强化学习是如何工作的。当模型未知时，我们依然处理之前提到的Bauleman最优性方程。为了提醒你们，这个方程说明了，时间t的最优q函数等于最优奖励的期望值。
 
- plus the discounted expected value of the next step optimal q function。 Now let's pay attention to this expectation sign entering the right hand side of this equation。 This is a one-step expectation involving the next step qualities。 which is conditional on the information ft available at time t。 If we know the model。
+再加上下一步最优q函数的折现期望值。现在，让我们注意到这个期望符号进入了这个方程的右侧。这是一个涉及下一步品质的单步期望值，它是基于时间t时刻可用的信息ft条件下的。如果我们知道模型。
 
- this conditional one-step expectation can be calculated exactly in least in theory。 For example。 for a discrete state model and given a current state to compute the right hand side of the Bauleman-Optimality equation。 we would simply sum up over all possible next states with the corresponding transition probabilities as weights in this sum。 On the other hand， if we deal with a continuous state model then the calculation of expectations should involve integrals instead of sums。
+这种条件性的一步期望值在理论上可以精确计算。例如，对于一个离散状态模型，在给定当前状态的情况下计算Bauleman最优性方程的右侧，我们只需要对所有可能的下一状态进行求和，并将相应的转移概率作为加权求和的权重。另一方面，如果我们处理的是一个连续状态模型，那么期望值的计算应该涉及积分而非求和。
 
- But again， if the model is known， such integrals can be computed in a straightforward way at least in theory。 But what about the case when we do not know the model？ Well。 in this case we can rely on the most common trick of statistics and machine learning。 which amounts to a place in theoretical expectations with empirical means。
+但同样，如果模型是已知的，这些积分在理论上至少可以简单计算。但如果我们不知道模型该怎么办呢？好吧，在这种情况下，我们可以依赖统计学和机器学习中最常见的技巧，即用经验均值来替代理论期望值。
 
- So if we have samples that can be expressed as values of a term center in this sum here。 then an estimate of the optimal q function can be obtained as an empirical mean of such values。 Please note that this is in fact what Monte Carlo simulation does。 In our previous approach based on dynamic programming we first simulated four paths of the underlying stock as t from known dynamics。
+所以，如果我们有可以表示为此求和中的某个项值的样本，那么最优q函数的估计可以通过这些值的经验均值来获得。请注意，实际上这就是蒙特卡罗模拟的工作原理。在我们之前基于动态规划的方法中，我们首先通过已知的动态模拟了基础股票的四条路径。
 
- and after that treated these generated samples as data to numerically compute or estimate the option price and hedge。 Now instead of generated data for the history of stock prices。 in the setting of reinforcement learning we have actual price histories。 as a part of our information set FT for reinforcement learning that we discussed in the previous video。
+然后，我们将这些生成的样本当作数据来数值计算或估算期权价格和对冲。现在，代替生成的股票价格历史数据，在强化学习的设置中，我们有实际的价格历史数据，作为我们信息集FT的一部分，正如我们在前一段视频中讨论的那样。
 
- So if you absorb stock prices and rewards you might be able to rely on empirical means to estimate the right-hand side of the Bellman-Eptimality equation。 and hence to estimate the optimal q function at time t。 But now what about situations where we do not have a fixed historical data set to compute empirical means？
+所以，如果你吸收了股票价格和奖励，你可能能够依赖经验方法来估算Bellman最优性方程的右侧，从而在时间t估算最优q函数。但现在，假如我们没有一个固定的历史数据集来计算经验值，该怎么办呢？
 
- For example for online reinforcement learning an agent interacts with the environment in real time。 so that amount of available data increases with time。 Now the question is can we just sample based estimation of expectations to handle such settings？
+例如，在在线强化学习中，智能体与环境实时互动，因此可用数据的量随时间增加。那么问题是，我们能否仅通过样本估计期望值来处理这种设置呢？
 
- And the answer to this question is yes this is indeed possible and this is achieved using the so-called stochastic approximations。 The most well-known stochastic approximation is called the Robins Monroe algorithm。 The Robins Monroe algorithm estimates the mean without directly some any samples but instead adding data points one by one。 Each time where the data point the algorithm iterates to the next step so we can introduce the index k as both the iteration number and the number of data points in the data set。
+对这个问题的答案是肯定的，确实是可能的，这通过所谓的随机近似法来实现。最著名的随机近似法叫做**Robins Monroe算法**。**Robins Monroe算法**在不直接从样本中采样的情况下估计均值，而是一个一个地添加数据点。每次添加一个数据点，算法就会迭代到下一步，因此我们可以将索引k既作为迭代次数，也作为数据集中的数据点数。
 
- If we have the total of k points in the data set the algorithm can continue for all values of k between one and capital K。 In each step iterative updates the Ryan Castimation of the mean denoted here as hat x of k as shown in this equation。 Now let's see what is what in this equation x k here stands for the kth data point and x k was a hat is the estimation of the mean at the k step。 Now parameter alpha k which should be between 0 and 1 is called the learning rate and it describes how much the estimation of the mean should be updated after absorbing the single additional point x k。
+如果数据集中的总点数为k，算法可以对介于1和大K之间的所有k值进行迭代。在每一步中，算法会更新**Ryan Castimation**的均值估计，这里用帽子x表示第k步的估计值，如下面的方程所示。现在让我们看看这个方程中每个部分的含义，x k代表第k个数据点，而x k的帽子是第k步的均值估计。接下来，参数alpha k应当介于0和1之间，被称为学习率，它描述了在吸收单个附加点x k后，均值估计应更新多少。
 
- Please note that the upper script k in alpha k this means that the learning rate depends on the iteration number。 So if the learning rate is small the running estimate of the mean changes only a bit with each new observation while the changes larger if we take a larger learning rate。
+请注意，alpha k中的上标k表示学习率依赖于迭代次数。因此，如果学习率较小，那么每次新的观察数据加入时，运行中的均值估计变化很小，而如果学习率较大，变化会较大。
 
- Now the most interesting and useful fact about such simple update rule for the running mean is that it converges to a true mean with probability one under certain conditions。 These conditions were found by Robinson Munro and are shown here。 What they mean is that parameters alpha k should decrease sufficiently fast with the iteration number k so that the infinite sum of alpha k squared would be finite。 So one can take some simple parameterization also sometimes called scheduling for the learning rate alpha k。
+现在，关于这种简单的运行均值更新规则，最有趣和有用的事实是，在某些条件下，它以概率1收敛到真实均值。这些条件由**Robinson Munro**发现，并在此展示。这些条件的含义是，参数alpha k应该随着迭代次数k的增加而足够快速地减小，以确保alpha k的平方的无限和是有限的。所以，我们可以采取一些简单的参数化方法，通常也称为学习率的调度。
 
- For example we can make it fall as a fractional function of k parameterized by some hyper parameters。 The original choice of Munro and Robbins is shown here it's given by a constant alpha between 0 and 1 and divided by k。 In other situations depending on the actual data generating algorithm other schedule and schemes for alpha k can work better。 In general this means that learning rate alpha k is not universal but specific to a problem and it may require some experimentation when you want to apply it for your particular domain。
+例如，我们可以使其随着k的增大而呈分数形式衰减，并由一些超参数进行参数化。**Munro 和 Robbins**的原始选择在此展示，它由一个常数alpha（介于0和1之间）除以k来定义。在其他情况下，根据实际的数据生成算法，alpha k的其他调度方案可能效果更好。通常来说，这意味着学习率alpha k不是通用的，而是特定于某个问题的，在应用于你的具体领域时可能需要一些实验。
 
- Finally I want to emphasize that the Robbins Munro algorithm is an online algorithm that is best suitable for a reinforcement learning agent that interacts with its environment in real time。 However upon a proper generalization we can extend it to an offline setting as well。
+最后，我要强调的是，**Robbins Munro算法**是一种在线算法，最适合与环境实时交互的强化学习代理。然而，通过适当的泛化，我们也可以将其扩展到离线设置。
 
- If we work offline instead of a single data point we could pick a chunk of data to update model parameters。 We discussed advantages of using such chunks of data also called mini batches in our previous course when we discussed the Kesti Gradient descent。
+如果我们进行离线工作，而不是使用单个数据点，我们可以选择一块数据来更新模型参数。在我们之前的课程中，当讨论**Kesti梯度下降法**时，我们也讨论了使用这种数据块（也叫做小批量数据）的优势。
 
- If you remember that we said that adding mini batches instead of single points makes updates less volatile。 While back there we discussed stability of gradients in optimization。 Here we discussed writing average updates but the effect of adding mini batches instead of single point is the same。 It's smoothed our variability of updates and hence it's a good thing if applied in moderation。
+如果你还记得我们之前提到过，使用小批量（mini batches）而不是单个数据点能使得更新更加稳定。在之前，我们讨论了梯度在优化中的稳定性。这里我们讨论的是写出平均更新，但使用小批量而非单个数据点的效果是相同的。它平滑了更新的波动，因此如果适度应用，它是一个好方法。
 
- Thank you。
+谢谢你。
 
 ![](img/b49b798200fc1ccc2e3e38b95f1749dc_1.png)
 
- you。
+你。
 
 ![](img/b49b798200fc1ccc2e3e38b95f1749dc_3.png)

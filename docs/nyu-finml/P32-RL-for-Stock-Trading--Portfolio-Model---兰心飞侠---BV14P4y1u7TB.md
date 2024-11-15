@@ -1,55 +1,47 @@
-# P32：RL for Stock Trading -Portfolio Model - 兰心飞侠 - BV14P4y1u7TB
+# P32：RL股票交易 - 投资组合模型 - 兰心飞侠 - BV14P4y1u7TB
 
- Now we will develop a simple stock portfolio model that we will use in our reinforcement learning approach。
+现在我们将开发一个简单的股票投资组合模型，我们将在强化学习方法中使用它。
 
 ![](img/3ed5a8ac8ca0c461f8f6f1e55c3f4ce9_1.png)
 
-
-
 ![](img/3ed5a8ac8ca0c461f8f6f1e55c3f4ce9_2.png)
 
- We assume a universe of end stocks or possibly other assets such as ETFs。 And denote the vector of prices at time T as P sub T。 So the vector P。 T size N with all elements being positive。 An investor can invest in stocks and in addition can keep wealth in a risk-free bank account。 cash account， that earns a risk-free interest rate RF。
+我们假设一个由最终股票组成的宇宙，或者可能是其他资产，如ETF。并将时间T时刻的价格向量表示为P sub T。因此，向量P T的大小为N，且所有元素均为正值。投资者可以投资股票，并且还可以将财富存放在无风险的银行账户中，即现金账户，该账户赚取无风险利率RF。
 
- We will denote this amount in cash as B sub T。 Now a vector X sub T will describe dollar positions in all assets。 so it also has size N。 The numbers of different stocks can be obtained now by dividing components of vector X T by market prices P T。 and rounding to nearest integer value。 Negative components of vector X T describe short positions in stocks and positive components are long positions。 Now a vector U sub T will describe traits made at the beginning of time step T。
+我们将这个现金金额表示为B sub T。现在，一个向量X sub T将描述所有资产中的美元头寸，因此它的大小也为N。不同股票的数量可以通过将向量X T的各个分量除以市场价格P T，并四舍五入到最接近的整数来得到。向量X T的负分量表示股票的空头头寸，正分量表示多头头寸。现在，向量U sub T将描述在时间步T开始时的操作。
 
- The values of positions X T right after traits are instantaneously deterministic。 so that the new value X T with the upper script plus right after the trait is simply given by the sum of X T and U T。 Traits in this model have costs and market inputs， which we will specify a bit later。 Now the total portfolio value is just the sum of all components of vector X T plus the amount of cash。
+操作后，向量X T的位置值是即时确定的，因此操作后的新值X T加上上标+，仅仅是X T和U T的总和。这个模型中的操作有成本和市场输入，我们将在稍后指定。现在，投资组合的总值就是向量X T所有分量的总和加上现金金额。
 
- We will write the sum of all components as a dot product of a vector of 1's and vector X T。 as shown in equation 2 here。 If we replace here values of X T and B T by their post-trait values X T plus and B T plus。 we can compute the value of the portfolio right after the trait， as shown in equation 3。 Now we assume that all changes in stock positions can only be financed from a cash position。
+我们将所有分量的和表示为1向量和向量X T的点积，如方程2所示。如果我们在这里将X T和B T的值替换为它们的后续操作值X T plus和B T plus，我们可以计算出操作后投资组合的价值，如方程3所示。现在我们假设所有股票头寸的变化只能通过现金头寸来融资。
 
- This is known as a self-financing portfolio。 As trading has costs。 we will have additional costs for trading that will be added later。 But for now we use the self-financing condition as shown in equation 4。 The meaning of this condition is that the portfolio value cannot instantaneously change simply by reshuffling the wealth between cash and stocks。
+这被称为自我融资的投资组合。由于交易存在成本，我们将增加交易成本，稍后会补充。然而，目前我们使用如方程4所示的自我融资条件。这个条件的意义在于，投资组合的价值不能仅仅通过在现金和股票之间重新分配财富而瞬间发生变化。
 
- It only changes as a result of random returns on stocks in a portfolio。 Portfolio changes are described in this model as follows。 After a rebalance of the portfolio at the beginning of time interval C。 it's followed by an investment period till the end of the interval C。
+它仅作为投资组合中股票的随机回报的结果发生变化。投资组合的变化在这个模型中描述如下：在时间间隔C开始时进行一次重新平衡，接着进入投资期，直到间隔C结束。
 
- We define returns of assets over this period in a usual way， as shown in equation 6。 The vector X T plus 1 for the beginning of the next period。 which is the same as the end of the current period， is then given by equation 7。 Please note that we use an element-wise multiplication here， also known as an other mark product。
+我们以通常的方式定义这一期间资产的回报，如方程6所示。下一个周期开始时的向量X T plus 1，与当前周期结束时相同，如方程7所示。请注意，我们在这里使用了元素级的乘法，也称为Hadamard积。
 
- And it's denoted by an encircled dot in this equation。 Next we need to specify an asset return model for vector R T。 We will use a very simple parameterization shown in equation 8 on this slide。 What this equation says is that the excess return， that is the difference of R T and R F。
+在这个方程中通过一个圈起来的点表示。接下来，我们需要为向量 R T 指定一个资产回报模型。我们将使用这个幻灯片上公式 8 中所示的一个非常简单的参数化。这个方程的意思是，超额回报，即 R T 和 R F 的差值。
 
- is equal to a linear combination of some vector of predictors that we call Z T。 and vector U T of trades at time E T。 With certain weights。 The weight W T will stand for a matrix of weights for predictors Z T and matrix M T is a matrix of market input for trades。 And finally， epsilon T will be a vector of residuals with mean 0 and covariance sigma T。
+等于一个由我们称之为 Z T 的预测器向量和时间 E T 时刻交易向量 U T 的线性组合，带有某些权重。权重 W T 代表了预测器 Z T 的权重矩阵，而矩阵 M T 则是交易的市场输入矩阵。最后，epsilon T 是一个残差向量，均值为 0，协方差为 sigma T。
 
- Now we can compute the new portfolio value at time T plus 1。 This calculation is shown in equation 10。 We just multiply the vector X T by a vector of 1s。 and using the expression for X T plus 1， this gives final expression in equation 10。 Now we can compute the change of the portfolio in excess of a risk-free growth。
+现在我们可以计算时间 T 加 1 时的新的投资组合价值。这个计算在公式 10 中给出。我们只需将向量 X T 乘以一个由 1 组成的向量，并使用 X T 加 1 的表达式，这就给出了公式 10 中的最终表达式。现在我们可以计算投资组合在超出无风险增长部分的变化。
 
- And this is computed in equation 11。 Here we subtract the term 1 plus R F times VT from VT plus 1。 and using the self-financing condition， this produces the final expression in equation 11。 This relation can be applied at any time step except the very last one。 For the last time step we have to impose terminal conditions that would be appropriate for a setting we want to address。
+这在公式 11 中进行了计算。这里我们从 VT 加 1 中减去 1 加上 R F 乘以 VT 的项。并利用自融资条件，这就得出了公式 11 中的最终表达式。这个关系可以应用于任何时间步，除了最后一个时间步。对于最后一个时间步，我们必须施加适当的终端条件，以适应我们想要解决的情境。
 
- For example， if we deal with the index tracking or a similar benchmark matching problem。 then terminal values X T with capital T should match a given values X sub B of a benchmark portfolio。 For example S and P 500 portfolio。 This can be used to fix the last action U T as shown in equation 12。 So that the last action is deterministic and therefore it drops out from the problem of action optimization。
+例如，如果我们处理指数跟踪或类似的基准匹配问题，那么终端值 X T（带有大写字母 T）应该与基准投资组合的给定值 X sub B 匹配。例如 S&P 500 投资组合。这可以用来确定最后的操作 U T，如公式 12 所示。这样，最后的操作是确定性的，因此它从操作优化问题中消失。
 
- which should be solved for the remaining actions U0 to U sub T minus 1。 For other setings we can formulate different terminal conditions。 For example。 for an optimal investment portfolio we can impose zero terminal conditions for X sub capital T。 meaning that all stock positions will be traded for cash at time T。
+需要求解剩余的操作 U0 到 U sub T 减 1。对于其他情况，我们可以制定不同的终端条件。例如，对于一个最优投资组合，我们可以对 X sub 大写 T 施加零终端条件，意味着所有股票头寸将在 T 时刻被换成现金。
 
- These that does not necessarily mean that we have to really close all positions at time T。 but merely this condition serves as a way to express the value in stocks in terms of a cash value。 For the optimal portfolio liquidation problem we also impose zero terminal conditions on X sub capital T。
-
-
+这些条件并不意味着我们必须在 T 时刻真正关闭所有头寸，而仅仅是这个条件作为一种方式来表示股票的价值，以现金值的形式表达。对于最优投资组合清算问题，我们还会对 X sub 大写 T 施加零终端条件。
 
 ![](img/3ed5a8ac8ca0c461f8f6f1e55c3f4ce9_4.png)
 
- Finally we can discuss initial conditions for the problem。 This will be specific to a particular setting on which we consider the general portfolio optimization problem。 For example， if we deal with an optimal stock execution an initial condition will be an initial dollar value of a number of stocks that we need to sell。 If we deal with a portfolio liquidation problem then an initial condition will be given by an initial portfolio。
+最后我们可以讨论问题的初始条件。这将根据我们所考虑的特定设置而有所不同，通常涉及一般的投资组合优化问题。例如，如果我们处理的是最优股票执行问题，那么初始条件将是我们需要卖出的若干股票的初始美元价值。如果我们处理的是投资组合清算问题，那么初始条件将由初始投资组合给出。
 
- For the problem of optimal portfolio management an initial condition can be an all cash initial position B0 or it can start with some initial portfolio X0。 And finally for the problem of index or a benchmark tracking initial conditions can also be formulated either as an all cash or as a given initial portfolio X0。
-
-
-
-
+对于最优投资组合管理问题，初始条件可以是全现金的初始头寸B0，也可以是从某个初始投资组合X0开始。最后，对于指数或基准跟踪问题，初始条件也可以设定为全现金或给定的初始投资组合X0。
 
 ![](img/3ed5a8ac8ca0c461f8f6f1e55c3f4ce9_6.png)
 
- [BLANK_AUDIO]。
+[BLANK_AUDIO]。
 
 ![](img/3ed5a8ac8ca0c461f8f6f1e55c3f4ce9_8.png)

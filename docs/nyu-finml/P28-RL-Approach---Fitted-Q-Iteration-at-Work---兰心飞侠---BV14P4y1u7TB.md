@@ -1,55 +1,51 @@
-# P28：RL Approach - Fitted Q-Iteration at Work - 兰心飞侠 - BV14P4y1u7TB
+# P28：RL 方法 - 拟合 Q 迭代工作原理 - 兰心飞侠 - BV14P4y1u7TB
 
- So in the previous video， we converted our problem to a more standard formulation。 where the unknown Q function is expanded in a new basis psi of dimension 3 times m。 where parameters w that are given by parameters of the original matrix wt are stored commonwise。 Now， our problem is to compute this key-ficient wt。 As in a dynamic programming solution。
+所以在之前的视频中，我们将问题转化为更标准的形式，其中未知的 Q 函数在一个新的基函数 psi（维度为 3 * m）中展开，原始矩阵 wt 的参数 w 被按常数存储。现在，我们的问题是计算这个关键系数 wt。就像在动态规划解法中一样。
 
- we compute this key-ficient recursively by going backwards in time。 starting from time capital T minus 1， then capital T minus 2。 and so on all the way to the current time t equals 0。 The way to do it is similar to what we did with the dynamic programming approach。 Again。
+我们通过从时间 T-1 开始，依次向后递归计算这个关键系数，一直到当前时间 t = 0。做法类似于我们在动态规划方法中做的那样。再次如此。
 
- we look at the Bellman-Eptimality equation shown here。 It says that the time t Q function is given by the expectation of the expression in the right-hand side of this equation。 Now， we can interpret it as regression of this expression on the unknown function Qt。 that is written as an expansion in state-action basis function psi n。
+我们查看这里显示的贝尔曼最优性方程。它表示时间 t 的 Q 函数由该方程右侧表达式的期望给出。现在，我们可以将其解释为对这个表达式在未知函数 Qt 上的回归，这个函数表示为状态-动作基函数 psi n 的展开。
 
- where epsilon t would be a random noise time t would mean 0。 These two equations are clearly equivalent in expectations。 because if we take expectations of both sides of the second equation。 we recover the Bellman-Eptimality equation。 So now we have a standard regression problem for K-ficient's wt in this setting。
+其中 epsilon t 是一个随机噪声，时间 t 表示 0。这两个方程在期望上显然是等价的，因为如果我们对第二个方程两边取期望，就能恢复贝尔曼最优性方程。因此，现在我们有了一个标准的回归问题，用于在这个设置中计算 K 系数 wt。
 
- Let's note that this is both similar to and also different from how we computed the optimal Q function。 with the optimal action in our dynamic programming solution in the last week。 There we had the regression problem approximation for the Bellman equation for the optimal Q function evaluated at the optimal action at star。 Respectively， we expanded this Q function in a set of basis function phi n of x。
+注意，这与我们上周在动态规划解法中计算最优 Q 函数的方式既相似又不同。那里我们有了贝尔曼方程的回归问题逼近，用于最优动作 at star 处评估的最优 Q 函数。我们分别在一个基函数集合 phi n（x）中展开了这个 Q 函数。
 
- because the action at here was fixed to be the optimal action at star。 Rewards， rt。 were computed there as a part of the solution to the problem。 Now。 all these can be compared with the present reinforcement learning setting。 This time we compute the optimal Q function using a regression interpretation of the Bellman equation for arbitrary actions at。
+因为这里的动作被固定为最优动作 at star。奖励 rt 在那里作为问题的解的一部分进行了计算。现在，所有这些可以与当前的强化学习设置进行比较。这一次，我们使用贝尔曼方程的回归解释来计算最优的 Q 函数，对于任意的动作 at。
 
- and not just for the optimal action at star， as we had for the dynamic programming solution。 The other and related difference is that now our function approximation for the Q function relies on expansion in state action basis function psi m。 rather than state dependent basis functions phi n。 as was the case with the dynamic programming solution。 And furthermore。
+而不仅仅是针对最优动作 at star，正如我们在动态规划解法中所得到的那样。另一个相关的区别是，现在我们的 Q 函数的函数逼近依赖于状态-动作基函数 psi m 的展开，而不是动态规划解法中的基于状态的基函数 phi n。而且。
 
- while in the dynamic programming approach we computed the rewards rt in the reinforcement learning setting。 both the rewards rt and actions at are observed。 So， because we reduced the problem to regression。 we can now find the coefficients wn by minimization of the objective function shown in this equation。 Now， this relation holds for any data， including data that may be of policy。
+而在动态规划方法中，我们在强化学习设置中计算了奖励 rt，两个奖励 rt 和动作 at 都是观察到的。因此，因为我们将问题简化为回归问题，我们现在可以通过最小化目标函数来找到系数 wn，目标函数如本方程所示。现在，这个关系适用于任何数据，包括可能是策略的数据。
 
- that is collected under a sub-optimal policy。 Before we move to this general case。 let's discuss what we should get for a simpler case of own policy learning。 when all recorded actions are optimal actions。 For this case。 we simply have to substitute at by at star in the previous equation。
+这是在一个次优策略下收集的。 在我们讨论一般情况之前，先来讨论一个更简单的自有策略学习情况，当所有记录的动作都是最优动作时。 对于这种情况，我们只需要在前面的方程中将at替换为at星。
 
- Then we have the first equation shown here。 But now we can see that it's almost identical to the objective function that is shown in the second equation here。 and this is the objective function which we had in our dynamic programming solution。 The only difference is in the last term in these two equations。 but this is exactly the term that is optimized by a choice of parameters。
+然后我们有这里显示的第一个方程。 但现在我们可以看到它几乎与这里显示的第二个方程中的目标函数完全相同，且这正是我们在动态规划解法中所使用的目标函数。 唯一的区别是在这两个方程的最后一项，但这正是通过选择参数来优化的项。
 
- If we have infinite number of observations， then these two objective functions will have the same minimum。 because the last terms can be made conciding pointwise in this limit。 Therefore。 both methods converge asymptotically to the same solution if we deal with the own policy coloring。 But because coloring is an off-policy algorithm， and because the original optimization problem for K-efficient WTS convex。
+如果我们有无限多的观测，那么这两个目标函数将有相同的最小值，因为在这个极限下，最后的项可以在逐点上趋于一致。 因此，如果我们处理的是自有策略着色，那么两种方法会渐近地收敛到相同的解。 但是，由于着色是一个离策略算法，而且K-有效WTS的原始优化问题是凸的，
 
- we are guaranteed that the off-policy method isymptotically converges to the same solution。 We can also find the explicit link between the two solutions for large but finite n。 if we impose the equality between them in the least square sense。 And this will give us this objective function in the first equation here。
+我们可以保证离策略方法渐近地收敛到相同的解。 如果我们在最小二乘意义下对它们施加等式，也可以找到两种解法之间的显式联系，即使n很大但有限。 这将给我们第一个方程中的目标函数。
 
- So when it for K-efficient WTS in terms of K-efficient's omega T of the DP solution。 we obtain the second equation here。 This equation gives the solution of the reinforcement learning problem for unpalice learning in terms of the dynamic programming solution。
+所以，当针对K-有效WTS的K-有效omega T表示时，我们得到这里的第二个方程。 这个方程给出了强化学习问题在自有策略学习情况下的解，它是通过动态规划解法得到的。
 
- and this relation becomes exact in the limit when n goes to infinity。 Now let's come back to a more general case of finite n and off-policy learning that is given by our least square optimization for K-efficient's WTS。 This case is also easy to solve。 Similar to our dynamic programming solution。 we introduced Matics ST and Vector MT that are shown in these equations。
+这个关系在n趋于无穷时变得准确。 现在，让我们回到更一般的有限n和离策略学习情况，这由我们对K-有效WTS的最小二乘优化给出。 这个情况也很容易解决。 类似于我们的动态规划解法，我们引入了矩阵ST和向量MT，它们在这些方程中显示。
 
- and expressed in terms of new basis functions psi n。 Then the optimal weights WT star。 simply given by the inverse of Matics ST times Vector MT。 Once we have the K-efficient WT star。 we know the optimal Q function and also know the elements of Vector U underscore W。 that we introduced earlier。 We compute this optimal Q function for the current time step T。
+并用新的基函数psi n表示。 然后，最优权重WT星仅由矩阵ST的逆乘以向量MT给出。 一旦我们得到K-有效WT星，我们就知道最优Q函数，并且还知道我们之前引入的向量U下标W的元素。 我们计算当前时间步骤T的最优Q函数。
 
- and then we move to the previous time step T minus 1 in our backward recursion。 But now。 according to the Bellman-Optimality equation， we will need the optimal Q function at the optimal action AT star。 from the next time step T to solve for K-efficient's WT minus 1 for the current time step。 How exactly we do it is very important for the algorithm， so let's discuss this next。
+然后我们在回溯递归中回到前一个时间步骤T减1。 但是现在，根据贝尔曼最优性方程，我们需要在下一个时间步骤T处的最优动作AT星上得到最优Q函数，以便解决当前时间步骤的K-有效WT减1。 我们如何做这一点对于算法非常重要，所以接下来我们来讨论这一点。
 
- Once we solve for K-efficient's WT for the current time step T。 we can compute the elements of Vector U underscore W。 that we introduced earlier and write the optimal Q function for the next time step T plus 1。 as the second order polynomial in components of this vector， as shown in this equation。
+一旦我们求解出当前时间步 T 的 K-efficient WT，我们就可以计算我们之前介绍过的向量 U_underscore W 的元素，并将下一个时间步 T+1 的最优 Q 函数写成该向量分量的二次多项式，如此方程所示。
 
- But the critical point is that it would be completely wrong to use a point of a maximum of this expression as a function of AT plus 1 star。 as such optimal value， because this would amount to using the same data set to estimate both the optimal action and the optimal Q function。
+但关键点是，使用该表达式的最大值点作为 AT+1* 的最优值是完全错误的，因为这相当于使用相同的数据集来估计最优行动和最优 Q 函数。
 
- This would lead to a potential overestimation of a QT plus 1 star due to Jensen's inequality and convexity of the MOCs function。 The correct way to proceed is to plug there our previous analytical solution for AT plus 1 star shown here and deploy it at the previous time step。
+这将导致由于詹森不等式和 MOCs 函数的凸性，QT+1*的潜在高估。正确的做法是将我们之前的分析解 AT+1* 插入其中，并在前一个时间步部署它。
 
- Due to availability of the optimal analytical action。 we do not face in our setting a potential overestimation problem。 because now we do not use the same data set to estimate two functions。 The second calculation of the optimal action is now analytical。
+由于可以得到最优的分析行动，我们在这个设置中不会遇到潜在的高估问题，因为现在我们不会使用相同的数据集来估计两个函数。第二次计算最优行动现在是分析性的。
 
- And here I would like to note that a potential overestimation is a classical problem of Q learning。 that is sometimes addressed using various numerical tricks such as， for example， double Q learning。 You can read more on such methods in an additional reading for this week。 but in our framework such tricks are not needed because the analytical optimal action is available。
+在这里，我想指出，潜在的高估是 Q 学习的经典问题，有时会通过各种数值技巧来解决，例如双 Q 学习。你可以在本周的附加阅读中了解更多此类方法，但在我们的框架中，不需要这些技巧，因为可以获得分析的最优行动。
 
- This produces a numerical stable solution to the model。 So to summarize。 we saw how to make a one backwards step in a fitted Q iteration method。 Going in this way all the way back to the current time T equals zero， we get the optimal option。 hedge and price。 But this time in a completely data driven and model independent way due to the fact that fitted Q iteration is a model free and off policy algorithm。
-
-
-
-
+这会产生一个数值稳定的模型解。因此，概括来说，我们看到了如何在拟合 Q 迭代方法中向后迈出一步。通过这种方式一直回溯到当前时间 T 等于零，我们得到最优的期权、对冲和价格。但这次是完全由数据驱动且与模型无关的方式，因为拟合 Q 迭代是一个无模型且脱离策略的算法。
 
 ![](img/b47add49eadad5b358d1dbc96b225e78_1.png)
 
- [BLANK_AUDIO]。
+[BLANK_AUDIO]。
 
 ![](img/b47add49eadad5b358d1dbc96b225e78_3.png)
