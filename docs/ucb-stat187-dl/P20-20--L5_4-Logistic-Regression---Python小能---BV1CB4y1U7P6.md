@@ -1,111 +1,103 @@
-# P20：20. L5_4 Logistic Regression - Python小能 - BV1CB4y1U7P6
+# P20：20. L5_4 逻辑回归 - Python小能 - BV1CB4y1U7P6
 
- So logistic regression， if you think about it， does something。 it needs to solve a very important problem。 If we have regression。 maybe one-dimensional multiple dimensions， well， we're basically trying to come up with estimates for a continuous value。 right？ Like house prices or maybe height and weight of a person， or I don't know， maybe， you know。
+所以如果你考虑一下逻辑回归，它会做一些事情，它需要解决一个非常重要的问题。如果我们有回归，可能是单维度也可能是多维度，那么我们基本上是在尝试为一个连续值做估计，对吧？比如房价，或者一个人的身高体重，或者我不知道，也许是别的。
 
- number of times the sunshine per day and the temperature， you know， that would be， you know。 two variables or maybe the value of maybe， ten different securities on the stock exchange per day。 So any of those things are nice regression problems。 For classification。 you want to predict like a discrete category， like is it a cat or a dog， or what are the digits？ Or。
+每天的阳光时长和温度，你知道，这将是两个变量，或者可能是每日股票市场上十种不同证券的价值。所以这些都是很好的回归问题。对于分类，你需要预测一个离散的类别，比如它是猫还是狗，或者是什么数字？
 
- you know， if you have ImageNet， then you might get a thousand classes。 And having a large。 actually the original ImageNet data set has more than a thousand， classes。 probably over ten thousand， but basically you are going to get a categorical discrete output。
-
-
+你知道，如果你使用 ImageNet，那么你可能会得到一千个类别。而且实际上，原始的 ImageNet 数据集有超过一千个类别，可能超过一万个，但基本上你将会得到一个类别性的离散输出。
 
 ![](img/6e1e8cce5c2babed73bbe0b1988a0ba7_1.png)
 
- There are lots of different others。 So for instance on Kaggle。 you could try to classify proteins in terms of what they， are and what they do。 Or you could find out what type of malware you're dealing with。
+还有很多其他不同的例子。例如，在 Kaggle 上，你可以尝试根据蛋白质的特性和功能来进行分类，或者你可以找出你正在处理的恶意软件的类型。
 
 ![](img/6e1e8cce5c2babed73bbe0b1988a0ba7_3.png)
 
- Or， you know， what are toxic Wikipedia commands in terms of， you know， which category they are。 Apparently there are prototypes like， hey， I'm not really trying to start an edit war。 but of course now I am， right？
-
-
+或者，你知道，哪些是有毒的 Wikipedia 命令，按它们属于哪种类别来划分。显然，有一些原型，比如，嘿，我并不是想开始一场编辑战争，但当然现在我就是了，对吧？
 
 ![](img/6e1e8cce5c2babed73bbe0b1988a0ba7_5.png)
 
- So to put that into perspective， so in regression， well。 we have like a natural scale typically in terms of， you know， the real value number。 And then the loss is often given to us in terms of， you know， differences between Y and F of X。 That may not always be the right loss。 For instance， if I look at the stock market。
+那么为了让这个更具象，回归中，我们通常有一个自然的尺度，通常是以实际的数值形式表示，然后损失通常是以 Y 和 F(X) 之间的差异来给出的。但这并不总是正确的损失。例如，如果我看看股市。
 
- it's probably going to be the difference of the logarithms that I care about。 Because whether I'm trading Amazon， which trades at $1，600 or whether I'm trading， I don't know。 Facebook， which is probably $100 or so。 But it doesn't matter。 If I， let's say。 or I take a penny stock， which trades for maybe $1 and is close to being delisted。
+我关注的可能是对数的差异。因为无论我是交易亚马逊（其交易价格为 $1,600）还是交易，我不知道，Facebook（大概是 $100 左右）。但这并不重要。如果我，假设，或者我买了一只可能仅值 $1 的便士股票，而且它快被退市了。
 
- For that penny stock， if it's value increases by maybe 50 cents， that's a massive move of 50%。 right？ And since I might be buying a lot of those， well， I just struck it rich and， you know。 on the other hand， if Amazon goes up by 50 cents， well， that means nothing really happened， right？
+对于那只便士股票，如果它的价值增加了 50 美分，那就是一个巨大的 50% 的涨幅，对吧？而且由于我可能会买很多这样的股票，那么我就发财了，反过来，如果亚马逊涨了 50 美分，那其实并没有发生什么特别的事情，对吧？
 
- Because the base price was so high。 So you care about relative changes。 So in that case。 you wouldn't look at differences between values， but you would probably look at maybe the log of the ratio as well after losses。 In classification， typically you have many classes and the score should somehow。 reflect the confidence that we have in this。 And this is awfully vague， so， what could we do？ Well。
+因为基础价格很高。所以你关注的是相对变化。在这种情况下，你不会看数值之间的差异，而是可能会看一下损失后比值的对数。在分类中，通常有许多类别，分数应该以某种方式反映我们对结果的信心。这其实是非常模糊的，那么我们该怎么办呢？嗯。
 
- the first thing we could do is we could just use the squared loss， right？ So I just encode。 you know， the classes with a vector of all 0s and 1， 1， right？ And every grace on it。 That sounds utterly weird， but people have done that。 And if you don't care about doing things particularly well， that actually works okay。
+我们可以做的第一件事就是使用平方损失，对吧？所以我只是对类进行编码，你知道，使用一个由所有 0 和 1、1 组成的向量，对吧？然后对每个梯度进行处理。这听起来非常奇怪，但人们已经这么做过了。如果你不在乎特别做得好，实际上这样也能起作用。
 
- So there are a couple of implementations， like for instance， VW for some time， use that， so WAPL。 WABL。 So there are plenty of reasons why， you might actually do that， and it's not too bad。 And you can even prove theorems that it's not too bad from the statistics side。 And then you just pick the largest output and that one wins。 But I would strongly advise against it。
+所以有几种实现方式，比如，VW 曾经一段时间使用过它，比如 WAPL、WABL。所以有很多原因为什么你可能会这么做，并且它也不算太坏。你甚至可以从统计学的角度证明它并不太坏。然后你只需选择最大的输出，那个输出就获胜。但我强烈建议不要这么做。
 
- but people do it nonetheless， okay。 You could pick something like an uncalibrated scale。 And this is by the way what a support vector machine would have done。 So you pick the largest output， but you want to make sure that the correct。 output is much larger than all the incorrect outputs。
+但人们还是这样做了，好吗？你可以选择一个未校准的尺度。顺便说一句，这正是支持向量机所做的事情。所以你选择最大的输出，但你希望确保正确的输出远大于所有错误的输出。
 
- And so what you have is you get this condition， OY minus OY。 is greater equal than some delta of Y and I。 And this delta tells me how bad it is to get things wrong。 So suppose you drive on a road and to your right hand side there's a cliff and。 to your left hand side there， maybe some lawn or whatever。 Then when you drive on this road。
+所以你得到的条件是，OY减去OY大于等于某个Delta Y和I之间的差值。这个Delta告诉我出错有多严重。假设你开车在一条路上，右边是悬崖，左边可能是草坪或者其他什么东西。那么当你开车在这条路上时。
 
- you will probably somewhat steer to the left。 Because it's not so bad if you drive into the lawn。 but it's pretty bad for， you if you fall down that cliff， right？
+你可能会稍微往左偏一点。因为如果你开到草坪上还不算太坏，但如果你掉下悬崖，那就对你来说很糟糕，对吧？
 
- So you will keep a larger margin relative to the outputs that will incur a large loss。 And under the right circumstances， you can engineer this loss function and。 this optimization problem in such a way that you can actually solve it efficiently。 And around maybe 2002， 2003， this was all the rage。 So there are probably about three。
+所以，你会保持一个相对较大的间隔，针对那些会产生大损失的输出。在适当的情况下，你可以设计这个损失函数和这个优化问题，使得你可以高效地解决它。大约在2002年、2003年左右，这一切都非常流行。所以大概有三种方法。
 
- four hundred papers which come up with， really nifty tricks on how to do this。 Of how to solve this with some mathematical programming on the inside and， beautiful math。 we all played this game and yeah， it was the right thing to do at， some time。 Okay， no。 but we're not going to do that here。
-
-
+四百篇论文提出了许多巧妙的技巧，讲述了如何解决这个问题，如何通过内部的一些数学编程以及优美的数学来解决这个问题。我们都玩过这个游戏，嗯，是的，那个时候做这个是对的。好吧，不是的。我们在这里不会这么做。
 
 ![](img/6e1e8cce5c2babed73bbe0b1988a0ba7_7.png)
 
- Instead， we are going to use something like a calibrated loss scale。 And this is just a very simple softmax， yes。 >> What is the output？ >> Oh， it's just the output。 So if you look at the diagram on the right， so we have X1 through X4， then we have O1 through O3。 these are the outputs。 >> The classes？ >> No， these are just outputs of the network， right？
+相反，我们将使用类似于校准损失尺度的东西。这只是一个非常简单的 softmax，没错。 >> 输出是什么？ >> 哦，它只是输出。所以如果你看看右边的图表，我们有 X1 到 X4，然后我们有 O1 到 O3。这些就是输出。 >> 类别？ >> 不，这些只是网络的输出，对吧？
 
- So these are just for the three neurons， the output neurons。 that are just the values that they produce。 But they have to name the variable somehow。 so it's just that。 Don't worry， it has nothing to do with big O notation。 By the way。 you do not need complexity theory to pass this class。 Somebody was very worried about that。
+这些只是三个神经元的输出神经元，它们产生的值。但它们必须以某种方式命名变量，所以就这样。别担心，它和大 O 符号没有关系。顺便说一下，你不需要复杂性理论来通过这门课。有人对此非常担心。
 
- You don't need complexity theory for this class， this would be overkill。 But in here。 it's really just a variable name。 So the softmax of the output is given by just。 exponentiating every coefficient individually。 So that ensures that all those things are non-negative。 That's great， because we want probabilities。 And then dividing it by the sum over all those terms。
+你不需要复杂性理论来上这门课，这会显得过于复杂。但在这里，实际上它只是一个变量名。所以输出的softmax就是通过对每个系数分别做指数运算得到的。这样可以确保所有这些值都是非负的。这很好，因为我们需要概率。然后再将它们除以所有项的总和。
 
- So quite honestly， if you had to hand the engineer something that maps a vector， to a probability。 you might have done something like that as well yourself。 Maybe rather than E。 you would have picked maybe OY squared， divided by the sum of the O's， you could have done that too。 But this one actually has a little bit nicer properties in terms of computing derivatives and so on。
+所以说实话，如果你必须给工程师一个映射向量到概率的东西，你可能也会做类似的事情。也许你不会选E，而是选择OY平方，除以所有O的总和，你也可以这么做。但这个方法在计算导数等方面实际上具有一些更好的性质。
 
- And the good thing is the negative log likelihood， this is left term down there。 This is a formula you should absolutely remember。 It will pursue you throughout the entire career and stats。 It's about the simplest exponential family you can imagine。 You will see this thing again。 Now。 okay， so it's everything sort of kind of clear in terms of logistic regression and what we're doing here。
+好消息是，负对数似然，这个是下面的项。这个公式你绝对应该记住。它将伴随你整个职业生涯以及统计学。它是你能想象的最简单的指数族分布。你以后还会看到这个。好了，嗯，所以在逻辑回归和我们现在做的事情方面，一切是否有点清晰了？
 
- So that this is a probability envelope。 Okay。 >> [INAUDIBLE]， >> Exactly。 So that would be。 and yeah， so the typo is one of the reasons why I don't put up the slides before the class。 I hope that there will be fewer typos after the class。
+所以这是一个概率包络。好。>> [INAUDIBLE]，>> 完全正确。所以那就是。对，拼写错误是我不在课前发布幻灯片的原因之一。我希望课后拼写错误会少一些。
 
 ![](img/6e1e8cce5c2babed73bbe0b1988a0ba7_9.png)
 
- You have to be right。 Well， I could just fix this now。 [BLANK_AUDIO]。
+你必须是对的。嗯，我现在就可以修正这个问题。[BLANK_AUDIO]。
 
 ![](img/6e1e8cce5c2babed73bbe0b1988a0ba7_11.png)
 
-
-
 ![](img/6e1e8cce5c2babed73bbe0b1988a0ba7_12.png)
 
- And there we go。 Okay， good。
+然后就这样。好，挺好。
 
 ![](img/6e1e8cce5c2babed73bbe0b1988a0ba7_14.png)
 
- So now if we have that， well， so this is a nice loss function and we can plug that in。 And the good thing is every decent deep learning toolkit comes with an efficient implementation of this。 This is now， I think also explaining a little bit better why we talked about numerical stability and。 all of that about a week ago， right？ Because if any of those outputs are really large， then well。
+所以现在如果我们有这个，嗯，这个是一个不错的损失函数，我们可以将它代入。而且好消息是，每个合格的深度学习工具包都会提供这个的高效实现。我认为这也在解释为什么我们大约一周前谈到数值稳定性，以及所有那些问题，对吧？因为如果这些输出中有任何一个特别大，那么……
 
- things can get unstable。 Now， quite often people don't actually refer to this loss， but。 they refer to something called the cross entropy loss。 This cross entropy loss looks just like the loss that we had before。 Just that rather than a single Y， we might now have an entire probability distribution of a label。
+事情可能会变得不稳定。现在，很多时候人们并不直接引用这个损失，而是引用一个叫做交叉熵损失的东西。这个交叉熵损失看起来就像我们之前的损失。只是它不像之前是一个单一的Y，而是可能有一个标签的完整概率分布。
 
- And now I have just Y transposed O。 So if Y is coded with just all series and。 one one for the correct class， I get exactly the line above。 But more generally for probabilities。 I can now compare with that a desired， target probability to the probability that I'm estimating。 And we'll actually go over some information theory to explain why on earth we get this。
+现在我就有了Y转置O。所以如果Y只是通过所有序列编码，并且对于正确的类别是1 1，我就能得到上面的那个公式。但更一般地，对于概率，我现在可以将目标概率与我估计的概率进行比较。我们实际上会讲一些信息理论来解释为什么我们得到这个。
 
- But we may not have time today。 So let's look at the gradient next。 So the gradient of this just happens to be， and I'm going to derive this。 This is one of those fundamental derivations that will help you。 So remember。 we had our loss function log sum over i e to the oi minus， and then in this case， oi。 Okay。
+但是我们今天可能没有时间讲这些。那么接下来我们来看梯度。所以这个梯度恰好是，我将推导这个公式。这是一些基础的推导，会对你有所帮助。所以请记住，我们的损失函数是对所有i求和的对数，减去oi，然后在这个情况下，是oi。好。
 
- And so d o is going to be， well， here we have a log。 So we get in the denominator sum over i e to the oi。 And here， and this is at coordinate。 let's call it coordinate Y prime。 e to the oi prime minus delta Y prime。 Now。 what is this expression here？ Well， that's nothing else than p of Y given whole。
+所以d o将是，嗯，我们这里有一个对数。因此，在分母上我们得到对所有i求和的e的oi次方。而且这里，这个是在坐标处，让我们称它为坐标Y'。e的oi'次方减去delta Y'。那么，这里这个表达式是什么呢？其实这就是给定整体Y的概率p(Y|0)。
 
- p of Y prime given 0。 This is the empirical probability。 So if I were to plug in the cross entropy loss， so in other words， if we have here， o transpose Y。 I'll get Y out of here。 So in other words， what I'm really getting is p of Y given 0。 Well， I know。 of course， now I need to actually plug up， let me call this a probability here， minus p。
+p(Y'|0)，这是经验概率。所以如果我代入交叉熵损失，也就是说，如果我们这里有o转置Y，我会得到Y。从这里我就可以得到p(Y|0)。好，我知道，当然，现在我需要实际代入，让我称这个为概率，减去p。
 
- So my gradient is now just a difference between the probability that I'm estimating。 and the probability that I should be seeing。 So we're basically back to the regression setting where we compared what we are estimating。 and what we should be seeing。 And what we are seeing。 And here， again。 we are taking differences between the estimates and what we should be。
+所以我的梯度现在只是我估计的概率与我应该看到的概率之间的差异。所以我们基本上回到了回归设定，我们比较的是我们估计的内容和我们应该看到的内容。以及我们实际看到的内容。而在这里，再次地，我们在估计和我们应该看到的内容之间做差异。
 
- seeing in terms of what we're seeing to get our gradients。 Just that this is a more convoluted way of going about it。 Now， this sounds like a coincidence。 right？ That we're getting differences between truth and expectation。 And it's not a coincidence。 As a matter of fact， any exponential family will do that for you。 Even better。
+以我们所看到的内容来考虑梯度。仅仅是这种方式比较复杂罢了。现在，这听起来像是巧合，对吧？我们在实际值和期望之间得到了差异。而这并非巧合。事实上，任何指数族分布都会为你做到这一点，甚至更好。
 
- the second derivative of this will give you variances for any exponential family。 So this is one of the reasons why exponential families are so popular in statistics。 because the math works out really nicely。 Yes？ >> So we can characterize again what's the properties that comes with it？
+这个的二阶导数会给你任何指数族的方差。所以这是指数族在统计学中如此受欢迎的原因之一，因为数学结果非常简洁。是的？>> 那我们可以再次表征它的属性吗？
 
- >> Okay。 Everybody cool with that so far because I'm going to raise it。 Okay， good。 So an exponential family， and this is really just a detour here。 I have p of x。 parameterized by theta， or actually let me parameterize by w， is given by some phi of x， well。 phi of x transposed w minus g of w。 Okay。 So this looks a little bit different from what we saw。
+>> 好的，大家到目前为止都理解了吗？因为我接下来要提高难度了。好的，明白了。那么，指数族，其实这只是一个绕道。我有p(x)，由theta参数化，或者实际上让我用w来参数化，它由某个phi(x)给出，嗯，phi(x)转置w减去g(w)。好的。这个看起来与我们之前看到的有点不同。
 
- This phi of x， in our case， it just keeps the vector the same。 And w is then just the corresponding way to fix the thing out。 g of w is the normalization。 That is this funky log sum over the exponential term。 That basically just makes sure that this is a proper probability distribution。
+这个phi(x)，在我们的情况下，它保持向量不变。然后w只是修正这一事物的对应方式。g(w)是归一化项。就是这个奇怪的对数求和指数项。它基本上确保这是一个合法的概率分布。
 
- So this is g of w is given by some overall x's。 All right。 And the nice thing is that the derivative， g of w， gives me the expectation of phi of x。 And furthermore， the second derivative gives me the variance。 Now。 this thing is exactly why the first term here is the probability。 All right。
+所以g(w)由所有x给出。好了。令人高兴的是，导数g(w)给了我phi(x)的期望。而且，二阶导数给了我方差。现在，这个东西正是为什么这里的第一个项是概率的原因。
 
- Because my sufficient statistics were just the indicators， right？
+因为我的充分统计量只是指示量，对吧？
 
- So the expected value of that indicator function， which is one for， the specific class since here。 otherwise， if I take the expectation of that， that just gives me the probability vector。 So what we saw here is about the dumbest exponential family you can think of， but。 it's a very versatile one。 This is really just an aside。 If this looks too confusing for you。
+所以，那个指示函数的期望值，对于特定的类别而言，它的值为1。否则，如果我对它取期望值，那就给我概率向量。所以我们在这里看到的是你能想到的最简单的指数族，但它是一个非常通用的族。这个其实只是题外话。如果这看起来对你来说太混乱的话。
 
- just disregard it。 You won't need it for the rest of the class。 Any other questions？ Okay。
+就忽略它吧。接下来的课程中你不会需要它。还有其他问题吗？好。
 
 ![](img/6e1e8cce5c2babed73bbe0b1988a0ba7_16.png)
 
- Good。 Now， before we do information theory， and this is of course Shannon himself。 let's look a little bit at how to do regression。 And that's about， I think。 all that will be able to do today。 So。
+好的。现在，在我们开始信息论之前，这当然是香农本人。我们先来看一下如何进行回归。我认为，这就是今天我们能做的所有内容。所以。
 
 ![](img/6e1e8cce5c2babed73bbe0b1988a0ba7_18.png)
 
- [BLANK_AUDIO]。
+[BLANK_AUDIO]。

@@ -1,51 +1,49 @@
-# P105：105. L19_8 Long Short Term Memory - Python小能 - BV1CB4y1U7P6
+# P105：105. L19_8 长短期记忆 - Python小能 - BV1CB4y1U7P6
 
- So long short-term memory。 So this， there's a fun story to it， or several stories。
+所以长短期记忆。这，背后有一个有趣的故事，或者说几个故事。
 
 ![](img/bb1506d2be3e70e9cf9a858228172c99_1.png)
 
- So if you haven't heard of Yürgen Schmittuber， he's a very memorable researcher。 You should check him out。 But basically at some point， so the story goes， you're a， great angel。 at least this is the version from Yürgen， that I've heard。 Post the question to Yürgen Schmittuber about， you know。
+所以，如果你没听说过尤尔根·施密特伯尔，他是一个非常值得记住的研究者。你应该了解一下他。但基本上，在某个时刻，故事是这样的，你是一个伟大的天使。至少这是我听到的尤尔根版本，曾经有人向尤尔根·施密特伯尔提出了这个问题，你知道的。
 
- remembering things in time series and so on。 And while the story goes， then basically you're。 engineered something called long short-term memory。 And actually the guy who really did it was the poor writer。 And he， I think。 master student at the time。 And where they probably started was， this was like， 1980， '97， '98。
+记住时间序列中的东西等等。故事是这样讲的，然后基本上你就被设计出了一个叫做长短期记忆的东西。实际上，真正做这件事的是那个可怜的作者。我想那时他还是个硕士生。他们的起点可能是在1980年，'97，'98年左右。
 
- And at that time this was a strange paper。 I mean， I knew about it。 It was like， okay。 yet another weird neural network paper。 Well， what's the point？ Right？
+当时这篇论文很奇怪。我是知道它的。就像，哦，又是一篇奇怪的神经网络论文。好吧，那有什么意义呢？对吧？
 
- And that's pretty much what everybody thought。 And I think it was a very， very， very difficult。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。
+大家差不多都这么想。我觉得这是一件非常、非常、非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。
 
- And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。
+我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。
 
- And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。
+我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。
 
 ![](img/bb1506d2be3e70e9cf9a858228172c99_3.png)
 
- And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。
+我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。
 
- And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。
+我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。
 
- And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。
+我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。我觉得这是一件非常困难的事情。
 
- And I think it was a very difficult thing。 And I think it was a very difficult thing。 And I think it was a very difficult thing。
+我认为这是一个非常困难的事情。我认为这是一个非常困难的事情。我认为这是一个非常困难的事情。
 
 ![](img/bb1506d2be3e70e9cf9a858228172c99_5.png)
 
- And I think it was a very difficult thing。 And I think it was a very difficult thing。 So the first thing we have to do is we need to go and design gates。 And those gating functions are exactly the same as before。 We have IF and O。 And they are just sigmoid offs。 They're in some linear function of input and hidden state and then some bias。
+我认为这是一个非常困难的事情。我认为这是一个非常困难的事情。所以我们要做的第一件事是我们需要去设计门。这些门函数和之前完全一样。我们有I、F和O。它们只是sigmoid函数。它们是输入和隐藏状态的某种线性函数，再加上一些偏置。
 
- So far this looks pretty much the same as before。 Just that we have three before that we have two。 And with three you can do more than with two。 So fine。 So the next thing is let's look at the candidate memory。 And this is where things get a little bit interesting。 So our candidate memory cells。
+到目前为止，这看起来和之前差不多。只是我们有三个，而之前只有两个。有了三个，你能做的比两个更多。所以没问题。接下来，让我们看看候选记忆。这就是事情变得有趣的地方。我们的候选记忆单元。
 
- this is not the hidden state。 It's the memory。 It's basically given by， well。 some linear function of the hidden state。 And the input。 And that's the memory。 Okay。 So remember you can basically read stuff into memory on a memory cell， like in electronics。 And so they designed this。 Okay。 And so then， well。
+这不是隐藏状态。这是记忆。它基本上是通过，嗯，隐藏状态和输入的某种线性函数得到的。这就是记忆。好的。记住，你基本上可以像在电子学中一样将东西读入记忆单元。所以他们设计了这个。好的。那么，嗯。
 
- the next thing is I need to decide whether to forget something。 And so they forget， okay。 is exactly the thing that helps me decide whether I should just keep what I have before。 Or whether I should update it to the new thing。 It's the new C tilde。 So this is a little bit similar to what we have before with Z and the GRU。
+接下来的事情是我需要决定是否忘记一些东西。所以它们被遗忘了，好的。这正是帮助我决定是否应该保留之前的东西，还是应该更新为新的东西。它是新的C波浪符号。所以这和我们之前讨论的Z和GRU有些相似。
 
- But now this just operates on the memory。 Right now that memory doesn't do anything useful yet。 It just is there。 You can't read it。 You can't do anything with it。 But we've already used up one gate to just decide whether we should reset the memory or how we should update it。 Okay。 And then now comes the fun thing。 Namely， the hidden and output gate is just the output gate times。
+但现在它只在记忆上操作。现在那段记忆还没有做任何有用的事情。它只是存在在那里。你无法读取它。你无法做任何事情。但我们已经用掉了一个门来决定我们是否应该重置记忆或如何更新它。好的。接下来有趣的事情来了。也就是说，隐藏门和输出门只是输出门乘以那段记忆单元。
 
- well， tang of that memory cell。 Okay。 So remember this h t actually then is used to， you know。 manipulate the memory again。 And then this is used again to manipulate the hidden state。 So that's why you really need two of those variables to carry around with you all the time。 So this was probably a little bit long-winded and complex。
+好的，所以记住这个h t实际上会用来，嗯，操作记忆。然后这再次用来操作隐藏状态。所以你真的需要两个这样的变量，随时带着它们。这可能有点冗长和复杂。
 
- Here's the entire thing in its full glory。 So I have three gates， I F and O。 So input。 forget an output。 Have candidate memory， see tilde。 I have the actual memory， see。 And then I have the output that's just some function of the memory。 Okay。 So this looks like， well。 okay， it's more complicated。 We are moving more towards a Rück-Golberg machine。 But yeah， okay。
+这是整个事情的完整展现。所以我有三个门，I、F和O。分别是输入、忘记和输出。有候选记忆，C波浪符号。我有实际的记忆，C。然后我有输出，它只是记忆的某种函数。好的。所以这看起来，嗯，好吧，它更复杂了。我们正朝着一个Rück-Golberg机器的方向发展。但好吧，没问题。
 
- why not？ But it does very similar things that we discussed before。 just that they have a little bit more， expressive freedom in how I parameterize things。 Okay。 Any questions so far？
-
-
+为什么不呢？但它做的事情和我们之前讨论的非常相似。只是它们在如何参数化事物上有更多的表现自由。好的，到目前为止有问题吗？
 
 ![](img/bb1506d2be3e70e9cf9a858228172c99_7.png)
 
- Okay。 Well， in that case。
+好的。那么，在这种情况下。

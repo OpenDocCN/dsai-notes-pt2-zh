@@ -1,49 +1,49 @@
-# P76：76. L14_1 Midterm Logistics - Python小能 - BV1CB4y1U7P6
+# P76：76. L14_1 期中考试后勤 - Python小能 - BV1CB4y1U7P6
 
- So a little bit of exam logistics just in case you're concerned because this is important for next Tuesday。 So everybody knows that next Tuesday is the exam， right？ Good。 So that's why there's no homework to you for next Tuesday。 So you get to prepare。 So it's from 3。30 until 5。 Realistically we'll probably start at 3。
+所以一些考试后勤，万一你有顾虑，因为这对下周二很重要。大家都知道下周二是考试，对吧？好。那么这就是为什么下周二没有家庭作业给你。所以你可以准备一下。从3:30到5点，实际上我们可能会在3点开始。
 
-40 because it'll be a bit of a matter of getting everybody out just like here as well。 Since we may need two rooms， we have lecant 1 and lecant 3。 We will fill lecant 1 first。 I guess everybody heard that， right？ So we're going to fill lecant 1 first。 If we fill lecant 1。 we will have overflow in lecant 3。 So as in here， but go to the other lec。
+40，因为这将有点像这里一样，大家都得出去。由于我们可能需要两个房间，我们有 lecant 1 和 lecant 3。我们会先填满 lecant 1。我猜大家都听到了，对吧？所以我们会先填满 lecant 1。如果我们填满了 lecant 1，我们将会有 overflow 到 lecant 3。所以像这里一样，但去另一个 lec。
 
- But I hope nobody will push it to that limit。 So the reason I said why we cannot allow computers or other things。 and I know it's a horrible way of killing trees， right？
+但是我希望没有人会把它推到那个极限。所以我之所以说为什么我们不能允许电脑或其他东西，是因为我知道那是种可怕的砍伐树木的方式，对吧？
 
- Because you might have to print out notebooks。 It's just that there's no way of drawing an efficient boundary between what you got on your phone or when you open up Facebook Messenger or VChat or Skype or anything。 And then ask your friends to， well， how to solve it， right？
+因为你可能需要打印笔记本。只是没有办法有效地划定你手机上得到的内容，或者你打开 Facebook Messenger、VChat、Skype 或任何东西时的界限。然后再问你的朋友们，嗯，怎么解决它，对吧？
 
- This is why the only safe way to ensure that is by just disallowing in electronics。 Sorry about that。 Note paper is all provided so you don't need to bring it on exam sheets。 As a matter of fact， you're not supposed to add your own paper to the exam， right？
+这就是为什么唯一能确保这一点的安全方法就是不允许电子设备。抱歉了。考试用的纸张会提供，所以你不需要带自己的试卷。事实上，你不应该把自己的纸带到考试中，对吧？
 
- But you can print as much printed stuff。 You still need to find it so there's the how much paper you bring versus knowing where to find it thing。 right？ So if you have too much paper， it doesn't help you。
+但是你可以打印尽可能多的东西。你仍然需要找到它，所以带多少纸和知道在哪里找到它是一个问题，对吧？所以如果你有太多的纸，它并不会帮助你。
 
 ![](img/bd00049f12c7c15c8c00d4afca25c8e6_1.png)
 
- Good。 So this is logistics。 What are we going to cover？ Okay。 So I'm going to give you an answer that may or may not satisfy you。 Namely。 everything we covered all the way up to the midterm。 So that includes this lecture。 this Thursday's lecture， and that's it。 So， you know。
+好的。那么这是后勤安排。我们会覆盖哪些内容？好吧。那么我会给你一个可能会让你满意也可能不会的答案。也就是我们在期中考试前所有覆盖的内容。所以包括这节课，这周四的课，就这些。你懂的。
 
- what questions are we going to post because I mean the home works were fairly code heavy， right？
+我们会问什么问题，因为我意思是，家庭作业相当偏重代码，对吧？
 
- And obviously， you can't bring a computer means you can't run code on your piece of paper。 So what are we going to ask？ Well， we might ask you about concepts， right？ Like learning rates。 regularization， maybe overfitting， you know， stuff like that， just， you know。 being able to explain and understand and detect things or covariate shift， right？
+显然，你不能带电脑，这意味着你不能在纸上运行代码。那么我们会问什么呢？嗯，我们可能会问你一些概念，对吧？比如学习率、正则化，也许是过拟合，类似的东西，知道吗？就是，能够解释、理解和检测事物或协变量漂移，对吧？
 
- The second thing is you will need to be able to understand some code， right？ So for instance。 you might see some， you know， network definition or something。 We'll require some basic math。 So if you know what a convolution looks like or how to take derivatives or how the change rule works。 that's probably a really good thing。 After all， this is the stats class， right？
+第二件事是你需要能够理解一些代码，对吧？比如说，你可能会看到一些，嗯，网络定义或者其他什么。我们会要求一些基本的数学。所以如果你知道卷积是什么样子的，或者如何求导，或者链式法则是怎么工作的，那可能是非常好的事情。毕竟，这是统计学课，对吧？
 
- So we need to have some math questions in there。 And the last thing is， well， again。 because this is experimental heavy， right， so we might maybe show you some experiments and ask you。 well， hey， what did go wrong there？ And so for that it helps if you did the homework and you ran the experiments and you figured out what worked and what didn't work。 right？ So that's essentially the gist of what this is going to be about。
+所以我们需要有一些数学问题。 最后一件事是，嗯，再次强调。 因为这门课实验性很强，对吧，所以我们可能会给你们展示一些实验，并问你，嗯，嘿，那里发生了什么问题？ 所以，为了应对这一点，如果你做了作业并运行了实验，弄清楚什么有效，什么无效，会很有帮助，对吧？ 所以这基本上就是这次考试的核心内容。
 
- The answers will typically be fairly simple and straightforward， so you won't have to write， write。 or piece as an answer for every one of those。 As a matter of fact。 you probably will not have enough time to go through all the problems。 This is intentional。 so don't freak out about the fact that there are going to be more problems than you can get through。
+答案通常会非常简单明了，所以你不需要为每一个问题都写很长的答案。 事实上，你可能没有足够的时间完成所有问题。 这是故意设计的，所以不要因为问题比你能做的多而感到慌张。
 
- I'm reasonably confident that very， very few will get through all the problems。 It's designed that way such that if you find a problem that you think is utterly horrible。 you skip it and you move on to the next one。 So this is a safeguard mechanism to make life easier for you。 Okay。 Now， the last thing is obviously in the end we'll look at the distribution of scores when we assign grades。
+我相当有信心，极少数人能完成所有问题。 它是这样设计的，目的是如果你遇到一个你认为非常糟糕的问题，你可以跳过它，继续做下一个问题。 所以这是一种保护机制，可以让你的生活更轻松。 好的。 那么，最后一件事显然是，在最后我们会查看分数的分布，然后给出成绩。
 
- right， and we'll try to make it right for everybody。 And I'm being purposely awake here for the very simple reason that every once in a while you hear that at some university。 a lecture goes and makes it a little bit more explicit。 And then the students make the secret pact that everybody hands in the blank sheet and then everybody walks out with an A。
+对吧，我们会尽量做到公平。 我在这里故意保持清醒，原因很简单，因为时不时你会听到某些大学里，讲座会变得更明确。 然后学生们秘密达成协议，大家交白纸，最后每个人都能拿到A。
 
- Right？ So that's the reason why I'm just saying we'll make it right。 Okay。 Good。 Any questions？ Yes？
+对吧？ 所以这就是我说我们会做到公平的原因。 好的。 有问题吗？ 是的？
 
- >> How do you just be studying for it？ >> Oh， well。 you should look at the lectures that we covered so far。 And you should have a good understanding of what was covered。 So I would， for instance。 go through the slides or maybe through the corresponding book chapters。
+>> 你是如何准备的？ >> 哦，嗯。 你应该回顾一下我们到目前为止讲过的课。 你应该对讲过的内容有一个很好的理解。 所以我会，举个例子，浏览一下幻灯片，或者也许是相应的书籍章节。
 
- You may find the book chapters easier to read。 This way you don't have to listen to me or -- but you can just read it。 You can rewatch the videos。 You should probably go over the homework solutions。 And they will give you some hints of， you know， especially for the more experimental parts of how to do things。 Or if you did well in the homework， then you probably don't need to go through the reference solutions。
+你可能会发现书中的章节更容易阅读。 这样你就不用听我讲了——你可以直接阅读。 你可以重新观看视频。 你可能应该复习一下作业的解答。 它们会给你一些提示，尤其是对于更具实验性质的部分，如何进行操作。 或者如果你在作业中做得很好，那你可能不需要去看参考解答。
 
- We will try to make the questions of a flavor that's as related as possible to the homework。 But since the homework is of a different nature， right。 because you can actually get to work with that on a computer in a bit more time。 the questions will not be identical。 Right？ That's just an inevitability。
+我们会尽量使问题尽可能与作业相关。 但由于作业的性质不同，对吧，因为你实际上可以用更多时间在电脑上做，所以这些问题不会完全一样。 对吧？ 这是不可避免的。
 
- So there's some -- there's UCO very shift。 And unfortunately it's an inevitable one because the format is different。 Right。 Any other questions？ Okay。 Good。 So that seems like the explanation was very clear。 Yes。 How many questions？ I think the plan is something in the order of ten questions。 But that doesn't really mean a lot because questions could be short or could be longer。
+所以有一些——有一些UCO非常变化。 不幸的是，这是不可避免的，因为格式不同。 对吧。 还有其他问题吗？ 好的。 所以看起来这个解释非常清楚。 是的。 有多少个问题？ 我认为计划大概是十个问题。 但这并不意味着很多，因为问题可能很短或者很长。
 
- We will give you point estimates for every question such that you get some idea of whether you're stuck at a really trivial question or whether you're stuck at a really difficult one。 So this way you can calibrate your time。 Any other questions？ Everything clear？ Good。
+我们会为每个问题提供具体的估算时间，这样你可以大致了解自己是卡在一个非常简单的问题上，还是卡在一个非常困难的问题上。这样，你就能调整自己的时间分配。还有其他问题吗？一切清楚吗？很好。
 
- So I said make sure you go to LeCont one first and you fill that up。 And once LeCont one is filled up， we'll spill over in here。 Examine time is going to be probably in the order of 80 minutes。 Okay。
+所以我说确保你先去填充LeCont一，然后填完后，我们会转到这里。检查时间大概会是80分钟左右。好的。
 
 ![](img/bd00049f12c7c15c8c00d4afca25c8e6_3.png)
 
- Good。 Great。 So that's -- that。
+很好。太棒了。所以就是这样——就是这些。

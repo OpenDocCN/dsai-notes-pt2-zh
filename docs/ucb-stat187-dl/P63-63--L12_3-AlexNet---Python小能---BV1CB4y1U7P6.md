@@ -1,101 +1,83 @@
 # P63：63. L12_3 AlexNet - Python小能 - BV1CB4y1U7P6
 
- Let's talk about AlexNet。 AlexNet is named after Alex Kreshevsky， and this network was。 proposed in 2012。 If you look at it， it looks extremely similar to Lynet。 As a matter of， fact。 when this network came out first， people didn't quite appreciate what was in there。 After all。 this was like Lynet， but just a lot bigger， more convolutions， more layers。 And yeah， just that。
+让我们来谈谈AlexNet。AlexNet是以Alex Kreshevsky的名字命名的，这个网络是在2012年提出的。如果你看它，它看起来和LeNet非常相似。事实上，当这个网络第一次发布时，人们并没有真正理解它的内容。毕竟，这就像LeNet，只是大了很多，有更多的卷积层和更多的层次。嗯，仅此而已。
 
- So this only changed when the AlexNet model won the ImageNet， competition considerably。 It's only then that people realized that maybe something exciting， is going on there。 So let's dive into it in a bit more detail。
+直到AlexNet模型在ImageNet竞赛中大获全胜，人们才开始意识到也许有什么令人兴奋的事情发生了。只有那时，人们才意识到，也许这其中有一些新奇的地方。接下来让我们更详细地探讨一下。
 
 ![](img/335d9e605993ae341291843f944e3448_1.png)
 
- Let's take a step back in history， namely to 2001 around that time。 So， kernels ruled， the roost。 And in fact， you could just go and design a nonlinear function class by extracting， features。 You would pick your kernel for similarity。 You'd solve a convex optimization， problem。 and then you'd go and prove a theorem or two， and you'd prove that things are optimal， consistent。
+让我们回顾一下历史，具体来说是2001年左右那个时候。所以，核方法是主流。事实上，你可以通过提取特征来设计一个非线性函数类。你会选择你的核函数来计算相似度。然后你会解决一个凸优化问题。接着，你去证明一两个定理，证明事情是最优的、一致的。
 
- and so on。 Life was good。 Same thing was to a computer vision。 It could go。 and maybe design a non-convex optimization problem。 He'd use a fair amount of math to。 describe how a specific geometric problem would map nicely into a corresponding computer。 vision problem。 And then you'd solve the math， and whenever reality mapped nicely into your。
+生活很美好。计算机视觉也是一样。你可以去设计一个非凸优化问题。他会用相当多的数学来描述一个特定的几何问题如何很好地映射到一个对应的计算机视觉问题中。然后，你解决数学问题，每当现实与你的模型很好地映射时，
 
- mathematical approach， life was good， it would work。 And again， you'd get lots of beautiful， serums。 and whenever you managed to solve a problem in a convex manner， this was a hallmark， paper。 So that's computer vision。 Now， the CD and the Billy of computer vision around。 the time was feature engineering， and some people would have probably argued that most。
+数学方法，生活很好，它会奏效。而且，再一次，当你通过凸优化方式解决问题时，这是一个标志性的论文。所以这就是计算机视觉。那时计算机视觉的核心是特征工程，有些人可能会认为，计算机视觉中最有趣的部分是如何设计新的特征。
 
- of the interesting parts in computer vision were how to design new features。 In fact。 if you designed like a sift or a surf feature extractor， you pretty much had it made。 As， in this。 we could get you tenure。 And well， what you would do then is you would take your， images。 extract relevant feature points， then maybe you'd go in cluster and arrange them， properly。
+事实上，如果你设计了一个SIFT或SURF特征提取器，你几乎就成功了。因为这样，你就可以获得终身职位。然后，你要做的就是提取图像中的相关特征点，然后可能对它们进行聚类和合理安排。
 
- And then in the end， you know， you solve that by applying your support vector， machine。 and life was good。 So feature engineering was quite crucial， but it also limited the。 amount of engineering throughput that you could do because for every new problem， you。 had to do additional feature engineering。 Now， this sounds not very enlightened if we look， back。
+然后最终，你知道，你可以通过应用支持向量机来解决这个问题，生活也就顺利了。所以，特征工程是至关重要的，但它也限制了你可以进行的工程化量，因为每当遇到新问题时，你都需要进行额外的特征工程。现在，如果我们回头看，这听起来并不是非常开明。
 
- but there's simple reason why people at the time would design models in this way。 So let's look at the progression of data， memory and compute that was available in different。 decades。 MAF just rounded it to the next power of 10， just because we really care about orders。 of magnitude。 So data set sizes didn't really start growing a lot until around 2000， maybe， 2010。
+但是，那个时候人们设计模型的方式有一个简单的原因。让我们来看看不同年代中可用的数据、内存和计算能力的发展。MAF只是将其四舍五入到下一个10的幂次方，因为我们非常关心数量级的差异。因此，数据集的大小直到2000年左右，甚至可能到2010年才开始真正增长。
 
- with the internet， cloud computing and so on becoming available， where basically。 it was now possible to store data from a lot of users， a lot of interactions， a lot of， instances。 And this is why the amount of data jumped from 2000 to 2010 by a factor of 100。 and then from 2010 to 2020 by a factor of 1000。 Now， in terms of memory， well， things。
+随着互联网、云计算等的普及，基本上现在可以存储来自大量用户、许多互动和大量实例的数据。这也是为什么数据量从2000年到2010年增加了100倍，从2010年到2020年又增加了1000倍。现在，在内存方面，嗯，事情发生了变化。
 
- didn't improve a lot， but in terms of compute， we had a breakthrough probably around 2010。 when people switched from single or small numbers of cores to massively multi core architectures。 like GPUs。 So before that， dual core， maybe quad core architectures were kind of the standard。 of what you would have on your desktop。 And only now， you know， you're starting to be。
+没有太大改进，但在计算资源方面，可能在2010年左右取得了突破。当时人们从单核或少数核心的架构转向了大规模多核心架构，如GPU。因此，在此之前，双核或四核架构通常是桌面计算机的标准配置。直到现在，你才开始看到。
 
- able to buy 1632 core machines at reasonable prices， or of course， if you go to the cloud。 you get up to 100 cores， but still， if you go and use a GPU， you might get， you know， thousands。 This led to correspondingly much higher performance compute。 For instance， on a P3 server， you。 might have eight vultas， and that gives you， you know， over a petaflop of compute。 Now。
+能够以合理的价格购买1632核的机器，或者当然，如果你使用云计算，你可以获得最多100个核心，但即便如此，如果你使用GPU，你可能会得到上千个核心。这导致了相应地更高性能的计算。例如，在P3服务器上，你可能会有8个Vulta核心，这样你就能获得超过一千万亿次计算的能力。现在。
 
- interestingly， deep networks were popular around 1990， when compute was， well， there。 was some there， but memory was tiny and the data sets weren't that big。 So that's when。 deep networks were really good at inference time。 So then around 2000 up to 2010， kernel。 methods were the right thing to use because the data sets weren't too big yet， and you。
+有趣的是，深度网络在1990年左右非常流行，当时计算资源虽然存在，但内存非常小，数据集也不大。因此，那时候深度网络在推理时非常有效。然后从2000年到2010年，核方法成为了合适的选择，因为当时的数据集还不是特别大。
 
- could store non trivial parts of the kernel matrix in memory。 Remember， a kernel method。 requires a kernel matrix， and that tends to go super linearly in the amount of data that， you have。 And so as long as you have enough memory and compute isn't so much of an issue， things are good。 What happened then is that compute took a quantum leap forward。 So mind， you。
+可以将核矩阵的非平凡部分存储在内存中。记住，核方法需要一个核矩阵，而这个矩阵的大小通常随着数据量的增加而超线性增长。因此，只要你有足够的内存，并且计算资源不是问题，那么一切都很好。接下来发生的是计算资源的飞跃。所以请记住。
 
- the first successful modern implementation of deep networks happened on GPUs with AlexNet。 so that was 2012。 And so it's very clear that only once compute was available， it was a。 practically feasible option to switch to nonlinear， non-convex， highly compute intensive， settings。 and that's exactly deep networks。 Now， let's look at the data。 So imageNet came。
-
-
-
-
+深度网络的第一次成功现代实现是在GPU上完成的，使用了AlexNet。所以那是在2012年。因此，很明显，只有在计算资源可用时，切换到非线性、非凸、计算密集型的设置才变得实际可行。这正是深度网络的特点。现在，让我们来看看数据。于是，ImageNet出现了。
 
 ![](img/335d9e605993ae341291843f944e3448_3.png)
 
- out in 2010， and it was a big data set at the time。 1。2 million examples， 1000 classes。 so compare that to 60，000 observations， 10 classes for MNIST。 Also， the resolution was。 considerably bigger by maybe a factor of 1000。 So it went from 28 by 28 to 469 by 384 dimensions。 and the images were in three channels， namely， Ray Green and Blue， whereas before that we。
-
-
-
-
+它在2010年发布，当时是一个非常大的数据集，包含120万条示例，1000个类别。与MNIST的6万个观测数据和10个类别相比。此外，分辨率也大大提高，可能提高了1000倍。所以，图像的尺寸从28×28变成了469×384，且图像使用了三个颜色通道，分别是红色、绿色和蓝色，而在此之前我们。
 
 ![](img/335d9e605993ae341291843f944e3448_5.png)
 
- had great scale。 So that changed things a lot。 Now， until 2012， around that time when。 AlexNet won the imageNet competition， the default strategy for solving computer vision。 problem was to go and pick manually engineered features。 You would then go and apply an SVM。 in the end， and this was replaced by features that were learned automatically followed by。
+具有巨大的规模。因此，这改变了很多事情。直到2012年左右，当AlexNet赢得ImageNet竞赛时，解决计算机视觉问题的默认策略是选择手动设计的特征。然后你会应用一个SVM。最终，这种方法被自动学习的特征替代，之后再进行。
 
- a softmax。 But AlexNet wasn't just a bigger and better， Lynette。 there were a number of other key changes。 One was dropout regularization， which。 allowed people to design much deeper networks。 As you move to deeper networks， of course。 just regularizing with regard to the input doesn't help so much， you need to also regularize。
+使用 softmax。但是，AlexNet 不仅仅是更大更好的 Lynette。还有其他几个关键的变化。其中之一是 dropout 正则化，它让人们能够设计更深的网络。随着网络的加深，当然，仅仅对输入进行正则化帮助不大，你还需要对。
 
- the inner structure of the network。 So this is essentially taken off regularization applied。 to all the layers of the network， or at least in multiple places whenever you use dropout。 whereas otherwise you would just smooth things with regard to the input。 The second thing was ReLU。 so rectified linear units。 In other words， you replace the sigmoid。
+网络的内部结构。所以这基本上是应用正则化到网络的所有层，或者至少在多处使用 dropout 时应用，而如果不使用 dropout，你会只是对输入进行平滑处理。第二项是 ReLU，即修正线性单元。换句话说，你用 ReLU 替换了 sigmoid。
 
- nonlinearity by just the max between x and 0， which had as a consequence that the gradient。 would no longer vanish because you had at least one half space where the function was the， identity。 The last thing was max pooling， which replaced average pooling。 And then the。 result of that was that now features were rather a bit more shift invariant because you。
+非线性进行正则化，通过仅仅使用 x 和 0 之间的最大值，这导致了梯度不再消失，因为至少有一个半空间，其中函数是恒等的。最后一项变化是最大池化，取代了平均池化。这样，结果就是特征变得更加对平移不变，因为你。
 
- could now move your attributes a little bit and max pooling would still pull the relevant。 attributes through。 So this led to a paradigm shift in computer vision and after computer， vision。 well， that's then when people went to speech recognition， natural language processing。 text generation， a lot of other things that deep networks afterwards proved a metal。 But。
-
-
-
-
+现在你可以稍微移动你的特征，最大池化依然能提取相关的特征。这样就导致了计算机视觉中的范式转变，之后，计算机视觉领域发展起来了，紧接着人们开始转向语音识别、自然语言处理、文本生成等领域，深度网络在这些领域之后也证明了其重要性。但是。
 
 ![](img/335d9e605993ae341291843f944e3448_7.png)
 
- it started with computer vision。 So let's look at the architecture。 So in AlexNet， you。 can already see that already the intake is quite different。 So the images are much larger， I mean。 than 32 by 32 pixels， which are just 28 by 28 padded with seros on the outside。 You had 224 by 224 with R， G and B， red， green and blue as the channels。 This was followed。
+它起源于计算机视觉。所以让我们看看架构。在 AlexNet 中，你可以已经看到，输入的方式就很不一样了。所以图像更大，我的意思是，比 32x32 像素还要大，这些只是28x28，外面加了零填充。你有 224x224 的尺寸，R，G 和 B，红色、绿色和蓝色作为通道。接下来是。
 
- by convolutions with a vastly larger number of channels， 96 versus 6。 And then of course。
+使用了卷积，且通道数量大幅增加，从 6 增加到 96。然后，当然。
 
 ![](img/335d9e605993ae341291843f944e3448_9.png)
 
- you know， the pooling operations。 So if you look at the bulk of the network， again， you。 have a lot more channels， 256 versus 16。 So that's 16 as many。 And then you have a lot。 more convolutions later on。 So those convolutions ensured that you have a much more expressive。 degree of nonlinearity as you move through the network。 And this， of course， allows you。
-
-
-
-
+你知道，池化操作。所以如果你看看网络的主体，再次，你。会看到更多的通道，256与16。所以这是16倍之多。然后你会看到更多的卷积操作。那些卷积确保了你在网络中移动时，能够拥有更强的非线性表达能力。当然，这也让你。
 
 ![](img/335d9e605993ae341291843f944e3448_11.png)
 
- to recognize a lot more classes。 To look at the end of the network， well， you're dealing。 with 4096 as opposed to 120 hidden units。 And those nonlinearities were necessary in。 order to have enough information for like 1，000 output classes as opposed to 10。 So you。 might wonder why did they pick 4096 as opposed to maybe 8000 or maybe 3000。 Well， the idea， was。
+能够识别更多的类别。看看网络的末端，嗯，你处理的是 4096 个隐藏单元，而不是 120 个。那些非线性是必要的，以便拥有足够的信息来处理 1,000 个输出类别，而不是 10 个。所以你可能会好奇，为什么他们选择了 4096，而不是 8000 或 3000。好吧，想法是。
 
- I suppose that if you have 1000 classes in the end， you need more than 1000 dimensions。 to describe them well。 And the upper natural limit was also the size of the GPUs。 So remember。 Alex Net had to be actually split between two GPUs initially because there wasn't enough。 space in terms of memory on a single GPU。 And a lot of the engineering in order to make。
+我猜想，如果最终有1000个类别，你需要超过1000个维度来很好地描述它们。而上限自然也受到GPU的大小限制。所以请记住，Alex Net最初实际上必须在两个GPU之间进行拆分，因为单个GPU的内存空间不足。为了实现这一点，做了很多工程工作。
 
- Alex Net work at the time was to write code， which would synchronize those two GPUs。 Now。
+当时，Alex Net的工作是编写代码来同步这两个GPU。现在。
 
 ![](img/335d9e605993ae341291843f944e3448_13.png)
 
- there were a few more tricks。 So one thing， the most important thing really was data augmentation。 So let's have a look at the picture of this cat lying on its back。 Okay， Qcat。 And if we。 crop out a part of it， we'll still be able to recognize this as a cat， at least humans would。 So the idea was that rather than training on the original images， you would train on those。
+还有一些其他的技巧。其中最重要的一点确实是数据增强。我们来看这张躺着的猫的图片。好吧，Qcat。如果我们裁剪掉其中的一部分，我们依然能够识别出这是一只猫，至少人类是能识别出来的。所以想法是，与你其原始图片进行训练相比，你可以使用这些裁剪出来的部分进行训练。
 
- cropped parts， which then can be used to infer， you know， what the class is。 The other thing is to。 have transformations in terms of brightness， color space and so on。 All those things improve。 the robustness to changes that you might have between training and tests， images。
-
-
+裁剪后的部分可以用来推断类别。另一个方法是进行亮度、色彩空间等方面的变换。这些方法都能提高对训练和测试图片之间变化的鲁棒性。
 
 ![](img/335d9e605993ae341291843f944e3448_15.png)
 
- Now， to wrap this up a little bit， if you look at the complexity of such networks， well。 Alex Net is a lot more complex。 In terms of computation， well， it's 250 times more expensive。 in terms of parameters only 10 times more。 And this was another key change that the trade-off。 between computation and memory changed quite a bit。 And Alex Net is actually known for being。
+现在，总结一下，如果你看一下这些网络的复杂性，嗯，Alex Net要复杂得多。从计算量上讲，它是原来的250倍，而从参数数量上讲只是多了10倍。这是另一个关键变化，计算和内存之间的权衡发生了很大变化。Alex Net实际上也因其。
 
- rather extreme in terms of its memory usage。 So nowadays that ratio would have been probably。 even much more skewed towards compute， because compute devices have become a lot faster and。 therefore people like to exploit that。 So that's the trade-off that's actually happening right now。 because memory scales with the amount of silicon， compute still scales with the amount of。
+在内存使用方面相当极端。所以如今，这个比例可能会更多地偏向于计算，因为计算设备变得更快，因此人们更倾向于利用这一点。这实际上是当前正在发生的权衡，因为内存随硅的量扩展，而计算仍然随着硅的量扩展。
 
- compute units that you have。 And if you have more dumb units， then you can go from single core。 to multi core， which is what you have on GPUs， to for instance， systolic arrays， which you by now。 have on custom chips like TPUs。 So this explains a little bit how we got from Lynette to Alex Net。 which is the considerably more complex version of a convolutional neural network。
+计算单元的配置。如果你有更多的计算单元，你就可以从单核扩展到多核，这就是GPU所做的事情，甚至例如可以扩展到阵列处理器，你现在可以在TPU等定制芯片上看到这种结构。这也解释了从Lynette到Alex Net的演变，后者是卷积神经网络的一个更为复杂的版本。
 
- What we'll see in the following is how to make those networks work even better， get high accuracy。 and how to address some of the problems created by just scaling up Lynette。
+接下来我们将看到如何使这些网络表现得更好，达到更高的准确度，以及如何解决通过简单扩展Lynette所产生的一些问题。
 
 ![](img/335d9e605993ae341291843f944e3448_17.png)

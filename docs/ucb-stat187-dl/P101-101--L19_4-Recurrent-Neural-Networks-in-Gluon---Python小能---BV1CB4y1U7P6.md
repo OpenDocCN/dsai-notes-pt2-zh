@@ -1,71 +1,71 @@
-# P101：101. L19_4 Recurrent Neural Networks in Gluon - Python小能 - BV1CB4y1U7P6
+# P101：101. L19_4 Gluon中的递归神经网络 - Python小能 - BV1CB4y1U7P6
 
- And so the blue one version of this is actually very， very brief。
+所以这个蓝色版本的实际上非常，非常简洁。
 
 ![](img/f5e175718dcc4851c9f19406b7c49058_1.png)
 
- So the first thing I need to do is， well， I just load the data as before。 Okay。
+所以我需要做的第一件事是，嗯，我像之前一样加载数据。好了。
 
 ![](img/f5e175718dcc4851c9f19406b7c49058_3.png)
 
- And then I define my model。
+然后我定义了我的模型。
 
 ![](img/f5e175718dcc4851c9f19406b7c49058_5.png)
 
- And I have the RNN module。 And so RNN。capital RNN number of hiddens gives me a， well。 RNN with 256 hidden units。 RNN layer initialized， just initialized it。 So basically all the work that we did before is just those three lines。 Okay。 Makes life easy。 right？ We still need to do a couple of other things， though。 So we need to， you know， start it。
+我有RNN模块。所以RNN。大写的RNN，隐藏单元数量给我一个，嗯。256个隐藏单元的RNN。初始化了RNN层，初始化了它。所以基本上我们之前做的所有工作只是那三行代码。好了。让生活更轻松，对吧？不过我们还需要做一些其他事情。所以我们需要，嗯，启动它。
 
- right？ So let's say mini batch size equals two。 We need to have an initial state。 And so what we get is this。 And so that's the mini batch size。 That's the number of hidden units。 256， right？ And that's where it outputs。 Okay。 And so what we can do is we can look exactly what happens if I take。 you know， one step forward。 And so， you know， 35 steps means simply， you know， taking， you know。
+对吧？所以假设mini批次大小等于2。我们需要一个初始状态。所以我们得到的是这个。那就是mini批次大小。那是隐藏单元的数量。256，对吧？然后这是它输出的地方。好的。所以我们可以做的就是看看如果我往前走一步，发生了什么。然后，35步就意味着，嗯，简单地说，嗯，往前走，嗯。
 
- sequence of 35 and， you know， producing this。 And so this is exactly the same code as what we have before。 So this is just checking that the input and the output match in terms of shape。 So the two states match and the shape of the states also matches。 Okay。 All right。 So this is really simple。 Okay。 And then， now that was a little bit more complex。
+一系列35步，你知道，产生了这个。所以这与我们之前的代码完全相同。这个只是检查输入和输出在形状上是否匹配。所以两个状态匹配，并且状态的形状也匹配。好的。明白了。这真的很简单。好了。接下来，这就稍微复杂一点。
 
- We need to define an RNN block。 So the RNN block， okay。 And so the reason why we need a block is because the RNN model itself just， you know。 deals with feeding data in and out。 The block does the entire forward pass where you， then。 you know， that knows how to， you know， one hot encode and do all the other convenience。
+我们需要定义一个RNN块。这个RNN块，好的。所以我们需要块的原因是因为RNN模型本身只是，嗯，处理数据的输入和输出。块做的是整个前向传播，其中你知道，如何进行one-hot编码并做所有其他便捷操作。
 
- routines around it。 So the first thing we need is， you know， it needs to go and， you know。 construct the RNN layer and then for the decoding and encoding， it needs to create a dense matrix。 So that's just the constructor。 Now， for the forward pass， this one here。 it needs to one hot encode the inputs。 All right。 It then runs the RNN and then it needs to generate the output。
+围绕它的常规操作。首先我们需要的是，嗯，它需要去，嗯，构造RNN层，然后对于解码和编码，它需要创建一个密集矩阵。所以这只是构造函数。现在，对于前向传播，像这里的这个。它需要进行one-hot编码输入。好了。然后它运行RNN，接着它需要生成输出。
 
- because the RNN doesn't know anything about that。 All right。 Because， you know。 we could have done anything bizarre here。 And lastly， we go and just return the output in the state。 And then we need another function， begin state， such that the RNN block knows， you know。 how to start。 Okay。 Okay。 Any questions so far？ Yes？ >> So this is how can I get the input？
+因为RNN本身并不了解这些。好了。因为，嗯，你知道，我们可能在这里做了什么奇怪的事情。最后，我们去返回输出和状态。然后我们需要另一个函数，begin state，这样RNN块就知道，嗯，如何启动。好了。好了，到目前为止有什么问题吗？是吗？ >> 那么我怎么获取输入呢？
 
- >> Sorry。 Can you speak up a little bit？ >> [INAUDIBLE]， >> Sorry， I'm still-， >> [INAUDIBLE]。 >> No。 Okay。 So the question was， does this do anything about the sequence sampling？ No。 Not yet。 So this is really just a mechanism of， well， here's a device where I feed it some data。 and it produces some other state sequence from it， right？
+>> 对不起，你能大声一点说吗？ >> [听不清]， >> 对不起，我还是-， >> [听不清]。 >> 不。好了。那么问题是，这个是不是和序列采样有关？不。还没有。所以这实际上只是一个机制，嗯，这里有一个设备，我把一些数据输入进去。然后它产生了另一个状态序列，对吧？
 
- It doesn't actually do anything about preparing the input data yet。 All right。 We'll still have to do that by hand。 All right。 Or， you know， encode， obviously。 But， yeah。 Okay。 Oops。 That's the problem with hot cores。 So for prediction， it looks very similar to before。 The only thing is that， yeah， we now call the RNN model。 So that's the model here。
+它实际上并没有做任何准备输入数据的事情。好了。我们仍然需要手动完成这一步。好吧。或者，你知道，显然要编码。但，嗯。好吧。哦，天哪。这就是热核的麻烦。对于预测，它看起来与之前非常相似。唯一的区别是，嗯，我们现在调用的是 RNN 模型。所以这是这里的模型。
 
- So we initialize it。 So begin state。 That's exactly what we invoke。 We generate our outputs。 where we're going to put things in。 And then， for all the characters in that sequence， okay。 so we reshape it， and we just let the， RNN take one step forward。 Right。 This is basically because the RNN is just， you know， the device to， you know。
+所以我们初始化它。开始状态。这正是我们调用的内容。我们生成我们的输出，接下来我们将把东西放进去。然后，对于该序列中的所有字符，好吧。所以我们重新调整形状，然后让 RNN 向前迈进一步。对吧。这基本上是因为 RNN 就是，嗯，你知道，这个设备，你知道。
 
- generate the next object one at a time。 Whereas， yeah， then， and you can actually see， for instance。 here the decoding， you know， through argmax， right。 This is actually what converts it from a vector into characters again。 Now。 the if the nls is exactly the same as what we have before。 Namely， if this is still part of。
+一次生成一个下一个对象。而且，嗯，然后，你实际上可以看到，例如，在这里的解码，你知道，通过 argmax，对吧。这实际上是将其从向量转换回字符的过程。现在。如果 NLS 与我们之前的完全相同，换句话说，如果这仍然是其中的一部分。
 
- you know， the original characters that I've fed in to start with， it doesn't overwrite those。 and it just copies them from input to output。 And only after it's run out of characters that it was supposed to see in the beginning will。 start producing new characters。 So now there's an obvious question。 Why on earth do we just let it process one character at a time， and then we don't have。
+你知道，我最初输入的原始字符，它不会覆盖那些字符。它只是把它们从输入复制到输出。只有在它跑完了最开始应该看到的字符后，才会开始生成新的字符。所以现在有个显而易见的问题。为什么我们就让它一次处理一个字符，然后我们没有。
 
- actually care very much about the output there。 Does anybody have a good idea as to why we would do such a wasteful thing？
+其实很在乎那里的输出。有人能给出个好理由，解释为什么我们会做这么浪费的事情吗？
 
- Right。 This is weird， right。 Why don't I just start， you know， after， you know。 the characters that I already know that， exist？ Okay。 Let me give you a hint。 If I ignore the first few characters， right， and just started after those characters， would。 my model still take those characters into account？
+对。这个很奇怪，对吧。为什么我不直接开始，你知道，在那些我已经知道存在的字符之后？好吧，让我给你个提示。如果我忽略前几个字符，然后直接从那些字符之后开始，嗯。我的模型还会考虑这些字符吗？
 
- Would it still matter whether the first few characters are time traveler or chainsaw？ Okay。 I guess people are starting to shake their heads。 It probably doesn't。 it probably wouldn't matter then， right。 And that's exactly the point。 So if you were to ignore those first few characters， then your hidden state would not。
+它是否还会在意前几个字符是 "time traveler" 还是 "chainsaw"？好吧，我猜大家开始摇头了。大概不会。那应该没关系吧。对，这正是重点。所以如果你忽略前几个字符，那么你的隐藏状态就不会。
 
- depend on those characters。 So those first few steps are not wasteful。 They are just there in order to load up the hidden state into something meaningful。 Right。 That's the reason why I have to go and start with a meaningful hidden state。 So if I wanted to have a better hidden state， I would simply ingest more。 Okay。 So then in the end。
+依赖于这些字符。所以前几个步骤并不是浪费的。它们只是为了将隐藏状态加载到某个有意义的东西中。对吧。这就是为什么我必须从一个有意义的隐藏状态开始的原因。所以，如果我想拥有更好的隐藏状态，我只需摄取更多的内容。好吧。然后最终。
 
- well， I just concatenate everything and that's it。 So let's try and see。 And this is exactly doing the same thing as what we did before。 You know。 I started with traveler and then have it produce another 10 characters。 And those 10 characters are utterly useless because， well， yeah。 Now again。
+嗯，我只是将一切拼接在一起，就是这样。我们试试看看。这与我们之前所做的完全相同。你知道，我从 "traveler" 开始，然后让它生成另外 10 个字符。那 10 个字符完全没有用，因为，嗯，嗯。现在，再次。
 
- comes the slightly more complex function。 And in the interest of time。 I'll go through this only so much。 And I strongly recommend that you look at those notebooks online afterwards。 Okay。 So let's look at that。 Right。 So we have a loss which is， you know， softmax cross entropy。 I initialize my model。 And I invoke my trainer。 Right。 That's my optimization algorithm。 Okay。
+接下来是稍微复杂一些的函数。为了节省时间，我只会讲到这里。我强烈建议你之后查看那些在线笔记本。好的，我们来看一下。对，我们有一个损失函数，就是你知道的，softmax 交叉熵。我初始化了我的模型。然后我调用了我的训练器。对，那是我的优化算法。好的。
 
- Then you go through the data， you know， for whatever number of epochs you have。 This is just timing as before。 And the only thing that I'm doing is I'm only using the consecutive data iterator。 because the other one turned out to be bad anyway， so no point in implementing both。 And this training predict RNA in gluon is a function that will come in very handy。
+然后你遍历数据，你知道，无论你有多少个周期。这就像之前一样只是时间问题。而我所做的唯一事情就是只使用连续数据迭代器。因为另一个方法反正效果不好，所以没必要实现两个。这个在 gluon 中的训练预测 RNA 函数将非常有用。
 
- for instance also for your homework。 You will end up calling this function quite a bit。 So。 first thing is you initialize the state， right？ As you would。 And then you go with the data。 And there's this funky thing that I'm doing here which says est。detach。 For estin state， detach。 Right。 So that just tells the autograph not to back propagate beyond the boundaries of my。
+比如说，做你的作业时，你会反复调用这个函数。所以，第一步是初始化状态，对吧？就像你预期的那样。然后你拿到数据。这里有个奇怪的操作，我在做的是 est.detach。对于 estin 状态，调用 detach。对吧？这就是告诉 autograph 不要在我的边界之外进行反向传播。
 
- mini batch。 Right。 So this is at the very beginning of a mini batch that I have this， and I'm just。 saying it， well， hey， anything you knew about state from before， drop that from the。 computational graph。 Okay。 We'll get to that in a lot more detail on Thursday where we'll actually look at back。 drop through time and truncation and all those other tricks in quite a bit more。
+小批量。对吧。所以这是在小批量开始时，我有这个操作，我只是在说，嘿，以前的状态中的任何信息，都从计算图中删除。好的。我们将在周四更详细地讨论这个内容，到时候我们会实际看一下反向传播、时间切割和其他那些技巧。
 
- But for now just trust me that this is doing something sensible。 And then we do our usual training loop。 So with autograph record， this is now it's game on。 We produce output in state from the model。 We take the y's and compare them through the loss function。 Okay。 Once we have that， go and compute the gradient。 Take the parameter vectors， clip them。
+但现在先相信我，这样做是有意义的。然后我们进行常规的训练循环。所以通过 autograph 记录，现在正式开始了。我们从模型中生成输出和状态。我们拿到 y 值，并通过损失函数进行比较。好的。一旦得到结果，就去计算梯度。然后拿到参数向量，对它们进行裁剪。
 
- and then all you do is you just compute one， update from the trainer， update the loss function。 and that's it。 Okay。 So that's really it。 Now， the last thing and I'm going to omit this is this is really just monitoring to。 figure out what the perplexity is。 For the homework， you will need to read that part。 The difference is for the homework， you're actually going to implement something where。
+然后你所要做的就是计算一次更新，从训练器中更新损失函数。就是这么简单。好的，这真的就是全部了。最后一件事，我会略过的是，这实际上只是为了监控，去确定困惑度是多少。对于作业，你需要阅读这一部分。区别在于，作业中你实际上需要实现一些东西。
 
- you're going to measure the perplexity on an unseen test set。 Here we're just logging the perplexity on the training set。 The difference is that in the homework you'll have to keep training and test it separate。 Short of that it's going to be very similar。 Okay。 Any questions？ Okay。 Good。 Then let's run。
+你将会在一个未见过的测试集上测量困惑度。在这里，我们只是记录训练集上的困惑度。区别在于作业中你需要保持训练集和测试集的分离。除此之外，其他部分差不多。好的，有什么问题吗？好的，那么我们开始吧。
 
- Maybe let's run it for more than 200 epochs。 Maybe run it for 400。 And let's see what happens。 Okay。 Any questions so far？ Yes？ Is the procedure for using multiple GPUs to say that's the one that was shown just by。 you for a couple of different numbers？ Okay。 Multiple GPUs in sequence models。 It's close。 The basic idea is the same。 You compute gradients for many batches that are sent to different GPUs。
+也许我们可以将其运行超过 200 个周期。也许跑 400 个周期。看看会发生什么。好的，到目前为止有什么问题吗？是吗？使用多个 GPU 的过程就是你展示的那个吗？就是你展示的几个不同数字的那个吗？好的。多个 GPU 在序列模型中的应用。差不多，基本思路是相同的。你为很多批次计算梯度，然后将它们发送到不同的 GPU。
 
- Those different GPUs do their own thing and then you get the gradients back。 Essentially sequence models are much heavier on the CPU。 Even the ones that use a lot of glue and functionality。 And that's not a big deal if you have a relatively slow GPU and a fast CPU。
+这些不同的 GPU 做各自的工作，然后你会得到梯度。基本上，序列模型在 CPU 上的负载要重得多。即使是那些使用大量粘合和功能的模型也是如此。如果你有一个相对较慢的 GPU 和一个快速的 CPU，这倒不会成什么大问题。
 
- It can become a problem if you have like a P3 16x large with 8 GPUs。 The mix net is pretty good with that so the Python part is fairly lightweight but it's。 non-trivial nonetheless。 And there are cases where you can end up in a situation where it's essentially the。 CPU holding back to rest。 This is why it requires a little bit more work。
+如果你使用像 P3 16x 大型机器配备 8 个 GPU，这可能会成为一个问题。混合网络在这种情况下表现相当不错，因此 Python 部分相对轻量，但它仍然是**非平凡**的。也有一些情况，你可能会陷入一种局面，基本上是**CPU**限制了其他部分的性能。这就是为什么它需要更多的工作。
 
- If you want to have a lot of detail about that， you should check out the latest。 Bluhan NLP toolkit which has parallel distributed training for the transformers for， BERT。 That's a highly non-trivial language model。 And that will give you some idea of how to do this efficiently in parallel。 And most of the difficulty is really engineering in this case。 Okay。 But what we can see now is。
+如果你想深入了解这个问题，你应该查看最新的 **Bluhan NLP 工具包**，它支持为 BERT 等转换器模型进行并行分布式训练。这是一个非常复杂的语言模型。它能让你对如何高效地并行处理有一些了解。在这种情况下，大多数难题实际上是工程问题。好吧，但现在我们可以看到的是。
 
- well， first of all， it ran quite a bit faster。 Right？ So you can see it's， you know， 0。15 seconds per pass。 In the homework， the data set will be a lot larger。 So this data set is around 140，000 characters。 In the homework。 the data set will be 5 million characters because you're going to。
+好的，首先，它运行得快了很多，对吧？所以你可以看到，它大约是每次**0.15**秒。在作业中，数据集会大得多。这个数据集大约有 140,000 个字符。在作业中，数据集会有 500 万个字符，因为你将要。
 
- have fun with the collected works of Shakespeare。 And then we can see whether your models can produce another Shakespeare。 Right？ Or at least， you know how close it will get。 Yeah。 it's team work on works that don't worry too much。 I mean， you can team up。 Yeah。 Any other questions？ OK， good then。
+与莎士比亚的全集一起玩乐。然后我们可以看看你的模型是否能生成另一个莎士比亚作品，对吧？或者至少你能看到它能接近多少。是的，这是团队合作的工作，别太担心。我是说，你可以组队。好，其他问题呢？好的，那么继续。

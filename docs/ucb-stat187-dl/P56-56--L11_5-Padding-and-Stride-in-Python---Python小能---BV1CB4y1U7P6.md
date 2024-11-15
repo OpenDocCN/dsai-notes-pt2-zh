@@ -1,33 +1,31 @@
-# P56：56. L11_5 Padding and Stride in Python - Python小能 - BV1CB4y1U7P6
+# P56：56. L11_5 Padding 和 Stride 在 Python 中的实现 - Python小能 - BV1CB4y1U7P6
 
- Okay。 So， what we're doing here is we're just implementing a very simple thing， namely。 it just goes and， applies convolution to some data。 That's a useful operation that we might need later for a couple of other cases， but。 right now all it does is it just does a little bit of accounting reshaping and so on to make things work。
+好的。所以，我们现在做的是，我们只是在实现一个非常简单的东西，即它只是去应用卷积于某些数据。这是一个我们以后可能需要用到的有用操作，可能在其他一些情况下会用到，但现在它只是做了一点点计算、重塑之类的操作，来使事情能够运行。
 
- and then it just， invokes those convolutions。 Okay。 Let me go back to this and execute it。 So， if I。 you know， go and， you know。
+然后它就会调用那些卷积操作。好吧，让我回到这个并执行它。所以，如果我。你知道的，去做，然后你知道。
 
 ![](img/a9b722eb4ed87bf719e05353ef0955c9_1.png)
 
-
-
 ![](img/a9b722eb4ed87bf719e05353ef0955c9_2.png)
 
- convolve something with， you know， kernel of size 3 by 3 and have a padding of 1。 and the input was 8 by 8， then the output， lo and behold is also 8 by 8。 Remember that was exactly the trick that I mentioned before。 Or， for instance， if I have， you know。 a convolutional kernel of size 3， padding of 1 and stride of 2。
+如果我用一个3x3的卷积核，并且填充为1，输入是8x8，那么输出，真是不可思议，也是8x8。记住，这正是我之前提到的那个技巧。或者，例如，如果我有一个3的卷积核，填充为1，步长为2。
 
- so this way I'm skipping every second entry， then rather than 8 by 8。 since I'm skipping every second entry rolling， column-wise， I get 4 by 4。 So。 that's very unsurprising。 Now， if I have something that's asymmetric， let's say I have a。
+所以，这种方式我跳过每第二个条目，而不是8x8。因为我跳过了每第二个条目，按列滚动，我得到了4x4。所以，这一点是非常不令人惊讶的。现在，如果我有不对称的东西，比如说我有一个。
 
 ![](img/a9b722eb4ed87bf719e05353ef0955c9_4.png)
 
- kernel size of 3 and 5， let's do the math。 We can just quickly verify what's going on。 So。 here we have our 8 by 8 matrix， right， that's x。 We have a kernel of size 3 by 5。 So。 that's our kernel。 Okay， so now， if I， and on top of that， I'm not padding on the rows。 but I'm padding on the columns。 So， we have one extra here and one extra here。
+核心大小为3和5，来做一下计算。我们可以快速验证一下发生了什么。所以这里我们有一个8x8的矩阵，对吧，表示x。我们有一个3x5的卷积核。所以这是我们的卷积核。好的，那么，如果我，并且在这之上，我并没有对行进行填充，而是对列进行填充。所以我们这里有一个额外的像素，另一边也是。
 
- And we have strides of 3 and 4。 Okay， let's do the horizontal first。 So， we have size 3。 So。 we really have 6 positions， right？ But we're jumping 3 at a time。 So， then， well， I don't。 I only really have space to squeeze in two of those filters， right？
+我们的步长是3和4。好的，我们先做水平部分。我们有大小为3。所以我们实际上有6个位置，对吧？但是我们每次跳跃3个位置。那么，实际上，我只能塞进两个这样的过滤器，对吗？
 
- It's not enough space for the third one， because it's only 8 pixels wide。 So。 I have pixels 1 up to 3 here。 I have pixels 4 up to 6 there， with a composition， and then there。 I'm out of space。 So， I only have two dimensions in this direction here。 Now， for the vertical part。 remember we have a height of 5。 We have a total of 10 pixels。 So， 2 would fit in。 That's good。
+第三维的空间不够，因为它只有8像素宽。所以，我这里有从1到3的像素。我那里有从4到6的像素，进行合成，然后到这里。空间不够。所以，我在这个方向上只有两个维度。现在，对于垂直部分，记住我们的高度是5，总共有10个像素。所以，2个像素正好合适。很好。
 
- If I shift it entirely， since I'm not going to shift it entirely， but just by a step of 4。 So。 we have 5 pixels for the first one。 Then we shift by 4。 So， we're now at pixel number 9。 Then I would shift by 4 again。 So， 8 plus 5， right？ That's 13。 And 13 is out of range。 So。 I get 2 horizontally and 2 vertically。 Okay。 If you're lucky。
+如果我完全偏移，实际上我并不会完全偏移，而是每次偏移4个像素。所以，第一组有5个像素。然后偏移4个像素。所以，现在我们到了第9个像素。然后我再偏移4个像素。所以，8加5，对吧？那是13。13超出了范围。所以，我只能水平放2个，垂直放2个。好吧。如果你足够幸运的话。
 
- this is the only time in your life that you'll have to go over that。 Maybe in the homework， but， um。 it's good to understand this once， and then for the rest， let your code take care of it。 Any questions？ Yes？ Why do you hide？ Not the correct。 Because I probably got it wrong。 But it doesn't really matter because it's just first dimension versus second dimension。
+这是你一生中唯一一次需要重复这个过程的时刻。也许在做作业时会遇到类似的情况，但是，嗯，理解这个过程一次是很重要的，然后剩下的就让你的代码来处理吧。有什么问题吗？有吗？为什么要躲起来？不对的。因为我可能搞错了。但其实没关系，因为这只是第一维和第二维的对比。
 
- It just took the first dimension as the width and the second as the height。 but you could do it the other way around。 That's true。 In the slide， I had height times width。 Yeah。 I'm just drawing width times height because， yeah， I mixed that up。 Good catch。 Any other questions？
+它只是将第一维作为宽度，第二维作为高度。但你也可以交换顺序。没错。在幻灯片中，我写的是高度乘以宽度。是的，我只是画了宽度乘以高度，因为，嗯，我弄错了。好眼力。还有其他问题吗？
 
- Okay。 Good。
+好的。 很好。
 
 ![](img/a9b722eb4ed87bf719e05353ef0955c9_6.png)

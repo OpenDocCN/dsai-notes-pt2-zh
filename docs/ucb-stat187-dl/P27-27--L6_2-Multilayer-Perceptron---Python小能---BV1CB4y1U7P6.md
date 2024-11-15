@@ -1,73 +1,61 @@
-# P27：27. L6_2 Multilayer Perceptron - Python小能 - BV1CB4y1U7P6
+# P27：27. L6_2 多层感知机 - Python小能 - BV1CB4y1U7P6
 
- So in the exo problem， we had the issue that a linear， separator isn't going to be able to separate。 well， some， very， very simple data。 Now， the obvious solution in hindsight is to go to more。 than one layer。 And mind you， the brain does the same thing， so there's。 this pretty picture of the brain。 And it's connectivity structure。
-
-
-
-
+在 XOR 问题中，我们遇到的问题是线性分割器无法分割。好吧，一些非常非常简单的数据。现在，事后看来，显然的解决方案是使用多层。值得注意的是，大脑也做了同样的事情，所以下面是大脑的漂亮图像，以及它的连接结构。
 
 ![](img/ee3c611fc430669a48fba25584227fc8_1.png)
 
- OK， so what does this all have to do with XOR？ So let's just look at those two classifiers。 So one that just splits for a result， and one that splits vertically。 Neither of those actually helps， but I could easily， implement each of them as a linear classifier。 So I have the blue one and the orange one， and they split， other points， one， two， three， four。
+好吧，那么这一切与 XOR 有什么关系呢？让我们看看这两个分类器。所以一个是简单的分割结果，一个是垂直分割。这两者实际上都没有帮助，但我可以轻松地将它们每一个都实现为线性分类器。所以我有蓝色的和橙色的，它们分割其他点，1，2，3，4。
 
- according to those， plus and minus signs。 But now the really cool thing is that if I take the product。 of those two classifiers， I get a solution to the exo， problem。 which is utterly unsurprising given that I can， actually write XOR as multiplications in this way。 So this should surprise absolutely nobody， but logically。
+根据这些加号和减号。但现在真正酷的地方在于，如果我取这两个分类器的乘积，我就得到了 XOR 问题的解。这个结果并不令人惊讶，因为我实际上可以通过这种方式将 XOR 写成乘法。所以这应该让任何人都不会感到惊讶，但从逻辑上讲。
 
- it's quite neat because this is really just a deep network， with a hidden layer。 So I'm taking first output， second output， multiplying it， together in the next layer I'm done。 OK。 so that looks nice。 Let's see whether we can do more。 So here's a single hidden layer。 And if I have a classification problem for the output， well， here's the output。
+这非常简洁，因为这实际上只是一个深度网络，带有一个隐藏层。所以我首先取输出，第二个输出，将它们相乘，然后进入下一层就完成了。好吧，看起来不错。让我们看看是否可以做得更多。所以这是一个单隐藏层。如果我有一个分类问题，那么输出就是这个。
 
- I'm going to call the output O and the hidden layer H。 Now， in this case。 I mean I have some degree of freedom， besides choosing which parameters to pick。 I can choose how many hidden units I have。 If I take a lot of them， I can possibly model a more。 complex function class。 If I pick very few of them， I can't do so much。
+我要称输出为 O，隐藏层为 H。现在，在这种情况下，我有一些自由度，除了选择哪些参数之外。我可以选择有多少个隐藏单元。如果我选很多，我可能能够建模更复杂的函数类。如果我选得很少，我就做不了太多。
 
- And there's a very nice fundamental work， which says， I。 can pretty much approximate any interesting function by just， adding enough hidden units。 The problem is this is a beautiful general theoretical， result that's utterly useless in practice。 Because nobody would ever do this because this would give， you a very unpleasant。
+有一个非常好的基本工作，它说，我几乎可以通过添加足够的隐藏单元来逼近任何有趣的函数。问题在于，这是一个美丽的理论结果，但在实践中完全没有用。因为没人会这样做，因为这样做会给你带来非常不愉快的结果。
 
- not easy to work with function class。 But at least you know you could do it if you really wanted to。 So here's the math。 We have some input x。 We have some output。 We have hidden for the hidden layers。 So we have some parameters w at 1 and bias 1。 For the output， we have some vector w2 and bias w2。 So that's the scalar。 And so for the hidden layer， I have some nonlinearity of w1， times x plus b1。
+与函数类一起工作并不容易。但至少你知道如果你真的想做的话，是可以做到的。那么这里是数学模型。我们有一些输入 x。我们有一些输出。我们有隐藏层（hidden layers）。所以我们有一些参数 w1 和偏置 b1。对于输出，我们有一些向量 w2 和偏置 b2。这样就是标量。所以对于隐藏层，我有一些非线性函数，w1 乘以 x 加上 b1。
 
- And then for the output， I have w2 transpose h plus b2。 And the sigma is an activation function。 So why do I need an activation function？ Any ideas？ Yes？ Otherwise。 it's just that you don't have an activation， function no matter how many layers you add on this。 Exactly。 So otherwise， I end up with a linear function after all。
+然后对于输出，我有 w2 转置 H 加上 b2。σ 是一个激活函数。那么为什么我需要激活函数呢？有任何想法吗？是吗？否则就没有激活函数，不管你加多少层。完全正确。所以否则我最终会得到一个线性函数。
 
- Because I can just apply one after the other。 And one matrix multiply by the next one。 It's never going to be nonlinear。 Actually， I can make matters worse by adding more layers。 Why could I make things worse？ Why is it a terrible idea？ Overfitting？ Not really， because， I mean。 ultimately， it's just a linear function， except that you have a really， weird parameterization。
+因为我可以一个接一个地应用它们。一个矩阵乘以下一个矩阵。它永远不会是非线性的。事实上，我通过增加更多的层，可能会把事情搞得更糟。为什么我会把事情搞得更糟？为什么这是一个可怕的主意？过拟合？其实不完全是，因为，最终，它只是一个线性函数，尽管你有一个非常奇怪的参数化。
 
- But you're on to something。 Some other suggestions？ Yes？ [INAUDIBLE]， No。 that's the same thing as overfitting。 That's not really going to help us。 But some very practical issues。 [INAUDIBLE]， So exactly。 So there are two things。 The first thing is it might take forever to converge。
+但你似乎抓住了要点。还有其他建议吗？是吗？[听不清]，不。那和过拟合是一样的。这并不会真正帮助我们。但有一些非常实际的问题。[听不清]，所以，确切地说，有两点。第一点是，它可能需要永远才能收敛。
 
- because I have a very large set of equivalent networks。 And so I may not converge very well。 and it'll just run， around in that space。 The second thing， and that's the more mathematically。 dramatic one， is I may actually have a less expressive， network that way。 So let's say I have 10-dimensional input， a 10-dimensional output。 In the middle。
+因为我有一个非常大的等效网络集。所以我可能无法很好地收敛，它会在那个空间里徘徊。第二个问题，且这是更具数学意义的一个问题，就是我可能会得到一个表达能力更弱的网络。假设我有一个10维的输入，和一个10维的输出。在中间。
 
- I have maybe five hidden units。 Then I automatically force my network。 to be just of dimensionality 5， in terms of basic rank of， that matrix。 And that considerably restricts what I can do。 So not only do I lose expressiveness， I can actually。 make things worse in a simple linear model。 So that's why we need an activation。
-
-
-
-
+我可能有五个隐藏单元。然后我自动强制我的网络，在矩阵的基本秩上，将维度限制为5。这大大限制了我能做的事情。所以，不仅仅是我失去了表达能力，我实际上可能会使简单线性模型变得更糟。因此，这就是为什么我们需要激活函数的原因。
 
 ![](img/ee3c611fc430669a48fba25584227fc8_3.png)
 
- So here's some activation functions。 It's one of the simpler ones。 It's 1 over 1 plus e to the minus x。 And this used to be a very popular activation function。 a long time ago。 He seems to you nobody uses this one now anymore。 Does anybody have an idea of why this is actually， a really bad idea？
+这是一些激活函数。这是其中一个比较简单的函数。它是1除以1加e的负x次方。这曾经是一个非常流行的激活函数，很久以前。现在似乎没有人再用了。有人知道为什么这实际上是一个非常糟糕的主意吗？
 
- So Jan LeCah even used to have a stop sign with the sigmoid， in it and across through。 So why is it a bad idea？ Yes？ [INAUDIBLE]， Exactly。 So for very negative inputs and for very positive inputs， the gradient goes to zero。 And there's this tiny goldilocks zone somewhere between， maybe minus 2 and 2。
+所以Jan LeCah甚至曾经有一个停止标志，上面是sigmoid，并且有一个划线。那么为什么这是一个糟糕的主意呢？是吗？[听不清]，正是如此。所以对于非常负的输入和非常正的输入，梯度会变为零。并且在某个地方有一个非常小的黄金区间，也许是-2到2之间。
 
- where interesting things happen。 And if by some bad luck， your input scale got out of range。 such that you ended up in either one of those two flat， regions。 then your optimization algorithm would， essentially get stuck。 which you wouldn't get any meaningful， gradients anymore， everything vanishes。
+这是一些有趣的事情会发生的地方。如果由于某种不幸，你的输入尺度超出了范围，结果落入了那两个平坦的区域之一，那么你的优化算法基本上会卡住。你将再也得不到有意义的梯度，一切都会消失。
 
- It just takes forever to converge。 So there's another one。 It's a tangent。 And then one's just as bad， because it's just the same， thing as before， just with different scales。 So you can actually show that these two functions are， equivalent after some rescaling。 Now what does everybody use now？ Everybody uses this thing called relu。 Rectified linear unit。
+它只需要永远才能收敛。所以还有一个，正切函数。然后另一个一样糟糕，因为它和之前的情况是一样的，只是尺度不同。所以你实际上可以证明，这两个函数在重新缩放后是等效的。现在大家都用什么呢？大家现在都使用这个叫做relu的东西。修正线性单元。
 
- But relu sounds so much fancier。 It's just a max of x and 0。 Right？
+但relu听起来更花哨。它只是x和0的最大值。对吗？
 
- So if you talk relu then everyone goes like， oh， you know， deep learning arc。 Jargen。 So that's why remember that you can impress people。 Now this actually doesn't have this problem quite so much， anymore。 So at least it only has half that problem。 So there's a half space where your gradient will not vanish。
+所以如果你谈论 relu，大家都会想，“哦，你知道的，深度学习术语。”所以记住你可以让人印象深刻。现在，实际上它不再有这个问题那么严重了，至少它只剩下一半的问题。因此，至少有一半的空间，你的梯度不会消失。
 
- Actually， for that half space， your gradient will be just one。 For the other half space。 it's still zero。 But OK， it's at least a lot better。 So given that， at some point。 some people came up with an， idea， well， let's fix their pro on the left hand side and。 use something called a prelude。 And the prelude is essentially the relu。
+事实上，对于那个半空间，你的梯度将是 1。对于另一个半空间，它仍然是零。但好吧，至少它好多了。所以考虑到这一点，在某个时刻，一些人提出了一个想法，嗯，让我们固定左边的 pro 并使用一种叫做 prelude 的东西。prelude 本质上就是 relu。
 
- But just where the constant zero is then shifted a little， bit below or above。 And that really then is also learnable to some extent。 So in other words。 rather than this function here， you use， maybe that。 Then you have some coefficient alpha and you can learn it。 In some cases。
+但常数零的位置稍微偏移了一点，可能在上面或下面。那实际上也是可以在某种程度上学习的。换句话说，与你这里的函数不同，你可以使用，也许是那个。然后你有一个系数 alpha，且你可以学习它。在某些情况下。
 
- it makes things a little bit better。 So don't bother unless you really know you have this， problem。 So these are all the activation functions。 So now we can do multi-class classification。 And the only thing we need to do for that is we have input， layer， hidden layer， output layer。 And then I run a softmax on top of that。 So in terms of math， well， hidden layer is sigma of w1。
+这会让事情稍微变得更好一些。所以除非你真的知道自己遇到了这个问题，否则不要去烦它。这些是所有的激活函数。所以现在我们可以进行多类分类。我们需要做的唯一事情就是我们有输入层、隐藏层、输出层。然后我在其上运行一个 softmax。数学上讲，隐藏层是 w1 的 sigma。
 
- times x plus b。 The output is w2 times h plus b。 And then y is softmax of o。 And I should have both faced o here。 So then， because we like this so much， well， we can have。 more layers。 And if you use only graph， well， that's easy。 But at some point。 it gets really hard to specify that way。 So this is where specifying networks in code is going to。
+times x 加 b。输出是 w2 乘以 h 加 b。然后 y 是 o 的 softmax。然后我应该在这里面对 o。既然我们这么喜欢这个，我们可以有更多的层。如果你只使用图形，那很容易。但在某个时刻，它真的很难以这种方式来指定。因此，这就是在代码中指定网络的地方。
 
- be a lot easier。 Now， once you have that， you have a lot more freedom of， design。 free design parameters， right？ You can add more layers。 You can make it deeper。 You can add more hidden units。 And depending on how you do this， for instance， you could。 make a network that's just straight up and then just。
+会容易得多。一旦你有了这个，你将拥有更多的设计自由度，更多的设计参数，对吧？你可以添加更多的层。你可以让它更深。你可以增加更多的隐藏单元。根据你怎么做，例如，你可以创建一个直线型网络，然后再。
 
- goes to outputs or that's narrow in the middle and it gets， wider again。 And this is really something where you may want to tune。 things a little bit for the specific data set at hand。 And so that is all about multi-layer perceptrons。 You now will have just enough time to actually try this。
+它转到输出，或者在中间变窄，之后又变宽。这实际上是你可能想要为特定数据集微调的地方。所以这些就是关于多层感知机的内容。你现在将有足够的时间来实际尝试这个。
 
- out in practice。 Any questions so far on the theory？
-
-
-
-
+在实践中。到目前为止，理论上有任何问题吗？
 
 ![](img/ee3c611fc430669a48fba25584227fc8_5.png)
 
- No questions？ Good， awesome。 [BLANK_AUDIO]。
+没有问题？很好，太棒了。[BLANK_AUDIO]。
 
 ![](img/ee3c611fc430669a48fba25584227fc8_7.png)

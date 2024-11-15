@@ -1,159 +1,145 @@
-# P91：91. L16_6 Bag of Tricks for CNN Training - Python小能 - BV1CB4y1U7P6
+# P91：91. L16_6 CNN训练的技巧集 - Python小能 - BV1CB4y1U7P6
 
- So far we talk about the basic idea， how to get a network。 how do you use a normal way how to train the network。 But if you just follow one by one。 you're going to find， well， you never reproduce state-vort or results。 So if you read the paper。 there's several tiny things mentioned there。 Actually， the tiny things matter a lot。
-
-
-
-
+到目前为止，我们讨论了基本的思路，如何获取一个网络，如何用常规方式训练网络。但如果你只是逐步跟着做，你会发现，你永远无法复现论文中的状态或结果。所以如果你阅读论文，会发现里面提到了一些小细节。实际上，这些小细节非常重要。
 
 ![](img/a32291981320a78e4a7bfca73ff658ff_1.png)
 
- For example， so this is a model zoo I just opened。
+例如，这是我刚刚开启的一个模型库。
 
 ![](img/a32291981320a78e4a7bfca73ff658ff_3.png)
 
- Let me just open the model zoo here。
+让我在这里打开这个模型库。
 
 ![](img/a32291981320a78e4a7bfca73ff658ff_5.png)
 
- So this is a model zoo we have。
+这是我们拥有的模型库。
 
 ![](img/a32291981320a78e4a7bfca73ff658ff_7.png)
 
- It's still like the axis， the throughput， the wise axis， it's very much classification。 So you can see every thing like， let me zoo。 Well， okay。 So this is the rest。 let me pick a small one。 So this rest is not 100， let me be this typical one。 So less than 50。 this is the typical one we have。 So you can see here， this is the thing， the bar here。 Actually。
+它仍然像轴一样，包括吞吐量、智慧轴，非常偏向分类。所以你可以看到每一项，比如让我看看这个库。好吧，好吧。所以这是剩下的部分。让我挑一个小一点的。这个不是 100，让我选一个典型的。小于 50。这个是我们典型的模型。所以你可以看到，这里有条形图。实际上。
 
- this is the accuracy reporting the paper。 Okay。 So then， you're adding a bunch of tricks。 you can improve the accuracy a lot here。 So， so this is the adding a bunch of tricks。 you can improve the accuracy from almost like 75 plus to， 77， 78。 Let me see the exact number。 like 77。 From 75 to 77， like 2%。 That means our paper in CVPR， if we improve the net。
+这是论文中的准确率报告。好吧。那么，加入一堆技巧之后，你可以大幅提高准确率。所以，加入一堆技巧后，你可以将准确率从接近 75 提升到 77、78。让我看看准确的数字。是 77。从 75 提高到 77，提升了 2%。这意味着我们的论文在 CVPR 中，如果我们改进了网络。
 
- we'll go by so much。 And so there's a bunch of other things like， this is a rest net， we two， well。 this is a rest net， we want B， like we want C， we want this dark net， this is not a rest net。 we want B， but we want B even much higher。 It's like 79% top of our accuracy。 So the baseline model。 we have almost like 76 kinds of 75 plus reporting the page。 So a lot of tricks matters。 Actually。
+我们将按此方式进行。所以还有很多其他东西，比如，这是一个 ResNet，我们两个，好吧。这个是 ResNet，我们需要 B，像我们需要 C，我们需要这个 DarkNet，这不是 ResNet。我们需要 B，但我们希望 B 更高。它的精度达到了 79% 左右。所以基线模型。我们有接近 76 种，75 以上的报告页面。所以很多技巧是很关键的。实际上。
 
- this trick is a tiny， it's almost giving you no overhead。 but it actually improves the accuracy a lot。 So we will have a lot， briefly introduce something。 similar thing for mobile net， for example， the mobile net， improve a lot， mobile net。 another mobile net， improve a lot。 Similar thing we have for detections， like for ULA v3。
+这个技巧非常小，几乎不会增加任何开销。但它实际上大大提高了准确率。所以我们会有很多，简要介绍一些。类似的东西对于 MobileNet 也有，比如，MobileNet 提升了很多，MobileNet。另一个 MobileNet，也有很大提升。类似的东西，我们也有用于检测，比如 ULA v3。
 
- original in the paper， ULA v3 is similar to SSC we have。 So this is a ULA v3 report in the paper。 So almost like tiny bit improve the SSD， okay， they write the paperboard that。 but actually apply a bunch of a trick， you can improve a lot here。 That's us。 I love tricks here。 So okay。
-
-
+论文中的原始内容，ULA v3 类似于我们拥有的 SSC。所以这是论文中的 ULA v3 报告。几乎只是稍微提高了 SSD，好吧，他们在论文中写了这一点。但是实际上，应用了一堆技巧之后，你可以大大提高准确率。这就是我们。我喜欢这里的技巧。所以好吧。
 
 ![](img/a32291981320a78e4a7bfca73ff658ff_9.png)
 
- So here we will briefly say something about the tricks， but you can see that like。 there's always new tricks coming out every year， and if you read the paper。 there's a lot of tiny space color。 Yeah， what's my set up， experiment set up。 but even some thing just available in the code， you need to read the source code。
+所以在这里我们简要地说一些技巧，但你可以看到，像每年总会有新的技巧出现，如果你读论文，会看到很多小的空间技巧。是的，我的设置，实验设置。即便有些东西仅在代码中出现，你也需要去读源代码。
 
- and find all of the tricks there。 It's more even mentioned in the paper。 So。 similar thing for ULA v3。
+并找到所有的技巧，那里甚至有提到。类似的事情适用于 ULA v3。
 
 ![](img/a32291981320a78e4a7bfca73ff658ff_11.png)
 
- So we can not briefly say some tricks。 I think we are think that's pretty useful。 The first one is called mix up。 It's pretty weird data augmentation thing。 What I'm doing here。 every time I write and select two examples。 I see examples of the JS example。 And then I can sample random numbers number number， from zero and one。 What I do here。
+所以我们可以简单地说一些技巧。我认为这些非常有用。第一个叫做 mix up。这是一个相当奇怪的数据增强方法。每次我选择两个样本。我查看 J 类样本。然后我可以从 0 到 1 中随机采样一些数值。然后我做的是……
 
- I will mix these two sample examples together， to get the new example。 So called X。 so we do here is number the times XI， plus one minus number that times XJ。 which is the linear combines the two examples。 Similar thing for the labels。 which is the linear combine them。 So we get a new example called X and Y。 For the training。
+我将这两个样本示例混合在一起，得到新的示例。所谓的 X 就是我们在这里做的，编号为 XI，加上 1 减去编号为 XJ 的次数。这是两个示例的线性组合。标签也做类似的线性组合。所以我们得到一个新的示例，叫做 X 和 Y，用于训练。
 
- we only train all these mixed examples。 We can ignore this original example。 So we have we train the new examples。 You can see that， okay， given clock， given a class。 So。 this is the image。 And for the labels， we have one hearted encoding， which is zero， zero， zero。 and tier one。 And our similar thing for the first one。
+我们只训练这些混合后的示例。我们可以忽略原始示例。所以我们训练的是新的示例。你可以看到，好的，给定一个时钟，给定一个类别。那么，这是图像。对于标签，我们有独热编码，值为 0，0，0，然后是 1。对第一个示例也做类似的处理。
 
- We choose the number that equal to zero point line， and get the new image。 Almost like almost the clock， but a little bit， like even how to see this little bit of glasses here。 And the label here is zero point one， for the first。 the glass and the zero point line for the clock。 Okay， so this pretty weird。
+我们选择一个等于 0.1 的数值，然后得到新的图像。几乎和时钟差不多，但稍微有点不同，比如你可以看到这个小小的眼镜。标签是 0.1，表示第一个眼镜的标签，0.1 也表示时钟的标签。好的，这真的很奇怪。
 
- You even get a lot of images， not human readable。
+你甚至得到了很多图像，但它们不是人类可读的。
 
 ![](img/a32291981320a78e4a7bfca73ff658ff_13.png)
 
- Similar thing for the object detections， you can do， you can put all these image together。 you can put the bond box together。 The only thing here。 the object detection is pretty sensitive to the shape。 You want to preserve the input shape。 Even you have different ratios， you want to preserve the geometry shapes here。
+对于目标检测也是类似的，你可以将所有这些图像放在一起。然后将边界框一起放在一起。唯一的不同是，目标检测对于形状非常敏感。你需要保持输入形状不变。即使你有不同的比例，也需要保持几何形状的完整性。
 
- So that the ratio is not messed up here。 So this is make two bond box for ship。 and the ones for stop sign， and which together get us three bond boxers here。 Okay。 so this is the one tiny trick。 The second one is called label smoothing。
+这样比例就不会被搞乱了。所以这是为船只做的两个边界框（bond box），一个是为停车标志做的，合起来我们得到三个边界框。好的，这就是一个小技巧。第二个技巧叫做标签平滑（label smoothing）。
 
 ![](img/a32291981320a78e4a7bfca73ff658ff_15.png)
 
- So we know that we also use， one-hotting coating for the label。 So here。 the Y is just the undimensional vector， and that is the number of classes we have。 If this YI belongs to class I， Y equals to one， all the other things you could do zero。 This is one-hotting coating of the label。 But we know that we are approximating。
+所以我们知道我们也使用了独热编码（one-hotting coating）来表示标签。这里，Y 就是一个一维向量，表示我们拥有的类别数量。如果 YI 属于类别 I，Y 等于 1，其他所有位置的值都是 0。这就是标签的独热编码。但我们知道我们是在进行近似。
 
- all this one-hotting coating using a softmax。 Softmax is pretty hard to approach zero or one。 Either the input， the infinity or all the things are zero， you got the zero and the one。 But in reality， you could not go to logic numbers。 So it's really hard to approach either the zero or one。 The smoothed labelings give you like。
+所有这些独热编码都使用了 softmax。Softmax 很难接近 0 或 1。无论是输入趋近于无穷大，还是所有值为零，你都会得到 0 或 1。但实际上，你无法得到逻辑数字。所以很难接近 0 或 1。平滑标签给你一个类似的效果。
 
- I pick up a epsilon here。 For example， I choose epsilon equals 0。1。 And then if it's class。 I use one minus epsilon。 Others， I just， epsilon divided by n plus one。 And then minus one。 So that's still like， I can sum them together equals to one。 Steering probability。 but it's kind of not just a two goes to one。 It's smoother version。
+我在这里选了一个 epsilon。例如，我选择 epsilon 等于 0.1。然后如果是类别，我使用 1 减去 epsilon。其他类别，我只是将 epsilon 除以 n 加 1，然后再减去 1。所以仍然是，我可以将它们加在一起得到 1。转向概率。但这不仅仅是 2 变为 1。它是一个更平滑的版本。
 
- So if it's just epsilon equals to zero one， then it's zero point line for the two classes。 and small number less than 0。1 for negative classes。 So this number we have much。 we make the softmax much easier to try。 This is a pretty standard trick。 not just using on calibration， but also for like， I don't know， a piece as well。 Okay。
+如果它只是epsilon等于0.1，那么它对于两个类别来说是零点一，对于负类来说是小于0.1的数字。我们有这个数字时，我们可以让softmax更容易尝试。这是一个相当标准的技巧，不仅仅用于校准，也可以用于像我不知道的其他地方。好的。
 
- so label smoothing。
+所以标签平滑。
 
 ![](img/a32291981320a78e4a7bfca73ff658ff_17.png)
 
- The other tricks like， well， we mentioned that if you use a multi GPU training。 you want to try a very large batch size。 Because for good performance。 but if you use a large learning rate at the beginning， all this weight I read in the initialised。 It's a random， and you use a large learning rate， you make it numerical issues here。
+其他技巧比如，嗯，我们提到过，如果你使用多GPU训练，你可能想尝试一个非常大的批量大小。因为这有助于性能。但如果你在开始时使用一个大的学习率，所有这些权重在初始化时都是随机的，如果你使用大的学习率，你会在这里遇到数值问题。
 
- So in this case， we cannot use a large learning rate。 but we want to use a large learning rate to faster convergence。 So what we can do here is go the one up。 What do we do here？
+所以在这种情况下，我们不能使用较大的学习率，但我们希望使用较大的学习率来加速收敛。那么我们能做什么呢？我们把学习率调高。那么我们该怎么做呢？
 
- We pick up small learning rate at the beginning， and gradually increase to the original learning rate that we have。 For example， assuming we use the 0。1 as the initial learning rate， but at large at the beginning。 What we can do here， we use the first five epoch for one map。 In the first five epochs。 I start with the numerator equal to zero at the beginning。 At the end of the five epochs。
+我们在开始时选择较小的学习率，然后逐渐增加到我们原本设定的学习率。例如，假设我们将0.1作为初始学习率，但开始时较大。我们可以在前五个epoch中进行一次映射。在前五个epoch中，我从分子为零开始。在五个epoch结束时。
 
- we want to increase to 0。1 for the learning rate。 And between then， I just linearly increase it。 until we get the 0。1 at the end。 So the idea here is that I want to use a tiny learning rate。 at the beginning so that when I train the network， I train the network， it's moved close to the end。 The surface is more smooth， I can slightly increase the learning rate。
+我们想要将学习率增加到0.1。在这期间，我只是线性地增加它，直到最后达到0.1。所以这里的想法是，我想在开始时使用一个非常小的学习率，这样当我训练网络时，它能接近最终值，表面会更平滑，然后我可以稍微增加学习率。
 
- So I can use the linear rate after five epochs。
+所以在五个epoch后，我可以使用线性学习率。
 
 ![](img/a32291981320a78e4a7bfca73ff658ff_19.png)
 
- Another trick is about the linear rate as well。 I will， in typically。 because we use stochastic rate in descent， we didn't cover a theory。 but you want to make it converge， you need decrease on the rate。 In the CIFA 10 homework。 you already see that you need decrease on the rate at the end。 A typical way for rest net。
+另一个技巧是关于线性学习率的。我通常会这样做。因为我们使用随机梯度下降，我们没有覆盖理论。但你想让它收敛，就需要减少学习率。在CIFAR-10的作业中，你已经看到你需要在最后减少学习率。这是ResNet的典型做法。
 
- what we're doing here， we choose the linear rate， initial error rate， equal to 0。1。 then decrease by 10 times at the 30 epoch。 And decrease by another 10 times at the 60 epoch。 And again at 90 epoch。 Okay， this is typical way we're doing。 But then we need to select， okay。 this 30， this 10x 30， 60， 90， all the things that have a parameters。
+我们在这里做的事情是，我们选择线性学习率，初始错误率为0.1，然后在第30个epoch时降低10倍。接着在第60个epoch时再降低10倍。在第90个epoch时再次降低。好的，这是我们通常的做法。但接下来我们需要选择，好的。这个30，这个10倍的30、60、90，所有这些都需要有相应的参数。
 
- You need to choose for your algorithm。 Well， if I don't want to choose what I can do。 that I can use a cosine function。 So assume the capital T is the total iterations we have。 total batches we have。 And then at a particular iteration T。 we can use a cosine function to decase one。 From the first two terms， the larger one is zero。
+你需要为你的算法做选择。如果我不想选择，我能做什么？我可以使用余弦函数。所以假设大写T是我们有的总迭代次数，总批次数。然后在某个特定的迭代T时，我们可以使用余弦函数来衰减1。从前两项来看，较大的一个是零。
 
- is one at beginning， and well， it's pretty small on the right end。 Okay， so you can see that。 the blue line， the dot， the blue line is the original one。 You first start with zero。 which is the one map， and the increase to zero point， like here， here's zero point， what。 zero point four， as after five epoch。 And then running for like 20 another 25 epoch。
+一开始是1，右端是相当小的。你可以看到，蓝线是原始的曲线。它首先从0开始，这就是一张图，然后增加到0.4左右，像这里，0点4，大概经过五个epoch。然后再运行大约25个epoch。
 
- decreased by the fourth 10 times， and decreased again at 60 and 90 epoch。 But the red one。 still use a one up， but at the latter I can smoothly decrease。 And what we can see that， well。 the decay is much smoother， first is much smoother， secondly， it's much larger at the beginning。 So keep very large at the beginning， and almost close to half of the back end right now。
+在第4、10次迭代时减少了10倍，并在第60和第90次迭代时再次减少。但红色曲线依然保持一个上升趋势，但在后期我可以平滑地下降。我们可以看到，衰减变得更加平滑，首先，衰减的过程更加平滑，其次，开始时的衰减幅度更大。所以在开始时保持较大的衰减幅度，而在后期几乎降至一半。
 
- So you can think about both like， it's pretty constant at beginning。 Decase very slowly at the beginning， linear at the middle， and slowly at the end。 to the kind of cosine function we have。 But the major benefit here。 you don't need a variable to have parameters。 Just a cosine function。
+所以你可以认为，这个过程开始时比较恒定，在开始时非常缓慢，然后在中间呈线性增长，最后在末端逐渐减缓，呈现出我们常见的余弦函数形状。但这里的主要好处是，你不需要使用变量来拥有参数，只需要一个余弦函数。
 
- you don't have anything to choose。 It can make your life easier。 but actually improve the things a lot。 Okay， and another bunch of things。
+你没有任何东西可以选择。它可以让你的生活更简单，但实际上能大大改善效果。好了，还有一些其他的内容。
 
 ![](img/a32291981320a78e4a7bfca73ff658ff_21.png)
 
- synchronize the batch normalization。 So we know that in batch normalization。 we need to compute the mean and the variance， for the example across the whole batch。 For example。 the batch size equal to 32， we can compute the mean and the variance， using 32 examples。 All right。 that works well if the batch size is big enough。 But if the batch size equal to one。
+同步批量归一化。所以我们知道，在批量归一化中，我们需要计算均值和方差，例如，跨越整个批次。例如，当批次大小等于32时，我们可以使用32个样本来计算均值和方差。没问题，这在批次大小足够大的时候很好用。但如果批次大小等于1呢？
 
- I cannot compute the variance， it's always zero。 If the batch size equal to two， or like four。 that's too small to compute a reliable main and variance。 That's a big problem。 That no problem for image classification， that big problem for detections。 For detections。 you need to generate so many， anchor boxes is much more memory。 For example， in first class here。
+我无法计算方差，它总是0。如果批次大小等于2，或者像4那样，太小无法计算可靠的均值和方差。这是一个大问题。对于图像分类来说没有问题，但对于目标检测来说这是一个大问题。对于目标检测，你需要生成许多锚框，这需要更多内存。例如，在这里的第一类中。
 
- and even a GPU have 16 gigabyte memory， but you can only run a single image for a GPU。 Because you have so many anchor boxes， all of them eat memories。 Well， then we get a problem。 because we only got a single image per GPU， and a multi GPU training in the batch long。 what we do is the batch long compute the mean and the variance， within GPU separately。
+即使每个GPU有16GB内存，但你只能在每个GPU上运行一张图片。因为你有很多锚框，它们都消耗内存。那么，问题来了。因为我们每个GPU上只有一张图片，而在多GPU训练中使用批量长。所以我们做的是在每个GPU内部分别计算均值和方差。
 
- So because if GPU only has single image， I cannot compute the variance。 So think about the batch long， which means in the multi GPU training。 I will compute the mean and the variance， cross hold all these GPUs。 So if I have eight GPUs。 one image per GPU， then I'm gonna， I'm gonna， I will compute the mean and the variance。
+因为如果GPU只有单张图片，我就无法计算方差。那么想一下批量长的情况，这意味着在多GPU训练中，我会跨越所有这些GPU来计算均值和方差。所以如果我有8个GPU，每个GPU上有一张图片，那么我将计算均值和方差。
 
- for the age images we have。 Which means we need send all the variance。 between the GPUs when you're computing。 That's give you like， maybe slows down your computation。 because you need to pay the synchronization cost， but at the least you get stable batch long。 as being a divergence here。 Okay， so this is a singleized batch normalization。
+对于我们拥有的多个图片，这意味着我们需要在计算时将所有方差传递到各个GPU之间。这可能会导致计算变慢，因为你需要付出同步的代价，但至少你获得了稳定的批量长。不会出现发散的情况。好了，这就是单一化批量归一化。
 
- which is all commonly used for detections， and segmentation。 We probably are not going to have our segmentation， but you can read the book。 they have two segment peaks or level information。
+这些是常用于检测和分割的技术。我们可能不会做分割，但你可以读一下这本书。它们有两个分割顶点或者层级信息。
 
 ![](img/a32291981320a78e4a7bfca73ff658ff_23.png)
 
- Well， the last one， I don't， yeah， that's the last one。 Last one is like， every time。 because the input image can't have different shape。 We want， we show the individual imitation。 that we always resize into a same shape。 So here with 20 by 24 width and 20 by 24 height。 And。 but for image， classification， that's fine， usually。 Because the objects are large。
+好吧，最后一个，我不，嗯，最后一个就是了。最后一个是每次。因为输入图像不能有不同的形状。我们想要，我们展示的是个别模拟。我们总是将其调整为相同的形状。所以这里是20乘以24的宽度和20乘以24的高度。而且，对于图像分类，通常没问题。因为物体很大。
 
- always in an image， but for object detections， the object can be large and can be small。 If you always give you like this size， it may be not good enough， because time image is very large。 time image is very small， and you don't want to fix size。 The random batch size shape means that for every batch。
+始终是在一张图片中，但对于物体检测，物体可能很大，也可能很小。如果你总是给你像这样的尺寸，它可能不够好，因为有时候图片很大，有时候图片很小，你不想固定尺寸。随机批次大小形状意味着每个批次。
 
- I first random pick up a height and the width， and the resize all the image to this value。 So。 so here， for example， we can randomly choose the value from 224， like this 7 times 32， and 256。 this 8 times 32。 And another one like it， the number is wrong， but it's nine times 32。 So。 anyone have idea why we won't have always times 32？ The reason why we always won't have 32。
+我首先随机选择一个高度和宽度，然后将所有图片调整为这个值。所以，在这里，举个例子，我们可以随机选择224这样的值，比如7乘以32，和256，8乘以32。还有一个像这样的，数字是错的，但它是9乘以32。所以，大家有没有想过为什么我们总不是32的倍数？我们总是不会有32的倍数的原因是。
 
- because like for rest net， we know that we have five stage。 We g g also have five stage。 Every stage we have the width and the width。 So， five stage every time we do half the swing。 which means total we have， we reduce by 32x for the width and the height。 So。 if a pick number is like multiplied by this number， until then at the end。
+因为对于ResNet，我们知道我们有五个阶段。我们也有五个阶段。每个阶段都有宽度和深度。所以，每个阶段我们做一次半尺寸调整。这意味着总的来说，我们在宽度和高度上减少了32倍。所以，如果选择的数字是这个数字的倍数，直到最后。
 
- we will not have so much submitted alignment issues。 So， similar thing for the object detection。 because they use the share the same base network， as the image classification。 Also。 they won't have， as like always， we reduce by 32 at the end to get a feature map。 So。 that's why we always render these select numbers， by this number。 Then。
+我们不会遇到太多对齐问题。所以，物体检测也类似。因为它们使用与图像分类相同的基础网络。而且，它们不会总是像这样，在最后将尺寸减少32来得到特征图。所以，这就是为什么我们总是按这个数字渲染这些选择的数字。然后。
 
- if I pick up a random number， I choose random one from here。 and the resize all the image to this shape。 So， which means for batch to batch。 I always try to image different size。 Okay。 Okay， so this is the last one we have。 But you know that you， next time， if you read the paper。
+如果我选择一个随机数，我从这里随机选择一个，然后将所有图片调整为这个形状。所以，这意味着对于每个批次，我总是尝试不同尺寸的图像。好吧，好吧，这是我们最后一个问题了。但你知道，下次如果你读这篇文章。
 
- you cannot see a lot of other tricks around。 So， so many。 maybe tens or 20 tricks all over the round。 So， here we show some small results。
+你看不到很多其他技巧。所以，很多，也许有几十个或20个技巧分布在各个地方。所以，这里我们展示了一些小的结果。
 
 ![](img/a32291981320a78e4a7bfca73ff658ff_25.png)
 
- like how the things matter to other things。 So， firstly， it's image classification。 And we choose the rest net， just already modified rest net。 And， in sepsilon。 we three in the mobile net。 We talked about in sepsilon， but we didn't talk about mobile net。 Efficient is a baseline。 We always improve the， the step-out result on the paper。 Then。
+比如，事情是如何与其他事情相关的。首先，这是图像分类。我们选择了已经修改过的ResNet。在epsilon中，我们使用了MobileNet。我们在epsilon中谈过，但没有谈到MobileNet。Efficient是一个基线。我们总是改进论文中的结果。然后。
 
- adding cosine decay， like this one top one accurate， or image net。 Like。 adding cosine decay give you like， for a rest net， 0。75% accuracy。 Adding another label smoothing。 0。04。 And the mix-up， actually give a lot of things here。 0。84， 3-4 rest net。 In total。 so that's why we can improve， the baseline from 77% to 79。 Similarly， for the reception， we can get。
+添加余弦衰减，就像这个最上面准确的，或者是 ImageNet。添加余弦衰减会给你带来，像对于 ResNet，提升了 0.75% 的准确率。再添加标签平滑 0.04。然后混合，实际上也带来了很多改进，0.84，3-4 之间的 ResNet。总的来说，这就是为什么我们能将基线从 77% 提升到 79%。同样，对于接收部分，我们也能得到。
 
- make a lot of improvement as well。 For the reception， V3， the cosine decay improves a lot。 For mobile net， I also the cosine decay improves a lot。 The interesting thing here。 you can stack all the trick together。 You can stack one by one， and you can maybe stack。 here we have three， you can stack another， like seven， maybe you can first improve it。
-
-
-
-
+也取得了很多改进。对于接收部分，V3，余弦衰减有了很大提升。对于移动网络，我也发现余弦衰减有了很大改善。这里有一个有趣的地方，你可以把所有技巧叠加在一起。你可以一个接一个地叠加，甚至可能叠加多个。在这里我们有三个，你还可以再叠加一个，像是七个，或许你可以先提升它。
 
 ![](img/a32291981320a78e4a7bfca73ff658ff_27.png)
 
- The other thing for you， V3， here， MAP is the bondbox， like accuracy we have。 The baseline is here。 baseline is 80。 If we remove all data augmentations， well， we get a lot of。 we decrease the accuracy a lot。 And then we look at synchronous batch long， give it 0。56。 and randomize the training shape， give it 0。0。4， cosine linearity decay， 0。4 always with one map。
+另外，对于你来说，V3，这里的 MAP 是边界框，像我们得到的准确度。基线在这里。基线是 80。如果我们去掉所有的数据增强，那么我们会得到很多，准确度会大幅下降。然后我们看一下同步批量归一化，提升了 0.56，再随机化训练形状，提升了 0.04，余弦线性衰减，0.4 一直保持，MAP 始终保持不变。
 
- And also label smoothing 0。4， and mix up， again， give a lot of things here， 1。5 here。 In total。 we can give 3。4 for U-LOV3。 Okay， that's why you can see a huge jump。 from the original paper into the state-fought results we have。
+还有标签平滑 0.4 和混合，重新给了很多改进，1.5 在这里。总的来说，我们可以为 U-LOV3 提供 3.4。好吧，这就是为什么你能看到从原始论文到我们得到的最新结果有一个巨大提升。
 
 ![](img/a32291981320a78e4a7bfca73ff658ff_29.png)
 
- Okay， so that's basically a bunch of training tricks。 Like， usually we don't talk about that。 like it's not， you never know why it works or not。 Also， the others don't change， but we have， like。 find something。
+好的，这基本上是一堆训练技巧。通常我们不会谈论这些，就像你永远不知道它们为什么有效或者无效一样。而且其他的没有变化，但我们还是找到了些东西。
 
 ![](img/a32291981320a78e4a7bfca73ff658ff_31.png)
 
- Hands-off， unif only works well for all these applications we have。 but next time you can read the papers， and read the other guy's source code。 you want to pay attention to these more tricks。 Even that is like tiny things。 and give a lot of improvement here。 Okay， any questions？
-
-
-
-
+放手吧，unif 只对我们所有这些应用有效。但下次你可以阅读论文，再看看其他人的源码。你要注意这些更多的技巧。即便是那些微小的东西，也能带来很多提升。好了，有什么问题吗？
 
 ![](img/a32291981320a78e4a7bfca73ff658ff_33.png)

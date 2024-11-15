@@ -1,103 +1,99 @@
-# P80：80. L14_7 Multi-Machine Training - Python小能 - BV1CB4y1U7P6
+# P80：80. L14_7 多机训练 - Python小能 - BV1CB4y1U7P6
 
- Okay， so let's move to single machine multi-gpues to multi-mushings with multiple GPUs。 So this is a pretty cheap GPU cluster Alex has like four years ago。 The case take $40 and we bought CPUs from Facebook。 Facebook have data center。 They can。 every year they're gonna， the old CPUs， they don't need any more sale on eBay， for 20 bucks。
+好的，接下来我们将讨论从单机多GPU到多机多GPU的过渡。这是一个相当便宜的GPU集群，Alex大约四年前有过类似的经验。这个机箱花费了40美元，我们从Facebook买了CPU。Facebook有数据中心，他们每年会将不再需要的旧CPU在eBay上出售，售价20美元。
 
- So we bought like， we like a chocolate and it's pretty like 200 bucks and 10 chocolate。 Then we bought a very cheap motherboard and very cheap one。 So this is a pretty cheap cluster。 The whole cluster have 16 machines。 Only maybe take 20。000 boxes and we might leave a bit of coin at that time and pay all this， cost。 And that's， you know。
+所以我们购买了，类似于巧克力，价格大约200美元，10块巧克力。然后我们购买了非常便宜的主板，价格也很便宜。所以这是一个相当便宜的集群。整个集群有16台机器，可能只花了大约20000美元，我们当时可能剩下了一点零钱来支付所有这些费用。你知道的。
 
- that's like four years ago。 Nowadays you cannot get any benefit anymore。
+那是四年前的事情了。如今你已经无法从中获得任何优势了。
 
 ![](img/011d1a4d9c701bd7328d99ae7116d547_1.png)
 
- Okay， so that's a single GPU or multi-GPU single machine。 And then to multi-mushings what do we do here？ We probably assume that data is on a distributed file system。 On a shared file system or like on anything you can， every machine can access。 Then we have multiple machines。 Each machine have multiple GPUs here。
+好的，这就是单GPU或单机多GPU的情况。接下来，面对多机时我们该怎么办呢？我们大概假设数据位于分布式文件系统中。在共享文件系统上，或者在任何你能让每台机器都能访问的地方。然后我们有多台机器。每台机器上有多个GPU。
 
- And the parameters may be not on a single machine anymore。 It's maybe cross。 we can split the parameters and the cross to different machines。 So here， for example。 if I use a rest net， if you use the rest of 50， we have 50 layers。 We maybe just four machines。 Each machine maybe take just 12 layers。 So each machine get a part of the model。
+而且，参数可能不再集中在单机上。它们可能跨越多台机器。我们可以将参数和计算分配到不同的机器上。例如，如果我使用ResNet，如果你使用ResNet-50，它有50层。我们可能只用四台机器，每台机器可能只处理12层。这样，每台机器就得到了一部分模型。
 
- Then we're going to read data through the network and also send and push the gradients。 across the network we have。 Okay， that's only， but for the others。 pretty similar to a single machine， multi-GPU training。 Remember that we have maybe hierarchy here。 So the GPU communication with the single machine is pretty fast。 So here， for PCIe。
+然后我们将通过网络读取数据，并发送和推送梯度。在网络中我们有。好的，这只是一个例子，但对于其他部分，和单机多GPU训练非常相似。记住，我们可能在这里有层次结构。所以GPU与单机的通信非常快。这里，针对PCIe。
 
- you have 63 gigabyte per second GPU with the single machine。 Then GPU to CPU to local CPU is the lowest， 16 gigabyte per second。 But machine to machines are pretty slow。 Here， it's maybe my PhD defense three years ago。 it's kind of 1。25 gigabytes per second。 You can see that for local GPU to CPU， GPU to CPU。
+你可以在单机上获得每秒63GB的GPU带宽。然后GPU到本地CPU的速度是最低的，为每秒16GB。但机器与机器之间的速度相对较慢。这里，可能是我三年前的博士答辩。这种速度大概是每秒1.25GB。你可以看到，GPU到CPU的速度较慢。
 
- and CPU to remote CPU， every time it's， like a 10-time reduce of the bandwidth we have。 So we need to care about all the hierarchy。 So what we can do here， we run locally。 we just store the parameters on GPUs and the， communicated GPUs and then aggregate the gradients across all the GPUs and send out to the remote。 CPUs。 So that's the only thing we can get。 So we can think about these parameters。
+而CPU到远程CPU的带宽，每次都会降低大约10倍。所以我们需要关注所有的层次结构。我们可以做的是，在本地运行，我们将参数存储在GPU上，然后通过GPU之间的通信聚合梯度，并将其发送到远程的CPU。因此，这就是我们能做到的唯一方法。所以我们可以把这些参数看作是。
 
- we call the primary server and these kinds of key， values store， we have two levels here。 Okay。 Any questions so far？ Okay。 It's too hard？ >> Actually， just out of curiosity。 I imagine that with a multi-machine setup， that is very， unlikely for something to go wrong。 Say。 like a GPU brings out or computer disk gets shut down。 >> Yeah。
+我们称其为主服务器，这些类型的键值存储，我们在这里有两级结构。好的，到目前为止有任何问题吗？好的，太难了吗？>> 事实上，我只是出于好奇。我想象，在多机设置中，出现问题的可能性是非常低的。比如说，GPU出故障或者计算机磁盘关闭了。>> 是的。
 
- >> I give math to this kind of situation and stuff with the CPU。 So yes。 like I didn't put a picture here。 So we have to go back a little bit。
+>> 我给这种情况做了数学建模，并且处理了CPU的部分。所以是的，我没有在这里放图像。所以我们需要稍微回顾一下。
 
 ![](img/011d1a4d9c701bd7328d99ae7116d547_3.png)
 
- So this is a machine room， like just the office soon in this building， but it's an SEMU。 Then the multi-machine's there， the GPU eats a lot of power， like it's cheap， like 2- to， 300 watt。 And before NEPs， everybody running experiments， everybody running full time， all the GPUs are。 using full powers， then we are out of power， which means the whole building is out of power。
+这就是一个机房，就像这个建筑里的办公室，但它是一个SEMU。然后有多个机器，GPU消耗大量电力，像是便宜的，差不多2到300瓦。在NEPs之前，每个人都在做实验，每个人都在全天运行，所有GPU都在使用最大功率，然后我们就没电了，这意味着整栋楼都没电了。
 
- And it's just one day for NEPs， everybody running experiments and the rush for the paper。 the guy who did a checkpoint frequently submitted the paper。 The guy who didn't save the result frequently， nothing's left。 So yes。 you're going to see that GPU may burn out， like CPU is less stable than CPU。
+事实上，NEPs的那一天，大家都在做实验，争取发表论文。那些频繁做检查点的人员提交了论文，而那些没有频繁保存结果的，什么也没剩下。所以，是的，你会看到GPU可能烧坏，就像CPU比GPU更不稳定。
 
- A GPU is less stable than CPU's。 And this data is better。 especially on class and we use server grid GPUs。 You torrid more high temperatures。 but here we use consumer GPUs。 It's pretty easy to get broken。 From systems back， yes。 we have a lot of things to deal with all these four columns。 With one machine style。
+GPU比CPU不稳定。并且这个数据更好，尤其是在课堂上，我们使用的是服务器网格GPU。你承受更高的温度。但是这里我们使用的是消费级GPU。很容易就会坏掉。从系统后端看，是的，我们有很多事情要处理，所有这四列内容都需要应对，使用单机风格。
 
- we can move the workload to another machine， but the best choices， like。 you do checkpoint for every APOC。 Therefore， every two minutes you checkpoint the result and if something goes wrong。 it's， just a restart from the latest checkpoint。 Okay。 let's show exactly how the iterating runs or multi-mushings。
-
-
-
-
+我们可以把工作负载转移到另一台机器上，但最好的选择是，你为每个APOC做检查点。因此，每两分钟你就保存一次结果，如果发生错误，就从最新的检查点重新开始。好的，接下来让我们展示一下迭代如何进行，或者多机器的运行方式。
 
 ![](img/011d1a4d9c701bd7328d99ae7116d547_5.png)
 
- So here， assume we have two workers。 Again， this is single batch。 If you have 100 examples。 every machine we get 50 examples here。 Then， as before。 we need further partition into two parts and to copy to each GPU。 So each GPU gets still like 25 examples for each GPU。 Similarly， on the primary server。
+假设这里我们有两个工作节点。再次说明，这是单批次。如果你有100个样本，每台机器将获得50个样本。然后，像之前一样，我们需要进一步将数据分成两部分并复制到每个GPU上。所以每个GPU仍然像之前一样，每个GPU得到25个样本。类似地，在主服务器上也是如此。
 
- we first copy the parameters into each machine and each， machine further copy to each GPU。 So we have two levels here。 Remember that。 So each GPU now gets the part of data。 gets the whole parameters， will compute the part， of the gradients for the green boxes。 Then。 we found the gradients over all GPUs in the single machine。 That's what we did before。 Then。
+我们首先将参数复制到每台机器，然后每台机器再将其复制到每个GPU。因此我们这里有两个层级。记住这一点。所以每个GPU现在获取部分数据，获取整个参数，然后计算绿色框框的梯度部分。然后，我们在单台机器上汇总所有GPU的梯度。这就是我们之前所做的。然后。
 
- every machine gonna push the gradients out to the remote machine to update。 Finally。 every parameters can update this parameter here。 Okay， so that is the whole loop。 The only difference here， we have two hierarchy here， we first do locally and then do remotely。 The reason we gonna sum the gradients on the machine first， because if gradients 100 megabyte。
+每个机器将会把梯度推送到远程机器进行更新。最后，每个参数都可以在这里更新这个参数。好的，这就是整个循环。唯一的区别是，这里我们有两个层级，我们先在本地做，然后再远程做。我们首先要在机器上对梯度进行求和，因为如果梯度是100兆字节的话。
 
- you send GPU by GPU， you have two GPUs gonna send 200 megabytes。 If you sum the gradient together。 you only get 100 megabyte。 That's the only reason。 That is what we called synchronize。gd。 So synchronize。gd means every work around synchronously。 Every batch。 every GPU runs the same workload and the start and stop at the same time。
+你按GPU发送，每个GPU发送200兆字节。如果你将梯度汇总在一起，你只会得到100兆字节。这就是唯一的原因。这就是我们所说的同步梯度（synchronize.gd）。同步梯度意味着每个工作都是同步进行的。每个批次，每个GPU运行相同的工作负载，并且在同一时间开始和停止。
 
- And we assume on GPUs and each GPU can process big examples per time， then synchronize。gd equals。 to just the normal mid batch。gd with batch size n times b。 So which means usually if fixed n times b， no matter how many GPUs we have， we always。 get the same convergence result as just a single GPU。 Okay， that's a benefit of synchronize。gd。
+假设我们在使用 GPU，每个 GPU 每次可以处理大量的样本，然后进行同步。gd 等于普通的中批次 gd，批次大小为 n 乘 b。也就是说，通常如果固定 n 乘 b，无论有多少个 GPU，我们总是能得到与单个 GPU 相同的收敛结果。好了，这就是同步 gd 的好处。
 
- In the ideal case that， well， if we gonna train n GPUs， we gonna lead to n times speed。 up comparing to single GPU。 But you need to pay a lot of overhead data communications。 a lot of things we have。 We already showed that。 Then for performance。 let's talk a little bit about more performance。 So we have two kinds of major things here。
+在理想情况下，如果我们要使用 n 个 GPU 进行训练，我们应该能达到单个 GPU 的 n 倍加速。但是你需要支付很多额外的数据通信开销，已经有很多东西需要处理。我们已经展示过了。然后，关于性能，让我们再谈一谈性能。我们这里有两种主要的事情。
 
- The first one is called T1。 It's a time to compute the gradients for big examples in each GPU。 So it's a time we spend on computing， which is compute the fault path and the backward， path。 So then assume the prime to have m prime meters。 The worker will send the recieve。 send the gradients and receive the prime meters at each， batch。
+第一个时间被称为 T1。它是计算每个 GPU 上大样本梯度的时间。也就是说我们花费在计算上的时间，包括计算前向路径和反向路径。假设梯度的派生是 m 个派生量。每个工作节点会在每个批次中发送和接收梯度。
 
- So T2 is the time to send and receive 2m prime meters over the network。 So then the wartime。 which is the real time we pay for each batch equals the max of T1， and T2。 And this applied to send single GPU， single machine model GPU training and multi-machine。 training as well。 So we showed that for non-net T1 is pretty small because pretty computing the small non-net。
+所以 T2 是指在网络中发送和接收 2m 个派生量的时间。那么，实际的时间是每个批次支付的最大时间，即 T1 和 T2 中的最大值。这适用于单 GPU 训练和多机器训练。我们已经展示了，对于非网络的情况，T1 非常小，因为计算相对较小。
 
- pretty fast。 But communicating is relatively bigger than T1。 So which means it's communication per minute。 So well。 what we can do here that we can increase B or N that we can get the logic batch， size。 And then the good thing here， no matter the batch size we have， we always send and receive。
+计算速度相当快，但是通信的时间相对于 T1 来说较大。也就是说，它是每分钟的通信时间。那么我们可以在这里做的事情是增加 B 或 N，这样就可以得到更大的批次大小。而且这里的好处是，无论批次大小如何，我们总是会进行数据的发送和接收。
 
- the same amount of data。 So T2 doesn't change。 T2 is not related to the batch size we have。 So we can always increase the batch size B so that T1 is a bit larger。 So if T1 is larger。 then we almost get the linear speed up here。 But we see that if we can increase the B or N。 we get to a very large batch size。 We maybe get the network from how to train。
+相同数量的数据。所以 T2 不变，T2 与我们所用的批次大小无关。所以我们总是可以增加批次大小 B 使得 T1 略微增大。如果 T1 更大，那么我们几乎可以获得线性加速。但是我们发现，如果可以增加 B 或 N，我们就可以达到一个非常大的批次大小，可能会因为训练的网络带宽而受到影响。
 
- which means we can pay more data epochs to， get the desired accuracy we want。 So here we're going to show a picture here。 This is batch size per GPU。 assuming we fixed the number of GPUs and why the higher the better， the lowest words。 First you can see the blue line， which is a trainee efficiency， which is the number of。
+这意味着我们可以花费更多的数据 epoch 来获得我们想要的准确度。这里我们展示一个图表，假设我们固定了 GPU 的数量，批次大小越高越好。首先，你可以看到蓝色的线，它表示训练效率，这是每个批次中。
 
- the epochs to stop。 If we increase the batch size。 we probably need more data epoch to reach out to the final， model。 And the blue， the yellow line。 which is system performance， because every time we increase， the batch size， the T2 doesn't change。 but the increase the T1 so we just hide all this， data communication overhead。
+训练的 epoch 可能会停止。如果我们增加批次大小，可能需要更多的数据 epoch 来达到最终的模型。而蓝色的，黄色的线表示的是系统性能，因为每次我们增加批次大小时，T2 不变，但 T1 增加，因此我们就隐藏了所有的数据通信开销。
 
- which means it's good for system performance。 It's better to get a linear speed up or perfect speed up。 So the optimal choice is usually a trade-off between two things。 Okay， question？
+这意味着它对系统性能有利。获得线性加速或完美加速会更好。因此，最佳选择通常是在两者之间做一个权衡。好了，有问题吗？
 
- >> Is the previous line， does T1 and T2 happen in parallel？ >> Yes， they happen parallel。 So that's why the water is max of T1 and T2， not the T1 plus T2。 >> But how does it happen in parallel？ >> You need the parameters first and then you need to compute the gradient。 >> Okay， so that's a good question。 Remember that before we have computed 10 major multiplication and sent to CPU。
+>> 前一行是，T1 和 T2 是否并行发生？ >> 是的，它们是并行发生的。所以水的最大值是 T1 和 T2 的最大值，而不是 T1 加 T2。 >> 但它是如何并行发生的？ >> 你需要先获得参数，然后需要计算梯度。 >> 好的，这是一个很好的问题。记得在我们之前已经计算了 10 次乘法并发送到 CPU。
 
- We can parallelize that because what's the first time one's finished， I sent data and。 at the same time it can be the second one， sent the second one。 So it can run in parallel。 So in like a data pipeline for that。 Okay。 So there's a lot of practical suggestions to using multi-GPU or multi-machine training。 Firstly， you need a larger data set。 You don't use M-list。
+我们可以将其并行化，因为一旦第一个完成，我就发送数据，同时第二个也可以发送。这样它就可以并行运行。所以这就像是一个数据管道。好吧，关于多 GPU 或多机器训练，有很多实际建议。首先，你需要更大的数据集，不要使用 M-list。
 
- If the training or single GPU takes two minutes to finish， then it's hard to scale up to multi-GPUs。 So if you're going to try and see for 10 and multi-GPUs， well， you're going to pay the。 machine to machine communication overhead that's going to dominate that。 Secondly， for the hardware。 you're going to choose the hardware， have good GPU and machine， to machine batteries。
+如果单个 GPU 训练需要两分钟才能完成，那么就很难扩展到多 GPU。所以如果你尝试使用 10 个或多个 GPU，你将不得不支付机器间通信的开销，这将成为主导。其次，对于硬件，你需要选择具有良好 GPU 和机器间通信的硬件。
 
- If you use Cloud， you don't need to match that because the Cloud provider usually takes。 care of that for you。 But you're going to do things locally。 For example， what we。 Alex and I did at the CPU that we first bought a general motherboard。 and find like a cheaper motherboard doesn't have very good GPU communications。
+如果你使用云服务，你就不需要担心这个问题，因为云提供商通常会为你处理这些事情。但如果你要在本地操作，比如我们，亚历克斯和我在购买 CPU 时，首先买了一个通用的主板，但发现便宜的主板在 GPU 通信方面做得不好。
 
- And then we like spend a week for another one and replace it one by one。 After that。 we find machine to machine communication is not good enough。 You're going to buy a lot of switch to connect a lot of things。 That other。 if you can solve the things from the hardware， you don't need to matter too， much on the software。
+然后我们花了一周时间换了另一个，然后一个一个替换。之后我们发现机器间通信不够好。你需要购买很多交换机来连接这些设备。如果你能从硬件上解决这些问题，那么你就不需要太过于关心软件。
 
- It's like a must。 I need to worry about that less。 The third one is usually people don't pay too much attention to that。 Well if you increase the number of GPUs， the CPU slides not so fast enough。 If you load a lot of GPUs in a single box， the CPU is going to be the bottleneck。
+这就像是必须的。我需要减少对此的担忧。第三个是通常人们不会太注意这一点。嗯，如果你增加 GPU 数量，而 CPU 的速度跟不上，那么如果你在一台机器上加载了很多 GPU，CPU 将成为瓶颈。
 
- Especially we're going to talk about a few minutes later and let me see if we have time。 Later we're going to show that the data loading and data preparing take a lot of CPU cycle。 Which means you are not fast enough to generate the data to fit into the network。 Which means the bottleneck is on CPU。 So you need to benchmark how many images you can process per second and compare to the。
+尤其是我们稍后会讨论这个问题，看看是否有时间。稍后我们将展示数据加载和数据准备占用了大量 CPU 周期。这意味着你不能够快速生成数据以适应网络，也就是说瓶颈在于 CPU。因此，你需要基准测试每秒钟可以处理多少张图像，并与其他进行对比。
 
- how many images and gradients you can compute on the GPUs。 And also you're going to pick up a good model that is have good communication overhead。 This is a computation。 The flop we talked about before versus communication overhead。 The communication overhead is the model size。 So the primitives we have。 For example。
+你可以在 GPU 上计算多少图像和梯度。你还需要选择一个好的模型，它具有良好的通信开销。这是计算问题。我们之前谈到的 FLOP 和通信开销。通信开销就是模型的大小。所以我们有的原始方法。例如。
 
- in septune it's pretty good。 Higher flops but the model size is pretty small like a 10 megabyte。 Restonat is okay。 Restonat 50 has 550 megabyte data and it's okay but it's a little less than 0。2。 Alex and I are the worst。 Alex and I have a lot of dense layers at the end which takes you 700 megabytes the model。 Which is tens larger than the rest of the data in septune。
+在Septune中表现得不错。更高的浮点运算能力，但模型尺寸相当小，大约10MB。ResNet也不错，ResNet50有550MB的数据，也还行，但稍微低于0.2。AlexNet是最差的。AlexNet在最后有很多密集层，模型大约需要700MB，比Septune中的其他数据大了十倍。
 
- But Alex and I are tended faster than restonat。 Which means the communication versus computational ratio。 Alex and I are 100 times worse comparing to restonat。 Unfortunately， the system community。 the system research communities benchmark Alexnet。 Because it's pretty hard to workload。 Like you have so many things to stand and but it's not so fast。
+但AlexNet比ResNet更快。这意味着通信与计算的比率，AlexNet比ResNet差100倍。不幸的是，系统社区，系统研究社区将AlexNet作为基准。因为它的工作负载相当复杂。像你有这么多事情要处理，但它并不那么快。
 
- The system community is saying oh that's a great thing。 That's a hard problem we can solve it。 We can do extremely fast network communications。 We can design chips for that。 Sun chips for dense layers。 Sun chips for convolution layers that spend three years on that。 That is because NVIDIA always use Alexnet as a benchmark to show our new GPUs is like。
+系统社区说，哦，这是个好事。这个难题我们可以解决。我们可以做极快的网络通信。我们可以为此设计芯片。为密集层设计的Sun芯片，为卷积层设计的Sun芯片，花了三年时间做这个。这是因为NVIDIA总是使用Alexnet作为基准来展示我们的新GPU。
 
- runs two times faster on Alexnet。 But they don't know that the computer vision community have been using Alexnet for four。 years。 Sorry about that。 So the chip vendors spend a lot of time to optimize Alexnet。 They put their heart then nobody use that anymore。 Okay， so if you choose the hardware。 choose data set， choose a network then you're going， to choose the NUNI rate。
+在AlexNet上运行速度快了两倍。但他们不知道计算机视觉社区已经使用AlexNet四年了。抱歉。于是，芯片供应商花了很多时间优化AlexNet，他们全力投入，但现在没人再用了。好的，所以如果你选择硬件、选择数据集、选择网络，那么你将选择NUNI速率。
 
- Are you going to choose the optimization methods？ You want to use a launch in a lot of batch size and to good system performance and also。 you want to。 Well because launch batch size can be made to train much slower we have a lot of tricks。 to do that。 We may not talk about it in this class but usually we can up to maybe a thousand maybe。 tens thousand of batch size without decreased training performance。
+你会选择优化方法吗？你想使用更大的批量大小来提升系统性能。你想要。嗯，因为较大的批量大小会使训练速度变慢，我们有很多技巧可以做到这一点。我们可能在这堂课上不会讨论这些，但通常我们可以达到可能一千，甚至一万的批量大小而不会降低训练性能。
 
- A lot of tricks to do that like linear rhythm warm up a lot of fancy tricks to do that。 That's all。 Yeah， so for example performance， logic data set， good hardware， data is really so fast。 and good model， good optimization method， you need a lot of things。 So if the performance is not so great you can debugging by this order as well。 Okay。
+做到这一点有很多技巧，比如线性节奏热身，很多花哨的技巧。这就是全部。是的，举个例子，性能、逻辑数据集、良好的硬件，数据真的非常快速。还有好的模型，好的优化方法，你需要很多东西。所以如果性能不是特别好，你也可以通过这个顺序来调试。好的。
 
- any questions so far？ Okay， let's see if you have the result already。 Well。 you can see that we use the rest net。 We first use a single GPU batch size， it will be a large。 this small rest net we can use， a large batch size， 0。1 linear weight。 Each epoch takes 60 seconds。 the accuracy is here and we change to two GPUs double the， batch size， double the linear rate。
+有什么问题吗？好的，看看你们有没有得到结果。嗯，你可以看到我们使用了ResNet。我们首先使用单GPU批量大小，它会很大。这个小的ResNet我们可以使用较大的批量大小，0.1的线性权重。每个周期需要60秒，准确度在这里，我们切换到两个GPU，批量大小翻倍，线性速率也翻倍。
 
- You can see that the speed up is almost two times the speed up here。 That's because this each epoch。 each batch maybe takes like 0。1 seconds and we can run， two parallelism within the batch size。 So this is a reasonable workload。 If the whole data epoch take two seconds it's too hard to optimize。 And the test accuracy is not compatible actually so it is a little bit faster at the end but。
+你可以看到加速几乎是原来的两倍。这是因为每个周期，每个批次可能只需要0.1秒，我们可以在批量大小内并行运行两个。这样是合理的工作负载。如果整个数据周期需要两秒，那就太难优化了。而且测试准确率其实并不兼容，最后虽然稍微加速了，但……
 
- here almost compatible but not too much。 In general C410 still small data set。 you can still tune a little bit but usually multi-GPU， on C410 you can get good speed up here。
+这里几乎是兼容的，但也不是完全兼容。总体来说，C410 仍然是一个小数据集。你仍然可以稍微调节一下，但通常是多 GPU，在 C410 上你可以获得很好的加速效果。
 
 ![](img/011d1a4d9c701bd7328d99ae7116d547_7.png)
 
- [BLANK_AUDIO]。
+[BLANK_AUDIO]。

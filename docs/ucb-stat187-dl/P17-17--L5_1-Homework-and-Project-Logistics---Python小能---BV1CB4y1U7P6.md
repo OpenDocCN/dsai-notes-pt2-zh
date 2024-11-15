@@ -1,89 +1,87 @@
-# P17：17. L5_1 Homework and Project Logistics - Python小能 - BV1CB4y1U7P6
+# P17：17. L5_1 作业和项目后勤 - Python小能 - BV1CB4y1U7P6
 
- Okay。 So， welcome to today's class。 Okay， so welcome to today。 A couple of things。
+好的。欢迎来到今天的课程。好的，欢迎来到今天的课程。首先有几点事情要说明。
 
 ![](img/d283321ac0618b9a3a1948285322f2d4_1.png)
 
- So， few logistics updates。 The first thing is， yeah， those， projects。 the registration was due yesterday。 Okay。 Who has not registered for the， projects yet？ Okay。 So。 I figured that that was what， I was going to happen。 So， you have time until。 tomorrow to find a team and register for the project。 I see two hands up。 Yes。 You first。 Okay。
+好的，几个后勤更新。首先，嗯，关于这些项目，注册截止日期是昨天。好的。谁还没有注册项目呢？好的。那么，我猜这就是我预计会发生的事情。所以，你们有时间直到明天，找到一个团队并注册项目。我看到有两个人举手。是的，你先说。好的。
 
- Good。 So。
+好的。那么。
 
 ![](img/d283321ac0618b9a3a1948285322f2d4_3.png)
 
- Send an email to that email address with names of your， teammates。 project title and a short abstract。 So， the project was due on -- was due yesterday， but will。 give you a grace period until tomorrow。 Okay。 There was another question。 If I submitted the project by uploading a PDF with those， things to my -- so。
+给那个邮箱发送邮件，邮件中包含你和你的团队成员的名字、项目标题和简短的摘要。项目本应在昨天提交，但我们会给你一个宽限期，直到明天。好的。还有一个问题。如果我通过上传一个PDF并附带这些内容到我的——
 
- our TA's will go through this， and I hope they'll find it。 But I think you can make their， own。 email。 Okay。 So， thanks。 Who doesn't have a teammate yet？ Okay。 Everybody who does not have a teammate yet， keep your hands up。 Okay。 So。 who has a team of size three？ Size three？ Okay。 You guys raise your hands。 Well。
+我们的助教会审核这些，我希望他们能找到它。但我觉得你可以自己发邮件。好的。谢谢。谁还没有队友呢？好的。所有还没有队友的，举起手。好的。那么，谁有三人团队？三人团队？好的，你们举起手。好吧。
 
- raise them high otherwise。 Okay。 So， the thing is， if you don't -- if you have a small team。 here are some teammates， some prospective teammates， meet up， with them after the class。 Well。 you just -- if you have a， team of size four， likewise， take on some extra team members。 They all want to help。 They all want to learn。 So， do that。 Yes。 The project title can change。 Yes。
+抬高你的手，否则——好的。问题是，如果你没有——如果你有一个小团队，以下是一些队友，未来的队友，课后和他们见面吧。好吧。如果你有一个四人团队，同样，加入一些额外的队员。他们都想帮忙，他们都想学习。所以，去做吧。是的。项目标题可以更改。是的。
 
- So， you could have an obstrus project title right now and we， are not going to care。 So。 you can put as your project， title， watching paint dry。 Okay。 Now。 I wouldn't recommend that because it's a little bit silly。 But this is really just to make sure that you even have a team。 Right？ Now， in one month from now。
+所以，你现在可以有一个很笨的项目标题，我们也不会在意。所以，你可以把你的项目标题定为“看油漆干”。好的。现在。我不推荐这么做，因为有点傻。但这主要是为了确保你有一个团队。对吧？现在，一个月后。
 
- there will be a short presentation of what you've been up to， so far。 Everybody gets five minutes or four minutes of， embarrassment up here on stage。 Okay。 By that time。 you don't want to have watching paint dry in it， anymore。 Yes。 Is there like -- is there like a -- is there like an example that。
+会有一个简短的展示，展示你们到目前为止的进展。每个人都有五分钟或者四分钟的“尴尬时间”，在台上展示。好的。到那时，你就不希望项目标题还是“看油漆干”了。是的。有没有类似——有没有什么——有没有类似的例子。
 
- -- like what you recommend that you should attempt to have， a game？ Okay。 So， okay。 So。 let me go over this。 So， for tomorrow， all you need is names and a project title。 And if you want to put a little abstract in there， it's good。 If not， it's also okay。 If you're short of ideas， that's， what the TAs and that's what Mu and I are good for。
+——像你推荐的那样，你应该尝试做一个游戏吗？好的。那么，好吧。让我讲解一下。所以，明天你们只需要提供名字和项目标题。如果你们想加个小摘要进去，也是好的。如果没有也没关系。如果你们缺乏想法，助教和我可以帮忙。
 
- We can help you。 But you need to come to the office hours and， we can talk about ideas。 Or talk to your friendly lecture， here at UC Berkeley who's maybe your advisor or you want to be。 advisor。 Right？ Or talk to some PhD students or some other fellow students。 Or just pick something really cool。 Right？ So， we can help。
+我们可以帮助你。但你需要参加办公时间，我们可以讨论一些想法。或者和你在UC Berkeley的友好讲师聊聊，可能他是你的导师，或者你希望他成为你的导师。对吧？或者和一些博士生或者其他同学聊聊。或者直接选一个非常酷的项目。对吧？所以，我们可以提供帮助。
 
- but we're not going to force you to do what， we suggest。 Right？ Okay。 Now， within the next month。 you want to get to more than， watching paint dry。 Within the next month， you want to。 have -- and this is what we'll be doing in four weeks -- a two-page， document up to two pages。 at least one page but no more than， two pages。 That describes what you're going to do。
+但我们不会强制要求你按照我们建议的格式来做。对吧？好的。现在，在下个月之内，你需要做的事远不止看油漆干。下个月内，你需要做的是——这是我们四周后要做的——写一份最多两页的文档，至少一页，但不能超过两页。内容描述你打算做什么。
 
- Some idea of how you're going to do it。 You don't have to have done the research yet。 but at least some， idea of how you're going to approach it。 Okay。 Watching the paint dry。 Okay。 Fine。 Requirements。 Camera。 Video recording equipment。 Patients。 Right？ Okay。 And then you want to have some idea of where you， for instance。
+你要有一个如何进行的想法。你不需要已经做了研究，但至少要有个大致的想法，知道你会怎么着手。好的。看油漆干。好的。要求。摄像机。视频录制设备。耐心。对吧？好的。然后你还需要对你要做的事情有一些想法。例如。
 
- going to get the data from or why it matters。 So， in other words。 this is the equivalent of the pitch deck。 Right？ And you get two slides at most。 And yet。 most get four minutes because we need one minute for， changing over。 Okay。 So。 if you get more than that within the next four weeks， it's awesome。
+你将从哪里获取数据，或者它为什么重要。所以，换句话说，这是相当于一个推介演示。对吧？你最多只能有两张幻灯片。而且通常大家有四分钟，因为我们需要一分钟来转换。好的。所以，如果你在接下来的四周内能做得更好，那就太棒了。
 
- And I'd strongly recommend that you， do because as the semester progresses， everybody gets busy。 And then in the end you have the end of semester madness， which， well， I guess means。 given that you're not only taking this， course， you will have to have madness from all the courses。 Don't do that to yourself。 Start early。 Okay。 I know we're all stress puppies。 We included。 So。
+我强烈建议你这么做，因为随着学期的进行，每个人都会变得很忙。然后在学期结束时，你会经历学期末的疯狂，这意味着，考虑到你不仅仅在上这门课，你还得应付所有课程的疯狂。不要把自己逼得太紧。早点开始。好的。我知道我们大家都是压力山大。包括我们自己。
 
- guess when some of those slides were made， right？ So， yes。 Nonetheless。 you're doing yourself a favor if you start early。 I guess I'm not saying you're obvious here。
+猜猜那些幻灯片是什么时候做的，对吧？所以，没错。尽管如此，如果你早点开始，实际上是在为自己争取优势。我想我并不是在说什么显而易见的事。
 
 ![](img/d283321ac0618b9a3a1948285322f2d4_5.png)
 
- Homeworks。 So， it turns out that people had lots of different。
+作业。所以，事实证明，人们有很多不同的看法。
 
 ![](img/d283321ac0618b9a3a1948285322f2d4_7.png)
 
- ideas of how to name their homeworks。 And in some cases。 several files were in the submissions folder。 So， this is maybe not exactly what happened。 but something like。
+关于如何命名作业的想法。在某些情况下，提交文件夹中有几个文件。所以，这可能并不是发生的完全情况，但大致是这样。
 
 ![](img/d283321ac0618b9a3a1948285322f2d4_9.png)
 
- this， somebody submitted a folder containing homework version 1。
+这个，有人提交了一个包含作业版本1的文件夹。
 
 ![](img/d283321ac0618b9a3a1948285322f2d4_11.png)
 
- homework a and homework updated。 And Rachel and Ryan had the questionable pleasure of having。 to figure out which of those three homeworks is now the one that， you actually meant to submit。 Don't do that to your poor TA， right？ Because they will pick one and there's no guarantee they'll pick。 the right one。 Okay。 There will be some formatting。
+作业A和作业更新。Rachel和Ryan则面临着令人质疑的挑战——必须弄清楚这三份作业中，哪一份才是你真正打算提交的。不要给你的可怜助教添麻烦，对吧？因为他们会选一份，而没有任何保证他们选的就是正确的。好的，会有一些格式要求。
 
- instructions in homework 3 that are more prescriptive。 Secondly。 we'll put out the reference solution for， homework 1。 which is essentially the Frankenstein-ish combined， solution of。 while solutions that you submitted for the， homework。 The good news is whoever submitted it did。
+第三次作业中的指示更具指导性。其次，我们将发布作业1的参考解决方案，这实际上是“弗兰肯斯坦式”的综合解决方案，结合了你们提交的作业中的一些解决方案。好消息是，无论是谁提交的，都做得很好。
 
- it did actually really well。 But not everybody submitted。 Okay。 Lastly。 if you want to convert notebooks， to PDF， you can go to stack overflow。 You look at this slide which says IPython in B convert to， PDF notebook。ipi in B。 This will give you a PDF。 Yes， question？ Latex is now very well supported。 It's not really Latex。
+它实际上做得很好。但并不是每个人都提交了。好的。最后，如果你想把笔记本转换为PDF格式，你可以去Stack Overflow。你可以查看这张幻灯片，上面写着“IPython in B 转换为PDF笔记本”，ipi in B。这样你就能得到一个PDF文件。是的，有问题吗？现在LaTeX得到了很好的支持，但它其实并不是完全的LaTeX。
 
- it's an HTML version of it。 So when we try to， oh， this one， I'm trying to。 try to do the IP converts。 The conversion will stop at the first exception that they have。 with the Latex because HTML not injects。 It's not how to recognize some of my data。 And then so what happens is my homework 2 gets a total of。
+它是HTML版本的。所以当我们尝试——哦，试试这个，我正在尝试。尝试进行IP转换。转换会在遇到第一个异常时停止。因为HTML没有注入。它不能识别我数据中的某些内容。然后发生的情况是我的第二次作业会总共得到。
 
- that page like 10 when I have 16 out of 10。 Okay。 Oh， okay。 So a couple of things。 Okay。 So first of all， yes， apologies。 Math。jax is not quite Latex。 There are certain equation environments and so on that it， doesn't like。 There's not much you can do besides using stack， overflow which ones those are。 Secondly， so。
+就像那一页10，我有16页满分。好吧。哦，好吧。有几点要说。首先，抱歉。MathJax并不是完全的Latex。有一些公式环境等它不支持。除了使用Stack Overflow了解具体是哪一些之外，没什么你能做的。其次，。
 
- but secondly， you probably shouldn't have 16。
+但其次，你可能不应该有16页。
 
 ![](img/d283321ac0618b9a3a1948285322f2d4_13.png)
 
- pages of solutions。 That means you're doing a way to， diligent job。 Each question。 it's okay to have a reasonably， precise answer。 But kudos。 That's serious work。 Okay。 If you're really in a fix there， submit that particular， solution as Latex。 So， you know。 that's why it's okay to， generate PDFs。 The only thing you need to make sure is that the。
+解答页面。这意味着你在做非常认真的工作。每个问题。可以有一个合理的、精确的答案。但值得称赞。这是很严肃的工作。好了。如果你真的遇到困难，提交该特定的解答作为Latex格式。所以，你知道的。这就是为什么生成PDF是可以的。唯一需要确保的是。
 
- PDF actually renders properly。 The other thing you can always do。 is you can just print from Jupyter。 And so basically， just， you know。 use the print dialogue of your。
+PDF能正确渲染。你可以随时做的另一件事是，可以直接从Jupyter打印。因此，基本上，使用你的打印对话框。
 
 ![](img/d283321ac0618b9a3a1948285322f2d4_15.png)
 
- browser and try that。 That may work better。 One important thing is look at the PDF before you submit it。 So some people submit it broken PDF。 You should check that in general in life when you submit PDFs。 like for a conference or any job application。 Make sure that the PDF that you're submitting is legible。 The home works are included in this。 But yes， PDF is fine。 But overall。
+浏览器并试试那个。这可能效果更好。一个重要的事情是，在提交之前先查看PDF。所以有些人提交了损坏的PDF。你应该在生活中提交PDF时，通常都要检查这一点。比如提交给会议或任何工作申请时。确保你提交的PDF是清晰可读的。作业也包括在内。但没错，PDF是可以的。总体来说。
 
- if you're submitting 16 pages of home work， you're --， I mean， first of all， okay， it's awesome。 Secondly， you're probably investing more time than we thought。 you were going to invest in the solutions。 Right？ But --， kudos。 Okay。 There were -- I think one or two more questions。 Yes？
+如果你提交16页作业——首先，太棒了。其次，你可能投入的时间比我们预期的要多。你确实投入了比我们预想的更多时间来做解答，对吧？不过——值得称赞。好了。应该还有一两个问题。是吗？
 
- >> Is there a requirement that was plotted by review use because， I had an issue that --。 your expert was just -- that my father had to export separately。 and code his files to make the clause work。 >> Hmm。 Just a good question。 It should not export the plot as separate PDF files。 Okay。 So for instance。
+>> 是否有要求将图表通过审查程序绘制？因为我遇到了一个问题——你的专家只是——我的父亲必须单独导出并编码这些文件才能使条款工作。>> 嗯，这是个好问题。它不应该将图表导出为单独的PDF文件。好的。例如。
 
- if I just use MBConvert for rendering。
+如果我只使用MBConvert进行渲染。
 
 ![](img/d283321ac0618b9a3a1948285322f2d4_17.png)
 
- it will not do that。 So -- so check your notebook conversion utilities。 It should not export plot as separate files。 So something is --， Again， that should not be the case。 We can maybe talk about it offline， but this looks like an， error in your configuration。 Any other questions？
-
-
+它不会那样做。所以——所以检查一下你的笔记本转换工具。它不应该将图表导出为单独的文件。所以某些情况是——再次说明，这不应该是那种情况。我们或许可以私下讨论，但这看起来像是你配置中的一个错误。还有其他问题吗？
 
 ![](img/d283321ac0618b9a3a1948285322f2d4_19.png)
 
- Okay。 Good。 So -- so far， full logistics。
+好的，明白了。到目前为止，物流问题解决了。
 
 ![](img/d283321ac0618b9a3a1948285322f2d4_21.png)

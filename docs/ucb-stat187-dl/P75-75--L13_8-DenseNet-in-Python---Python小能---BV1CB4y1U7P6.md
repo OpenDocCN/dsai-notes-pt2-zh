@@ -1,87 +1,77 @@
-# P75：75. L13_8 DenseNet in Python - Python小能 - BV1CB4y1U7P6
+# P75：75. L13_8 DenseNet在Python中的实现 - Python小能 - BV1CB4y1U7P6
 
- Let's look at the insnets in practice。 Remember this is essentially this function expansion， X。 F1 of X， F2 of X， and F1 of X， F3 of X， F1 of X， F2 of X， and F1 of X， and so on and so on。 So there's the diagram。 So let's see how we actually would go and code that up in Python。
-
-
+让我们来看一下实际中的例子。记住，这本质上是这个函数展开，X。F1(X)，F2(X)，F1(X)，F3(X)，F1(X)，F2(X)，F1(X)，等等等等。所以这是图示。现在让我们看看如何在Python中实际编写代码来实现这个。
 
 ![](img/249d0bddf64265d4758cc82fc0441560_1.png)
 
- So I have a convolutional block。 And what I'm doing is， this is just a simple one。 just adding batch， norm activation and the 2D convolution。 So this is just a simple object。 So then we need a dense block。
+所以我有一个卷积块。我的做法是，这是一个简单的块，仅仅加入了批量归一化激活和2D卷积。所以这只是一个简单的对象。接下来我们需要一个密集块。
 
 ![](img/249d0bddf64265d4758cc82fc0441560_3.png)
 
- So it basically adds and constructs a couple of convolutional blocks。 with different numbers of channels。 And so what I'm doing now is I'm saying， OK。 I'm taking the original， block and concatenating it with the output of my previous network。 So I'm getting longer and longer and longer stacks。 That's my dense block。
+所以它基本上增加并构建了几个卷积块，具有不同数量的通道。所以现在我做的事情是，我说，好吧，我正在将原始块与我前一个网络的输出进行连接。所以我得到的堆叠会越来越长。这就是我的密集块。
 
- You can see that as I keep on doing this， the higher order terms。 that are being computed will have more parameters because the inputs are larger。 So if we were to test this with data， well， we'd get that if I have this dense block。
+你可以看到，随着我继续这样做，计算的高阶项会有更多的参数，因为输入更大。所以如果我们用数据来测试这个，嗯，我们会得到，如果我有这个密集块的话。
 
 ![](img/249d0bddf64265d4758cc82fc0441560_5.png)
 
- with 10 features and two iterations。 So I pick three channels as input。 Then I add two times 10 channels to it。 So as a result， I'll get 23 channels。 That's pretty straightforward from the construction。 Any questions so far？
-
-
-
-
+具有10个特征和两次迭代。所以我选择三个通道作为输入。然后我添加两次10个通道。结果，我将得到23个通道。从构建上来看，这很直接。到目前为止有什么问题吗？
 
 ![](img/249d0bddf64265d4758cc82fc0441560_7.png)
 
- And so now， of course， if I were to keep on doing that forever。
+所以现在，当然，如果我一直这样做下去的话。
 
 ![](img/249d0bddf64265d4758cc82fc0441560_9.png)
 
- while the dimensionality would increase without bounds， so I need to squish it back。 And one way of squishing it back is just you perform another 2D convolution。 And we do that conveniently with also reducing the dimensionality。 So I basically have this stage where my embedding explodes in terms of number of channels。
+尽管维度会无限增加，所以我需要将其压缩回去。一种压缩的方式就是执行另一个2D卷积。我们方便地通过减少维度来实现这一点。所以我基本上有这样一个阶段，我的嵌入在通道数上爆炸。
 
- And then I collapse it back to something more manageable。 and at the same time I'm reducing the resolution as well。 That's kind of the right thing to do because you pretty much don't want to reduce the resolution。 and then build up the features because otherwise you've already thrown all the relevant pieces away。
+然后，我将其压缩回更易处理的东西，同时也在降低分辨率。这是正确的做法，因为你几乎不想先降低分辨率，再构建特征，否则你就已经丢失了所有相关的部分。
 
- And yeah， you can see what happens if I look at the input before。 I had 23 dimensions and then afterwards， yeah， if I have a transition block that chops it down to 10。 well， then I get 10 channels after that and it's 4x4。 Simple batch norm， relu。 then a convolution that reduces number of channels。 And then I， in this case， I use average pooling。
+对了，你可以看到，如果我看一下输入之前，我有23个维度，然后之后，嗯，如果我有一个过渡块将其减少到10，那么我就得到了10个通道，且是4x4。简单的批量归一化，ReLU，然后一个减少通道数的卷积。接着，我在这种情况下使用了平均池化。
 
- but yeah， could have used different pooling as well。
+但对了，也可以使用不同的池化方法。
 
 ![](img/249d0bddf64265d4758cc82fc0441560_11.png)
 
- And so now here's our Dense-Step model。 Okay， so initially， well。 we start off like any other good network， right， with a few convolutions and pooling。 And now I basically have these two number of channels in growth rate， right。 number of convolutions within the block， so we have that。 And now I just add a dense block。 Right。
+现在来看我们的Dense-Step模型。好吧，最初，我们就像任何其他优秀的网络一样，从几次卷积和池化开始。然后我基本上就有了这些通道数的增长速率，对吧？在这个模块内的卷积数，我们有这些。接下来我加了一个密集块，对吧？
 
- then I use a transition block。 And for that I need to figure out how many channels I need after that。 And so I use the number of channels in a habit， right？ That's it。 And so that's basically the design of a dense net。
+然后我使用了一个过渡块。为了这个，我需要弄清楚在那之后需要多少通道。所以我使用了一个习惯性的通道数。就是这样。所以这基本上就是一个DenseNet的设计。
 
 ![](img/249d0bddf64265d4758cc82fc0441560_13.png)
 
- Last stage is just like， you know， global averaging。 So you can see this kind of gets pre-predictable and boring because all those networks share a lot of common design patterns。 which is good because at least nowadays a common design pattern of how one goes and constructs object recognizers。
-
-
+最后阶段就像你知道的，全局平均。所以你可以看到，这种方式变得相对可预测和乏味，因为所有这些网络都共享很多共同的设计模式。这样做是好事，因为至少现在大家都有一个共同的设计模式，知道该如何构建对象识别器。
 
 ![](img/249d0bddf64265d4758cc82fc0441560_15.png)
 
-
-
 ![](img/249d0bddf64265d4758cc82fc0441560_16.png)
 
- Then you train。 It works fairly well， but doesn't actually work necessarily better than ResNet or ResNEXT。 So， but it takes a very long time。 The very long time has a lot to do with the fact that intermediate representations can get quite large。 which we just keep on stacking up channels。 So in other words。 the forward pass isn't a lot cheaper than what you might get for the backward pass。
+然后你进行训练。它表现得相当不错，但不一定比ResNet或ResNEXT更好。所以，它确实需要很长时间。这个非常长的时间很大程度上与中间表示可能变得非常庞大有关，因为我们不断堆叠通道。换句话说，前向传递的计算并不比反向传递便宜多少。
 
- compared to what you have in the standard ResNet where you keep， you know。 the number of parameters fairly well under control。 But yeah， that's about it。 Yes。 Does the larger intermediate representation have benefits for transfer learning？
+与标准ResNet相比，你会发现，标准ResNet能够更好地控制参数数量。但就这些了。是的。更大的中间表示对于迁移学习有好处吗？
 
- Does it have benefits for transfer learning？ Not necessarily this one。 So transfer learning。 we haven't even talked about that yet。 Mu is going to cover some of that。 Well。 probably on Thursday or next week then， but don't worry， you won't need it for the exam。 So transfer learning is essentially， let's say， I train a face recognizer on one dataset。
+它对迁移学习有益吗？不一定是这个。我们还没讨论迁移学习的部分。穆会讲解其中的一些内容。嗯，可能是在星期四或者下周，但别担心，考试时你不需要了解这个。所以迁移学习基本上是这样：假设我在一个数据集上训练一个人脸识别器。
 
- and then I want to use it for a different dataset。 And mind you。 transfer learning works often but not always。 For instance。 if I perform transfer learning on English and then want to apply to Klingon。 it's probably not going to go very well。 Okay， everybody knows that。
+然后我想将它用于不同的数据集。请注意，迁移学习通常有效，但并非总是如此。例如，如果我在英语数据上进行迁移学习，然后想要应用到克林贡语上，可能不会太成功。好吧，大家都知道这一点。
 
- We found out the hard way that if you train an image net and then want to apply to satellite images。 it doesn't work either。 That was less obvious than the Klingon part。 Yes， question。 Why do you do that to that word？ Of course。 That word is not。 Because it's actually not very efficient at coming up with its feature representations。
+我们通过痛苦的经验发现，如果你在ImageNet上进行训练，然后想将其应用于卫星图像，效果也不好。这比克林贡语的例子不那么显而易见。是的，有问题吗？为什么你要对那个词这么做？当然，那个词不是。因为它实际上在生成特征表示方面效率并不高。
 
- And ResNet already has most of the expansions around identity in it that gave it the big benefit。 Relative to inception。 Going to higher order terms doesn't give you that much of a benefit。 It actually becomes a little bit less pleasant to train。 Which is also why probably people haven't spent quite as much time tuning it。 It's just too costly。
+ResNet已经包含了大部分与身份相关的扩展，这也是它相对于Inception的大优势。去使用更高阶的项并不会带来太多好处。实际上，训练起来可能会稍微不那么愉快。这也是为什么可能没有人花太多时间调优它的原因。它实在是太昂贵了。
 
- So overall， if you have a fixed compute budget， you may be better off using your fixed compute。 budget more wisely on things like shuffle net， on things like ResNet。 ResNet where you partition channels。 Is there some strange combination of all those things that you could use？
+所以总体来说，如果你有一个固定的计算预算，可能会更明智地将你的固定计算预算用于像ShuffleNet、ResNet之类的东西。ResNet可以对通道进行划分。有没有可能有一些奇特的组合，能够将这些方法结合起来使用呢？
 
- Probably yes。 For instance， there's something called Amoebanet where some folks at Google use the genetic。 algorithm to basically roll the dice and burn a lot of TPUs to come up with a really， really。 fancy network。 And then for this one problem， this really， really fancy network does really。 really well。 The problem is a little bit that you don't really learn a lot about the problem from that。
+可能是的。例如，有一种叫做Amoebanet的东西，谷歌的一些人使用遗传算法来基本上掷骰子，烧掉大量TPU，以此来设计一个非常、非常复杂的网络。而这个非常复杂的网络在某一个特定问题上表现得非常好。问题在于，从中你并没有真正学到很多关于这个问题的东西。
 
- structure anymore。 It's just like， yeah， it's not quite a binary blob， but it's like a network blob。 And yeah， just use that and things are going to be okay。 Structural improvements。 especially if you care about efficiency， may be better。 Yes？
+不再是结构化的了。这就像，嗯，它不完全是一个二进制块，但它像是一个网络块。是的，只需使用它，事情就会顺利进行。结构上的改进，尤其是当你关心效率时，可能会更好。是吗？
 
- >> As people try to connect to several previously used instead of all the previous loops。 >> So ResNet， sorry， DensNet effectively connects to several previous layers， right？
+>> 就是人们尝试连接多个以前使用过的层，而不是所有之前的循环。 >> 所以ResNet，抱歉，DensNet实际上连接了多个以前的层，对吧？
 
- You keep on stacking up the representations， right？ So in that sense， the answer is yes。 And that is DensNet。 Now， there are a couple of follow-up papers where they address some of the downsides of。 this。 For instance， what you could do is you could try to build a network where you can decide。 early on whether you should be spending extra compute effort or not。
+你不断堆叠表示，是吧？从这个角度来看，答案是肯定的。这就是DensNet的做法。现在，有几篇后续论文讨论了这种方法的一些缺点。例如，你可以尝试构建一个网络，在早期就决定是否应该投入额外的计算努力。
 
- Let's say if I want to recognize a cat and it's very， obviously a cat， then I don't。 really have to do a lot of work。 And I can maybe truncate earlier on。 That actually makes things pretty in theory， but in practice， it's -- so here's the issue。 Well。 if I give you 100 cat images， well， which one's going to be easy？ Well， if you knew that beforehand。
+假设我想识别一只猫，且它显然就是一只猫，那么我其实并不需要做太多工作。我可能可以更早地进行截断。从理论上讲，这样做确实可以简化问题，但在实际操作中——问题就在这里。如果我给你100张猫的图片，哪一张会容易呢？如果你事先知道这个问题，情况就会不一样。
 
- well， life would be very easy。 So what you'd basically have to do is you'd have to do some form of dynamic batching where。 you throw out all the easy cats， maybe after the first stage， and then you do some。 computation after the second one and so on。 And all of this overhead may completely negate the on-paper benefit that you think you might。 be getting from using something that has a lower flops count。
+那么，生活将变得非常简单。所以你基本上需要做的是，进行某种形式的动态批处理，你可以在第一阶段后丢弃所有容易识别的猫，然后在第二阶段后再进行一些计算，依此类推。所有这些额外的开销可能完全抵消你认为使用低flops计数的方案可能带来的好处。
 
- So not every theoretical improvement will help you in practice。 I've gotten burnt by that myself in some cases。 So in one very unfortunate case。 somebody with a log-in higher complexity beat us in practice。 because CPUs are very well suited to that and what we had wasn't。
+所以并不是每一个理论上的改进都能在实践中有效。我自己在某些情况下也吃过这个亏。在一个非常不幸的情况下，某人使用了一个更高复杂度的算法，在实践中击败了我们。因为CPU非常适合这种情况，而我们的方法却不行。
 
- So this is the trade-off that you often need to explore when you propose a new， network。 Otherwise。 it's just a paper and nobody uses it later。 Any other questions？ Okay， so with that， thanks a lot。
+所以这是你在提出一个新的网络时，通常需要探索的权衡。否则，这只会成为一篇论文，之后没人再使用它。还有其他问题吗？好，谢谢大家。
 
 ![](img/249d0bddf64265d4758cc82fc0441560_18.png)

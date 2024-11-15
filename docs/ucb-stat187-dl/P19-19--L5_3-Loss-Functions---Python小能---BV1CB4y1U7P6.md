@@ -1,61 +1,61 @@
-# P19：19. L5_3 Loss Functions - Python小能 - BV1CB4y1U7P6
+# P19：19. L5_3 损失函数 - Python小能 - BV1CB4y1U7P6
 
- Loss functions。 Yeah， so， you know， what can we optimize over？ Well。 this is a very simple loss function。 All right， that's exactly the one that I just described。 So that's just a Gaussian。 And mind you， these plots are all， generated directly in blue one。 So let me explain to you what， you're seeing there。 So the blue function is the。
+损失函数。是的，你知道，我们可以优化什么呢？这个是一个非常简单的损失函数。好吧，这正是我刚才描述的那个。它就是一个高斯分布。顺便说一下，这些图都是直接在蓝色平台上生成的。那么让我来解释一下你看到的是什么。蓝色函数就是这个。
 
- function that I described。 So it's 1/2 y minus y hat squared。 The green function is e to the minus that loss function。 And of course， in this case。 as you can see， I picked y prime to， be zero。 And all I did is because I'm lazy。 I just normalized the screen function to integrate to one over。
+我描述的函数是1/2 y减去y帽的平方。绿色函数是e的负该损失函数的指数。当然，在这种情况下，如你所见，我将y'选择为0。所有我做的，就是因为我懒，直接将绿色函数归一化，使其在区间内积分为1。
 
- the range from minus 5 to 5 and ignoring everything that's outside。 But short of that。 that's a normal distribution。 The red line is the derivative of the blue line。 And that's automatically generated。 So as part of your， homework。 you're going to use autograph to automatically do this。 Okay。 Well， that sounds pretty boring here。
+范围从-5到5，忽略所有在外的部分。但除此之外，这就是一个正态分布。红线是蓝线的导数，也是自动生成的。所以，作为你们的作业，你将使用autograph来自动完成这一步。好了，这里听起来可能有点无聊。
 
- right？ Because， you know， we can all just write out y minus y prime。 But there are other losses where this is actually really quite， an advantage。 Okay。 So let's take something like this。 Let's just look at what happens with the optimization。 So what we saw before is that if I minimize the L2 loss， I get exactly the mean out of it， right？
+对吧？因为你知道，我们都可以写出y减去y'。但还有一些其他的损失函数，这实际上是一个很大的优势。好了，让我们看看发生了什么。我们之前看到的是，如果我最小化L2损失，我得到的恰好是均值，对吧？
 
- And so I've just， you know， plotted with those red arrows the magnitude of the gradients if I。 have the observations， and that will give me the mean of them。 Okay。 So let's take the L1 loss。
+所以我刚刚用那些红色箭头标出了梯度的大小，如果我有这些观测值，这将给我它们的均值。好了，现在我们来看L1损失。
 
 ![](img/69850ea05dc88d7d9642ad1a3c1195a1_1.png)
 
- And again， I did exactly the same thing。 I took the absolute value function y minus y prime and I plotted。 this blue line。 Then I exponentiated it and I get the， green line again normalized to， you know。 integrate out to one on， the interval between minus five and five here。 And then the orange line is the derivative。 Again， automatically generated。
+再次，我做了完全相同的事情。我取了绝对值函数y减去y'，并绘制了这条蓝线。然后我对其进行了指数化，得到绿色线，同样将其归一化，使其在-5到5区间内积分为1。然后，橙色线是导数。再次，这个是自动生成的。
 
- Now this loss function has a rather fun property， right？ Namely。 its gradients are either minus one or one。
+现在这个损失函数有一个相当有趣的特性，对吧？也就是说，它的梯度要么是-1，要么是1。
 
 ![](img/69850ea05dc88d7d9642ad1a3c1195a1_3.png)
 
- So if I end up optimizing by， you know， trying to find the， point where the gradients balance out。 I need the same number， of points to the left and to the right。 So decisions call that the median。 If I had an odd number of points， I would， you know， pick that one， exactly。 otherwise I can pick anything in the interval between， two。 Mr。 Gray， this don't change。
+如果我通过优化，尝试找到梯度平衡点，我需要左右两边的点数相等。所以我们称之为中位数。如果点的数量是奇数，我会选择那个点，恰好是那个。否则，我可以选择区间中两个点之间的任何一个。灰先生，这个是不会变化的。
 
- That's the median。 Okay。
+这就是中位数。好了。
 
 ![](img/69850ea05dc88d7d9642ad1a3c1195a1_5.png)
 
- So now let's pick something a little bit weird。 So this is called Hoobers-Robost loss。 The Hoobers-Robost loss is weird insofar as it looks like the。 absolute value function on the branches。 So the blue line on the outside is a straight line。 And on the inside it's just a parabola。 So what it is， it's just a parabola which is then extended。
+现在，让我们选择一个稍微奇怪一点的东西。这被称为Hoobers-Robost损失。Hoobers-Robost损失之所以奇怪，是因为它在分支上看起来像绝对值函数。所以外侧的蓝线是直线，内侧则是一个抛物线。它的意思是，它其实就是一个抛物线，然后被延伸出来。
 
- continuously with a straight line。 And you need to squint really hard to figure out exactly where it。 crosses over。 Now if you plot the derivative， so that's the orange curve。 you can see it very easily。 And again that's automatically generated with glue on。 This way I don't have to do anything particularly fancy to， get it。
+持续地用一条直线拟合。你需要仔细看才能弄清楚它到底在哪里交叉。现在，如果你画出导数，也就是橙色的曲线，你就能很容易看出来。再次强调，这些都是用Glue自动生成的。这样我就不需要做什么特别复杂的事情来得到它。
 
- And the green line again is the corresponding density。 So what is special about the robust loss？
+绿色线条又是对应的密度。那么鲁棒损失有什么特别之处？
 
- Well actually a lot because this one ensures if you have a。
+好吧，实际上是很多的，因为这可以确保如果你有一个。
 
 ![](img/69850ea05dc88d7d9642ad1a3c1195a1_7.png)
 
- straight line， if you look at that， that you essentially perform。 trimming and you throw the largest and the smallest terms away。 And then you compute the mean within that。 The largest and smallest terms the gradients cancel out。 Anything in the middle， well you have your standard Gaussian。
+直线，如果你看那条线，你实际上是在执行修剪，去掉最大和最小的项。然后你在其间计算均值。最大和最小的项的梯度会相互抵消。中间的部分嘛，你就有了标准的高斯分布。
 
- loss and everything just averages out there。 Yes？ >> [INAUDIBLE]， >> Okay。 It's a very good question namely what's the relation to outliers。 Now a trimming estimator effectively performs robust， estimation。 Now the little trick that I didn't mention here， that would be， something。
+损失函数和其他的一切都会在那里平均化。是吗？ >> [听不清]，>> 好的。这是一个很好的问题，特别是关于异常值的关系。现在，一个修剪估计器有效地执行了鲁棒估计。现在我在这里没提到的小技巧，就是，某些东西。
 
- I mean that a good stats class will cover。 You don't necessarily pick the thresholds of one and minus one。 for where you cross over as a hard constraint。 You adapt them dynamically to the estimation problem that you're。 just trimming away the smallest and the largest terms。 And that effectively performs outlier removal。 Except that when you're doing regression it doesn't exactly。
+我是说，好的统计学课程会讲到这一点。你不一定要选择一个和-1的阈值作为硬性约束，来确定交叉点。你可以动态调整它们，适应你所遇到的估计问题。你只是修剪掉最小和最大的一些项。这样就有效地进行了异常值移除。不过，当你进行回归时，它并不完全是这样。
 
- remove the outlier， you're just bounding the influence and with。 that the gradient that any single observation can have。 So this way it's not that you're ignoring points that are at， their extremes。 you're just making sure that they don't， they cannot push things too hard。
+去除异常值，你只是限制了单个观测值可能带来的梯度影响。所以这样做并不是忽视那些处于极端位置的点，你只是确保它们不能对结果产生过大的影响。
 
- Now this is actually a very common technique that's being， used in deep learning training。 It's called gradient clipping。 Now gradient clipping sounds infinitely cooler than who was。 robust loss， but that's really what it does。 So I covered it here such that later on when we do things like。 gradient clipping， you understand what's really going on。
+这实际上是一个在深度学习训练中非常常见的技术。它叫做梯度裁剪。现在梯度裁剪听起来比鲁棒损失要酷得多，但它实际上做的就是这个。所以我在这里讲解它，是为了让你在后续做梯度裁剪之类的操作时，能够理解到底发生了什么。
 
- There are some reasons why you'll need to do that because if。 your gradients are too large any optimization can diverge， but。 it also simply means that you shouldn't be giving individual， observations too much weight。 So this ranges a lot of optimization procedures a lot more。
+有些原因是你需要这么做，因为如果梯度太大，任何优化都可能发散，但它也意味着你不应该给个别观测值过多的权重。所以这在许多优化过程中会有很多变化。
 
- stable and here's the statistical reason for it。 Any other questions？ Yes？ >> Sorry。 I'm actually kind of confused。 So what are we trying to do here？
+这是稳定的，以下是它的统计学原理。还有其他问题吗？是吗？ >> 抱歉，我其实有点困惑。那我们在这里究竟是想做什么？
 
- Where do we develop different loss functions？ >> So we just looked at different loss functions and that's。 because well besides at least mean squares loss you might end。 up adding lots of different other loss functions to your。 optimization problem to perform different types of estimation。
+我们是在哪里开发不同的损失函数的？ >> 所以我们刚刚看了不同的损失函数。这是因为，除了最小均方误差损失，你可能最终会在你的优化问题中添加很多不同的损失函数，以执行不同类型的估计。
 
- And what we're doing here is we're just covering the really。 really simple losses first namely for regression because here I。 can draw nice pictures once you go to structured multi-class， losses and so on。 It's a lot harder to visualize what's going on。 The other reason is I wanted to cover the connection between。
+在这里，我们首先讨论的是非常简单的损失函数，主要是回归损失，因为在这里我可以画出很好的图像。而一旦你进入到结构化多分类损失等其他内容时，就很难直观地理解发生了什么。另一个原因是我想探讨一下梯度裁剪和其他方法之间的联系。
 
- gradient clipping and what you do otherwise namely that you do。 constrain the upper bound of the magnitude of the loss。 So if you have to a large vectorial loss you basically just。 make sure that the two norm of that vector doesn't exceed a， certain number。
+梯度裁剪和你通常采用的方法之间的联系，即你会限制损失的大小的上限。因此，如果你有一个很大的向量损失，你基本上会确保该向量的二范数不超过某个特定的值。
 
- And since this is an undergrad class we're doing things。 the slightly quicker dirty way by giving you more intuition than， necessarily all the math。 So there's this tension between how much we can cover and how。 deep we go and that's where we give you the intuition that we。
+由于这是本科生课程，我们采取了一种稍微快速但有效的方法，通过给你更多的直觉而不是所有的数学推导。所以，我们面临一个矛盾，就是在我们能覆盖的内容量和我们能深入的程度之间做出平衡，这就是我们给你直觉的原因。
 
- can't really dive into all the details to quite extent that a， graduate level class will do。 Okay so this is pretty much all that we have for regression。
+我们不能像研究生课程那样深入探讨所有的细节。好了，这基本就是我们关于回归分析所涉及的内容。
 
 ![](img/69850ea05dc88d7d9642ad1a3c1195a1_9.png)

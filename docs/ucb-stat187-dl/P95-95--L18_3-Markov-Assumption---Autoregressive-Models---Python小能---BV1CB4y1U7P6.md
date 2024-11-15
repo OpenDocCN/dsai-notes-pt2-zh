@@ -1,127 +1,107 @@
-# P95：95. L18_3 Markov Assumption & Autoregressive Models - Python小能 - BV1CB4y1U7P6
+# P95：95. L18_3 马尔科夫假设与自回归模型 - Python小能 - BV1CB4y1U7P6
 
- Let's start with something simple namely the Markov assumption。
+让我们从简单的事情开始，也就是马尔科夫假设。
 
 ![](img/ef0f37297e93020bed648cd8eaa96205_1.png)
 
- So remember in the Markov assumption， the idea was that we have that x hat of t is some。 function of x t minus tau after x t minus 1。 You could then just go and train a regression model。 use it to predict the next step in， the， Okay， so let's see how that works in practice。 Okay。 so let's see。 I'm going to generate some data。
-
-
+所以记住在马尔科夫假设中，关键思想是我们有，x ˆ t是x t减去tau的某个函数，之后是x t减去1。然后你可以直接去训练一个回归模型，使用它来预测下一步，好的，那么让我们看看它在实践中的运作。好的，我们来看看。我将生成一些数据。
 
 ![](img/ef0f37297e93020bed648cd8eaa96205_3.png)
 
- Let me just quickly run this。 So i'm doing my usually import， Virtual， right？
+让我快速运行一下这个。嗯，我通常的导入，虚拟的，对吧？
 
- This is just to make sure every single thing is， Nicely。 I'm going to pick a four-dimensional embedding， so tau equals four， so i'm going。 To look at the previous observations， going to generate a thousand points in total， you， Know。 nicely evenly spaced。 And the data is going to be utterly boring， namely， it's just。
+这只是为了确保每一件事都是，妥善处理的。我将选择一个四维嵌入，所以tau等于四，我将看一下之前的观测值，计划生成一千个点，总共，嗯。均匀分布的。数据将是相当无聊的，简单来说，它只是。
 
- Going to be a sine curve plus some noise added。 Okay， so it's pretty boring。 Let's actually see what this looks like because that's a lot easier to grok rather。
+将是加上一些噪声的正弦曲线。好了，所以这很无聊。让我们实际看看这看起来是什么样子，因为那样更容易理解。
 
 ![](img/ef0f37297e93020bed648cd8eaa96205_5.png)
 
-
-
 ![](img/ef0f37297e93020bed648cd8eaa96205_6.png)
 
- Than just looking at code。 Well， it's a sine curve。 It's a very noisy sign。 Okay， nothing special。 You could easily assume that you can， you know， regress on， That。 It's not that easy because there's a lot of noise added to it。 Right。 so if you only have four adjacent points， you may not be able to predict， Quite that well。 But。
+然后只是看看代码。嗯，这是一条正弦曲线。这是一条非常嘈杂的正弦曲线。好了，没什么特别的。你可能会轻易假设，你可以，嗯，回归到，那个。其实并不那么简单，因为加了很多噪声。对吧。所以如果你只有四个相邻的点，你可能无法很好地预测。但是。
 
- okay， anyway， let's see。
+好吧，反正我们来看一下。
 
 ![](img/ef0f37297e93020bed648cd8eaa96205_8.png)
 
- So the first thing i need to do is i need to actually generate the data set and， well。 Define a model。 So i'm going to first generate a data set。 So i'm going to use， well。 if i have embedding of four and have， you know， One thousand observations， then， you know。 since i have now， Vectures of， you know， the length of five。
+所以我首先需要做的是，实际上生成数据集，并且，嗯，定义一个模型。所以我首先生成数据集。然后，我将使用，嗯，如果我有四维的嵌入，并且有一千个观测值，那么，你知道，既然我现在有了，向量，长度是五。
 
- so i basically need to make a small object， Right。 t minus embedding and then also embedding dimension。 Right， because i have four dimensions times。 you know， that length。 And then， what i do is i just now assign the values into this feature vector。 The only slightly more convenient thing that i'm doing is i'm not assigning it， You know， one time。
+所以我基本上需要做一个小的对象，对吧。t减去嵌入，然后还有嵌入维度。对，因为我有四个维度乘以，嗯，那个长度。然后，我做的就是将这些值分配到特征向量中。我唯一做得稍微更方便一点的是，我并不是一次性地分配它，嗯。
 
- set it at a time。 But if you think about it， right， so here's， My vector。 You know。 this is embedding dimension one， two， three， four。 I'm going to take this vector here。 And i'm going to shift it by one。 I'm going to shift it by two。 One more。 Right， oops。 Okay。 I'm going to shift it by， you know， one， two， three， four。 And in doing so， of course。
+一次设置一个。但是如果你仔细想一想，对吧，看看，这是我的向量。你知道，这是嵌入的维度一、二、三、四。我将取这个向量。然后，我将把它平移一个位置。我将把它平移两个位置。再平移一次。对，哎呀。好了，我将把它平移，嗯，一、二、三、四。这样做的过程当然。
 
- any slice that i pick out here has exactly the data， You know。 in the times you're shifted by one step each relative to each other in that， Vector。 That's just a lot faster because now my， Four loop goes over four entries as opposed to over one thousand。 Not that it matters because the data set is tiny， but still。 And labels are just， you know。
+我在这里挑选的任何切片都有完全相同的数据，知道吧，每个数据点在时间上都相对平移了一步。这就快得多了，因为现在我的四重循环只遍历四个条目，而不是一千个。虽然数据集很小，这不重要，但还是有点差别。而标签只是，嗯，
 
- that embedding。 Now， the training data set is the first 600 observations。 And so now i have a training data set and a test data set， so i perform exactly。 The operations that you would。 I just， you know， call the glue on data set constructor。 And call it an array data set。 And i picked， you know， the first and。
+那个嵌入。现在，训练数据集是前600个观测数据。所以现在我有了训练数据集和测试数据集，我就执行你应该执行的操作。我只需调用数据集构造器，并称其为数组数据集。我选择了，知道的，第一个。
 
- Train observations for training。 And i'm going to pick the rest for testing。 Okay。 And then， okay。 i'm going to define， A very boring， deep network。 I'm going to start with， you know， whatever input。 Dimension they have。 A map into ten hidden dimensions。 Another layer of ten hiddens with a relu。 Then output one， because we're going to do regression。 And i pick， saviour initialization。
+用于训练的观测数据。我将把剩下的用作测试数据。好吧。然后，好的。我将定义一个非常无聊的深度网络。我将从你知道的输入开始。它们的维度是什么，映射到十个隐藏层的维度。再加一个十个隐藏层的层，使用ReLU。然后输出一个，因为我们要做回归。然后我选择了saviour初始化。
 
- So this is about as boring as you could imagine。 The last thing i need to do is i need to define a loss。 So i'll just pick the L2 loss。 This is essentially state of the art。 You know。 the first lecture when we introduced multi-layer perceptrons。 None of this should be even in the remotest surprising to you。 Any questions so far？ Okay。
+所以这就是你能想象的最无聊的事情。最后我需要做的就是定义一个损失函数。所以我选择了L2损失。这基本上是最先进的技术。你知道的，在我们介绍多层感知器的第一次讲座时，这一切对你来说应该一点也不令人惊讶。到目前为止有任何问题吗？好的。
 
- Everybody cool with it？
-
-
+大家都明白了吗？
 
 ![](img/ef0f37297e93020bed648cd8eaa96205_10.png)
 
- Good。 So， okay， here's the trainer。 Again， very straightforward。 Mini batch size of 16。 Why 16？
+很好。所以，好的，这是训练器。再次，非常简单。迷你批量大小是16。为什么是16？
 
- Because it's a nice number。 It's 2 to the 4。 Could have picked 32 if i wanted to。 All right。 I take。 you know， a trainer。 Just i pick Adam here。 Why？ Because Adam kind of rocks。
+因为这是一个不错的数字。它是2的4次方。如果我想的话，也可以选择32。好吧。我选择了，你知道的，训练器。我选了Adam。为什么？因为Adam真是太棒了。
 
 ![](img/ef0f37297e93020bed648cd8eaa96205_12.png)
 
- Could have probably picked five other solvers and it wouldn't have mattered。
+我可能可以选择其他五个求解器，结果也不会有太大区别。
 
 ![](img/ef0f37297e93020bed648cd8eaa96205_14.png)
 
- But i need to pick a solver。 I pick my iterator on， you know， the training data。 And then i just perform， you know， training where i go with the data。 Epox many times。 And i just pick， you know， the xy pairs from the data， iterator。 Compute， you know。 turn on autograd。 Compute the loss。 Compute the gradient of that。 And i perform the update。
+但我需要选择一个求解器。我选择了迭代器，针对你知道的训练数据。然后我就执行训练，你知道的，使用数据。进行很多次的循环。我选择了，你知道的，数据中的xy对。计算，知道吧。打开autograd。计算损失。计算梯度。然后我执行更新。
 
- And in the end， while i go and compute the loss， all right， after the end of， every epoch。 and i print that loss。 All right。 L。Dop mean。 That gives me the average loss。 And as numpizers i can print it。 In the end， when i'm done i return the network。 Okay。 Is there anything that you want me to， cover again about this？ Okay。 Don't be shy。 Okay， good。 Well。
+最后，在我计算损失时，好吧，每一个循环结束后。我打印出那个损失。好吧。L.Dop均值。这给我了平均损失。作为numpizers我可以打印出来。最后，当我完成时，我返回网络。好的。你们有什么想让我再讲解一下的吗？好的。不要害羞。好的，太好了。
 
- then let's train it， right？
-
-
+然后让我们开始训练吧，对吧？
 
 ![](img/ef0f37297e93020bed648cd8eaa96205_16.png)
 
- We can do that。 That was quick。 And it works fairly well and we get， like， you know， 2。8% error。 Right？ Okay。 Well， it's a regression problem。 So that's a regression loss。 And yeah， that's it。 And basically i could have stopped after four iterations of whatever it doesn't， Matter。 Okay。 So now comes the moment of truth。 Let's actually see how this behaves。
-
-
-
-
+我们可以做到的。那真是很快。而且效果相当不错，我们得到了大约2.8%的误差。对吧？好的。嗯，这是一个回归问题。所以这是回归损失。嗯，就是这样。基本上我可以在进行四次迭代后停下，反正没关系。好吧。那么现在来到了关键时刻。我们来看看这个怎么表现。
 
 ![](img/ef0f37297e93020bed648cd8eaa96205_18.png)
 
-
-
 ![](img/ef0f37297e93020bed648cd8eaa96205_19.png)
 
- Okay。 So the blue curve is， you know， The data。 And the orange curve is the estimate。 I think that works pretty well， right？ Right。 So that looks like we just solved the， Problem， right？
+好的。那么蓝色曲线是你知道的，数据。而橙色曲线是估计值。我觉得这个效果不错，对吧？对。所以看起来我们已经解决了这个问题，对吧？
 
- You know， perfect error， right？ And it nicely reconstructs things。 And so now we can all go home。 Okay。 Can somebody see something that， Wasn't so bright about what i just did？
+你知道，完美的误差，对吧？它把东西重建得很不错。所以现在我们都可以回家了。好吧。有没有人看到我刚才做的事情中不那么聪明的地方？
 
- There is something really wrong with this curve。 Or with this approach rather。 Any ideas of what's really stupid here？ Okay。 So the question is what happens at test time？
+这个曲线，或者说这种方法，确实存在一些问题。有谁能猜到这里到底有什么问题吗？好吧。那么问题是测试时会发生什么？
 
- So do we have the correct data？ You're on absolutely the right track。 So the question was， you know。 at test time do we have， you know， The past tall observations， right？ And the answer is no。 obviously we don't， right？ So you're spot on。 This is exactly the issue。 We right now pretended that at test time we still have those。
+那么我们有正确的数据吗？你完全在正确的轨道上。问题是，在测试时，我们是否拥有所有过去的观测值，对吧？答案是没有，显然我们没有，对吧？所以你完全说对了。这正是问题所在。我们现在假装在测试时仍然拥有这些数据。
 
- Past observations and then we just want to predict for the next day。 So if that were the task。 we would do exceedingly well。 So what are we supposed to do then？ Any suggestions？
+过去的观测值，然后我们只需要预测下一天的情况。所以如果这是任务的话，我们会做得非常好。那么我们接下来应该做什么呢？有什么建议吗？
 
- What could you do？ You could basically take one observation， you know， Predict， you know。 for the first unknown day。 Then use that prediction of what i have so far plus the first。 Unknown day to predict the second unknown day and then the， Third and keep on going， right？
-
-
-
-
+你可以做什么？你基本上可以拿一个观测值，你知道的，预测下一个未知的日子。然后用这个预测结果，加上第一个未知日的数据，预测第二个未知日，然后第三个，继续进行下去，对吧？
 
 ![](img/ef0f37297e93020bed648cd8eaa96205_21.png)
 
- Okay。 Let's see how that goes。 This is exactly what I'm doing here。 So predictions， right？
+好的。我们来看看结果如何。这正是我在这里做的事情。所以预测，对吧？
 
- So for the first， you know， A few steps， we have the same thing。 And then you go and essentially prediction at step i。 You could take the network off the predictions that I have used so far。 And fill that in。 Okay。
+所以在前几个步骤中，我们做的是相同的事情。然后你基本上可以在第i步做预测。你可以把到目前为止的所有预测结果输入网络，进行填充。好吧。
 
 ![](img/ef0f37297e93020bed648cd8eaa96205_23.png)
 
- Let's see how that goes。 Right？ That's basically all this code does。 And it goes spectacularly wrong。 So the green curve are the predictions and basically what i've。 Done is after， you know， step 600 where we no longer have any， Data which is around here。 And just kept on letting you predict forward。 And you can see basically just very quickly converges to the。
+让我们看看结果如何。对吧？这基本上就是这段代码所做的事情。结果非常错误。绿色曲线是预测值，基本上我所做的事情是，在第600步之后，我们不再有任何数据，大约在这个位置。然后继续让你进行预测。你可以看到，预测很快就会收敛到一个……
 
- Constant function and stops doing anything meaningful。 However， this model is exceedingly dumb。 right？ So in other words， if i want to predict forward by more than one step。 Is that autoregressive model， often things go badly wrong。 Okay。 So you might wonder， well， okay。 That's kind of obvious。 Everybody knows that。 Well， actually。
+常数函数并且停止做任何有意义的事情。然而，这个模型非常愚蠢。对吧？换句话说，如果我想预测多个步骤以后的情况，这种自回归模型，往往会出现严重问题。好吧。你可能会想，嗯，好吧。这种情况很明显，大家都知道的。嗯，实际上……
 
- if you talk to customers and you talk to them， About time series forecasting。 sometimes you need to point that， Out。 Right？ It's very， very easy to get trapped by this yourself。 So make sure that if you're dealing with time series dot and。 You want to forecast over a entire sequence， did they actually go， And do that？ Okay。
+如果你和客户交流，并且你和他们讨论时间序列预测，有时你需要指出这一点，对吧？这非常非常容易让你自己陷入困境。所以，确保如果你在处理时间序列数据，并且你想要对整个序列进行预测时，是否真的去做了这些呢？好吧。
 
- It's a mistake that's very， very easy to make。
+这是一个非常容易犯的错误。
 
 ![](img/ef0f37297e93020bed648cd8eaa96205_25.png)
 
- Okay。 So let's see how well this actually works。 So what i did here is i basically ran the same thing as。 Before just that i looked at， you know， four， eight， 16 and 32 steps。
+好的。那我们来看看这实际上效果如何。我在这里做的事情基本上和之前一样，只是我查看了，四步、八步、十六步和三十二步的预测结果。
 
 ![](img/ef0f37297e93020bed648cd8eaa96205_27.png)
 
- And this graph here shows what happens if i have， you know， the， Four step， eight step。 16 and 32 step， you know， prediction error。 And you can see the model kind of works at four to eight steps and it。 Fours down at 16 and 32 it's very useless。 Right？ Sorry。 In other words。 this model is quite useful for very short-term， Forecasts。
+这里的图表展示了当我有，嗯，四步、八步、十六步和三十二步时，你知道，预测误差会发生什么。你可以看到，模型在四步到八步时表现不错，接着在十六步和三十二步时就变得非常无效。对吧？抱歉，换句话说，这个模型对于非常短期的预测非常有用。
 
- but for long-term forecasts i would not want to put， Any money into it。 Okay。 So this is the story of autoregressive models。 Any questions so far？ Right。 Okay。 Good。 Then what's the point？
-
-
+但是对于长期预测，我不想把任何资金投入进去。好的。那么这就是自回归模型的故事。到目前为止有什么问题吗？对吧？好的。那么重点是什么呢？
 
 ![](img/ef0f37297e93020bed648cd8eaa96205_29.png)

@@ -1,113 +1,101 @@
-# P38：38. L8_6 Advanced Deep Learning Hardware - Python小能 - BV1CB4y1U7P6
+# P38：38. L8_6 高级深度学习硬件 - Python小能 - BV1CB4y1U7P6
 
- with more hardware。
+还有更多硬件。
 
 ![](img/69538b25f08a01537b8ca0b0d4931f67_1.png)
 
- So we mentioned that there's more hardware， besides CPU and GPUs。 So for example。 here's the Qualcomm SLAP Dragon 845。 So this is the chip you may be find on your Android phones。 So you can look at the chip。 You have multiple components there。 So on the top right， this is a GPU。 And close to the right button， this is a CPU。 Between the GPU and CPU， there's something called ISP。
+所以我们提到，除了CPU和GPU，还有更多硬件。例如，这里是高通的SLAP Dragon 845芯片。你可能在你的安卓手机上找到这个芯片。你可以看看这个芯片，上面有多个组件。在右上角，这是一个GPU。接近右下角，这是一个CPU。在GPU和CPU之间，有一个叫做ISP的东西。
 
- which is called Image Signal Processing。 On the left hand of the ISP， something called DSP。 this is a digital signal processing。 You can see that both DSP and ISP take a lot of area。 from the chip。 Actually， it's pretty powerful， and we can use for deep planning。 For example。 the DSP called the digital signal processor， which is designed for digital process algorithms。
+这被称为图像信号处理（Image Signal Processing）。在ISP的左侧，有一个叫做DSP的东西。这是数字信号处理（Digital Signal Processing）。你可以看到DSP和ISP都占用了大量的芯片区域。实际上，它们非常强大，我们可以用于深度规划。例如，DSP是数字信号处理器，专门用于数字处理算法。
 
- For example， we can do very efficient matrix dot， convolutions， FFTs。 The first two are pretty related to deep planning here。 And the design purpose of the DSP。 is that sometimes it's much higher， accuracy performance。 You should maybe five times more powerful than GPUs， more board GPUs。
+例如，我们可以高效地进行矩阵点乘、卷积、快速傅里叶变换（FFT）。前两个与深度规划密切相关。DSP的设计目的是有时它的精度表现要高得多。它的性能可能是GPU的五倍，甚至更多。
 
- And the big one thing is that it uses less power， which。 means if you run something on your mobile phones， you don't want to get more boards so hot。 So you want to save the power， which， means if you run deep planning algorithms on DSPs instead。 of a GPU and a CPU， and you can run much more， on the battery mode。
+其中一个优点是它消耗的功率较少，这意味着如果你在手机上运行某些任务，你不希望手机变得过热。所以你需要节省电力，这意味着如果你在DSP上运行深度规划算法，而不是使用GPU或CPU，你就能在电池模式下运行更多的任务。
 
- The leap of the thing about the architecture， the architecture is called very long instruction words。 On the CPU， for each instruction， you maybe can compute tens of floating multiplications。 But on DSPs， for each instruction， you can compute the handjose of floating multiplications here。 So that's a key thing actually have even low frequency， can per CPU。
+这架构的飞跃，架构被称为非常长指令字（VLIW）。在CPU上，对于每条指令，你可能只能计算几十次浮点乘法。但在DSP上，对于每条指令，你可以计算大量的浮点乘法。所以，实际上即使是低频率，DSP的性能也能超过CPU。
 
- but DSPs may be much 10 times stronger than CPU。 But that's the advantage。 The disadvantage is that。 well， DSPs leave a hard program， is to program and debug， especially the compiler tool， chain。 actually the quality of various phone chip winners。 That's a disadvantage。
-
-
+但是，DSP可能比CPU强大10倍。优点就是如此。缺点是，DSP的编程相对较难，尤其是在编程和调试方面，尤其是编译工具链的质量，实际上各个手机芯片厂商的质量也各不相同。这是一个缺点。
 
 ![](img/69538b25f08a01537b8ca0b0d4931f67_3.png)
 
- OK， so the advantage is that DSPs usually， faster than GPUs and are more power efficient。 And these are the one digits that DSPs pretty hard to program。 If you are not familiar with all the DSPs， how to debug and how to progress so hard。 And also。 depending on the chip winners。
-
-
+好的，DSP的优点是，它通常比GPU更快，并且更节能。缺点是，它们的编程较为复杂。如果你不熟悉DSP的工作方式，调试和进程的操作会很困难。此外，还要根据不同的芯片厂商来决定。 
 
 ![](img/69538b25f08a01537b8ca0b0d4931f67_5.png)
 
- the tool chain quality varies。 Another one is called FPGA。 You may heard about that before。 It's pretty different to DSP and normal program we have。 So FPGA have a large number of programmable logic blocks。 And we can reconfigure these different interactions， between these blocks。 So normally。
+工具链的质量各异。还有一种叫做FPGA的东西，你可能以前听说过。它与DSP和我们常用的程序有很大不同。FPGA拥有大量可编程逻辑块，我们可以重新配置这些逻辑块之间的不同交互。所以通常来说，
 
- on CPU and GPU， we write a program， and execute on that。 But FPGA is what it does。 You write a program to describe what hardware it looks like。 During the compilation。 you actually change FPGA， so that it can enumerate the hardware you can have。 So each compilation here， it maybe take a few hours， or even a few days。 Then once you compile。
+在CPU和GPU上，我们编写程序，并在上面执行。但FPGA则不同。你编写一个程序来描述硬件的外观。在编译过程中，你实际上是在改变FPGA，使其能够枚举你可能使用的硬件。所以每次编译，可能需要几个小时，甚至几天。然后，一旦编译完成，
 
- then you get the new hardware。 You can run your program there。 So you can use a chromium language called the VHDL， or Verilog to do that thing。 You need to learn a lot of things for that。 The one that you hear sometimes FPGA。 can provide high efficiency than general purpose hardware。 Because you can configure hardware only。
+你就可以获得新的硬件，并在其上运行你的程序。所以，你可以使用一种叫做VHDL或Verilog的硬件描述语言来完成这项工作。你需要学习很多东西。你有时听到的FPGA，其实能提供比通用硬件更高的效率。因为你可以仅仅配置硬件。
 
- designed for your application。 You can remove all these other things you don't need。 So you can have higher efficiency。 But again， it's not so commonly used。 The 2HM or so the quality of virus。 So sometimes you get very good compilers。 you can compile very fast。 Sometimes it's pretty slow。 And also compilation takes so many hours。
+这个设计是针对你的应用定制的。你可以去除那些你不需要的部分。所以你可以获得更高的效率。但再说一次，它并不是非常常见的。比如2HM或某些病毒质量问题。所以有时候你会遇到非常好的编译器，你可以很快完成编译；而有时候编译过程会非常慢。而且编译可能需要几个小时。
 
- It's so hard to debug。
+这非常难以调试。
 
 ![](img/69538b25f08a01537b8ca0b0d4931f67_7.png)
 
- The other one is called AI-6 or AIA chip。 You may have heard about that before。 It's pretty hard topic on deep learning。 So every major companies， Intel， Qualcomm。 does cheap renders or IT companies， Google， Facebook， and Amazon are building their own AI chips。 Among them， Google TPU is the kind of the earliest one， and is the most successful one。
+另一个芯片叫做AI-6或AIA芯片。你可能以前听说过。这个话题在深度学习领域相当困难。因此，每个主要公司，像英特尔、Qualcomm，都会做芯片设计，或者IT公司像Google、Facebook和Amazon，也都在打造自己的AI芯片。在这些公司中，Google的TPU是最早且最成功的一款。
 
- So Google TPU can match high-end， immediate TPUs， performance， which means they can provide。 100 TFLOPS floating point。 But the one thing here， if you buy a high-end， immediate TPUs。 it takes you maybe $10，000。 But if you want to produce a TPU by yourself， it takes you maybe $500。 That's 20 times difference。 So that's a major benefit。 So at Google， TPU is why they deployed。
+所以，Google TPU能够匹配高端、即时TPU的性能，这意味着它们可以提供100 TFLOPS的浮点运算能力。但这里有一个问题，如果你购买一个高端、即时TPU，可能需要花费约$10,000。但是如果你自己生产一个TPU，成本可能只有$500。这是20倍的差距。所以这是一个主要的优势。因此，Google部署TPU的原因就在于此。
 
- And people can research using TPUs。 And actually， most of Google researchers， if you read a paper。 a lot of researchers， are based on TPU instead of TPUs。 The core of the TPU is called systolic array。
+人们可以使用TPU进行研究。实际上，大多数Google的研究人员，如果你阅读相关论文，会发现很多研究是基于TPU，而不是TPUs。TPU的核心叫做心脏阵列。
 
 ![](img/69538b25f08a01537b8ca0b0d4931f67_9.png)
 
- So we cannot have a very brief introduction， of what is systolic array and show。 that why TPU is good for deep learning。 The systolic array is kind of-- you。 have a array of processing elements。 It's called PE。 Every PE you can think of。 You can think you can do to give it to floating point。 You can do multiplication。
+所以，我们不能对“心脏阵列”做一个非常简短的介绍，也不能直接展示为什么TPU适合深度学习。心脏阵列是一种……你有一个处理单元（PE）的阵列。每个PE，你可以认为它可以进行浮点运算。你可以进行乘法运算。
 
- That's a simplified version。 Then the systolic array， which is-- we。 align this PE into a 2D mesh and connect by rows and by columns。 And besides。 we have input buffer and output buffer。 So you can see that's pretty simple。 You can config the number of rows， number of columns。
+这是一个简化版。接下来是“心脏阵列”，我们将处理单元（PE）排列成一个二维网格，并通过行和列连接。此外，我们还配有输入缓冲区和输出缓冲区。可以看出，这个设计相当简单。你可以配置行数和列数。
 
- You can config the input and output buffer size。 Then this one is designed for matrix-mature multiplication。 So let's show example here。
+你可以配置输入和输出缓冲区的大小。然后，这个设计是为了矩阵乘法运算而设计的。我们来举个例子。
 
 ![](img/69538b25f08a01537b8ca0b0d4931f67_11.png)
 
- We're going to compute y equals to w times x。 W is 3 by 3 matrix。 x is 3 by 2 matrix。 So y， again。 we know y is 3 by 2。 So what are we going to do here？ Before we compute。 we put each element of w into single PE。 So we align w here。 We also align x by a particular shape in the input buffer。 So that is the data pairing stage。
+我们将计算 y 等于 w 乘以 x。W 是一个 3x3 的矩阵，x 是一个 3x2 的矩阵。所以 y，依然，我们知道 y 是一个 3x2 的矩阵。那么我们要做什么呢？在计算之前，我们将 w 的每个元素放入单独的 PE 中。我们在这里对齐 w。同时，我们也以特定的形状对齐 x 到输入缓冲区中。这就是数据配对阶段。
 
- At time one， what do we do is we move the input buffer， to left by one step。 So you can see that x1。 x1， 1 is now on the left top PE。 So given the input， the PE deals multiplications。 between the weight w1 and the input x1。 Because the other two rows are just the zeros。 nothing happened。 Now， time two。
-
-
+在时间点一，我们做的是将输入缓冲区向左移动一步。这样你可以看到 x1。x1，1 现在位于左上角的 PE。所以根据输入，PE 进行权重 w1 和输入 x1 的乘法运算。因为其他两行全是零，所以没有发生任何事情。现在，时间点二。
 
 ![](img/69538b25f08a01537b8ca0b0d4931f67_13.png)
 
- Time two， we do two things。 Firstly， we further move the input to left by another step。 So you can see that x1， 1 is now at the second column。 And the first column is x1， 2。 And the second row is x2， x2， 1。 So we move the input to left by another step。 The second thing we are doing here， we move the result from the PE to the bottom。
+时间点二，我们做两件事。首先，我们将输入进一步向左移动一步。这样你可以看到 x1，1 现在位于第二列，第一列是 x1，2，第二行是 x2，x2，1。所以我们将输入再向左移动一步。我们在这里做的第二件事是，我们将结果从 PE 移动到底部。
 
- So you can see that x1， 1 times xw1， 1。 This is the top left PE results we have in the previous time。 Now we move to the bottom。 So two things。 One， two， left， and one， two， bottom。
+所以你可以看到 x1，1 乘以 w1，1。这是我们在之前的时间点得到的左上角 PE 结果。现在我们将其移动到底部。所以有两件事：一，二，左移；一，二，向下移动。
 
 ![](img/69538b25f08a01537b8ca0b0d4931f67_15.png)
 
- Input to left， result to bottom。 Time two， similar thing。 We further move input to not to left again。 So x1， 1 is now at the third column。 And the result， x1。 1 times w1， 1 that we get on the time one， is along the third row。 Similarly。 we also move other results， to left and to bottom as well。
-
-
-
-
+输入向左移，结果向下移。时间点二，类似的事情。我们进一步将输入向左移动。所以 x1，1 现在位于第三列。我们在时间点一得到的结果，x1，1 乘以 w1，1，已经位于第三行。同样地，我们也将其他结果移至左边和底部。
 
 ![](img/69538b25f08a01537b8ca0b0d4931f67_17.png)
 
- We continue to do that。 Now we have to left the bottom PE output these results。 It's actually equal to 1， 1。 Or y1， 1。 So if we do that again， we get another result， y1， 2， y2， 1。 And again， again， now at time seven， we actually get all this result of y。 So here is example how we first put the weight into PEs， and given different input。
+我们继续进行。现在我们需要将底部的 PE 输出这些结果。它实际上等于 1，1。或者说是 y1，1。所以如果我们再做一次，就会得到另一个结果，y1，2，y2，1。然后继续，继续，直到时间点七，我们实际上得到了所有的 y 结果。所以这里是一个示例，展示了我们如何首先将权重放入 PEs，并根据不同的输入进行计算。
 
- we can compute a y。 So that is how systoptical ray works。 So assume that usually on deep learning。 the w is the weight matrix， or the convolution kernel， we're going to introduce the next week。 Then we put different x and we can compute usually the x。 the number of rows of x is kind of the number of examples。
+我们可以计算一个 y。这就是 systoptical ray 的工作原理。假设通常在深度学习中，w 是权重矩阵或卷积核，我们将在下周介绍。然后我们放入不同的 x，通常我们可以计算 x。x 的行数通常代表样本数量。
 
- you have is could be very long than the efficiency。
+你拥有的可能会非常长，但效率较低。
 
 ![](img/69538b25f08a01537b8ca0b0d4931f67_19.png)
 
- of systoptical rays pretty high usually。 In general， if we want to do general size matrix。 multiplications， depend on the ray size， we just patting zeros and slice matrix into the fixed size。 and put the data into systoptical ray accordingly。 And we can-- because now we see that three by three matrix， we have latency equals to seven。
+systoptical rays 通常具有非常高的效率。一般来说，如果我们要进行一般尺寸的矩阵乘法，取决于 ray 的大小，我们只需要填充零并将矩阵切成固定大小，然后将数据相应地放入 systoptical ray 中。我们现在看到的是 3x3 矩阵，延迟为 7。
 
- which means if you have a lot of inputs and we can batch in， then we can reduce the latency。 So systoptical ray actually have very good throughput。 Now this only for matrix matrix multiplications， if you want to do other things like sigmoid。 you want to have dedicated chips to do that as well。 Question。
+这意味着如果你有很多输入，可以批量处理，那么我们就能减少延迟。所以，systoptical ray 实际上有很好的吞吐量。现在这只适用于矩阵乘法，如果你想做其他事情，比如 sigmoid，你也需要专门的芯片来处理。问题。
 
- There are also benefits for using systoptical rays， for sparse looking algebra？ Not too much。 unfortunately。 If you do sparse--， so there's a bunch of AI-6 to sparse things。 For sparse。 usually people don't care about performance too， much， they care about power。 If I know this input is zero， I don't want to fetch the data， I can skip the computation。
+使用系统光学射线也有一些好处，适用于稀疏代数？但并不多。很遗憾，如果你做稀疏计算——比如AI-6做稀疏处理。对于稀疏计算，通常人们不太关心性能，他们更关心功耗。如果我知道这个输入是零，我就不想获取数据，我可以跳过计算。
 
- which is saves a lot of power。 Currently， we don't have the hardware。 don't have these functionalities。 And sparse computation chips usually。 almost a similar performance as dense ones， but it can reduce maybe by 10 times， in power。 which is pretty popular for like h devices。 OK， another question？ Other questions？
+这节省了大量功耗。目前，我们没有硬件，没有这些功能。稀疏计算芯片通常与密集型芯片的性能相似，但它可以将功耗降低大约10倍，这对于像h设备这样的设备来说非常受欢迎。好的，还有其他问题吗？还有其他问题吗？
 
- So it's a very brief introduction of all the hardware。
+这是对所有硬件的简要介绍。
 
 ![](img/69538b25f08a01537b8ca0b0d4931f67_21.png)
 
- you have。 So we can classify then into x-axis is the performance。 and the power efficiency to the left that we have most， of power and to the right we have to left。 that we have the slow one。 And the y-axis is the flexibility， how to use it to program。 how to debug， and how to deploy。 We can see that CPU is the easiest one to use。
+你有。所以我们可以将其分类，X轴表示性能，左侧是功耗最高的，右侧是功耗较低的，慢速的则在左侧。Y轴表示灵活性，如何使用它进行编程，如何调试，以及如何部署。我们可以看到，CPU是最容易使用的。
 
- So nomad is Intel CPUs， MD CPUs， ARM CPUs， almost likely we can write the same compiler。 to compile on that。 Every program runs similarly on GPUs。 GPU is faster than CPU。 but it will be harder to program。 You need to run CUDA for a media GPU。 And for MD and Intel GPUs。 much harder， is you need to use OpenCL。 Then DSP is usually only for mobile phones。
+所以，Nomad支持Intel CPU、MD CPU、ARM CPU，几乎可以编写相同的编译器来进行编译。每个程序在GPU上运行类似。GPU比CPU更快，但编程会更难。你需要为媒体GPU运行CUDA。对于MD和Intel的GPU来说，难度更大，需要使用OpenCL。而DSP通常只用于手机。
 
- for small devices， for ACOL， for example， small homes。 DSP can have higher efficiency than mobile GPUs， but still lower than the video desktop GPUs。 But against even harder to program， FPGAs， you need to know exactly what our sister architecture we。 have。 You need to know about hardware a lot。 ACK， ACK kind of we put here is still on the early stage。
+对于小型设备，比如ACOL，小型家庭，DSP的效率可以高于手机GPU，但仍低于视频桌面GPU。但与更难编程的FPGA相比，你需要准确了解我们使用的架构。你需要了解大量硬件知识。ACK，我们在这里提到的ACK仍然处于早期阶段。
 
- It's dedicated to put some algorithms， not all of them。 And you need to know something's wrong。 then you need to really know what happens there。 But again。 we think maybe in the coming one to year， there's a lot of ACK coming in。 Nomad is on the cloud。 nomad is on the mobile phones。 We cannot see a lot of ACK coming in the next one to year。
+这项工作专门致力于一些算法，而不是所有算法。你需要知道有些地方出了问题，然后你需要真正了解发生了什么。但是，我们认为可能在接下来的一年中，会有很多ACK的进展。Nomad已经在云端，Nomad也已经在手机上。我们无法看到在接下来的一年中会有很多ACK的进展。
 
- So if you're going to do research on deep running sister， architecture or any radio field， you。 may be considered to do understand ACK。 If you want to go to industrial to deploy deep brain models。 into hardware， you may be considering， yes DSPs， FPGA probably not， and also ACK as well。
-
-
+所以，如果你要进行深度学习架构或任何无线领域的研究，你可能需要考虑理解ACK。如果你想进入工业界，将深度学习模型部署到硬件中，你可能会考虑，使用DSP，可能不会考虑FPGA，也可能会考虑ACK。
 
 ![](img/69538b25f08a01537b8ca0b0d4931f67_23.png)
 
- OK。
+好的。

@@ -1,153 +1,139 @@
-# P79：79. L14_6 Multi-GPU Training in Python - Python小能 - BV1CB4y1U7P6
+# P79：79. L14_6 Python 中的多 GPU 训练 - Python小能 - BV1CB4y1U7P6
 
- For multi-GPU， you need to guarantee that you have multiple GPUs。 So you can run things here。 For example， I do have two GPUs here。
+对于多 GPU，你需要确保你有多个 GPU。所以你可以在这里运行这个过程。例如，我这里确实有两块 GPU。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_1.png)
 
- One is pretty slow GPUs is M60。 It's like three years ago， four years ago GPUs。 but it's pretty cheap。 And I have two GPUs here。
+有一个比较慢的 GPU 是 M60。它大约是三、四年前的 GPU，但它非常便宜。我这里有两块 GPU。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_3.png)
 
- Okay。 Then we use Lillat just from scratch。 We can like a lot of this part。 We define the parameters。 We define the monad and do the things。 One thing here is that。
+好吧。然后我们从零开始使用 Lillat。我们可以像这样做很多这部分内容。我们定义参数。我们定义单子（monad）并完成相关操作。这里有一点。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_5.png)
 
- the parameters itself is on CPU。 So we need a copy to different --。 we need a copy to the parameters to GPUs。 What we do here is that we， define a function。 get the parameters， give the parameters on， CPU and give them a context， which is a GPU。 What we do here， for every parameter here， we cannot copy to these contexts， get the new parameters。
+参数本身是在 CPU 上。所以我们需要将它们复制到不同的 GPU 上。我们在这里做的是，我们定义一个函数。获取参数，给出 CPU 上的参数，并给出上下文，这个上下文是一个 GPU。我们在这里做的事情是，对于每个参数，我们不能复制到这些上下文中，得到新的参数。
 
- and then touch gradients because we're going， to compute the gradient。 So， for example。 we can show that， if we copy to GPU zero， we can show that the first weight is。 already on GPU zero and also the bias is on GPU zero。 Okay？
-
-
-
-
+然后触及梯度，因为我们要计算梯度。举个例子。我们可以展示，如果我们复制到 GPU 零，我们可以看到第一个权重已经在 GPU 零上，并且偏差也在 GPU 零上。好吧？
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_7.png)
 
- The second thing is that we need some over the gradients cross， different GPUs。 And also here we copy just copy the gradient back。 So what we do here。 the data is just a list of data cross， different GPUs。 We can find all the gradients --。 some of the values here and the copy back。 So what we do is a very， simple way to do things。
+第二件事是我们需要对不同 GPU 之间的梯度进行交叉计算。同时，我们在这里只复制梯度回去。那么我们在这里做的是什么呢？数据只是一个跨不同 GPU 的数据列表。我们可以找到所有的梯度——这里的一些值，并复制回去。那么我们做的是一种非常简单的方式来完成这件事。
 
- For every data except for the first， one， we just the data I， we copy to the GPUs and the。 GPUs and the products of the first data。 And then adding to， data zero。 So we sum this data cross different devices。 And then we just copy back the sum data。 copy back to every data I， except for the first one。 So that's all。 The cross different， GPUs。
+对于每个数据，除了第一个，我们只是将数据复制到 GPU 上，然后对 GPU 和第一个数据的结果进行乘积。然后将其加到数据零上。所以我们在不同设备之间对数据进行求和。然后我们只需要复制回求和后的数据。将其复制回每个数据 I，除了第一个。所以这就是所有的内容。跨不同 GPU。
 
- For example， here， we create an example here。 On GPU zero， one， on GPU one。 it's all two and then after all reduced， we sum this together and both GPU zero and one get three。 Okay？ The other thing that we show that we need a break down。
+例如，这里，我们创建了一个示例。在 GPU 零上，一个，在 GPU 一上。都是二，然后在所有的减少之后，我们将它们加在一起，GPU 零和一都得到三。好吧？我们展示的另一个事情是我们需要进行分解。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_9.png)
 
- the batch size into multiple parts and then send two different， GPUs。 So soon data is a data batch。 We have contacts， a list of contacts。 What do we do here？
+将批处理大小分成多个部分，然后发送到不同的 GPU。所以很快，数据是一个数据批次。我们有上下文，一个上下文列表。我们在这里做什么？
 
- Assume we have K GPUs and examples in the data。 We can assume that the simple case can be divisable。 That is every GPU we get m examples here。 And in total K GPUs， every GPU get m。 So we can double check。 It's like an easy one。 And then for each part。 we slice each part and returns as contact， as the IC GPU and the retained。
+假设我们有 K 个 GPU 和数据中的示例。我们可以假设简单的情况是可以被分割的。也就是说，每个 GPU 上有 m 个示例。总共有 K 个 GPU，每个 GPU 获取 m 个示例。我们可以进行双重检查。这就像一个简单的例子。然后对于每个部分，我们将每个部分切分并返回作为联系，作为 IC GPU 和保留的部分。
 
- We can return the list of batches， and each batch on each GPU。 So here， take an example here。 If the input is on CPU， it is how many？ One， two， three， four， five， six。 We have six examples on the CPU and we want to load into two。
+我们可以返回批次的列表，每个批次在每个 GPU 上。所以这里，举个例子。如果输入在 CPU 上，它有多少个？一，二，三，四，五，六。我们在 CPU 上有六个示例，我们想要加载到两个 GPU 上。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_11.png)
 
- GPUs。 You can see that the first three lines break into GPU zero。 and the bottom three lines is copied into GPU one。 Okay。 That is partition the dataset and copy two different， GPUs。 Okay？ So then here's the key thing。
+GPU。你可以看到前面三行被分配到GPU零，底部三行被复制到GPU一。好的。这就是数据集的划分并复制到不同的GPU中。明白了吗？那么这里是关键。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_13.png)
 
- How to implement things in a single made batch。
+如何在单一批次中实现这些操作。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_15.png)
 
- Because all these parallelization results within the batch size。 Within the batch。 So here X and Y is a batch。 And this is a list of GPU parameters and list of codecs has to。 generate。 The first thing we do， given the batch， we can split and load into different GPUs for both X and Y。 So this is a list of X， a part of X and Y is a list of Y as well。 Then within the autograss scope。
+因为所有这些并行化的结果都在批次大小范围内。所以这里的X和Y是一个批次。这是GPU参数的列表，和需要生成的编解码器列表。我们首先做的是，给定批次，我们可以将其拆分并加载到不同的GPU中，X和Y都一样。所以这是一部分X，而Y是一个Y的列表。然后在自动梯度的范围内。
 
- we're going to run， given the part， so here's the thing。 We iterate over every GPU。 And this is the X for one GPU， Y for one GPU and the parameters， on the one GPU。 And for each GPU。 we run the fourth pass， given the net X and the W and the computer loss。 Computer loss here。 So this is our single GPU。 Because we have four loop， we iterate over the multiple GPUs。
+我们将运行，给定部分数据，所以这是事情的关键。我们遍历每个GPU。这是一个GPU的X，一个GPU的Y和一个GPU上的参数。对于每个GPU，我们运行第四次传递，给定网络X和W并计算损失。计算损失在这里。所以这是我们单个GPU的情况。因为我们有四个循环，我们遍历多个GPU。
 
- So the loss here is just the list。 If you have four GPUs， you have four losses。 Then for each loss。 we're going to run the backward， which means each， GPU is going to run the backward in parallel。 So when the gradient are done， we already use the gradients。 See the grading here。 which are some of the gradients together， and then copy some gradient back to each GPU。 Finally。
+所以这里的损失就是列表。如果你有四个GPU，你就有四个损失。然后对于每个损失，我们将进行反向传播，这意味着每个GPU将并行进行反向传播。所以当梯度完成后，我们已经使用了梯度。看这里的梯度，一些梯度已经合并，然后将一些梯度复制回每个GPU。最后。
 
- for each GPU， we run the X， G， D there on each GPU。 Okay， so we run the things just by sequential。 by auto-palization， the system we run all this in parallel for you。 All the data copy。 computation is going to run in parallel。 Any questions so far？ Okay， it's simple。 Okay。
-
-
+对于每个GPU，我们在每个GPU上运行X，G，D。好的，所以我们按顺序运行这些东西。通过自动并行化，系统会为你并行运行所有这些。所有的数据复制和计算都会并行执行。到目前为止有任何问题吗？好的，很简单。好的。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_17.png)
 
- So the training function is not so different to the others we have。 Like here。 we create a list of contacts， number of GPUs we have。 And then we need to copy the parameters into different GPUs。 And then we run four data epochs。 And for here， for each， every time we read the batch and run the， batch on multi-gpues。
+所以训练函数与我们之前使用的其他函数没有太大区别。就像这里一样，我们创建了一个包含GPU数量的联系列表。然后我们需要将参数复制到不同的GPU中。接着我们运行四个数据epoch。然后在这里，对于每次，我们读取批次并在多个GPU上运行该批次。
 
- Here we add in weight all here just for benchmark purpose。 Not just for nothing else。 And then we print something there。 Okay。 That's all。
+在这里我们加入了权重，所有这些仅仅是为了基准测试目的，并不是为了其他任何目的。然后我们打印一些东西。好的，就这些。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_19.png)
 
- Now we can try some results here。 So firstly， we'll use a single GPU。 The batch size is 256。 and the numerator equals 0。2。 You can see here every epoch takes 2。2 seconds。 The accuracy is like increased as well。 Then we change to GPU number of GPU equals 2。 Because we fix the batch size， fix the numerator， nothing， has been changed。
+现在我们可以在这里尝试一些结果。所以首先，我们将使用单个GPU。批次大小为256，分子等于0.2。你可以看到这里每个epoch花费了2.2秒。准确率也有所提高。然后我们将GPU数量改为2。因为我们固定了批次大小，固定了分子，所以没有任何变化。
 
- Only change the number of GPUs you get to send almost the， fan accuracy as before。 So you can first check the accuracy pretty similar。 That because we randomize the initial things is a little bit， different。 but you will not change the accuracy too much。 But we hope that we can make it faster。
+只需要改变GPU的数量，你将获得几乎与之前相同的准确率。所以你可以首先检查准确率，它非常相似。因为我们随机化了初始值，结果有一点不同，但准确率变化不大。但是我们希望它能更快。
 
- But you can see that you didn't make it faster on two GPUs。 One GPU is 0。2。2。 Two GPUs also 2。3。 Not too much。 The reason is because now we have two GPUs。 Every GPU only gets one 28 batch size every time。 Which means every minute batch。 the workload decreases， which impact the performance。
+但你可以看到，使用两个GPU并没有让速度更快。一个GPU是0.2秒，两个GPU也还是2.3秒。没有太大的差别。原因是，现在我们有两个GPU，每个GPU每次只处理28个批量大小。这意味着每分钟批量减少，从而影响性能。
 
- And also we have a little bit of communication overhead。 And the non-add is pretty small。 We can show rest in that letter。 And then the communication overhead is a little bit larger。 than the computation itself。 Actually not paid too much here。 What we can do here is that we guarantee every GPU get the same， batch size。 Which means two GPUs。
+同时，我们也有一些通信开销。而且非增量部分非常小。我们可以稍后展示ResNet。然后，通信开销稍微大于计算本身。实际上这里并没有带来太多额外的开销。我们能做的是确保每个GPU都得到相同的批量大小。这意味着两个GPU。
 
- we double the total batch size to 5 to， 5。 And because we double the batch size。 we can also increase the， linearity a little bit。 We can not explain later maybe why we cannot increase the linearity。 That's a lot of things there。 So you can add the list。 You can see that while the time reduced。 It's not perfect two times speed up because normal is so easy。 But still like get something there。
+我们将总批量大小加倍，变为5到5。因为我们加倍了批量大小，我们也可以稍微增加线性度。稍后也许我们无法解释为什么我们不能增加线性度。这里有很多因素。所以你可以添加到列表中。你会看到尽管时间减少了，但并没有完美地加速两倍，因为正常情况太简单了。但仍然可以得到一些改进。
 
- And check the accuracy。 Well actually it's performed to be worse compared to before。 Because this batch size or maybe linearity is not fine too。 Because we change the optimisation method。 Okay。 Any questions so far？ Question？
+然后检查准确性。实际上，它的表现比之前更差了。因为这个批量大小，或者说线性度也不太好。因为我们更改了优化方法。好吧，到目前为止有问题吗？有问题吗？
 
- >> If you are the first to like with the data batch size and， the left to the right。 you also reduce the time or see what you can do。 >> That's true。 So the question that， well。 you can always change to 5， 12。 I will not run here。 Maybe I can try that。
-
-
+>> 如果你是第一个喜欢这种数据批量大小，并且，从左到右，你也可以减少时间，或者看看你能做什么。 >> 这倒是真的。那么问题是，嗯。你总是可以改成5，12。我这里不会运行。也许我可以尝试一下。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_21.png)
 
- Let me try that if I can run the ticker libio wire。
+让我尝试一下，看我是否能运行这个ticker libio wire。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_23.png)
 
- >> Yes。
+>> 是的。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_25.png)
 
- If we change the large one， you can reduce the time from 0。4 to。
+如果我们改变更大的批量，你可以把时间从0.4秒减少到。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_27.png)
 
- less than two seconds。 Then this one is too slow。
+少于两秒钟。那么这个就太慢了。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_29.png)
 
- Let me stop it and let me finish it。 Then if you can increase the batch size。 I can increase the batch size as well。 Let me do that。 You see？ The thing is like none is too small。 Usually GPL limited memory。 For example， you are going to train the rest of the net。 The max batch size you can choose is 32。 Not too much。 Because you need so many memories。
+让我停一下，让我完成它。如果你能增加批量大小，我也可以增加批量大小。让我来试试。你看到了吗？问题是，像None这样的小批量，通常受限于GPU内存。例如，如果你要训练ResNet，最大批量大小是32。不能更多，因为需要大量的内存。
 
- the GPL memory， the training memory is linear to the， batch size。 So given a single GPL。 you have upper bound。 It's a multi GPL that I can choose to maybe 256。 But again。 show that this large batch size you can make the convergence much， slower。
+GPU内存，训练内存是与批量大小成线性关系的。因此，给定单个GPU，你有一个上限。如果是多个GPU，我可以选择最多256。但同样，显示出这个大批量大小会使收敛变得更慢。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_31.png)
 
-
-
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_32.png)
 
- Let's show how to use a grown pretty similar。
+让我们展示如何使用一个更大的批量，类似的做法。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_34.png)
 
- The only thing different here we can use the rest net， 18 as an example。 Because none is too small。
+这里唯一不同的是我们可以使用ResNet18作为例子。因为None批量太小了。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_36.png)
 
- You can ignore how to do in rest net。 I think you already have to do that。 Also。 we are using two GPUs here。 The only thing here， when you initialize the parameters。 I can specify a list of， GPUs。 So grown will be automatically for you。 So no matter。 it's just a single context or a list of contacts， we are going to do。
-
-
-
-
+你可以忽略如何在ResNet中进行。我想你已经知道该怎么做了。而且我们在这里使用的是两块GPU。唯一需要注意的是，当你初始化参数时，我可以指定一组GPU。因此，计算将自动为你完成。所以不管是单一上下文还是一组上下文，我们都会处理。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_38.png)
 
- that。 So if we just initialize our multiples of our。
+那么，如果我们只初始化我们多个的GPU。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_40.png)
 
- products， we are going to copy the parameters into multiple GPUs。 So here。 the grown have split and load function here。 We don't need to really implement that again。
+产品方面，我们会把参数复制到多个GPU中。所以这里，计算已经有拆分和加载功能。我们不需要再次实现这一点。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_42.png)
 
- So remember that we initially had to wait multiple things。 Now let's see how it works。 So firstly。 we did an initialize on CPUs。 If we're going to get the weight and the core data。 you're going to get the， runtime error because it's not the initialize on CPU。 In default。 you're going to copy the data on CPU。 But we can do that。 For data。
+所以记住，我们最初需要等待多次操作。现在让我们看看它是如何工作的。首先，我们在CPU上进行了初始化。如果我们想获取权重和核心数据，你会遇到运行时错误，因为它并没有在CPU上初始化。默认情况下，你会将数据复制到CPU。但我们可以这么做。对于数据。
 
- we can pass the context to that to fetch the parameters， and initialize on a particular device。 So you can see that pass context zero。 We got the data initialized on GPU zero and the weight on data context one。 the， weight initialize on GPU one。 Okay。
+我们可以将上下文传递给它，以获取参数，并在特定设备上初始化。因此你可以看到，当我们传递上下文0时，数据会在GPU0上初始化，权重在数据上下文1中，权重初始化在GPU1上。好吧。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_44.png)
 
- Let me first go in。 And the training function is not different to before。 The only thing here。 the context， the list of context， initialize on multiple GPUs。 And what else we have here here。 we are using the split load function here。 And also like for GPU iterate on multiple GPUs compute the forward pass。 backward pass and step。 So the trainer， when you pass the parameter to a trainer。
+让我先进入。训练函数与之前没有不同。唯一的区别是，使用的是上下文，即在多个GPU上初始化的上下文列表。除此之外，我们在这里使用了拆分加载功能。还有，像GPU一样迭代多个GPU，计算前向传递，反向传递和步骤。因此，当你将参数传递给训练器时。
 
- the trainer see how many devices we have， it's going to automatically do that for you。 You don't need to worry about that。 So you don't need to do all this copy and all the things。 all the things。 Okay。 So compared to a single device training， what do you do here？
+训练器会查看我们有多少设备，它会自动为你做这些事。你不需要担心这些。因此你不需要做这些复制操作和其他所有事情。好吧。那么，与单设备训练相比，你在这里该做什么？
 
- Here you don't need to do， but even for single GPU training you also need to， specify the context。 The only thing here you want to do automatically split the data。 Because we want to do split data because kind of you have two different GPUs。 One is faster。 one is slower， or you have a CPU and a GPU。 For example you have 100 examples in the batch。
+在这里你不需要做什么，但即使是单GPU训练，你也需要指定上下文。唯一要做的事情是自动拆分数据。因为我们需要拆分数据，因为你可能有两块不同的GPU，一个比较快，一个比较慢，或者你有一块CPU和一块GPU。例如，你有100个样本在批处理中。
 
- You can give the faster GPU 80 examples， the slower one CPU， or maybe a slow GPU just 20 examples。 You can manually balance the workload。 Okay。
+你可以给更快的GPU分配80个样本，给较慢的一个CPU，或者可能较慢的GPU只分配20个样本。你可以手动平衡工作负载。好吧。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_46.png)
 
- So， well， I did not run that， sorry for that。 That's， well， it may take a wire to run this notebook。 So we'll question so far。
+嗯，实际上我并没有运行这个，抱歉。嗯，这可能需要一根线才能运行这个笔记本。所以到目前为止我们有一些问题。
 
 ![](img/d99e6bf1ed51a9c7bb38968cebcfc976_48.png)

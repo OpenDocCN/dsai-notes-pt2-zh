@@ -1,129 +1,127 @@
 # P6：6. L2_1 NDArrays - Python小能 - BV1CB4y1U7P6
 
- Okay， so welcome to the second lecture。 Apologies for the delay。 So we wanted to make sure that hopefully this time we。 actually get the proper recording working before that。 It was only the camera and not the slides and that's not very， useful。 We'll fix and update the recording from Tuesday very。 very shortly and we'll get it up probably on the weekend。 But there was ICM， that line yesterday。 so everybody was， a bit busy。 Okay， so two things that we didn't quite cover on Tuesday。 One thing was in the array because some people ask me。
+好的，欢迎来到第二讲。抱歉耽搁了。所以我们希望确保这次能够顺利录制好，在那之前，只有摄像头在工作，幻灯片没有显示出来，这并不太有用。我们会很快修复并更新星期二的录制，可能会在周末上传。但昨天有ICM的线，所以大家都有点忙。好的，那么有两件事是我们在星期二没有完全覆盖的。一件事是关于数组的，因为有些人问我。
 
- in a memory allocation and all of this and I'll walk you， through the details for that。 The second thing is， as it turns out， not everybody has an， AWS account just yet。 So I'll walk you a little bit through how to launch。 machines and AWS because I had a couple of people coming。
+在内存分配方面，所有这些内容我会详细讲解。第二件事是，事实证明，并不是每个人都有一个AWS账户。所以我会稍微介绍一下如何在AWS上启动机器，因为有几个人在办公室时间过来问我如何操作，我会带你一步步了解如何启动相关内容。对了，抱歉，我有点感冒。
 
- in in office hours and asking how to do it and I'll walk。 you through the details of how to launch things。 And yeah， apologies， I've got a bit of cold。 So we did the linear algebra part on Tuesday。 Today we'll dive a little bit more deeply first into how。 those vectors are actually stored in MXNet。 So quick review here。 Well。
+我们在星期二做了线性代数的部分。今天我们将更深入地探讨这些向量在MXNet中的存储方式。快速复习一下。好。
 
- a scale that's just a zero-dimensional array， vectors of one-dimensional。 two-dimensional array might be， rows of features。 So for every observation。 you have a row of attributes。 Now， three dimensions， well， you can get it by having a。 black and white movie or you could have， for instance， a color image。 In that case。
+一个标量就是一个零维数组，向量是一个一维数组，二维数组可能是特征的行。所以对于每一个观测，你都有一行属性。现在，三维数组，你可以通过一个黑白电影来表示，或者你也可以有一个彩色图像。在那种情况下。
 
- you have maybe your 1024 by 768 pixels， resolution and then the three color channels， RGB， but you。 could have other color coatings as well。 Before dimensions， well， you could have many of those。 images。 So the fourth dimension would then be the batching order。 And if you want to push it further to five dimensions， well， you get videos。
+假设你有1024 x 768像素的分辨率，再加上三个颜色通道RGB，但你也可以有其他颜色通道。至于维度，你可以有许多这样的图像。因此，第四维度将是批次顺序。如果你想把它推向五维，那么就可以得到视频了。
 
- So I guess that should be all fairly straightforward and， self-explanatory。 It just gets supremely awkward to display this on slides beyond， five dimensions， so we stop here。 Any questions about tensors and arrays so far？ Just what they are。 So don't get scared if somebody tells you about mass with， tensors。
+所以我想这应该是非常直接且不言自明的。只不过当超过五维的时候，在幻灯片上展示这些就变得相当尴尬，因此我们就止步于此。关于张量和数组到目前为止有什么问题吗？仅仅是它们是什么。所以如果有人告诉你关于张量的质量，别害怕。
 
- They're doing very simple things and making it sound， complicated sometimes。 OK。 What we could do is you could create an array like a， 3 by 4 matrix。 You could fill it with any random entries。 And part of the homework actually will be to create like a。 4096 by 4096 array。 So you can access elements as you would。 I mean。
+他们做的事情非常简单，却有时把它说得很复杂。好了，我们可以做的是，创建一个像3 x 4的矩阵。你可以用任何随机的值填充它。实际上，作业的一部分就是要创建一个4096 x 4096的数组。所以你可以像平常一样访问这些元素。我的意思是。
 
- this is the exact same thing as you would see in， NumPy。 You can access an element。 You can access a row or column。 You can access a sub-block by indexing appropriately， or。 then you can have index fields appropriately。 So it's very straightforward。 I'll walk you through this in detail。 Couple of things-- so we'll look at that in the。
+这和你在NumPy中看到的完全一样。你可以访问一个元素，访问一行或一列，或者通过适当的索引访问一个子块，或者你可以适当设置索引字段。所以这非常直接，我会详细讲解这一部分。几点要注意的--我们将在这里探讨这些。
 
- Jupyter Notebook。 So first of all， there are actually a couple of， documentations。 First of all。 the NDRA chapter in our book。 Then on the MXNet website， go to beta。amxnet。io。 The search there actually works。 You can look at the crash course for NDRA's。 You can also look at functionality there。 If you're not super sure about linear algebra， dual-but。
+所以首先，实际上有几部分文档。首先是我们书中的NDRA章节。然后你可以访问MXNet官网，去beta.amxnet.io。那里搜索功能有效。你可以查看NDRA的快速教程，还可以查看一些功能。如果你对线性代数不太确定，**双线性**也。
 
- string has a very nice class。 You might want to revisit this。 Unfortunately。 we don't have enough time to cover it in a， lot of detail。 But if you're not quite sure about linear algebra， you， should probably do this anyway。 Some people asked about how our GPUs designed and TPUs， and。
+字符串有一个非常好的类。你可能想重新审视一下它。不幸的是，我们没有足够的时间深入讲解。但如果你对线性代数不太确定，**你可能还是应该学习这个**。一些人询问了我们的**GPU**和**TPU**是如何设计的。
 
- how they all relate to each other and other accelerators。 This is actually， again。 a little bit beyond the scope of， this class to go into it in a lot of detail。 For now， essentially。 think of GPUs as a device， which， allows you to perform large numbers of linear algebra。 operations very， very cheaply。 And to some extent， the purpose of a deep learning。
+它们是如何相互关联并与其他加速器相结合的。实际上，这部分内容有点超出本课程的范围，不会深入讨论。现在，基本上可以把**GPU**看作是一种设备，能够非常非常廉价地执行大量的线性代数运算。从某种程度上讲，深度学习的目的。
 
- framework like Glueon is to shield you from the， nitty-gritty of actually having the right-cuda code。 That increases your productivity probably by a， factor of 10 to 100。 If you still care about details， there's actually a nice， graduate-level class， an HPC course。 And look at the slides on GPUs。 I think they are quite accessible， even if you're not。
+像Glueon这样的框架会帮助你避免实际使用正确的**CUDA**代码。这样能将你的生产力提高大约10到100倍。如果你仍然关心细节，实际上有一门很好的研究生课程，关于**HPC**的课程。你可以查看GPU的幻灯片。我认为即使你不是专业人士，它们也很容易理解。
 
- enrolled in a PhD program just yet。 Lots of pictures。 Actually， very nicely explained。 Go through this。 This might give you a bit of an idea of what makes， GPUs special。 So with that。 let's look at some notebooks to see whether。
+还没有注册博士项目。很多图片。实际上，非常清晰地解释了。浏览一下这部分内容，这或许能让你对什么使**GPU**特别之处有些了解。那么，接下来，让我们看看一些笔记本，看看它们之间以及与其他加速器的关系。
 
 ![](img/b11163c8663038fa9ae784b75dbf3290_1.png)
 
- this works。
+这样就能运行了。
 
 ![](img/b11163c8663038fa9ae784b75dbf3290_3.png)
 
- OK。 OK。 Just hold。 And he's in the array。
+好的，好的，稍等。它在数组中。
 
 ![](img/b11163c8663038fa9ae784b75dbf3290_5.png)
 
-
-
 ![](img/b11163c8663038fa9ae784b75dbf3290_6.png)
 
- Let's just run everything。 So the first thing you would do is you would import the。 deep learning framework of your choice in this case here。 It's MXNet。 And we'll import NDRA as ND just because it's supremely， awkward， otherwise to type it all the time。 And the simplest thing you can do and recover that last。
+我们先执行所有操作。那么，首先你需要做的就是导入你选择的深度学习框架，这里是MXNet。我们会导入NDRA作为ND，因为如果不这样做，每次都输入会显得特别麻烦。最简单的操作就是恢复上次的Jupyter笔记本。
 
- time already is you can just create a vector of numbers， going from 0 to 11。 So it's the equivalent of the range command just that it's， called a range。 That's a vestige from NumPy。 And you can ask what the shape is。 And if you were to type in x dot shape， you'd get 12。 And if you were to type in x dot size。
+已经没有时间了，你可以创建一个从0到11的数字向量。它相当于**range**命令，只是它被称作**range**。这是NumPy中的遗留功能。你可以询问它的形状。如果你输入x.shape，你会得到12。如果输入x.size。
 
- you'd also get 12。 The reason being that x dot size counts the total number of， entries。 X dot shape will give you， for instance， if it's a 3 by 4， matrix， it'll give you 3， 4。 And if it's a 12-dimensional vector， it'll give you 12。 So then you can reshape things。 That's exactly what we did here。 Let's actually just do this。 And there you go。
+你还会得到12。原因是x.dot.size会计算条目的总数。x.dot.shape会给出，例如，如果是3×4的矩阵，它会返回3和4。如果是12维的向量，它会返回12。然后你可以重新调整形状。这正是我们在这里做的。让我们实际操作一下。你看。
 
- If you print now x dot shape， it'll return 3， 4， with that's， exactly the shape that you gave it。 Whereas if I were to execute x dot size， it'll tell you 12， which is what you would expect。 Now。 if you wanted to reshape it into something that has， three dimensions in the first。 and you don't care about the， rest， you'll just write minus 1。
+如果你现在打印 `x.dot.shape`，它会返回 3，4，这正是你给它的形状。相反，如果我执行 `x.dot.size`，它会告诉你 12，这是你期望的结果。现在，如果你想将其重塑为第一个维度为三维的形状，而不关心其余部分，你只需写上 `-1`。
 
- And just make sure that you don't have to calculate all， the dimensions。 And you basically let the framework do the rest。 So if you do that。 nothing changes because Bluhan is， smart enough to figure out the rest by itself。 OK。 Now。 a couple of things。 If you run indeed dot empty， it'll just effectively do a， malloc。
+这样可以确保你不需要计算所有的维度，基本上让框架完成其余的部分。所以如果你这么做，什么也不会改变，因为 Bluhan 足够聪明，能够自己推算出剩余部分。好的，现在有几点需要注意。如果你运行 `indeed.dot.empty`，它实际上会做一次 `malloc`。
 
- It'll grab some part of memory。 And if that memory is uninitialized， there'll be。 whatever there is to it。 So in this case， we got luck。 It's all series。 but you could have arbitrary stuff in there。 So only do that if you really show that this is what you。 want and that you're going to overwrite it with something， sensible right away。
+它将抓取一部分内存。如果这块内存没有初始化，那么里面可能就会是任何东西。所以在这种情况下，我们运气不错，它全是零，但你也可能会看到里面有任意的东西。因此，只有当你真正确定这就是你想要的，并且打算立即用某些合理的内容覆盖它时，才可以这么做。
 
- Do not run indeed empty。 And then just assume that they're all zeros。 This would be a wonderful way of introducing bugs in your， code。 It would be something of a Heisenberg where maybe in your。 debugger you don't even find it because it might actually， give you clean memory or not。
+不要运行 `indeed.dot.empty`，然后假设它们都是零。这将是引入代码错误的一个好方法。它可能类似于海森堡效应，你甚至可能在调试器中找不到它，因为它可能实际上会给你清理后的内存，或者根本不给你。
 
- So really think of this as malloc。 The much more sensible thing is to allocate zeros。 In this case。 you know what it is。 If you wanted to allocate ones， you could do that too， which， is here。 Indeed。 that ones will give you ones。 This is all fairly straightforward。 And if you have a specific array。 it doesn't quite show up， on the screen entirely。 Fix that。
+所以真的可以把这个看作是 `malloc`。更合理的做法是分配零值。在这种情况下，你知道它是什么。如果你想分配一，您也可以这么做，代码如下。确实，`ones` 会给你一。这个过程相当直观。如果你有一个特定的数组，它可能没有完全显示在屏幕上，解决方法是修复它。
 
- You can specifically allocate an array by just specifying， what should be in there。 This is how you can call the constructor。 We might want to generate a random entry。 As a matter of fact， that's part of the homework。 So in the random normal， we'll give you a。 normal distribution entries。 Theoremene unit variance。 And 3 by 2， as I said， 3 by 4。
+你可以通过明确指定应该包含的内容来专门分配一个数组。这就是你调用构造函数的方式。我们可能希望生成一个随机条目。事实上，这正是作业的一部分。所以在 `random.normal` 中，我们将为你提供正态分布的条目，具有单位方差。就像我说的，3x2，实际上是 3x4。
 
- So if I were to run this again， the entries would look， obviously very different because， well。 it's a random， number generator。 I can do all the usual operations with it， so I can add， subtract。 multiply， and divide。 I could even exponentiate。 So let's do that。 And unless we have something weird， okay， there we go。 This is now x to the power of y。
+所以，如果我再次运行它，条目看起来显然会非常不同，因为它是一个随机数生成器。我可以对它进行所有常见的操作，比如加、减、乘、除。我甚至可以进行指数运算。那么我们来试试吧。除非遇到什么奇怪的情况，好吧，看看吧。这现在是 `x` 的 `y` 次方。
 
- That operates on the entire array。 Any questions so far？ Hint。 That operation is something that you'll need for one of， the home works。 The other thing that you'll need is a broadcast operator。 Also， exponentiation can work this way。 sine， cosine， a， lot of other functions。 Now， of course， you can write a dot product。 And so。
+这会对整个数组进行操作。目前为止有任何问题吗？提示：这种操作是你完成某个作业时需要用到的。你还需要的是一个广播操作符。此外，指数运算也可以像这样工作。正弦、余弦、很多其他函数也是如此。现在，当然，你可以写一个点积运算。所以。
 
- for instance， you have a 3 by 4 matrix， and then you， have another 3 by 4 matrix。 and you take an inner product。 And since you have that transposed， so x dot t is， the transposed。 you'll get a 3 by 3 matrix out of it， which， is very unsurprising。 This is exactly what linear algebra would suggest。 Just again， word of caution。
+例如，你有一个 3x4 的矩阵，然后你再有一个 3x4 的矩阵，接着进行内积运算。由于你已经转置了矩阵，`x.dot.t` 就是转置矩阵，所以你会得到一个 3x3 的矩阵，这一点并不让人意外。这正是线性代数所暗示的。再次提醒一下，注意事项。
 
- only if you invoke dot， you're， going to get matrix or matrix vector of whatever products。 If you just write the star， you're going to get element， wise multiplication。 So this is different from MATLAB。 Be careful。 So our star is the MATLAB dot star。 Our plus is the MATLAB dot plus， and so on。 You can combine multiple India rays。 Well。
+只有在调用点操作符时，你才会得到矩阵或矩阵向量乘积。如果你只是写星号（*），你将得到元素-wise的乘法。所以这和MATLAB不同。小心点。所以我们的星号相当于MATLAB的点乘，"+"相当于MATLAB的点加法，等等。你可以组合多个印度数组。好吧。
 
- it's very straightforward。 Well， you concatenate them。 And if you do that， well。 you get different objects out of， it， so I should probably be printing this， such that you。 can see the difference。 And that didn't work， because I probably missed with x and y， before。 That's why。 So what I did before is I reshaped x。 So now I'd have to figure out what the shapes of x and y are。
+这非常简单。你连接它们。如果你这么做，那么你会得到不同的对象，所以我应该打印这个，以便你可以看到区别。那没成功，因为我可能之前搞错了x和y。所以我之前做的是重新塑形了x。现在我得弄清楚x和y的形状。
 
- And see？ Of course， in this case， if I concatenate them since it's， only a one-dimensional vector。 the second thing doesn't make， any sense。 But that's just because I didn't set up a--。 so this will work just fine。 So you can concatenate vectors， which is boring， but you。 can do that for any array。 Any questions so far？ I mean， this should be all be--， yes？
+你看到了吗？当然，在这种情况下，如果我进行连接，因为它只是一个一维向量，第二个部分没有任何意义。但那只是因为我没有设置——所以这样就可以正常工作。所以你可以连接向量，这很无聊，但你可以对任何数组这么做。到现在为止有问题吗？我的意思是，这些应该都——是的？
 
- What's the best way to add a second dimension to make it， 4 by 1， so just 4 of comets？
+最好的方式是如何给它添加第二个维度，使其变成4×1，只有4个彗星？
 
- I could do this。 I could--， so I could， for instance， have x 4，1。 I think that will work。 Shape equals probably。 Now I would， of course， have to do the same thing for y。 So there we go。 And now if I were to concatenate it along the second dimension。 what do you think we are going to get？ OK， I'll get a 4 by 2 matrix。 No， I actually get an error。
+我可以这样做。我可以——比如说，设定为x 4，1。我认为这样可行。形状应该是对的。现在我当然也得为y做同样的操作。好了。现在如果我要沿着第二个维度进行连接，你觉得我们会得到什么？好的，我会得到一个4×2的矩阵。不，我实际上会得到一个错误。
 
- Oh， yes。 Of course I do。 Yep。 And now if we do this--， yep。 So it turns out it's quite easy to be stupid in front of， your laptop。 OK， good。 So then we can do other things。 We can check for equality。 And this way we get another matrix out of it， which just， checks the entries。
+哦，是的，当然了。我明白了。是的。现在如果我们这么做——好的。结果是，实际上在你笔记本前做傻事是很容易的。好了。接下来我们可以做其他事情。我们可以检查相等性。这样我们会得到另一个矩阵，它只是检查各个条目。
 
- And if x and y were matrices before， you'd get this。 But since I overrode this before。 I'm not going to， re-execute this code right now。 And if we did this， we'd get probably lots of。 series out of it。 You can use that for indexing and other things。 You can sum over things。 That's fairly straightforward。 You can sum along certain dimensions。 Again， for the very details。
+如果x和y之前是矩阵，你会得到这个。但因为我之前覆盖了它，所以我现在不会重新执行这段代码。如果我们这么做，我们可能会得到很多的序列。你可以用它来索引和做其他事情。你可以对东西进行求和。这是相当直接的。你可以沿某些维度求和。再次提醒，具体的细节请参考文档。
 
- please also have a look at the， in-the-array documentation on the MXNet website。 So go to beta。amxnet。io。 There's the very specific call signature， but it's， fairly straightforward。 Then the last thing is， of course sometimes you want to， move back to Python land。 So you can just convert things as scalar。 And that turns things into--， so if you were to print--。
+请也查看一下MXNet官网上的数组内文档。所以去beta.amxnet.io。这里有一个非常具体的调用签名，但它其实很直接。然后最后一点是，当然有时候你可能想回到Python的世界。你可以把东西转换为标量。这样就能把东西转成——如果你打印出来——。
 
- then in one case you'd see in the in-the-array， in the， other case you would see the number。 So it's the same value， but it just in one case it's in， the array。 and in the other case it's just a single number。 OK。 Good。 Now the infamous broadcast mechanism。 Let's say I have a three-by-one matrix， aka vector， and， I have a one-by-two object。
+然后在一种情况下，你会在数组中看到它，在另一种情况下，你会看到那个数字。所以它们的值是一样的，只是其中一种情况下它在数组里，而在另一种情况下它只是一个单一的数字。好的。好。现在，那个臭名昭著的广播机制。假设我有一个3×1的矩阵，也就是一个向量，并且我有一个1×2的对象。
 
- So that's what they look like。 So if I wanted to multiply or add or do something with them。 then what the broadcast mechanism will do--， and it's important here that the number of。 dimensions are the same。 It'll just replicate things according to the dimensions。 So if I were to combine them， A plus B， I'll get the。
+所以它们看起来是这样的。如果我想对它们进行乘法、加法或其他操作，那么广播机制将会做的事情——这里很重要的一点是，维度数量是相同的。它将根据维度复制这些内容。所以如果我要将它们组合起来，`A + B`，我将得到。
 
- three-by-two object where the first and the second entry， respectively are repeated。 So the easiest way to think about what that means， it's， like an outer product in linear algebra。 So remember， you have the inner product x transpose y。 But if you have x-- well。 y times x transpose， right， then， rather than a scalar， you get an entire matrix。
+一个三乘二的对象，其中第一项和第二项分别被重复。因此，最简单的理解方法是，它就像线性代数中的外积。记住，你有内积 `x` 转置 `y`。但是如果你有 `x`--好吧，`y` 乘以 `x` 转置，对吧，那么你得到的不是标量，而是一个完整的矩阵。
 
- And except that for only multiplications， which is what， you do in linear algebra。 you can do that for a lot of other， operations like addition， exponentiation， or whatever。 This is a very quick way of generating large objects， without a single for loop。 So that makes your life easy。 This is probably the conceptually hardest thing of all， of this。 OK。
+除了乘法，线性代数中用到的那种操作外，你还可以对很多其他的操作执行类似的操作，比如加法、指数运算等等。这是一种快速生成大型对象的方式，且不需要使用任何一个 `for` 循环。所以这让你的生活更轻松。这可能是所有概念中最难的部分，明白了吗？
 
- any questions here？ OK， well then， let's move on to the next thing in slicing。 And that does exactly what you want。 It picks out the appropriate rows。 And you can read things。 You can write them， as you would expect， right？ And you can do that for entire rows or columns。 So for instance， here I pick the first two rows， all the， columns， and set them to 12。
+这里有问题吗？好吧，那我们继续讲下一个关于切片的内容。它做的正是你想要的。它挑选出合适的行。你可以读取它们，你也可以像预期那样写入它们，对吧？你可以对整个行或列执行此操作。例如，在这里，我挑选了前两行，所有的列，并将它们设置为 12。
 
- And it does exactly what you would expect it to do。 OK。 Now。 here's where it gets a little bit more interesting。 So suppose I do this。 Then， OK。 so I can look at the--， effectively the point that Python has to y。 And if I write y equals y plus x， then， well， the point is， before and afterwards， are different。
+它正如你预期的那样做了。好了。现在，事情变得有点更有趣了。那么假设我做这个。那么，好的，我可以查看--，实际上是 Python 必须使用的 y 的点。如果我写 `y = y + x`，那么，问题是，之前和之后的点是不同的。
 
- We could actually print this out， just in case。 You're curious。 And so you'll see that the references are different。 So what's happened is basically Python went。 and in， this case， ImageNet， went and took the memory locations for， x and y。 added the values together， put this into a new， location in memory， and then this was assigned to y。
+我们实际上可以打印出来，万一你感兴趣。所以你会看到引用是不同的。所以发生的事情基本上是，Python 去了，并且在这种情况下，ImageNet 去获取了 x 和 y 的内存位置，把值加起来，放到一个新的内存位置，然后这个被赋值给 y。
 
- and then， of course the risk gets the reference and is gone。 But yeah。 That's not a big deal if you have 5x5 matrices。 It's a huge deal if that matrix uses half of your GPU。 memory because you may run out of memory before you can even， compute this。 OK。 So we need some fix。 So one thing you can do is you can simply say that。
+然后，当然，风险是它获得了引用并且消失了。但没关系。如果你有 5x5 的矩阵，这并不是什么大问题。如果那个矩阵占用了你 GPU 的一半内存，那么这就成了一个大问题，因为在你计算之前，可能就已经用完内存了。好吧。所以我们需要做一些修复。那么你可以做的一件事是，简单地说。
 
- explicitly you want to assign the outcome x plus y to the， location z。 And while this is kind of a notational convention， but， that's basically what you get。 By z colon。 you say， well， I want that memory location， then， ImageNet will happily write into that location again。 If you do that， well， you get the same pointers。 There's a useful other function。
+明确地说，你想将 `x + y` 的结果赋值给位置 `z`。虽然这有点像是一个符号约定，但这基本上就是你得到的结果。通过 `z:`，你说，好的，我想要那个内存位置，然后，ImageNet 将很高兴地再次将数据写入该位置。如果你这样做，那么你会得到相同的指针。这里有一个很有用的其他功能。
 
- It's called zeros like， which basically means create another， object with the same shape as y。 but with all zeros。 And this is often useful if you want to have， for instance， wait-step match。 some data or something like that， and you， automatically want--。 you want to make your code smart such that no matter what， input you throw at it。
+它叫做 zeros like，这基本上意味着创建另一个与`y`形状相同但全是零的对象。如果你想要例如等待步骤匹配某些数据，或者类似的事情时，这通常很有用，而且你希望使你的代码更智能，这样无论你输入什么数据，它都能自动处理。
 
- you get the right weight vectors。 You can initialize the weight vectors with zeros like or。 ones like or other tricks like that。 OK。 Now， this is kind of nice， but it's still not quite nice。 Because what it actually does is it allocates memory first to， compute x plus y。 and then it assigns it to z。 So this is still going to use about twice as much memory， as it should。
+你得到了正确的权重向量。你可以像这样用零初始化权重向量，或者像这样用一初始化，或者使用其他类似的技巧。好了，现在，这样做看起来不错，但还是不够完美。因为它实际上做的是，首先为`x + y`分配内存，然后再将其赋值给`z`。所以这还是会使用大约两倍于应该使用的内存。
 
- We should be able to do all of this directly in place。 So the way how you can do it directly in place is you。 essentially invoke things like elementwise add and so on。 And those operations force--。 it makes it to be very， very memory efficient。 So I'm mentioning this because this will be useful for。
+我们应该能够直接在原地完成所有这些操作。所以你可以直接在原地执行的方式是，调用像元素加法这样的操作。这些操作强制执行——使得它非常非常节省内存。所以我提到这个是因为它在你的作业中会很有用。
 
- your homework。 And with that， we are--， almost done。 Last thing is we can use plus equals。 so that makes it， a little bit nicer to use。 So that actually takes care of a lot of these operations。 OK。 Last thing， you may sometimes need to move code from--， or data from NumPy to NDRA and back。 For instance， you might have some data load code， some。
+你的作业。这样，我们几乎完成了。最后一件事是我们可以使用 `+=`，这样使用起来就更方便了。所以这实际上可以处理很多操作。好了，最后一件事，你有时可能需要将代码或数据从 NumPy 移动到 NDRA，反之亦然。例如，你可能有一些数据加载代码，等等。
 
- pre-processing code written in NumPy or a side pi。 And then once you have that data。 you want to push it into， MXNet and process things。 And so it's very simple。 You just execute as NumPy or you invoke the constructor with， the NumPy element there。 Question for the programming languages or Python experts， among you。
+预处理代码写在 NumPy 或者 side pi 中。然后一旦你有了数据，你就想把它推送到 MXNet 中进行处理。所以这非常简单。你只需要执行 NumPy，或者通过构造函数来调用带有 NumPy 元素的对象。问一下你们这些编程语言或 Python 专家中的问题。
 
- Why can I not invoke simply the NumPy。array of X？ Why can I not say a equals NumPy。array of X？
+为什么我不能直接调用 NumPy.array(X)？为什么我不能说 `a = NumPy.array(X)`？
 
- Why can I not invoke the constructor with the NDRA， argument？ Yep？ [INAUDIBLE]， Your spot on。 So NumPy has absolutely no idea of what MXNet is。 So why should it have any idea of what to do with an。 NDRA object？ And so our pre-Numpai is completely out of its steps， when it gets a weird object。 So we need to make it easy for NumPy。 And that's why we need to provide that functionality in， NDRA。
+为什么我不能直接用 NDRA 参数调用构造函数？嗯？[不清楚]，你说得对。所以 NumPy 完全不知道 MXNet 是什么，为什么它要知道该如何处理 NDRA 对象呢？因此，当它遇到一个奇怪的对象时，预先处理的 NumPy 完全迷失了。所以我们需要让 NumPy 容易理解。这就是为什么我们需要在 NDRA 中提供这种功能。
 
- Now， one important detail there。 As you do this， basically the world stops。 Or rather at least。 Python stops。 And nothing else happens while Python is busy moving things。 from MXNet land to NDRA land or vice versa， to NumPy land， and vice versa。 Now。 that's not a big deal if you do this once or twice。 But if you have an entire vector。
+现在，一个重要的细节是。你这么做的时候，基本上全世界都停止了。或者至少 Python 停止了。在 Python 忙着把数据从 MXNet 传到 NDRA，或者反过来，或者从 NumPy 传到 NDRA，反过来时，什么都不发生。如果你只是做一两次，这不是大问题。但如果你有一个完整的向量呢？
 
- this will slow down， your operations a lot。 In one of your home works， it's going to be to measure。 exactly how horrible this is。 Now， before you think that this is trivial， data point。 somebody who just this year became assistant professor。 at a very nice university essentially made this mistake， a few months ago。
+这会大大降低你的操作速度。在你的一项作业中，你将测量这到底有多糟糕。现在，在你认为这只是个微不足道的数据点之前，有人就在今年成为了一名助理教授，他在几个月前犯了这个错误。
 
- And then he came to me and asked， why is my code so slow？
+然后他找我问，为什么我的代码这么慢？
 
- So it's one of those bugs that are obviously in hindsight。 And this is the case not just for MXNet。 but it would run， into similar issues with basically phytorch or TensorFlow， and others。 Because those behave essentially like a foreign world。 to Python and therefore converting data between two。
+所以这类错误在事后看来是显而易见的。这不仅仅是 MXNet 的问题，实际上在使用像 PyTorch 或 TensorFlow 之类的框架时，也会遇到类似的问题。因为这些框架基本上像是与 Python 完全不同的世界，因此在两者之间转换数据时会遇到困难。
 
- different systems like Python and essentially the deep running。 framework will trigger a global interpreter lock， and then you run into trouble。 So you want to minimize that。 Any questions so far？ Yes？ [INAUDIBLE]， No， it's--， [INAUDIBLE]。 So yeah， so basically， indeed。array will actually do the。
+不同的系统，例如 Python，实际上深度运行的框架会触发全局解释器锁，然后你就会遇到问题。所以你需要尽量减少这种情况。有问题吗？是吗？[听不清]，不，是--，[听不清]。所以是的，基本上，实际上，array 会执行那个操作。
 
- right thing because we added that functionality to， indeed。 Right， so because the indeed。array constructor can take， numpire's arguments。 But the converse would require a modification on the numpai。 end。
+正确的操作，因为我们添加了那个功能，确实是这样。对，因为 indeed.array 构造函数可以接受 numpire 的参数。但反过来就需要修改 numpai 的结尾。
 
 ![](img/b11163c8663038fa9ae784b75dbf3290_8.png)
 
- So with that， let's look at something。
+所以，接下来我们看一下某个东西。

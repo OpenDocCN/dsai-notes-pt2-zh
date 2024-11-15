@@ -1,55 +1,55 @@
 # P100：100. L19_3 RNN Mechanics - Python小能 - BV1CB4y1U7P6
 
- Okay， so this time we did things a little bit in the converse order， right？
+好的，这次我们稍微改变了顺序，对吧？
 
- So we first looked at the code， and now we're looking at the slides。 The point of this was to find out a little bit whether this feels better or worse。 So give me some feedback after this。 So remember what you basically have is we encode the input。 right？ And we basically picked some granularity of words， characters or sub words。
+所以我们首先看了代码，现在我们在看幻灯片。这样做的目的是了解一下这种方式是否感觉更好或更差。所以在这之后请给我一些反馈。所以记住，你基本上做的是我们对输入进行编码，对吧？我们基本上选择了某种粒度，比如单词、字符或子单词。
 
- And then we mapped those to indicator vectors， right？
+然后我们将这些映射到指示向量，对吧？
 
- So this was exactly the one-hot encoding before。 And then you might go and multiply it by an embedding matrix。 or， you might just feed it directly into your LSTM or RNN or， GRU whatever。 So you basically have some input like the time machine。 every character here goes into its canonical vector。 Then you have some embedding matrix， maybe。
+这正是之前的独热编码。然后你可能会将其乘以嵌入矩阵，或者你也可以直接将其输入到LSTM、RNN或GRU中。基本上，你有一些输入，像时光机器一样。每个字符都进入它的标准向量。然后你可能有一个嵌入矩阵。
 
- and then you get some embedded vectors。 And for individual characters， that's not such a big deal。 But once you have words or long as substring sequences， you would probably care。 Just because。 for instance， cats and cats are very similar words。 And you would want to make sure that already through the embedding。
+然后你会得到一些嵌入向量。对于单个字符来说，这不是大问题。但一旦你有了单词或较长的子字符串序列，你就会更在意。因为例如，"cats" 和 "cats" 是非常相似的单词。你会希望确保通过嵌入来处理这些。
 
- cat and cats are mapped to something very similar。 And so the RNN with state。 so you have the input vectors， you have the hidden state sequence， right？
+"cat" 和 "cats" 被映射到非常相似的东西。因此，RNN具有状态，所以你有输入向量，隐含状态序列，对吧？
 
- So where we iterate over it。 And then we have the output vector sequence。 And well。 as we saw before， we basically used the output and。 the maximum likelihood decoding that went with it as the input for the next step。 So remember what we did is we basically had this vector， this embedding vector for， the output。
+所以我们对其进行迭代。然后我们得到了输出向量序列。正如我们之前所看到的，我们基本上使用了输出和与之对应的最大似然解码作为下一步的输入。所以记住，我们所做的基本上是得到这个向量，得到这个输出的嵌入向量。
 
- And then we used maximum likelihood decoding to turn this 43 dimensional。 vector into a character like， for instance， X。 And then we used the character X as the input。 which we then encoded again and， ran it through。 So there are a couple of type conversions that happened there。 Okay， and then for the output， yeah， you get exactly this。 So in the one-hot encoding。
+然后我们使用最大似然解码将这个43维的向量转换为像字符X这样的东西。然后我们用字符X作为输入，再次对其进行编码，并通过它运行。所以这里发生了几次类型转换。好的，然后对于输出，是的，你得到的正是这个。所以在独热编码中。
 
- you just pick the Y-squared in it， but， you might have some other decoding vector。 Why would you care about having a decoding vector？ Rather than just picking the Y-squared in it。 Any ideas？ Okay， would I want to do this for characters？ Probably not， right？
+你只需选择其中的Y-squared，但是，可能还有其他解码向量。你为什么要关心使用解码向量，而不是直接选择Y-squared呢？有什么想法吗？好的，对于字符，我想我不会这么做，对吧？
 
- How about if my vocabulary is of the size 1 million？
+如果我的词汇表大小是100万，怎么办？
 
- Do I want to decode into a million dimensional vector？ >> That's exactly the right one。 >> That's exactly the issue。 It would cost you a lot of memory， so you would not want to do that。 What you would have is you would probably decode into a thousand， maybe 2000 dimensions。 and then take maximum in a product with some reference， decoding matrix。 Okay， the gradients。
+我想解码成一个百万维的向量吗？ >> 这正是正确的做法。 >> 这正是问题所在。那会消耗大量内存，因此你不希望这么做。你可能会将其解码为1000维，也许2000维。然后与某个参考解码矩阵进行最大化内积。好的，接下来是梯度。
 
- we already had that， right？ This is exactly the， you don't want your gradients to be too large。 because otherwise things diverge。 And then you just clip to prevent that divergence。 And then， okay。 the last thing that we need， and， you might recall that from a previous homework， perplexity。 So here's the issue why we need to define a new quantity。 Okay。
+我们已经讲过这个了，对吧？这正是你不希望你的梯度太大的原因，因为否则事情会发散。然后你只需要剪切来防止这种发散。那么，好的，我们需要的最后一件事是，你可能还记得前一个作业，困惑度。那为什么我们需要定义一个新的量呢？好的。
 
- so let's say I want to build a language model， and I want to be able to test it both on， let's say。 tweets， and， also in entire books， right？ So a typical tweet is maybe around 200 characters long。 Typical book is maybe 150，000 to 200，000 characters long， right？
+假设我想构建一个语言模型，而且我想能够同时在推文和整本书上测试它，对吧？所以一条典型的推文大约有200个字符。一本典型的书可能大约有150,000到200,000个字符，对吧？
 
- So if I look at the log likelihoods， the log likelihood for the book is invariably going to be a lot worse。 So basically the negative log likelihood therefore a lot larger， then it is for a tweet， right？
+所以如果我看对数似然，书籍的对数似然肯定会差很多。所以基本上，负对数似然会大得多，而不是推文的对数似然，对吧？
 
- Because I have so many characters that there are so many times where I might not。 exactly estimate things accurately， so even if my language model is very good。 it might not get things overall right。 After all， otherwise I could expect my model to pretty much write a book from scratch。 right？ Well， which you can't， or at least not that particular book with， a high likelihood。
+因为我有这么多字符，所以会有很多次我可能不能准确估计，因此即使我的语言模型非常好，它可能整体上也做不到完美的预测。毕竟，否则我可以期待我的模型几乎能从零开始写一本书，对吧？但是，这不可能，或者至少不能用高概率写出那本特定的书。
 
- So what you therefore do is you would go and take the log likelihood and。 normalize it by the sequence length。 After all， what I'm doing is I'm computing the negative log likelihood of。 the next character given the model and what I have， and。 I move through the entire sequence of characters。 And the perplexity of what I simply do is I take that quantity and。
+所以你所做的就是去取对数似然，然后通过序列长度进行归一化。毕竟，我所做的是计算下一个字符的负对数似然，给定模型和我所拥有的内容，并且我会遍历整个字符序列。然后，我所做的困惑度就是我取这个量并……
 
- divide it by the sequence length。 So this is basically the average log likelihood per character。 that I would have for a tweet versus a book。 And all of a sudden tweets and books become a lot more comparable。 Okay， why does anybody have an idea why this is still， giving a little bit of。 why this is still favoring a little bit along sequences？ Okay， anybody else？ Okay， yes？
+按序列长度进行除法。所以这基本上是每个字符的平均对数似然，我会有一条推文和一本书的对比。突然之间，推文和书籍变得更可比了。好的，大家有没有人知道为什么这仍然偏向较长的序列？好吧，还有其他人吗？好的，是的？
 
- >> Because they can contain much more types of information？ >> Yes， so if I have a long sequence。 what I can actually do is， I can use the information that I've seen at the beginning of the sequence to。 predict what's going to happen towards the end。 So for instance， if this book talks about。 I don't know， cameras， then the word camera is much more likely to reoccur。
+>> 因为它们可以包含更多类型的信息吗？ >> 是的，所以如果我有一个长序列，我实际上可以做的是，我可以利用序列开始时看到的信息来预测接下来会发生什么。所以例如，如果这本书讲的是，相机，我就会更有可能再次遇到“相机”这个词。
 
- So therefore it's a good idea to maybe start tuning my language prediction。 model towards the words that I've seen so far in order to predict the next ones。 And so if you are looking at algorithms for a compression contest and whatever。 they all do stuff like this， that you may not necessarily have the computation to do in practice。
+所以因此，可能是个好主意开始调节我的语言预测模型，基于到目前为止我见过的单词来预测接下来的单词。所以如果你在看压缩竞赛的算法之类的，它们都会做类似的事情，虽然在实际应用中，你可能没有足够的计算能力来做到这一点。
 
- But if you want to win a competition， you do it。 Now perplexity is just the exponentiated version of that。 It's actually e to the minus that。 The reason is you want to make sure。 actually it's a type of it should be e to the pi。
+但是如果你想赢得比赛，你就得这么做。现在困惑度其实就是它的指数版本。实际上是e的负这个。原因是你想确保，实际上它应该是e的π次方。
 
 ![](img/06198506dccb2ddb8595a968e1cf28d5_1.png)
 
- because I added the minus doubly。
+因为我加了负的两倍。
 
 ![](img/06198506dccb2ddb8595a968e1cf28d5_3.png)
 
- That's what happens if you switch signs later。 Okay。 And so this is essentially the number of possible choices that you could have。 So if you're perfect。 then you're going to get e to the zero。 So then that just means with certainty。 know exactly what the next character is。 Perplexity of three， for instance， means that on average。
+这就是如果你后面换符号会发生的事情。好的。因此，这本质上是你可能拥有的选择数量。所以如果你完美无缺，你会得到e的零次方。那么这就意味着，你可以确定地知道下一个字符是什么。例如，困惑度为三意味着，平均来看。
 
- I'm not sure between one and three characters that I would want to choose。 Doesn't quite mean one in three characters because I could have some with higher， probability。 some with lower probability， but on average it would be like one in three。 So therefore。 the best perplexity I could ever achieve is a one。 I just mean that I know exactly what comes next。
+我不确定在一到三个字符之间该选择哪个。并不完全意味着一到三个字符，因为我可能会有一些字符的概率更高，也有一些字符的概率更低，但平均来看，它大概是三分之一。所以，最好的困惑度我能达到的是一。我只是想说，我完全知道接下来会是什么。
 
- Okay。 And that is， [BLANK_AUDIO]。
+好的。那就是，[BLANK_AUDIO]。
 
 ![](img/06198506dccb2ddb8595a968e1cf28d5_5.png)

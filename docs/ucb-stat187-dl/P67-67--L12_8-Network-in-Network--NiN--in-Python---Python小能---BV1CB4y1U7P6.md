@@ -1,33 +1,33 @@
-# P67：67. L12_8 Network in Network (NiN) in Python - Python小能 - BV1CB4y1U7P6
+# P67：67. L12_8 网络中的网络（NiN）在Python中的实现 - Python小能 - BV1CB4y1U7P6
 
- Let's have a look at networks and networks。 So for recollection on the left-hand side。 we have the VGG network where we have， basically those convolutions in relu blocks。 and on the right-hand side we have， the nimblox which are basically a convolution。 followed by two 1 by 1 convolutions with max pooling， and then the n global average pooling。
+我们来看看网络与网络的区别。为了回顾一下，左边是VGG网络，我们基本上有那些带有relu的卷积块；而右边是nimblock，它基本上是一个卷积，接着是两个1×1的卷积，再加上最大池化，然后是全局平均池化。
 
- So we get going， well， let's start by importing things。 So this is just MX net and glo on。
+所以我们开始吧，好，让我们从导入一些东西开始。这只是MXNet和glo。
 
 ![](img/15a4797cead904b57aa45f36e0293cf9_1.png)
 
- and then we need to define a nimblock。 The nimblock is quite straightforward。 It takes as its argument number of channels， kernel size， strides and padding。 Then， okay。 we hybridize just to make it go fast again， and we go and add a convolution with relu。 and with the appropriate strides， and then two 1 by 1 convolutions。
+然后我们需要定义一个nimblock。这个nimblock是相当简单的。它的参数包括通道数、卷积核大小、步幅和填充。然后，好吧，我们混合一下，以使其更快，然后我们加上一个带有relu的卷积，使用合适的步幅，然后是两个1×1的卷积。
 
- They don't really need to define any padding， which the size doesn't really change。 And then， okay。 here we need to have the actual model。 So this model does nothing particularly fancy。 It just uses a nimblock followed by max pooling， and it does that three times。 In the end， well。 we apply dropout。 Then we apply one last nimblock。 No more dropout here， no more max pooling there。
+它们实际上不需要定义任何填充，因为尺寸不会发生变化。然后，好吧，在这里我们需要一个实际的模型。这个模型没有什么特别复杂的地方。它只使用了一个nimblock，后面接着最大池化，做了三次。最后，好吧，我们应用dropout。然后我们再应用最后一个nimblock。这里不再有dropout，也不再有最大池化。
 
- but just global average pooling。 In the end， we just flatten this， and that's it。 So the key difference is that here we didn't need， any dense layer anymore， right？
+但只是全局平均池化。最后，我们只需将其展平，就完成了。所以关键的区别是，这里我们不再需要任何密集层，对吧？
 
- Because effectively within the nimblock， the 1 by 1 convolutions。 So these guys here serve the same role， as a multi-layer perceptron。 but now applied on a per channel basis。 Okay。 So let's see what this looks like in practice。
+因为在nimblock中，1×1的卷积。因此这些在这里的卷积层充当了多层感知机的作用。只是现在它应用在每个通道上。好吧。让我们看看实际应用中这是什么样子的。
 
 ![](img/15a4797cead904b57aa45f36e0293cf9_3.png)
 
- So there's a network， and if I go and apply it to 224， by 224 images， right。 I get out of it at first 54 by 54， then 26 by 26， then 12 by 12， and that's basically。 if you look at pooling， hybrid sequential， pooling hybrid sequential， then the end I apply dropout。 And then I go to a 5 by 5 with 10 dimensional output。
+所以这里有一个网络，如果我将其应用到224×224的图像上，对吧。最开始我得到的是54×54，然后是26×26，再然后是12×12，这基本上就是。如果你看一下池化，混合序列，池化混合序列，然后最后应用dropout。然后我得到一个5×5的输出，维度是10。
 
- So this is already setting things up for the number of classes， that you need in the end。 Then I have another pooling， that's the global pooling， and then I'm done。 So this is how you can completely avoid any dense layers， whatsoever。
+所以这已经为最终需要的类别数量做好了设置。然后我有另一个池化，那就是全局池化，然后我就完成了。所以这是你如何完全避免使用任何密集层。
 
 ![](img/15a4797cead904b57aa45f36e0293cf9_5.png)
 
- So let's look at how this looks like in practice。 So training， and I'm going to run this afterwards。 in a moment， but basically we can use a slightly larger learning。 because the architecture is a bit simpler， and we use a mini batch of size 128。 And so we iterate over the data。 The one thing that actually， as you can see。
+所以让我们看看实际中是怎么做的。我们正在训练，稍后我会运行这个。在这一刻，我们可以使用稍微大的学习率，因为架构有点简单，而且我们使用的是大小为128的mini batch。因此我们遍历数据。事实上，有一点你可以看到的。
 
- is the network doesn't work so well。 This is one of the reasons why people didn't really。 pay so much attention to networks and networks initially， but they just， it was just like， well。 there's another weird network， and you can't really get rid of the dense layer anyway。 However。 they play an important role in then leading up， to the inception and resnet architectures。
+网络工作得不好。这是人们最初并没有真正重视网络的原因之一，尽管当时它只是，嗯，另一个奇怪的网络，而且你无论如何也无法摆脱密集层。然而，它们在后来引领到Inception和ResNet架构中起着重要作用。
 
- which took very significant advantage of this removal。 of the dense layer to get rid of a lot of parameters。 So this concludes today's lecture on network architectures。 Next week we'll cover considerably more advanced architectures， that are actually state of the art。
+这些架构充分利用了去除密集层，去掉了大量参数。所以，这就是今天关于网络架构讲座的总结。下周我们将讲解更为先进的架构，它们实际上是最前沿的技术。
 
- Thanks for your attention and have a good weekend。
+感谢您的关注，祝您周末愉快。
 
 ![](img/15a4797cead904b57aa45f36e0293cf9_7.png)

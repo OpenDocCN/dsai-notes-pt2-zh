@@ -1,245 +1,211 @@
-# P16：16. L4_1 Linear Regression - Python小能 - BV1CB4y1U7P6
+# P16：16. L4_1 线性回归 - Python小能 - BV1CB4y1U7P6
 
- Okay， so this is about implementing linear regression from scratch。 So first of all。 we import something。 We don't need to look into that。 The key thing here， we have autograph。 we have NDRA， and we have a lot of prodding and。
+好的，这就是从零开始实现线性回归。所以首先，我们导入一些东西。我们不需要深入查看。这里的关键是，我们有自动求导，有NDRA，还有很多的处理和数字。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_1.png)
 
- we have random number generators。
+我们有随机数生成器。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_3.png)
 
- So we first generate a dataset。 The pretty small dataset， what we have is 100， 1，000 examples。 two dimensions。 So x is 1，000 by two matrix， it's a random matrix。 Then we can use a ground choose weight， which is the first element is 2， the second is minus， 3。4。 And the bias we can choose 4。2， this is the ground choose we have。 To generate the label。
+所以我们首先生成一个数据集。一个相当小的数据集，我们有100个、1000个例子，两个维度。所以x是一个1000×2的矩阵，它是一个随机矩阵。然后我们可以选择一个真实的权重，第一个元素是2，第二个是-3.4。偏差我们可以选择4.2，这就是我们选择的真实权重。用来生成标签。
 
- we just do x times the two weight plus b and plus the noise here。 The noise is a Gaussian noise here， so it can show you。
+我们只是做x乘以两个权重加b，再加上噪声。噪声是高斯噪声，因此它可以展示给你。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_5.png)
 
- And so this little bit of code here is writing NDRA but it's pretty similar。 Just generate numbers and get the results。 So the key thing here， we have features here。 we have labels here。
+所以这段小代码在写NDRA，但它非常相似。只是生成数字并得到结果。所以这里的关键是，我们有特征，我们有标签。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_7.png)
 
- Then we can visualize， we can show that the second feature at the label。 So because the linear regression there's correlation between features and the labels。 But we have loss here， so there's actually a lot of noise around。
+然后我们可以可视化，我们可以显示第二个特征和标签。因为线性回归中，特征和标签之间是相关的。但是我们这里有损失，所以实际上周围有很多噪声。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_9.png)
 
- Then because we're going to use a mini-batch SGD， every time we can render， we can render。 the samples on our data to get the batch。
+然后因为我们要使用小批量SGD，每次我们可以渲染，可以渲染数据中的样本来获取批次。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_11.png)
 
- So we're going to show actually how this thing looks like。
+所以我们将展示这个东西的实际样子。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_13.png)
 
-
-
 ![](img/983f2321ce8f8066e54210877ee3984e_14.png)
 
- So here we have， we give them features， we give them labels and then we give them batch， size。 What we do is like， we firstly generate the indices and we render the shaft weight so。 we can generate the render indices。 So at the time we're going to read batch size indices here and then to get the indices called。 J。 And we should take， take means given a set of indices， I take the row columns from， the matrix。
+所以在这里，我们给它们特征，给它们标签，然后我们给它们批次大小。我们做的是，首先生成索引，然后渲染权重。我们可以生成渲染的索引。所以在这个时候我们将读取批次大小的索引，并获得称为J的索引。我们应该获取，获取意味着给定一组索引，我从矩阵中获取行列。
 
- I'll take the row element from the matrix。 So we generate J's usually like B batch size randomly indices and we pick up the data and。 pick up the labels。 We use the Python year here which is generate iterator。 So every time you don't。 every time you don't need to， so let me show how to use it。
-
-
+我将从矩阵中获取行元素。所以我们通常会像B批次大小那样生成J的随机索引，并选择数据和标签。我们在这里使用Python的生成器，它是一个生成迭代器。所以每次你不需要， 每次你都不需要，因此让我来展示如何使用它。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_16.png)
 
- So every time you can using four X and a Y in this iterator。 So every time you run for loop。 you're going to get X and a Y and then run again， you get， another X on the Y。 So we're going to show you given batch size equal to 10， we're going to show you how。 to print X and a Y。 So X is two dimensions， 10 examples， Y is another 10 vector here。
+所以每次你都可以在这个迭代器中使用四个X和一个Y。每次你运行for循环，你会得到X和Y，然后再运行一次，你会得到另一个X和Y。所以我们将展示当批次大小等于10时，如何打印X和Y。X是二维的，包含10个例子，Y是另一个包含10个元素的向量。
 
- it's a 10 real value。
+它是一个包含10个实值的向量。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_18.png)
 
- number here。
+这里的数字。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_20.png)
 
- So that's a single batch。
+这就是单个批次。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_22.png)
 
- Then how do you choose to initialize the model parameters？ Here we can use doubly。 randomly initialized by Gaussian distribution， it's zero min and。 scale equals to standard deviation equals to zero point zero one。 Well。 you don't want to use too large values， it's caused you numericals， instabilities。
+那么，如何选择初始化模型参数呢？在这里，我们可以使用双重初始化，随机地使用高斯分布初始化，均值为零，标准差为 0.01。嗯，你不希望使用太大的值，这会导致数值不稳定。
 
- You don't want too small values， so how to train。 So that's another trade off。 We're going to talk about more in the optimization details。 So in most cases。 using random numbers and with such deviation， ISD is good enough。 For BIOS。 we just initialize to zero。
-
-
+你不希望值太小，那么如何训练呢？这又是一个权衡。我们将在优化的详细内容中进一步讨论。在大多数情况下，使用随机数和这样的偏差，SGD 就足够好了。对于偏置，我们只需初始化为零。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_24.png)
 
- So okay， we pick up the initial W and B。 Then because we're going to compute the gradients。
+所以，好吧，我们选择了初始的 W 和 B。然后因为我们要计算梯度。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_26.png)
 
- with respect to W and B， we attach gradients here。 Again， we talk about that in autograd。 Now we can define the model。 In the model， given a batch of data X and a given weight and a B。 we're just using dot， matrix multiplication to compute X times W and plus the BIOS using broadcasting。 So we can get the prediction。 It is the vectorized version of it。
+关于 W 和 B，我们在这里附加梯度。再说一次，我们在自动求导中讨论过这个问题。现在我们可以定义模型。在模型中，给定一批数据 X 和给定的权重和 B，我们只是使用点积和矩阵乘法来计算 X 乘以 W，然后通过广播加上偏置。这样我们就能得到预测结果。这是它的向量化版本。
 
- So we save in the function called a linear regression。 Now the loss function that is given by hat。 this estimation is a vector。 So given the true label， it's another Y， it's a vector。 which is a hat minus Y。 And we do reshaping here because we want to match。 Sometimes you cannot get the row vector， sometimes you get the column vectors。
+所以我们将其保存在一个名为线性回归的函数中。现在给定的损失函数是 Ŷ，这个估计值是一个向量。给定真实标签，它是另一个 Y，也是一个向量。Ŷ 减去 Y。我们在这里做了 reshape，因为我们想要匹配。因为有时候你得到行向量，有时候你得到列向量。
 
- We run a reshape here so that makes sure everybody has the same shape。 Because a common mistake。 if you get the row vector， if you get the column vector， if you， minus it by broadcasting。 you get the matrix。 And get the matrix because you run autograd， this is a loss function。 You run autograd and we can assign this matrix together to get a scalar。 You get a no warning here。
+我们在这里进行了一次 reshape，确保每个维度都一致。因为一个常见的错误是，如果你得到行向量，得到列向量，再用广播减去它，你会得到矩阵。然后得到矩阵，因为你运行自动求导，这就是损失函数。你运行自动求导，我们可以将这个矩阵一起赋值，得到一个标量。你不会得到警告。
 
- So that's actually-- so we make a reshape here to guarantee that we do element-wise。 minus and we didn't do broadcasting。 So we minus Y hat minus Y and the power to 2 divided by 2。 So here we actually didn't divide by the batch size here。
+所以实际上——我们在这里进行了一次 reshape，确保我们做的是逐元素的操作。减法，我们没有做广播。所以我们减去 Ŷ 减去 Y，平方后除以 2。所以这里实际上没有除以批量大小。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_28.png)
 
- So we can do that later。
+所以我们可以稍后再做。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_30.png)
 
- So then let's talk about SGD。 So SGD here， the parameters is actually W and the B。 It's a list of parameters。 The segment is for linear rate， this scalar we talked about later before。 And the batch size。 We divided by the batch size here for no reason。 You just can put the batch size in the loss function。 That's OK。
+接下来我们来谈谈 SGD。在这里，参数实际上是 W 和 B。它是一个参数列表。该段是学习率，这个标量我们之前讨论过。还有批量大小。我们在这里除以批量大小没有特别的原因。你也可以把批量大小放到损失函数中，那也可以。
 
- But we just don't want the loss function to add another hyperparameter。 So then what do we do is like for every parameters， we just minus linear rate times the gradients。 and divide by batch size。 So that's just SGD or you just call a good descent。 Any questions so far？
+但我们不希望损失函数增加另一个超参数。那么我们该怎么做呢？对于每个参数，我们只需减去学习率乘以梯度，然后除以批量大小。所以这就是 SGD，或者你可以称之为梯度下降法。到目前为止有什么问题吗？
 
- OK， good。
+好的，明白了。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_32.png)
 
- Then the training loop， it'd be longer but let me just show the code。
+然后是训练循环，虽然会更长一些，但让我先展示一下代码。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_34.png)
 
-
-
 ![](img/983f2321ce8f8066e54210877ee3984e_35.png)
 
- So we first pick the hyperparameters。 The first I choose linear rate equal to 0。03 by no reasons。 Then we choose a number of data passes to be 3， another 3 by no reasons。 The net we're going to choose is a linear regression。 So I just call the net and the loss function so that in later every training loop looks similar。
+首先选择超参数。首先我选择学习率为 0.03，没什么特别的原因。然后选择数据的传递次数为 3，也没有特别的原因。我们选择的网络是线性回归。所以我直接调用网络和损失函数，这样后续的每次训练循环看起来都会很相似。
 
- The loss function we use as square loss。 And the training loop is like in the first or for loop we iterate over the data。 So we're going to do three pass of data here。 Then the second or for loop every time I read a data batch x and y。 Then we put the for the pass in the autograph or record here。 We first put x， x， w。 b into net to compute the estimation and then compared to the true。
+我们使用的损失函数是平方损失。训练循环就像第一个 for 循环，我们对数据进行迭代。这里我们将做三次数据传递。然后第二个 for 循环中，每次我读取一个数据批次 x 和 y。然后我们在 autograph 或记录中放入这个过程。我们首先把 x，x，w，b 输入到网络中计算估计值，然后与真实值进行比较。
 
- value of y to get the loss function here。 Now then we call the loss function the backward to compute the gradients。 Then once the gradients here we just write SGD。 The parameter here is just the w。 b because we already touched gradient before。 Put the linear rate。 put the batch size and then we update。 For each batch at the end of each batch we just compute the loss on the whole training。
+通过 y 的值来计算损失函数。然后我们调用损失函数的 backward 方法来计算梯度。一旦得到了梯度，我们就用 SGD 更新参数。这里的参数是 w 和 b，因为我们之前已经计算过梯度。然后设置学习率，批量大小，并更新。每批次结束时，我们就计算整个训练数据的损失。
 
- data。 Okay， and the print results。 So we're going to see that in the epoch one is we have a large loss then we decrease and。 the until last week at a small number。 Okay， so yes。
+数据。好的，打印结果。所以我们会看到，在第一轮迭代中，损失较大，然后逐渐减小。直到最后一轮，损失非常小。好的，是的。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_37.png)
 
- That's a good choice。 So last let's show that what we actually learned and compared to what actually we have。 before because we have two w， we have two b then we can evaluate。 Then we show that actually the error thing is pretty small and so I can actually print。
-
-
+这是一个不错的选择。那么最后我们展示一下实际学习的结果，并与之前的值进行比较。因为我们有两个 w 和两个 b，我们可以评估一下。结果显示误差非常小，所以我可以打印出来。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_39.png)
 
- w and print b。
+w 和 b 打印出来。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_41.png)
 
- You can see that w should be two and minus three point four and b what is b is four point。
+你可以看到，w 应该是 2，-3.4，b 是 4.0。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_43.png)
 
- two。 And actually what we estimate is pretty close to what we have in the ground choose。
+2。实际上，我们的估计值和实际值非常接近。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_45.png)
 
- Okay， so because we mentioned that what is the linear rate and what the batch size I can。 show you some examples that let me choose a very small linear rate。 Choose a smaller one and then remember that in the third epoch we get a very low loss here。 Let's compare it again。
-
-
+好的，因为我们之前提到过学习率和批量大小，我可以给你一些例子。让我选择一个非常小的学习率。选择一个更小的，然后记得在第三轮时，我们的损失会非常低。我们再进行对比。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_47.png)
 
- Well， oh， we cannot do that because we didn't reinitialize w so let me reinitialize w to a。
+好吧，哦，我们不能这样做，因为我们没有重新初始化 w，所以让我重新初始化 w 为 a。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_49.png)
 
-
-
 ![](img/983f2321ce8f8066e54210877ee3984e_50.png)
 
- random number， attach gradient。
+随机数，附加梯度。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_52.png)
 
-
-
 ![](img/983f2321ce8f8066e54210877ee3984e_53.png)
-
-
 
 ![](img/983f2321ce8f8066e54210877ee3984e_54.png)
 
- So you see that if you choose a very small linear rate that actually we have very large。
+所以你会看到，如果选择一个非常小的学习率，实际上我们会得到非常大的损失。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_56.png)
 
-
-
 ![](img/983f2321ce8f8066e54210877ee3984e_57.png)
 
- loss。 So if I can use a very large one， it's one， well it works pretty well。 So 0。03 is too small。 let's do a larger one。 Well， you get a lot of number because too large。 So usually pick up the linear rate as large as possible to get the results。 And the last notebook I'm going to talk about how to use in Grun to actually improve the。
-
-
-
-
+损失。如果我能使用一个非常大的，那是1，嗯，它工作得很好。所以0.03太小了。让我们使用一个更大的。嗯，你会得到很多数字，因为太大了。所以通常选一个尽可能大的线性率来获得结果。接下来我要讲的是如何在Grun中使用它来实际改进。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_59.png)
 
- thanksing but in Grun not for the under rate。 For under rate we show how to build things from scratch。 It's easy at this moment but let's only if I have hundreds of layers so you cannot do。 use a year raise。 So I'm going to show you how to use Grun to do the things。
-
-
+感谢，但Grun并不是为了欠拟合。对于欠拟合，我们展示如何从头开始构建东西。现在做起来很容易，但如果我有成百上千的层，那就不行了。使用年化增长。因此，我将向你展示如何使用Grun来做这些事情。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_61.png)
 
- So Grun actually， so this is a similar thing。
+所以Grun实际上，这是一种类似的东西。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_63.png)
 
- These actually generate data set pretty similar to before。 Let me restart。
+这些实际上生成的数据集与之前非常相似。让我重新开始。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_65.png)
 
- So Grun provide two things， pretty useful。 So actually three things。
+所以Grun提供了两个非常有用的功能。实际上是三个。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_67.png)
 
- What's how to load the data？ Grun have its data more Grun。 We'll import as G data。 it's not Google data but just put a G here in case we want to use。 data as a variable before a letter which is a back size。 This under a rate we just create the data set called array data set。 In the data set we can access。
+如何加载数据？Grun有它的数据，更多的是Grun。我们将其导入为G数据。它不是Google数据，只是为了防止我们以后使用数据作为一个变量，前面加个字母作为批次大小。这是一个欠拟合问题，我们只需创建一个名为array data set的数据集。在数据集中，我们可以访问。
 
- in the data set just that's a class you can index in any， examples。 Then given data set we can put in the data loader which is given a back size and the。 shuffle equals the two， written in the shuffle that they set。 Every time you can return a data iterator which can be used as exact as before that every。
-
-
-
-
+在数据集里，这就是你可以索引的类，任何示例都可以。然后给定数据集，我们可以把它放入数据加载器中，数据加载器给定一个批次大小，并且，shuffle设置为2，表示进行洗牌。每次你都可以返回一个数据迭代器，可以像之前一样使用。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_69.png)
 
- time we can for X and Y is data iterator and get a data batch。
+时间我们可以为X和Y使用数据迭代器并获取一个数据批次。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_71.png)
 
- The second different thing is that the linear model is called a dense layer or Fouc-Nell。 layer in neural network。 And the output size is one because they only have a single output here。 So in Grun is the neural network module， an e-module already defined what is a dense layer。 You just compute， you just construct the dense layer and put it into a container called。
+第二个不同之处是，线性模型被称为稠密层或Fouc-Nell层在神经网络中。输出大小是1，因为它这里只有一个输出。所以在Grun中，神经网络模块，一个e模块已经定义了什么是稠密层。你只需计算，构造稠密层并将其放入一个叫做容器中的模块里。
 
- sequential container。 This container gonna let you stack multiple， it's like it's a list。 you can stack multiple， layers to get a new network。 So this we construct container only as a single layer， it's a single layer neural network。 and the output， the output size is one。 So here we don't need to specify what the input size。
+顺序容器。这个容器让你堆叠多个，就像是一个列表。你可以堆叠多个层，构建一个新的网络。所以我们只构建一个容器，作为一个单一的层，它是一个单层神经网络。输出，输出大小是1。所以这里我们不需要指定输入的大小。
 
- That's the key thing for Grun。 You don't need， because at this point we actually don't know what the input size。 So either we figure out a letter where we give actual data into the network。
+这对Grun来说是关键。你不需要，因为此时我们实际上不知道输入的大小。所以我们要么想出一个字母，向网络输入实际数据。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_73.png)
 
-
-
 ![](img/983f2321ce8f8066e54210877ee3984e_74.png)
 
- So all the MSN have a bunch of initialization methods。 For here we can initially use a normal distribution and call it C， it's 0。01 and we call it。 the net， the network， the initialised and the given initialization methods。
+所以所有的MSN都有许多初始化方法。在这里我们可以初步使用正态分布并称之为C，它的值是0.01，然后我们调用网络进行初始化，并使用给定的初始化方法。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_76.png)
 
- The loss function， the Grun loss， Grun have a loss module defined a bunch of loss functions。 So here we just import the L2 loss。 So square loss also called L2 loss。
+损失函数，Grun的损失，Grun有一个损失模块定义了许多损失函数。所以在这里我们只是导入L2损失。即平方损失，也叫做L2损失。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_78.png)
 
- Then training， we just tell you， okay， we have Grun have a trainer， we put the parameters。 the net parameter means put all these parameters on the network because you maybe have multiple。 layers in that， the connect means you're going to connect all these parameters on the。 networks and give the parameters to the trainer and tell them， okay， I'm going to use SGD here。
+然后训练，我们只是告诉你，好吧，我们有一个Grun的训练器，我们将参数传给它。网络参数意味着将所有这些参数放到网络中，因为你可能有多个层，在那里面连接意味着你要把所有这些参数连接到网络上，并将参数传递给训练器，告诉它，好吧，我将在这里使用SGD。
 
- SGD and the numerator will be 0。03。 So we don't need to implement the SGD function anymore。
+SGD的分子将是0.03。所以我们不需要再实现SGD函数了。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_80.png)
 
- The training is pretty similar as before。 So we again pick a number of epoch equal to 3。 For every epoch we read the data and again we compute the fault path， give an X fitting。 to the network and compare the loss with the Y， get the final loss and the backward function。 Because we define the trainer which is SGD， we call the step function and we pass the batch。
+训练过程与之前相似。所以我们再次选择3个epoch。每个epoch，我们读取数据，然后计算错误路径，给网络一个X的输入，比较与Y的损失，得到最终损失并进行反向传播。因为我们定义了训练器是SGD，我们调用步骤函数并传递批次。
 
- size into the trainer which we divide by the batch size to get the normalized gradients。 and then we update the networks。 Finally we're going to print the thing。 It's pretty。 as you see that the results are pretty similar to what we have previously。
+将大小输入到训练器，我们按批次大小进行除法得到归一化的梯度，然后我们更新网络。最后，我们会打印出结果。正如你看到的，结果与我们之前的结果非常相似。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_82.png)
 
-
-
 ![](img/983f2321ce8f8066e54210877ee3984e_83.png)
 
- So in overall that's a pretty temporary we're going to use to describe every network。 We're going to first show how to use an array or just a lump high to implement things from。 a scratch so that you can understand it。 On the other hand we can show how we're actually using Guru on to implement the thing so that。 in most cases you build your applications and you're going to use a Guru on predefined， layers。
+所以总体来说，这是一个相当临时的方法，我们将用来描述每个网络。我们将首先展示如何使用数组或简单的高层实现，从头开始，这样你就能理解它。另一方面，我们还可以展示我们实际上是如何使用Guru来实现这一点的，这样在大多数情况下，你构建应用程序时会使用Guru的预定义层。
 
- It's more numerical stable and faster but you can for your projects。
+这更加数值稳定且更快，但你可以根据你的项目需求进行调整。
 
 ![](img/983f2321ce8f8066e54210877ee3984e_85.png)
 
- Okay， so that's all for today。
+好的，今天就到这里。

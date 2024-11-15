@@ -1,179 +1,161 @@
-# P54：54. L11_2 Convolutions - Python小能 - BV1CB4y1U7P6
+# P54：54. L11_2 卷积 - Python小能 - BV1CB4y1U7P6
 
- Convolutional neural networks。 So far what we had was we went up to the state of the art。 around maybe the year 2000。 No， sorry， the year 1990， 1992。 And so now comes this really amazing time when basically， Jan Lickar and his team at AT&T invented。 convolutional neural networks。 And we'll see how far we get with that today。
+卷积神经网络。到目前为止，我们已经达到最先进的技术水平，差不多是 2000 年左右。不，抱歉，是 1990 年，1992 年。所以现在进入了一个非常令人惊叹的时期，基本上，Jan Lickar 和他在 AT&T 的团队发明了卷积神经网络。今天我们会看看我们能讲多远。
 
- Probably we are not going to get to Lynette today， and we might have to cover it on Thursday。 Anyway， let's get started。 So let's start with something very trivial。 So suppose you have a good camera。 So like maybe this phone here。 This phone here has a 12 megapixel camera。 It actually has two cameras inside。
+可能今天我们无法讲到 Lynette，可能得等到星期四才能讲。不过，还是先开始吧。我们从一些非常简单的内容开始。假设你有一台好相机。就像可能这部手机。这个手机有一颗 1200 万像素的相机。其实它内部有两颗相机。
 
- but that's a trivial detail there。 So it's 12 megapixels。 And if you have red， green， and blue。 that's 36 million numbers。 So if I want to build a multi-layer perceptron， with 100 hidden layers。 And so 100 hidden units， just a single hidden layer。 Well， then that's about 3。6 billion parameters。 which is 36 million times 100。 And everything else that comes after that is essentially free。
+但那只是一个微不足道的细节。所以它是 1200 万像素。如果你有红色、绿色和蓝色，那就是 3600 万个数字。所以如果我要构建一个有 100 层隐藏层的多层感知器。那么 100 个隐藏单元，仅仅是一个隐藏层。那么这大约是 36 亿个参数，也就是 3600 万乘以 100。而后续的内容基本上是免费的。
 
- But that's a large number。 So if you think about it， probably。 you want to have at least one or two observations per parameter。 So you need about 3 and 1/2 billion pictures of cats and dogs。 But that's a real problem。 because last time I checked on Wikipedia， there are about 900 million dogs and 600 million cats in the world。
+但这是一个很大的数字。所以如果你考虑一下，可能你每个参数至少需要一到两个观测值。所以你大约需要 35 亿张猫和狗的照片。但这是一个实际的问题。因为上次我查阅维基百科时，全球大约有 9 亿只狗和 6 亿只猫。
 
- So that doesn't work very well。 Nonetheless， if you search on your favorite image search engine。 for cat and dog， and you search over your image data set， it'll do quite well。 So take clearly。 must have done it differently。
+所以那样的做法效果不好。然而，如果你在你喜欢的图像搜索引擎上搜索“猫”和“狗”，并在你的图像数据集中进行搜索，它会做得相当不错。所以很明显，他们肯定是用了不同的方法。
 
 ![](img/a9c874dda56d407de128d4b6d78363af_1.png)
 
- So this is just to drive this point home。 If I have this neural network with one hidden layer。 and a single output， then that's what you would do。 And of course， h is sigma of w to the x plus b。 So 3。6 billion parameters that surround 14 gigabytes， if I store it as floating point numbers。 So 32-bit。 If I have FP16 that's still 7 gigabytes。
+所以这只是为了强调这一点。如果我有一个只有一层隐藏层的神经网络，和一个单一的输出，那么你就是这么做的。当然，h 是 σ(w·x + b)。所以有 36 亿个参数，约 14GB，如果我将其存储为浮点数。是 32 位。如果是 FP16，仍然是 7GB。
 
- that's still more than your mid-range Turing GPU。 On that note， something that apparently。 snagged a couple of people when they tried designing a network。 So remember。 let's say we have this as our input。 Some people designed that kind of architecture。 So in other words， they reduced it in the first layer。
+这仍然比你的中端图灵 GPU 强大。顺便提一下，显然有些人在尝试设计网络时遇到了一些问题。所以记住，假设我们将这个作为输入。一些人设计了那种架构。换句话说，他们在第一层就进行了简化。
 
- from whatever input dimensions to one dimension。 Then they went wide again and they went narrow again。 This is a terrible idea。 It does not work。 So as a matter of fact， I think it was Ryan。 who then somebody， came to him， asking him， and they had trouble with it。 And Ryan fixed the entire problem by just getting rid， of this layer。 And lo and behold。
+从任意输入维度到一维。然后他们又扩展宽度，再缩小宽度。这是个糟糕的主意，根本行不通。事实上，我记得是 Ryan，后来有人来找他，告诉他他们在这方面遇到问题。然后 Ryan 通过直接去掉这一层，解决了整个问题。结果就是这样。
 
- the network actually worked quite well。 So what happened is that this one hidden layer。 with just a single neuron， forced all the features， to be projected onto a single dimension。 That's a little bit too aggressive。 You probably do not want that。 You may have-- whoever did this may， have heard of information bottleneck and other things， where。
+这个网络实际上工作得相当好。所以发生的事情是，这一层隐藏层，只有一个神经元，强制所有特征都投影到一个维度。这有点过于激进。你可能不希望这样。做这件事的人可能听说过信息瓶颈和其他相关概念。
 
- as a matter of fact， you can have networks that， are of this form。 But they never。 ever squeeze out all the information， in the first layer because you want。 to have a meaningful intermediate representation。 And you almost certainly wouldn't reduce it to one dimension。 Typically， you have networks that just get narrow。 And then in the end， that's it。
+实际上，你可以拥有这种形式的网络。但是它们永远不会在第一层中压缩掉所有的信息，因为你希望有一个有意义的中间表示。而且你几乎肯定不会将其降维到一维。通常，你会有这样的网络：它们只是逐渐变窄，最后就这样。
 
- And none of this happens。 We'll actually see network structures of that kind。 in when we discuss various deep convolutional networks。 But the design decisions are pretty much the same regardless。 So yes。 you want to reduce the dimensionality， but not to aggressively and not by too much。 Yes？
+这一切并不会发生。我们实际上会看到那种网络结构，当我们讨论各种深度卷积网络时。但是设计决策基本上是一样的。所以，是的，你希望减少维度，但不要过于激进，也不要减少太多。是吗？
 
- [INAUDIBLE]， Yes。 So the question is， will we see what the amazing architecture， was for the winner？
+[听不清]，是的。所以问题是，我们是否能看到获胜者的惊人架构？
 
- Yes。 There will be a reference solution， and you can look at it。 And really hats off to that team because they actually， got out to， I think。 the top 10 submissions on Kaggle， which， out of 10，000 submissions is stunning。 So kudos。 Really well done。 In any case， let's look at computer vision。
-
-
-
-
+是的。会有一个参考解答，你可以查看它。真的要向那个团队致敬，因为他们实际上进入了，我认为是Kaggle的前十名，这从10,000个提交中脱颖而出，真的很惊人。所以，致敬，做得非常好。无论如何，让我们来看一下计算机视觉。
 
 ![](img/a9c874dda56d407de128d4b6d78363af_3.png)
 
- So let's look at a very simple problem， namely， we want to find Waldo。 So what does this have to do with multi-layer， scepterons in computer vision？ Well， actually a lot。 Because if you look at the picture of Waldo here， well， there are a lot of Waldos on that picture。 And effectively， the Waldo-ness doesn't really， depend on where in the picture this guy is。
+所以让我们看一个非常简单的问题，即我们要找到瓦尔多。那么这和计算机视觉中的多层感知器有什么关系呢？实际上有很大关系。因为如果你看这张瓦尔多的图片，你会发现图片上有很多瓦尔多。实际上，瓦尔多的特征并不依赖于这个人出现在图片的哪个位置。
 
- And also， it doesn't really depend very much on the neighbors。 In other words。 those two are perfectly well-defined Waldos。 And I don't really need to know a lot of other things。 in order to identify them。 So as a matter of fact， when you teach kids how to play this， game。 whereas Waldo， you tell them， hey， here's Waldo。 Now go find。
+而且，这实际上并不太依赖于邻居。换句话说，那两个是完全定义好的瓦尔多。而我并不需要知道很多其他的事情，才能识别它们。所以实际上，当你教孩子们怎么玩这个游戏时，你会告诉他们，嘿，这是瓦尔多。现在去找吧。
 
- And then you make yourself a cup of coffee and you wait， until they come back and say， hey。 I found it。 And they're pretty good at using that very simple template。 of a single image to then scan the entire picture， to find this person。 And they use the fact that only locally this matters， and that Waldo could be anywhere in the image。
+然后你给自己泡一杯咖啡，等待他们回来告诉你，嘿，我找到了。而他们非常擅长使用这种非常简单的模板，通过一个单一的图像扫描整个图片，找到这个人。他们利用了这样一个事实：只有局部才重要，瓦尔多可以出现在图像的任何位置。
 
- So what does this have to do with math？ So let's actually look at how a dense layer looks like。 And what I've done is to make my life a little bit easier。 I've indexed my hidden units with hij。 So rather than just saying I have maybe， a hundred dimensional hidden units。 I've just arranged them in a grid of 10 by 10， because I input an image。
+那这和数学有什么关系呢？让我们来看一下一个密集层是什么样子的。我所做的是让自己的生活更简单一些，我将我的隐藏单元用`hij`进行了索引。所以，与其说我有可能有100维的隐藏单元，不如说我将它们排列成10x10的网格，因为我输入的是一张图像。
 
- And I can always arrange them in such a way。 And let's say these hidden units should at some point。 indicate the Waldo-ness of that particular part of the image。 And so in general。 I can write this as sum over k and l。 Wijkl xkl。 All right？ So xkl， that's the source image。 Say here's k， here's l。 And so you need to scan over the entire image， to find where Waldo is。
+我可以总是以这种方式安排它们。假设这些隐藏单元在某个时候应该表示图像中特定部分的Waldo特征。那么通常，我可以写成对k和l的求和，Wijkl xkl。明白吗？所以xkl就是源图像。假设这里是k，这里是l。所以你需要扫描整个图像，找出Waldo在哪里。
 
- And if Waldo happens to be over here， well， you still need to find him。 That's not Waldo。 it's smiley， but fine。 Not a regular drawing。 So what I'm now going to do is I'm。 going to re-index the entire expression。 So nothing has changed by just indexing it by vijab。 where ab references the offset relative to ij。 And now I'm summing not over xkl。
+如果Waldo恰好在这里，好吧，你仍然需要找到他。那不是Waldo。是笑脸，但没关系。不是常规图像。那么现在我要做的是，我将重新索引整个表达式。所以仅仅通过将它按vijab索引，ab表示相对于ij的偏移量，实际上没有改变任何东西。现在我不是对xkl进行求和。
 
- but xi plus a and j plus b。 So this is just some algebraic rearrangement。 The math is still completely identical。 I might have to worry about boundaries and so on。 but all I do is I'll just set the corresponding other terms， to 0 and everything's good。 Is everybody comfortable with that first line？ No。 OK。 Questions？ What's unclear？ OK。
+但是xi加a和j加b。所以这只是一些代数重排。数学上完全没有改变。我可能需要担心边界等问题，但我所做的就是将相应的其他项设为0，一切就好了。大家对第一行都理解了吗？没有。好的，有问题吗？哪里不清楚？好的。
 
- So just to repeat the ij is the i player， the j-pin unit， and the i player。 No， not quite。 That's just in the first hidden layer。 So this is x。 And this is h。 And now I'm just indexing it by i and j。 So I'm just representing h。 So this hidden unit。 this hidden layer， as a two-dimensional object， rather than a one-dimensional object。
+所以再重复一遍，ij是第i个玩家，第j个针单位，以及第i个玩家。不是完全是。那只是第一个隐藏层。这里是x。这是h。现在我只是通过i和j进行索引。所以我只是表示h。所以这个隐藏单元，这个隐藏层，是一个二维对象，而不是一维对象。
 
- which I can always do just by just reshaping it。 And so that first equality is entirely general。 I can do that for any multi-layer perceptron， as long as the input。 dimensions and the output dimensions can be factorized。 I could always write it so。 Mightn't make a lot of sense， but I can write it algebraically， like this。
+我可以通过简单地改变形状来做到这一点。所以那个第一个等式是完全通用的。我可以对任何多层感知机这样做，只要输入维度和输出维度可以分解。我总是可以这样写。可能并不是很有意义，但我可以像这样代数地写出来。
 
- So is everybody OK with the first hij and the middle part， of the equality？ OK。 Is that all you want is the ci plus a， j plus b？ Yes， it has to be i plus a， j plus b。 Correct。
+那么大家都理解第一个hij和等式中间的部分了吗？好的。那你们只需要ci加a，j加b吗？是的，必须是i加a，j加b。没错。
 
 ![](img/a9c874dda56d407de128d4b6d78363af_5.png)
 
- Good catch。 Let's fix that。 Thank you。
+好的，抓得很好。我们来修正一下。谢谢。
 
 ![](img/a9c874dda56d407de128d4b6d78363af_7.png)
 
- Good catch。 So everybody's OK with the middle equation。 Now let's look at the last one。 Switching from the middle to the last one， is really just re-indexing。 All I'm doing is I'm just writing k equals i plus a， and l equals j plus b。 That's all I'm doing。 It's just re-ordering。 And since these are arbitrary matrices， w。
+好的，抓得很好。那么大家都理解中间的等式了吗？现在我们来看最后一个。从中间到最后的转换，实际上只是重新索引。我所做的只是写下k等于i加a，l等于j加b。就是这么简单。这只是重新排序。既然这些都是任意的矩阵，w。
 
- I can just have an arbitrary matrix， v。 OK。 Now if you look at that， that's actually a convolution。 Except that right now this thing depends still on a lot， of other locations。 So basically。 the bottom line is really just how I re-index。
+我可以随便选择一个矩阵，v。好，现在如果你看一下，实际上这是一个卷积。只是现在这个东西仍然依赖于许多其他位置。所以从本质上讲，底线就是我如何重新索引。
 
 ![](img/a9c874dda56d407de128d4b6d78363af_9.png)
 
- Now let's actually apply our math。 So remember we have hij is vijab， xi plus a， j plus b。 So all I'm doing is I'm just expressing the hijs。 So let's say this is correct， i and j。 That's hij。 I'm expressing it relative to what happens around Mr。 Smiley face。 Now what I'm doing is I'm saying。 well， actually， what happens around Mr。 Smiley face here， and what happens around Mr。
+现在让我们实际应用我们的数学公式。所以记住，我们有hij是vijab，xi加a，j加b。所以我所做的就是表达hijs。假设这是正确的，i和j。这是hij。我将其相对于笑脸先生周围发生的事情进行表达。现在我所做的是，我说，实际上，笑脸先生周围发生的事情，以及周围发生的事情。
 
- Smiley face over there。 Well， I should be applying the same filter。 So in other words， this vijab。 I can drop the index ij。 So my weight matrix no longer depends on the location ij。 but just on the shift relative to that position。 Now if I do this。 and I have a 12 megapixel image--， in other words， I have 36 million dimensions--。
+那边有一个笑脸。嗯，我应该应用相同的滤波器。换句话说，这个vijab。我可以去掉索引ij。所以我的权重矩阵不再依赖于位置ij，而仅仅依赖于相对于该位置的位移。如果我这样做，并且我有一张1200万像素的图像——换句话说，我有3600万个维度——。
 
- I've just reduced the dimensionality of my weight， just by 36 million。 Because I've dropped the indices referring， to the size of the image。 So that's a significant reduction of the problem。 So already now we could solve the problem。 if we took pictures of enough cats and dogs。 Before that， we had more parameters than cats and dogs。
+我刚刚将我的权重的维度减少了，仅减少了3600万个。因为我去掉了与图像大小相关的索引。所以这是一个显著的问题简化。因此，现在我们已经能够解决这个问题。如果我们拍摄足够多的猫狗图片的话。之前，我们的参数比猫和狗的数量还要多。
 
- but we've just reduced the number of parameters by 36 million。 That's kind of nice。 And that is actually an expression， that I'm fairly sure you know， because that's。 just a cross-correlation。 Looks like a convolution。 Any questions so far？
-
-
-
-
+但我们已经将参数数量减少了3600万个。感觉不错。而且这实际上是一个表达式，我可以确定你知道，因为这就是。只是一个互相关。看起来像是卷积。到目前为止有什么问题吗？
 
 ![](img/a9c874dda56d407de128d4b6d78363af_11.png)
 
- So then here comes the next step， locality。 So if you look at Mr。 and Mrs。 Smiley face。 so you have this convolutional filter that goes over them， with some weight。 And effectively。 if you think about it， outside this box， here I don't really care about what exactly happens。 So I can just truncate this。 This all goes away。 This all goes away。 This goes away。
+接下来是下一步，本地性。如果你看一下笑脸先生和笑脸夫人，你会看到这个卷积滤波器会覆盖在它们身上，带有一些权重。实际上，如果你考虑一下，超出这个框架的部分，我并不关心发生了什么。所以我可以直接截断它。这部分就消失了。这部分就消失了。这部分也消失了。
 
- And this goes away。 So in other words， I just have some filter applied locally， and that's about it。 So therefore， I can limit the valid range of the parameters， A and B， which determine the offset。 to be within some scope。 And in practice， people might make this five pixels， to either side。 So people pick a very narrow scope in many cases。 And so now what we get is that H ij is some over A and B。
+然后这就消失了。换句话说，我只是应用一个局部的滤波器，仅此而已。因此，我可以将参数A和B的有效范围限制在某个范围内，这些参数决定了偏移量。在实际操作中，人们可能将这个范围设置为两侧各五个像素。所以在很多情况下，人们会选择一个非常窄的范围。现在我们得到的是H ij是A和B上的某个值。
 
- going from minus delta to plus delta， V ab xi plus A j plus B。 Any questions so far？
+从负的delta到正的delta，V ab xi加A j加B。到目前为止有什么问题吗？
 
- So maybe all the math was just a little bit intimidating。 But the outcome is super simple， right？
-
-
-
-
+所以也许所有的数学公式看起来有点吓人。但结果是非常简单的，对吧？
 
 ![](img/a9c874dda56d407de128d4b6d78363af_13.png)
 
- You just convolve the input with some filter， and you get some output。 Let's go through some numbers， because this。
+你只需用某个滤波器对输入进行卷积，就可以得到一些输出。让我们来看一些数字，因为这个。
 
 ![](img/a9c874dda56d407de128d4b6d78363af_15.png)
 
- will make it a lot easier。 So after the mathematical justification。 let's look at some stuff in practice。 Let's say I have this 3 by 3 input。 and I have a 2 by 2 convolutional kernel。 What I do is I just pointwise multiply the entries。 of the kernel with the input。 So let's say 0 times 0 plus 1 times 1 plus 2 times 3 plus 3， times 4。
+这样会更容易理解。所以在数学推导之后，我们来看一些实际的例子。假设我有一个3x3的输入图像，并且我有一个2x2的卷积核。我所做的就是将卷积核中的每个元素与输入图像对应位置的元素逐点相乘。所以假设是0乘0加1乘1加2乘3加3乘4。
 
- And that gives me 19。 Then I shift the kernel by 1 to the right， and I get the same thing again。 And I keep on doing this。 So therefore， I'll get as my output。 In this case， this 2 by 2 matrix。 or image， with these entries。 Is everybody kind of cool with that？ So after all this scary math。 here's what you do operationally。 You can forget about the scary math。
+这给了我19。然后我将卷积核向右移动1个单位，结果又得到相同的东西。我就一直这样做。因此，我将得到输出。在这种情况下，这是一个2x2的矩阵，或者说是图像，包含这些条目。大家都明白了吗？所以在经历了所有这些可怕的数学之后，操作上你需要做的是，忘记那些可怕的数学。
 
- unless you want to actually derive， convolutions from first principles。 Now why would that matter？
+除非你想从基本原理出发推导卷积。那为什么这会很重要呢？
 
- Well， if you have translation， variance， and you get convolutions， then OK， the problem is solved。 Somebody's worried we've written that paper。 But you might have some other symmetry groups。 for which you don't know yet what the solution is。 In that case。 you can apply symmetry and invarances， and you'll get another kernel。 So if you look at that。
+好吧，如果你有平移不变性，并且你进行了卷积，那么好，问题就解决了。有人担心我们写了那篇论文。但是你可能会有其他对称群，在这种情况下，你还不知道解决方案是什么。在这种情况下，你可以应用对称性和不变性，然后你将得到另一个卷积核。所以如果你看看那个。
 
- that's what happens。 If you take a 4 by 4 image， and you， take a 3 by 3 convolutional kernel。 then you get this very pretty animation。 Any questions so far？ Good。
+这就是发生的情况。如果你拿一个4x4的图像，然后拿一个3x3的卷积核，那么你会得到这个非常漂亮的动画。到目前为止有问题吗？好。
 
 ![](img/a9c874dda56d407de128d4b6d78363af_17.png)
 
- So therefore， we have a convolutional layer。 What it does is it takes as an input， nh times nw。 so height times width and input matrix。 And you need a kernel matrix。 This may or may not be square。 Typically， people use square convolutional kernels， but there are some very rare applications。 where you might not have that。 For instance， the image might have。
+因此，我们有了一个卷积层。它的作用是接收一个输入，大小为nh乘以nw。即高度乘以宽度的输入矩阵。你需要一个卷积核矩阵。这个矩阵可能是方形的，也可能不是。通常，人们使用方形的卷积核，但也有一些非常罕见的应用，可能不会使用方形卷积核。例如，图像可能具有。
 
- been recorded with some anamorphic lanes or whatever。 So sometimes people do that when they record for a cinema。 They basically squish things and then expand it again。 And this is mostly what people used。 to do in the old times when basically film and film width， was a real issue。 But yeah。
+它是用某些变形镜头或其他方式录制的。所以有时候人们在为电影录制时会这样做。他们基本上把东西压缩，然后再扩展回来。这就是人们在过去常做的事情，当时电影和胶片宽度是一个实际问题。但嗯。
 
- so you do that。 Then of course， in the end， you add a bias to it。 Bias is just a constant。 And so you can check that if I have， an image of some height times some width。 and a corresponding kernel of some height times some width。 then the output is the image height minus the kernel height。
+所以你这么做。然后，当然，最后你会加上一个偏置。偏置只是一个常数。所以你可以检查一下，如果我有一个高乘以宽的图像，以及一个相应的高乘以宽的卷积核，那么输出就是图像高度减去卷积核高度。
 
- plus 1 times the same thing for the width。 Well， the plus 1 is simply because if my convolutional kernel。 and the image are exactly of the same size， I still get the 1 by 1 output。 But of course， otherwise。 I can just shift it around。 And of course， only as far as I have space either way。 So if you're unsure， go home and find a piece of Lego。
+再加上1乘以相同的宽度。那么，加1的原因仅仅是因为如果我的卷积核和图像的大小完全相同，我依然得到的是1x1的输出。但当然，除此之外，我可以随意移动它。当然，只要我在任何一方都有空间。因此，如果你不确定，回家找一块乐高砖。
 
- like one of those nice Lego plates where you build houses on。 You make the input size of the image。 like a nice rectangle。 You take your convolutional kernel as a filter， and you move it around。 You see how many positions you get。 Now， of course， this is deep learning。 We want to learn things。 And in this case， we want to learn WMB。 Any questions？ OK。
-
-
-
-
+比如那种漂亮的乐高板，你可以在上面建房子。你将图像的输入大小做成一个矩形。你拿你的卷积核当做滤波器，移动它。你看看能得到多少个位置。当然，这就是深度学习。我们想要学习东西。在这种情况下，我们想学习WMB。有问题吗？好。
 
 ![](img/a9c874dda56d407de128d4b6d78363af_19.png)
 
- Good。 So here's some examples。 So I can take， let's say， maybe this image here。 of some rodent-like animal。 And then if I use those filters， I get an edge detector。 I can sharpen things。 I can blur them。 So these are hand-engineered filters。 So if you use。 let's say， Photoshop or Lightroom， you can have a sharp， more a blur or other filters。
+好的。所以这是一些例子。我可以拿这张图，假设它是一只像啮齿动物的动物的图像。如果我使用这些滤波器，我就得到一个边缘检测器。我可以锐化图像，也可以模糊它们。这些都是手工设计的滤波器。所以如果你使用比如Photoshop或Lightroom，你就可以有锐化、模糊或者其他滤波效果。
 
- That's what those things do。 They're basically pre-baked convolutions applied to your image。 By now。 of course， people are a little bit smarter than that。 But essentially。 that's what those simple operations do。 It's an example from Rob Ferguson's class。
-
-
+那些东西就是这么做的。它们基本上是应用到你图像上的预先计算好的卷积。到现在为止，当然，人们比那时候更聪明了。但本质上，这就是这些简单操作的作用。这是Rob Ferguson课程中的一个例子。
 
 ![](img/a9c874dda56d407de128d4b6d78363af_21.png)
 
- So this is some picture， I think， from Boston。 And if you have this convolution and you scan over the image。 let's say， where the animation works。 No， it didn't work。 Then you'll get this output。 And if you pick a different other convolutional filter， you'll get something else。 So these are actual weights that the deep network learned。
+这是一张我认为来自波士顿的图片。如果你有这个卷积操作，并且扫描图像，假设动画正常工作。不是的，它没工作。那么你会得到这个输出。如果你选择另一个不同的卷积滤波器，你会得到其他的结果。这些是深度网络学习到的实际权重。
 
- And so depending on which filter it applies， you get some other views of what that network sees。 Well， it doesn't really see， but it's， just the intermediate representation。 OK。 So just like one minor， nifty detail。 So actually， we're talking about cross-correlations。 because for convolutions， you just flip the indices， but that just looks a little bit awkward。
+所以根据应用的滤波器不同，你会看到该网络看到的其他一些视图。嗯，实际上它并不“看”东西，而只是中间的表示。好吧，这只是一个小小的、巧妙的细节。其实我们在谈论的是交叉相关。因为对于卷积操作，你只是翻转下标，但那看起来有点别扭。
 
- And on top of that， in terms of memory access and locality， it's not so nice。 So that's why you don't flip the indices。 But there's no difference in practice。 because you can always express one by the other。 Quick question， because I said。 in terms of memory access， that's not so nice。 What do you think would happen？ Well。
+更重要的是，就内存访问和局部性而言，这样并不好。所以这就是为什么你不翻转下标。但实际上没有区别，因为你总是可以通过另一种方式表达这个。快速提问，因为我说过，在内存访问方面这并不好。你觉得会发生什么呢？好吧。
 
- let's draw a picture。 Then it becomes very clear。 So let's say this is our image。 And I've got some filter here。 And I'm going over the image like so。 And so I'm going forward in memory。 All right， I'm going forward in memory。 making a jump forward in memory， making a jump in song。 OK。 Now。
+让我们画个图。这样就非常清楚了。假设这就是我们的图像。我这里有个滤波器，我就像这样在图像上滑动。所以我是在内存中前进。好吧，我在内存中前进，做一个内存跳跃，做一个跳跃的动作。好了，现在。
 
- computers are pretty good at caching things， that you're likely to read next。 And most code。 most computer code， goes forward in memory， not backwards。 So a lot of optimizations on your computers are hardwired， to assume that the next operation is。 going to be the next element in memory， in ascending order rather than descending order。
+计算机在缓存你可能接下来会读取的内容方面非常擅长。而且大多数代码，尤其是计算机代码，都是在内存中前进的，而不是向后走的。所以你计算机中的许多优化是硬件级的，假设下一个操作会是内存中下一个元素，而不是倒序。
 
- So in other words， if you're there， your computer is probably going to cache this element。 Once you're there， it's going to cache this and so on。 That's a really good idea to walk forward。 Same thing happens with your kernel here。 So if I have a convolution， I would end up。 walking backwards there。 And this would actually slow down things， at least， in some cases。
+换句话说，如果你在那里，你的计算机会缓存这个元素。一旦你到达那里，它会缓存这个，然后继续以此类推。这是一个非常好的前进方式。你的内核也会发生类似的事情。如果我进行卷积操作，我就会最终。倒着走。这样反而会让事情变得更慢，至少在某些情况下是这样的。
 
- If this all fits into cache and you optimize， and there's a lot of other things that you can do。 But this is one of the reasons why cross-correlations。 are your friend and convolutions may not necessarily be。 OK。 OK。 Well。 K is the convolutional kernel。 Oh， here it should be just the corresponding index。
+如果这一切都适合缓存并且你进行了优化，还有很多其他你可以做的事情。但这就是为什么交叉相关是你的朋友，而卷积操作可能不一定是的原因。好吧。好了。K是卷积核。哦，这里应该只是相应的下标。
 
- And that's not what we should see。 There should be no K here。
+这不是我们应该看到的。这里不应该有 K。
 
 ![](img/a9c874dda56d407de128d4b6d78363af_23.png)
 
- It's a typo。 Good cache。 [INAUDIBLE]， There's another one。 So this is what happens if you do LaTeX by cut and paste， then such things happen。
+这是一个错别字。不错的缓存。[无法听清]，还有另一个。所以如果你通过剪切和粘贴做 LaTeX，就会发生这种情况。
 
 ![](img/a9c874dda56d407de128d4b6d78363af_25.png)
 
- Thank you。 Good cache。 Of course， besides two-dimensional convolutions。 they're also one-dimensional and three-dimensional ones。 So for instance。 you can use similar principles， to the analysis of text。 And unfortunately。 there a lot of the analogies， are only partially true。
+谢谢。不错的缓存。当然，除了二维卷积，还有一维和三维卷积。例如，你可以使用类似的原理来分析文本。不幸的是，很多类比只是部分正确。
 
- Because text is not entirely translation invariant。 Can somebody tell me why text is not entirely translation， invariant？ Well。 at least it shouldn't be。 And for most people， it isn't。 Any idea？ [INAUDIBLE]， Well。 the Markovian part isn't really the source， but it's a good thought。 So what happened？ I mean。
+因为文本并不是完全具有平移不变性的。有人能告诉我为什么文本不是完全平移不变的吗？嗯，至少它不应该是。对于大多数人来说，它并不是。有谁知道为什么吗？[无法听清]，嗯，马尔可夫部分并不是真正的原因，但这是一个好想法。那么发生了什么？我的意思是。
 
- you have Markovian properties also for images。 But the thing is that text has this property that there are。 sentences， there are paragraphs， so there are boundaries， that are not--。 if I take a sentence and I shift everything by one word， to the right。 then I'm dropping the first word of one sentence， and adding a new word of the next sentence。
+图像也具有马尔可夫性质。但问题在于，文本具有这样的特性：它有句子，有段落，所以有边界，而这些边界并不是——如果我把一个句子所有的单词向右移动一个，那么我就丢掉了一个句子的第一个单词，并且加上了下一个句子的一个新单词。
 
- And now you've turned something that probably made sense， into gibberish。 So this is why translation invariance， doesn't entirely hold， but only， for instance。 between sentences， to some extent。 But also there， you have paragraphs。 you have other structure that applies。 The other thing is that sentence length is highly variable。
+现在，你已经把一些可能有意义的东西，变成了胡言乱语。这就是为什么平移不变性并不完全成立，但它只是在句子之间有一定程度的成立。但是在那儿，你还有段落。你还有适用的其他结构。另一个问题是句子长度变化很大。
 
- You might have a short sentence like hello， or you might have a very long sentence about explaining。 how translation invariance in sentences isn't quite true。 So this is why you need a little bit of extra tuning。 People have come up with some clever ideas。 for convolutions， for sentences。 Turns out that there are simpler techniques。
+你可能有一个像“你好”这样的短句，或者你可能有一个非常长的句子，解释为什么句子中的平移不变性并不完全成立。所以这就是为什么你需要一些额外的调整。人们提出了一些聪明的想法，针对句子的卷积。结果是，有些更简单的技术。
 
- like what we'll see later， STMs or transformers， which， will address this as well。 But for voice。 that's quite true。 For time series overall， it's quite true。 And for three dimensional， well。 you might have video。 So like this thing that's being recorded right now。 you have basically width times height， times a temporal dimension。 Actually。
+像我们稍后会看到的 STMs 或变换器，它们也会解决这个问题。但对于语音来说，这是很正确的。对于时间序列来说，总体上是正确的。而对于三维的情况，你可能会有视频。所以像现在正在录制的东西，你基本上有宽度乘以高度，再乘以时间维度。实际上。
 
- you have a little bit more， you have also red， green， and blue。 So you really have four dimensions here， but it's a separate story。 So right now。 let's just assume that this is three dimensional。 Or you have satellite images or medical data。 And there， quite often， you measure over an entire spectrum， of different wavelengths。
+你还有更多的维度，包括红色、绿色和蓝色。所以你这里实际上有四个维度，但这是另一个话题。所以现在，让我们假设这只是三维的。或者你有卫星图像或医学数据。在那里，你通常会对不同波长的整个光谱进行测量。
 
- So for instance， a fancy， hyper spectral satellite， might record 10。 it might record 100 different wavelengths。 That will give you a much， much more detailed idea。 for instance， what the atmosphere looks like。 For instance。 bees have more than three different colors， of photoreceptors。
+例如，一个复杂的高光谱卫星，可能记录10种，可能记录100种不同的波长。这将给你一个更详细的想法，比如大气是什么样的。比如，蜜蜂有超过三种不同颜色的光感受器。
 
- Or if you have mostly men who are color blind， they might only have two out of three different photoreceptors。 So that's the dimensionality of what you're recording。 Any questions so far？ Cool。 Good。 So then let's actually try this out in practice。
+或者，如果你身边大多数是色盲男性，他们可能只有三种视锥细胞中的两种。所以，这就是你正在记录的维度。目前有任何问题吗？酷。很好。那么接下来我们就实际操作一下。
 
 ![](img/a9c874dda56d407de128d4b6d78363af_27.png)
 
- practice。 [BLANK_AUDIO]。
+实践。[BLANK_AUDIO]。

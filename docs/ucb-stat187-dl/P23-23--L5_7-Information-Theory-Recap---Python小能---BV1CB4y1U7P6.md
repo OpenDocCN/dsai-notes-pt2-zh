@@ -1,107 +1,99 @@
-# P23：23. L5_7 Information Theory Recap - Python小能 - BV1CB4y1U7P6
+# P23：23. L5_7 信息论回顾 - Python小能 - BV1CB4y1U7P6
 
- So here's a little bit of a background and recap of the information theory part that we didn't quite get covered on Tuesday。 And I got a few questions about the craft inequality and why it's needed。
+这是信息论部分的一些背景和回顾，我们在星期二没能完全覆盖的内容。我有几个问题关于Craft不等式以及为什么需要它。
 
 ![](img/5a174861961b3d793774b2dfcb526d22_1.png)
 
- So let's briefly review this。 So remember the entropy is given by the negative log of， well， pj。 the expectation of that。 So it's， and this is a measure for the number of bits or the amount of information。 you know， the number of symbols that I need in order to store and transmit that data。 Now the Shannon limit coding theorem tells us that the lower bound on the number of bits is the entropy of the distribution divided by log base two。
+那么我们简要回顾一下。记住，熵是通过负对数来表示的，嗯，pj的期望值。它是，这也是度量比特数或信息量的一个标准。你知道，我需要多少符号来存储和传输这些数据。现在，香农极限编码定理告诉我们，比特数的下界是分布的熵除以对数二。
 
- So that by log two。 Furthermore， the entropy is concave since p log p is convex。 And what that means is that the entropy of the mixture of two distributions is always greater and equal than the mixture of the entropy。 In other words， if I take two data sources and mix them up。 then the uncertainty can only increase relative to what I would have gotten if I hadn't mixed it up。
+所以就是通过对数二。进一步来说，熵是凹函数，因为p log p是凸函数。这意味着两个分布的混合的熵总是大于或等于各自熵的混合。换句话说，如果我拿两个数据源混合起来，那么不确定性只能相对于没有混合时增加。
 
- Which， I guess， is kind of what you would expect。 Okay。
+这，嗯，应该是你预期的结果。好的。
 
 ![](img/5a174861961b3d793774b2dfcb526d22_3.png)
 
- So then we reviewed the entropy of a couple of simple things like coins and。 if you play Dungeons and Dragons。
+然后我们回顾了一些简单事物的熵，比如硬币和。如果你玩地下城与龙。
 
 ![](img/5a174861961b3d793774b2dfcb526d22_5.png)
 
- And then we got to the craft inequality。 So the first thing to just briefly review is a prefix code。 Well， a prefix code is something where if I read things often at some point I can easily determine。 okay， that's the end of the code because nothing else could have started with that set of code words。 So the left hand side， we have something that's decidedly not a prefix code。 On the right hand side。
+然后我们就到了Craft不等式。所以首先简要回顾一下前缀码。前缀码是一种，如果我读取它们，通常在某个点我可以很容易地判断，好的，代码到此为止，因为没有其他东西能以这组代码字开始。在左边，我们有一些显然不是前缀码的东西。在右边。
 
- it's a prefix code so that's much easier to decode as well。 So A maps into zero。 B maps into one zero and so on and so on。 So basically prefixes cannot be individual code words。
+它是一个前缀码，所以也更容易解码。A映射到零，B映射到一零，依此类推。基本上，前缀不能是单独的代码字。
 
 ![](img/5a174861961b3d793774b2dfcb526d22_7.png)
 
- Okay。 And then there's the craft inequality。 And so the inequality said that basically if I have an encoding where the length of each string L of X satisfies that the sum over two to the minus L of X is less equal than one。 then， so first of all， every prefix code satisfies this。 Secondly。
+好的。然后是Craft不等式。这个不等式基本上是说，如果我有一个编码，其中每个字符串L的长度满足L的总和对2的负L次方求和小于等于1。那么，首先，每个前缀码都满足这一条件。其次。
 
- if I have a length distribution of that type， then I can find a prefix code for it。 Okay。
+如果我有这种类型的长度分布，那么我可以为它找到一个前缀码。好的。
 
 ![](img/5a174861961b3d793774b2dfcb526d22_9.png)
 
- And that proof， so here's a slightly more illustrated version of how you would do it。 For the forward part， you need to look at the probability that you actually do get the collision。 And in this case， I just created a random string。 It's， you know， one， one， zero， that， that， that。 that。 And you can see， okay， collides with C。 And you can see that the probability of that string being a collision is one-eighth。
+那么这个证明，下面是一个稍微更直观的版本，展示了如何进行操作。对于前向部分，你需要查看实际发生碰撞的概率。在这个例子中，我创建了一个随机字符串。它是，知道吗，1，1，0，那，那个，那个。然后你可以看到，好的，碰撞到C。你可以看到，这个字符串发生碰撞的概率是1/8。
 
- Doesn't matter how long the overall string is that I'm trying to collide it with because I'm just looking at prefix collisions。 For a string that starts with zero， while okay， the probability that it'll collide with an arbitrary string is one-half。 And so， if， since I know that the overall probability of collision is， you know。 less equal than one， therefore， I get the craft inequality for prefixes。 And then。
+不管我尝试与之碰撞的整个字符串有多长，因为我只是看前缀碰撞。对于以零开头的字符串，嗯，好吧，它与任意字符串发生碰撞的概率是二分之一。所以，如果因为我知道碰撞的总体概率是，你知道的，**小于等于**1，那么我得到了前缀的克拉夫不等式。然后。
 
- to prove the backwards part， suppose that I have a length set of basically one string of length one。 one of length two， one of length three， one of length five。 And， okay。 I just picked the numbers from the left because， well， I'm being lazy。 And you can easily see that。 that satisfies the craft inequality。 But now if I wanted to actually generate， you know。
+为了证明反向部分，假设我有一个长度集，基本上是一个长度为1的字符串，一个长度为2的字符串，一个长度为3的字符串，一个长度为5的字符串。好吧，我只是从左边选数字，因为，嗯，我有点懒。而且你可以很容易地看出，这满足了克拉夫不等式。但是现在，如果我想实际生成，嗯，你知道。
 
- a prefix code based on that， well， what you do is you pick the smallest of those numbers first。 or if， you know， there might be multiple of them。 Obviously， if I had one-one。 it wouldn't work because I've just used up all my probabilities。 But， okay， so I pick one。 so I use the code， let's say zero for it。 And then I use the prefix one for the rest。
+一个基于这些的前缀编码，嗯，你要做的是首先选择其中最小的那个数字。或者如果你知道，可能有多个相同的。显然，如果我有 `1, 1`，那就不行，因为我已经用完了所有的概率。但好吧，我选择1。所以我使用这个编码，假设用零表示它。然后我将前缀1用于其余部分。
 
- And so now I subtract one from all the other numbers， right？ So my two， three， five turns into one。 two， four。 And then I go and pick again one， so I use the zero for it， so I get now， you know。 the code word one， zero。 I use the prefix one for the rest， the remaining set is now one， three。 because two， four get shifted。 And so at every step， I， you know。
+所以现在我从所有其他数字中减去一，对吧？所以我的2、3、5变成了1、2、4。然后我再次选择1，所以我使用零来表示它，因此现在得到，嗯，代码字是 `1, 0`。我将前缀 `1` 用于其余部分，剩余的集合现在是1、3，因为2、4被移位了。所以在每一步，我，嗯。
 
- pull some of my symbols off the list。 And so at some point， I run out of symbols。 And at no point would the residual probability ever have increased beyond what I would have had before。
+从列表中拿出一些符号。所以在某个时刻，我用完了符号。而且在任何时候，剩余的概率都不会超过我之前的概率。
 
 ![](img/5a174861961b3d793774b2dfcb526d22_11.png)
 
- Okay， that's why it works。 Okay， so then the reason off for actually having this craft inequality is to show that if I pick a prefix code based on minus log base two of p of x。 that first of all I can actually engineer such a code。 That's basically the reason why I need that craft inequality。 So I need it for the constructive proof。 So first of all， picking links， you know。
+好的，这就是为什么它有效。好吧，那么实际上拥有这个克拉夫不等式的原因是要证明，如果我选择一个基于 `-log2(p(x))` 的前缀编码。首先，我实际上可以构建这样的编码。这基本上就是我需要这个克拉夫不等式的原因。所以我需要它来进行构造性证明。那么，首先，选择链接，你知道。
 
- the next largest integer to minus log base two of p of x is a sensible idea because if I sum over two to the minus。 seal of minus log base two of p of x， right？ That's of course less equal than skipping， you know。 the seal operator， right？ Because then the number gets larger。 Well。 the number gets smaller and that overall it gets larger。 Okay。
+下一个最大的整数是 `-log2(p(x))` 是一个合理的想法，因为如果我对 `2^(-ceil(-log2(p(x))))` 求和，对吧？这当然是 **小于等于** 跳过你知道的天花板操作符，对吧？因为那样数字会变大。嗯，数字变小，整体来说，它变大。好的。
 
- so I have two to the log base two of p of x， which is nothing else than p of x， which is one。 So therefore， I know that the craft inequality holds， so therefore。 by the construction that we saw before， we actually engineered ourselves a code。 Now that's optimal within one bit because at most I waste one bit between log base two of p of x and the next largest integer。
+所以我有 `2^log2(p(x))`，这其实就是 `p(x)`，也就是1。所以因此，我知道克拉夫不等式成立，因此，根据我们之前看到的构造，我们实际上已经构造出了一个编码。现在这个编码在位数上是最优的，因为最多我在 `log2(p(x))` 和下一个最大的整数之间浪费了一位。
 
- And I can turn this into something that wastes only one over k bit by going to k two。 The optimality proof goes through the k-led divergence and it's omitted here but we'll just do it on the very next slide pretty much。 Because we need to have the k-led divergence anyway。
-
-
+我可以将其转化为只浪费 1/k 个比特的形式，方法是转向 k 二。最优性证明通过了 k-led 散度，这里省略了，但我们几乎会在下一张幻灯片上展示。因为我们反正需要使用 k-led 散度。
 
 ![](img/5a174861961b3d793774b2dfcb526d22_13.png)
 
- Okay， so the cool back-lively divergence is a way of measuring the distance between two distributions。 And sometimes people think of this cool back-lively divergence as something very， very magical and。 you know， very hard to understand what's really going on。 And if you think about it。 it's actually some very， very tangible quantity。 So let's。
+好的，那么**Kullback-Leibler 散度**是一种衡量两个分布之间距离的方法。有时人们认为这个**Kullback-Leibler 散度**是非常、非常神奇的东西，你知道的，非常难以理解究竟发生了什么。如果你仔细想想，它其实是一个非常、非常具体的量。所以让我们来看看。
 
- as for the moment we pretend that we know that the optimal code uses log p。 when it uses entropy minibits， right？ Or， that's actually， but， you know， entropy of a log two。 right？ So then I could ask， you know， if I pick a code based on the wrong distribution。 how many bits would I use in expectation then， right？
+至于目前我们假设知道最佳编码使用了 log p。当它使用了熵的最小比特数，对吧？或者说，实际上，熵是 log 二，没错？那么我可以问，如果我基于错误的分布选择一个编码，我期望使用多少比特？
 
- And I can therefore measure the distance between the true distribution and the wrong distribution by just taking the difference between optimal bits and the bits with the wrong code。 Right， so intuitively that feels like the right thing to do。 Now。 the wrong number of bits would be if I were to use minus log q of x， you know， it， you know。 symbols to store some x。 Whereas， you know， the correct thing would be minus log p of x。
+因此，我可以通过仅仅取最佳比特和使用错误编码的比特之间的差异，来衡量真实分布与错误分布之间的距离。对吧，所以直觉上，这感觉是正确的做法。现在，错误的比特数就是如果我用负对数 q(x)，你知道的，用符号来存储某个 x。而正确的做法是用负对数 p(x)。
 
- So I just take the expectation of that， so d p of x of minus log q of x minus minus log p of x。 which is just a really complicated right way of saying log p of a q。 And if you。 if you've done major theory， you will be horrified by me being so cavalier here。 You would actually want to have the rather nicotin derivative， so you would have something like dp。
+所以我只需取其期望值，即 d p(x) 的负对数 q(x) 减去负对数 p(x)，这只是说 log p 和 q 之间关系的一个非常复杂的方式。如果你，假设你学过大理论，你会对我这么轻率地处理这些感到震惊。你实际上会希望有更精确的微分公式，因此你会得到类似 dp 的东西。
 
- dq， but I'm not going to worry about those niceties here。 And after all， this is an undergrad class。 and this is about probably about as theoretical as we want to be here anyway。 So what we want to do。 though， is we want to prove that this KL divergence。 because Koolback Live List kind of hard to pronounce， so everybody says KL divergence。
+dq，但我这里不会纠结于那些细节。毕竟，这是一个本科生课程，而且这大概是我们想要探讨的最理论化的内容。所以我们要做的。是的，我们要证明这个 KL 散度。因为**Kullback-Leibler**（很难发音），所以大家都说 KL 散度。
 
- that is actually well behaved。 The thing to check is that the divergence between p and p vanishes。 Well， that's easy， because it's just log p over p， which is log of 1， which is 0。 So in expectation it's 0。 Quick question。 Why am I calling it the divergence and not the distance？
+这实际上表现得很好。需要检查的是 p 和 p 之间的散度是否会消失。嗯，这很容易，因为它只是 log p 除以 p，这就是 log 1，结果是 0。所以期望值是 0。快问一下，为什么我称它为散度而不是距离？
 
- Yes？ It's not symmetric。 Yes， it's not symmetric。 So can you tell me why it's not symmetric？
+是吗？它不是对称的。是的，它不是对称的。那么你能告诉我为什么它不是对称的吗？
 
- I think if you're talking about p and keeping the expression position， it gives you a different--。 Exactly。 Yeah。 Exactly。 So because I have the integral with regard to p。 So if you think about it。 one-- so the divergence between p and q is the number of extra bits that I have to pay to encode data drawn from p with a code from q。 The other way is the number of extra bits that I need to do need to pay a fan code that I draw from q with a code from p。
+我认为如果你在谈论 p 并保持表达式的位置，它会给你一个不同的——。没错。是的。没错。因为我有关于 p 的积分。所以如果你想一下，一个——那么 p 和 q 之间的散度就是我在用 q 的编码编码从 p 中抽取的数据时，我必须多付出的额外比特数。另一种方式是，我需要支付的额外比特数是我用 p 的编码来编码从 q 中抽取的码字时所需的比特数。
 
- And those two things need not necessarily be the same。 Now， the next thing， though。 is we need to show-- or we want to show that this KL divergence is non-negative。 Because if I show that it's non-negative and it only vanishes for p equals q， then I'm home。 This then I know that this is actually a meaningful measure。 And furthermore。
+这两者不必一定相同。现在，接下来呢，我们需要证明——或者说我们想证明KL散度是非负的。因为如果我能证明它是非负的，并且只有在p等于q时它才会消失，那么我就成功了。然后我就知道这实际上是一个有意义的度量。而且除此之外。
 
- if this is the difference between the inefficient and the efficient bits。 then I know that while Shannon's coding theorem holds， right。 that's the channel limit because I just proved that any other code will be less efficient than the one that I would have picked this way。 So what I'm basically doing is-- so this is the last line on this slide。
+如果这是低效和高效比特之间的差异，那么我知道，当香农编码定理成立时，对吧。那就是通道限制，因为我刚才证明了，任何其他的编码都会比我选择的这个更低效。所以我基本上在做的是——所以这是这张幻灯片上的最后一行。
 
- So I have dp of x log of q over p。 Now， the logarithm is a concave function。 So therefore。 if I pull it out--， Right。 --let me get some chalk。 And the negative logarithm， mind you， is。 of course， a convex function。 So if I have a convex function， then I have the expectation between。 let's say， those two points。 And we know that for a convex function。
+所以我有dp x log q除以p。现在，logarithm是一个凹函数。所以如果我把它拿出来——对，——让我拿些粉笔。而负的logarithm，记住，是，当然，是一个凸函数。所以如果我有一个凸函数，那么我就有这两个点之间的期望。我们知道对于一个凸函数。
 
- the line between two points is above the epigraph of that function。 In other words。 the average of the values is greater than the value of the average。 OK。 This is also called the instance inequality。 And that's exactly the inequality that I'm invoking here in order to pull the logout。 And so I now get greater equal to minus log of the integral dp of x over-- of q of x over p。
+两点之间的直线在该函数的上方。换句话说，值的平均数大于平均值的值。好的。这也被称为实例不等式。而这正是我在这里调用的不等式，用以拉出对数。因此我现在得到的是大于等于负log x在dp x上的积分，除以——q x除以p。
 
- So the p cancel out， and then I have the log of 1， right， which is 0。 And that's just how I prove this。 So it's very straightforward convex t。 Even though， you know。 the implications are quite deep， the math is actually fairly elementary。 OK。 So now we did all this algebra， but what for？
-
-
+所以p相互抵消了，然后我得到的是log 1，对吧，结果是0。这就是我证明这一点的方法。所以它非常直接，尽管你知道，影响很深远，但数学其实相当基础。好的，现在我们做了所有这些代数运算，那是为了什么呢？
 
 ![](img/5a174861961b3d793774b2dfcb526d22_15.png)
 
- Let's go back to the cross entropy loss。 So remember， the cross entropy loss was between， let's say。 y and o， where the y's now might actually be a probability distribution。 Is the log of， you know。 sum over e to the oi minus y transpose o。 OK。 Now。 if I compute the KL divergence between softmax of o， which is basically what I'm estimating， and。
+我们回到交叉熵损失。所以记住，交叉熵损失是关于y和o的，假设y现在可能实际上是一个概率分布。是log，你知道的，sum over e到oi减去y转置o。好的，现在。如果我计算softmax o之间的KL散度，这基本上就是我在估计的内容。
 
- well， q， which is the truth， then I get， you know。 just sum over qi log qi minus qi log softmax of oi。 Now， I plug in the definition of the softmax。 which is nothing else than， you know， log sum over i e to the oi。 And so now。 by just straightforward algebra， I get exactly the cross entropy loss out of it。
+嗯，q是真相，那么我得到的是，你知道的，sum over qi log qi减去qi log softmax oi。现在，我代入softmax的定义。它其实就是，知道吗，log sum over i e到oi。所以现在，通过简单的代数运算，我就得到了精确的交叉熵损失。
 
- except that I also have this entropy term of q sitting around with me。 But since that doesn't actually depend on o， I can drop it。 So that's how we get to the cross entropy loss from the KL divergence。 So when people try to intimidate you by telling you that they're doing maximum entropy methods。
+除了我还得到了一个与q相关的熵项。但由于这个项实际上与o无关，我可以忽略它。所以这就是我们如何从KL散度得到交叉熵损失的方式。所以当人们试图通过告诉你他们正在做最大熵方法来吓唬你时。
 
- or they're using information theoretical approaches。 most of the times they're just adding or removing their constant， in order to intimidate people。 So don't let them do that to you。
+或者他们正在使用信息理论方法。大多数时候，他们只是在加或减去他们的常数，为了吓唬人。所以不要让他们这样对待你。
 
 ![](img/5a174861961b3d793774b2dfcb526d22_17.png)
 
- OK。 And now this just barely scratches the tip of the surface of the iceberg。 Yeah。 there's a lot more information theory。 This is an awesome book。 I mean， it's old by now。 So I remember this was an old book when I did my PhD。 And it's still an awesome book even now。 Cover in Thomas。 If you search for it， you can maybe find some versions also online。
+好了，现在这仅仅是冰山一角。是的，信息理论远不止这些。这是一本非常棒的书。我是说，它现在已经很老了。记得我做博士时，这本书已经是老书了，但即便现在，它依然是一本很棒的书。封面是托马斯（Thomas）的。如果你搜索一下，可能还可以在线找到一些版本。
 
- There's an information theory course that's pretty decent。 So it has some slides on entropy。 And then there's the book by the late David Mackay。 It's a very nice book。 Probably a little bit more detailed than what you need。 but if you want to dive into information theory， and how this all relates to machine learning。
+有一门信息理论课程，讲得相当不错。里面有一些关于熵的幻灯片。接着是已故大卫·麦凯（David Mackay）的书。这是一本非常不错的书，可能比你所需的内容稍微详细一点，但如果你想深入学习信息理论，并了解这些内容如何与机器学习相关的话，
 
- this is a good place。 And then there are a whole lot of papers by Martin Wainwright and Mike Jordan。 They're both faculty in the CST department。 And they've published extensively on exponential families and other things。 It's very nice to work there。 OK。 And that concludes our discussion of information theory。 So I hope I didn't scare you too much of that so far。
-
-
-
-
+这是一个很好的地方。然后还有马丁·温赖特（Martin Wainwright）和迈克·乔丹（Mike Jordan）发表的大量论文。他们都是CST系的教师，并且在指数族等方面有大量的研究成果。那里的工作环境非常好。好了，以上就是我们关于信息理论的讨论。希望到目前为止，我没有让你对这些内容感到太害怕。
 
 ![](img/5a174861961b3d793774b2dfcb526d22_19.png)

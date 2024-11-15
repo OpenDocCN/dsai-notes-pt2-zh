@@ -1,55 +1,49 @@
-# P81：81. L15_1 Image Augmentation - Python小能 - BV1CB4y1U7P6
+# P81：81. L15_1 图像增强 - Python小能 - BV1CB4y1U7P6
 
- OK， let's cover all image augmentations。 So here， I'm going to show you a real story at this year。
+好的，现在我们来讨论所有的图像增强。这里，我要给你们讲一个今年的真实故事。
 
 ![](img/184743a6ec8eb38d98dd55ed4d97bb0c_1.png)
 
- There's a consumer electric show here like two months ago。 The startup wants to show demo。 The demo is about small vending machines。 You put a vending machine here。 There's a bunch of drinks。 You just grab a drink。 And there's a camera that can recognize， what the drinks you grabbed。 So if it goes to Amazon Go， it's very similar to Amazon Go。 And then they built that one。
+大约两个月前，这里有一个消费电子展。那个创业公司想展示一个演示。演示内容是关于小型自动售货机的。你把一个自动售货机放在这里，里面有一堆饮料。你只需拿一瓶饮料。然后有一台相机可以识别你拿了哪瓶饮料。所以如果它是亚马逊Go，这和亚马逊Go非常相似。然后他们就建了那个。
 
- Their lab works pretty well， like 99% accuracy， to recognize the drinks you grabbed。 But then they bring to the show。 It doesn't work anymore。 And the brain does show that the light before the next day， the next day， it's going to open。 doesn't work。 Why can't debug that？ They find two reasons。 Firstly。
+他们的实验室效果很好，能够以99%的准确率识别你拿了哪瓶饮料。但当他们带到展会上时，它就不再工作了。大脑展示了前一天的光线，第二天它就不行了。为什么调试不了？他们找到了两个原因。首先。
 
- the night temperature on the showroom， is different to the lab they have。 It's pretty-- it cannot be hard to see on this picture， but it's quite yellow。 Secondly。 they put a box on the desk。 You have light reflections from the desk。 And before that， in the lab。 they don't have such a thing。 So how to solve it？ They worked all night， called engineers in China。
+展厅的夜间温度与他们实验室的温度不同。很难从这张照片看出来，但它确实非常黄色。其次，他们在桌子上放了一个盒子，导致桌面的光线反射。而在实验室里，他们没有这种情况。那么如何解决这个问题呢？他们工作了一整晚，联系了中国的工程师。
 
- sorry about that， guys。 And just to buy light， to authenticate， to the showroom light temperature。 connect data again， and train a model。 That's all。 They spend all night to do that and connect。 the like a bunch of data set。 Good， they have two vending machines。 So they can do that one。 And then all the table cloth just， recovered the desk， so that's no light reflections。
+对不起，大家。只是通过光线来验证，与展厅的光线温度进行匹配。再连接数据并训练模型。就这样。他们整晚都在做这些，连接了大量的数据集。好，他们有了两台自动售货机。这样他们就可以做这个了。然后所有的桌布就覆盖在桌子上，这样就没有光线反射了。
 
- That's a real story。 And it's pretty commonly happened。 For example。 you cannot deploy a face identification app， into your mobile phones。 They're going to find-- after deploy， you're going to find the light condition of very different。 indoor， outdoor， and camera quality are different。 Also， if you're going to do speech recognition。
+这是一个真实的故事。并且这种情况非常常见。例如，你不能将面部识别应用程序部署到你的手机上。部署后你会发现，光线条件会非常不同。室内、室外，甚至相机质量都不同。如果你还要做语音识别。
 
- I don't know if you're using Siri to speak something。 Indoor， outdoor， back noise， all the things。 affect all this motor accuracy。 So that is the lot of things we can add the real problem。 to deploy a product into reality。 So one thing to help it， not to solve it， that is。 we can augment the existing data set with more diversity。 For example， on the speech。
+我不知道你们是不是用Siri说过什么。室内、室外、背景噪声，所有这些都会影响语音识别的准确度。所以这就是我们在将产品投入现实中时面临的许多问题。因此，有一个可以帮助它的办法，虽然不能完全解决，那就是：我们可以通过更多样化的方式来增强现有的数据集。例如，在语音数据上。
 
- we can add a lot of background， noise to the speech data set during training。 so you can simulate the different scenarios。 For images， we can transfer images。 to by change the shape， change the color， so that we can have more diverse cities on the images。 Because we're going to talk about convovision。
-
-
+我们可以在训练过程中向语音数据集添加很多背景噪声。这样就可以模拟不同的场景。对于图像，我们可以通过改变形状、改变颜色来转换图像，这样我们就可以让图像具有更多样化的内容。因为我们将要讨论卷积视觉。
 
 ![](img/184743a6ec8eb38d98dd55ed4d97bb0c_3.png)
 
- we're going to focus on image augmentation。 So how it works is like we have original data set。 It's a cat here。 And we can generate a bunch of augmented data set。 A lot of variance here to make a larger data set。 And then we try to model the larger data set。 So usually we can generate that thing on the fly。 We actually don't just generate a lot of new image。
+我们将专注于图像增强。所以它的工作原理是我们有原始数据集。这里是一个猫。我们可以生成一个增强数据集。这里有很多变种，来制作一个更大的数据集。然后我们尝试去建模更大的数据集。所以通常我们可以实时生成这个数据集。实际上我们不仅仅是生成很多新的图像。
 
- installed in desk and train that。 We just， every time we read a bunch of images。 do augmentations and train that。 We so we generate on the fly。
+安装在桌面和训练中。我们只是，每次我们读取一堆图像，进行增强处理并进行训练。因此，我们是实时生成的。
 
 ![](img/184743a6ec8eb38d98dd55ed4d97bb0c_5.png)
 
- So next， let's do several commonly used， documentation technologies。 The first is flip。 You can randomly flip left the right of the cat。 And also you can do top to bottom flip。 Top to bottom flip doesn't work any time。 For example， this cat cannot sit on the ceiling。 You cannot put the sky on the bottom and the ground on the top。 So the thumbtice works。
-
-
-
-
+接下来，让我们做几个常用的文档技术。第一个是翻转。你可以随机翻转猫的左右。你也可以进行上下翻转。但是上下翻转并不总是有效的。例如，这只猫不能倒立在天花板上。你不能把天空放在底部，把地面放在顶部。所以缩略图翻转是有效的。
 
 ![](img/184743a6ec8eb38d98dd55ed4d97bb0c_7.png)
 
- Another thing you can do crop。 Crop means that given image， a crop area in the image。 So what I can do here， I can first， render pickup width to height ratio。 So here I can render pickup ratio between 3/4 to 4/3。 And then we can render pickup area size。 which， for example， we can pickup area size is between 8% to 100%， of the original， the whole image。
+另一件你可以做的是裁剪。裁剪意味着在图像中给定一个裁剪区域。所以我可以在这里，首先，渲染选择宽高比。所以在这里，我可以选择一个3/4到4/3之间的比例。然后我们可以渲染选择区域的大小。例如，我们可以选择区域的大小在原始图像的8%到100%之间。
 
- Then we can render to the position。 After you crop， we resize to a common shape。 So then the crop is pretty useful for that。 You have a bunch of different images have different size。 and we crop and resize to the same size。 That's a pretty common use that one to normalize the image size。 Besides the flip and the crop just take care of all--， if you take pictures。
+然后我们可以渲染到指定位置。裁剪后，我们将图像调整为统一的形状。裁剪对于这个很有用。你有一堆不同大小的图像，我们裁剪并调整为相同的大小。这是一个常见的用法，用来标准化图像大小。除了翻转和裁剪，其他都需要处理——如果你拍摄了照片的话。
 
- you can take a different distance， for the object at different angles， different length。
+你可以从不同的距离拍摄物体，采用不同的角度，不同的长度。
 
 ![](img/184743a6ec8eb38d98dd55ed4d97bb0c_9.png)
 
- distillations。 And also we have different colors。 Like we can change the hue， saturation。 brightness。 So for example， we can change the scale。 We can either reduce the brightness by 50%。 or increase by 50%， or just between them， any between them。
+提取信息。而且我们还有不同的颜色处理。比如我们可以改变色调、饱和度、亮度。例如，我们可以改变比例。我们可以将亮度降低50%，或者提高50%，或者介于两者之间，任意调整。
 
 ![](img/184743a6ec8eb38d98dd55ed4d97bb0c_11.png)
 
- So then， well， there's a lot of things to do that。 If you use the Photoshop before， anything。 any transformation， you can do Photoshop to change for the image。 You can do just the image augmentations。 So here's a report。 If you're interested。 there are like 50 different， augmentations there。 Like change adding noise， make the sharp。
+所以，嗯，有很多方法可以做到这一点。如果你曾经使用过Photoshop，任何的变换，你都可以用Photoshop来改变图像。你可以进行图像增强。所以这里有一个报告。如果你有兴趣，这里有大约50种不同的增强方式。比如添加噪声、增强锐度。
 
- and color a lot of--， even a blur， blurring， but even human color。 how to read all these distillations。 So that's like a photoshopping the images。 So let's show how do augmentations in Python， and actually using augmentation to try to imagine。
+还有很多颜色处理——甚至是模糊，模糊处理，但即使是人为的颜色也会影响。如何阅读所有这些提取信息。所以这就像是在对图像进行Photoshop处理。那么让我们展示如何在Python中进行图像增强，实际上使用增强来尝试进行想象。
 
 ![](img/184743a6ec8eb38d98dd55ed4d97bb0c_13.png)

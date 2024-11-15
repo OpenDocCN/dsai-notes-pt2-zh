@@ -1,153 +1,137 @@
-# P5：5. L1_5 Linear Algebra in Jupyter - Python小能 - BV1CB4y1U7P6
+# P5：5. L1_5 线性代数与 Jupyter - Python小能 - BV1CB4y1U7P6
 
- Okay， after all this theory， let's actually see how this works in practice。 Let's have a little bit of fun with linear algebra。 So these are Jupyter Notebooks。 You can download them and play along exactly in the slide form of it。 You can just view them as they are as notebooks。 If you want to look at them in slide form。
+好的，在所有这些理论之后，让我们实际上看看它是如何在实践中工作的。让我们在一些线性代数上玩得开心一点。这些是 Jupyter 笔记本。你可以下载它们，并且按照幻灯片的形式一一演示。你也可以直接查看它们作为笔记本。如果你想以幻灯片的形式查看它们。
 
- you need the reveal plugin。 Anyway， the first thing we need to do is we need to import and de-array。 Which is the and array data type of MXNet。
+你需要使用 reveal 插件。不管怎样，首先我们需要做的就是导入并解数组。也就是 MXNet 的数组数据类型。
 
 ![](img/ce93a9193d70af295add1121059b1a42_1.png)
 
- So from MXNet， import and de- That's all you need。 Okay， so now that we've done this。 let's actually create some of the most basic arrays。 Namely。 I could just go and create the array with an entry to an entry 3。 And if I do this。 I can add them together。 I can multiply them， I can divide them。
+所以从 MXNet 中导入并解数组——这就是你所需要做的。好了，现在我们已经做了这些，让我们来实际创建一些最基本的数组。也就是说，我可以直接创建一个包含 3 个元素的数组。如果我这么做，我就可以将它们相加，或者相乘，或者相除。
 
- or I can exponentiate them or anything else。 I could subtract them from each other。 Let's say we do this。 Okay， let's say print X minus Y equals X minus Y。 And now I get X minus Y and here lo and behold， the result is one。
+或者我可以对它们进行指数运算，或者做其他任何操作。我可以将它们相互相减。假设我们这么做。好的，假设打印出 X 减去 Y 等于 X 减去 Y。现在我得到 X 减去 Y，瞧，结果是 1。
 
 ![](img/ce93a9193d70af295add1121059b1a42_3.png)
 
- So behaves exactly as you would expect it。 I can print them。 or I can go and convert them into scalers back into Python。 Now， if I do that。 then I can continue working with them in Python land。 And if you need to do that， that's fine。 It's just one caveat and that applies to essentially any deep learning framework。
+所以它的表现完全符合预期。我可以打印它们，或者我可以将它们转换回标量，再回到 Python。现在，如果我这么做，那么我就可以继续在 Python 环境中处理它们。如果你需要这么做，那也没问题。只是有一个警告，这适用于几乎所有的深度学习框架。
 
- As soon as you go and convert from the framework to Python or the other direction。 you need to handle the control to Python at least for some time。 Now。 Python is particularly bad at multi-threading and multi-tasking。 The result of that is that the code will anything that you might be doing on。
+一旦你从框架转换到 Python 或反方向转换，你需要至少在一段时间内将控制权交给 Python。现在，Python 在多线程和多任务处理方面尤其糟糕。这导致的结果是，代码可能会在你进行的任何操作上卡住。
 
- maybe one multiple GPUs will come to a grinding halt while Python does its thing。 And only then can you go back to doing things in parallel in the framework。 So don't do this thing too often just occasionally。 In other words， if you have a large for looping。 you do that every for loop in many， many thousands of millions of times。
+也许某些 GPU 在运行 Python 代码时会停止工作。只有到那时，你才能重新开始在框架中进行并行操作。所以不要过于频繁地做这件事，偶尔做一下就好。换句话说，如果你有一个大的 for 循环，里面有很多、很多成千上万次的循环。
 
- You will end up writing very inefficient code。 So don't do it。
+你会写出非常低效的代码。所以不要这么做。
 
 ![](img/ce93a9193d70af295add1121059b1a42_5.png)
 
- Now vectors are， as you would expect it， just sequences in this case。 So scalars， so for instance。 if we want to generate a vector that goes from 1 to 5， 1 to 0 to 4， well， we use a range。 And I could， for instance， have different step sizes。 All of those can be easily adjusted。 But in this case here， it's x equals indeed dot a range。 And that's it。
+现在，向量是，正如你所预期的那样，只是序列，在这种情况下是标量。例如，如果我们想生成一个从 1 到 5，1 到 0 到 4 的向量，我们就使用一个 range。我可以，举例来说，设置不同的步长。这些都可以很容易地调整。但在这里，它是 x 等于 indeed dot a range。就这样。
 
- I can index individual entries like x of 3， and。
+我可以像 x 的第 3 个元素一样对单个条目进行索引。
 
 ![](img/ce93a9193d70af295add1121059b1a42_7.png)
 
- it does exactly what you would expect。 Now， one important thing is that you may want to look at the dimensionality and。 the shape of a vector。 So the shape of a vector， for instance， is you could have like a matrix。 maybe a 2 by 3 matrix。 And then the shape of that matrix would be 2 and 3。 But the length。 or maybe 6 and 1， but the length is just a number of non-zero entries。 So if I call x shape。
+它完全按照你预期的方式执行。现在，有一件重要的事情是，你可能想看看向量的维度和形状。例如，一个向量的形状，你可以有一个矩阵。可能是一个2乘3的矩阵。那么那个矩阵的形状将是2和3。但是长度，或者也许是6和1，但长度只是非零项的数量。所以如果我调用x的形状。
 
- it'll just tell me the shape。 In this case， it's a vector with one dimension and there are five entries here。
+它只会告诉我形状。在这种情况下，它是一个具有一个维度的向量，这里有五个元素。
 
 ![](img/ce93a9193d70af295add1121059b1a42_9.png)
 
- Now， the other thing is you can go and multiply things。 You can add them together。 And by the way。 in the future when we talk about arrays versus dimensions。 we say that the arrays have different dimensions if they have different axis。 but we just have an in-dimensional vector， then we mean a vector of length in。 And yeah。
+现在，另外一件事是你可以去做乘法。你可以把它们加在一起。顺便说一下，在未来当我们谈论数组与维度时，我们会说如果数组有不同的轴，那么它们具有不同的维度。但如果我们只有一个n维向量，那么我们指的是长度为n的向量。嗯，没错。
 
- mind you can add things together。 So for instance， we have an array 1， 2， 3， another array 1， 10。 20， 30。 If I add or multiply them， things work as we would expect it。
+记住，你可以把东西加在一起。例如，我们有一个数组1，2，3，另一个数组1，10，20，30。如果我将它们相加或相乘，结果就像我们预期的那样。
 
 ![](img/ce93a9193d70af295add1121059b1a42_11.png)
 
- Now matrices are just two-dimensional objects。
+现在矩阵只是二维对象。
 
 ![](img/ce93a9193d70af295add1121059b1a42_13.png)
 
- Okay， so there we have it。 And I can go and create such an object。 So let's say I maybe create a vector of length 10， or I create a vector of length 20。 And then we shape it as 2 and 10， and they get that。 Pretty straightforward， right？
-
-
-
-
+好的，就是这样。我可以去创建这样的对象。比如说，我可能会创建一个长度为10的向量，或者创建一个长度为20的向量。然后我们将它的形状设置为2和10，然后就得到了这个。非常简单，对吧？
 
 ![](img/ce93a9193d70af295add1121059b1a42_15.png)
 
- Now you can look at the transpose of this。 And that's just a。t。 If I had。 let's say a 10-dimensional just single vector， then it would be just the row。 column vector appropriately， but otherwise it's just that。 Okay。
+现在你可以看这个的转置。那就是t。如果我有一个10维的单一向量，那么它将只是一个行向量。列向量适当地转置，但否则它就是这样。好吧。
 
 ![](img/ce93a9193d70af295add1121059b1a42_17.png)
 
- Now tensors， well， we can go to three dimensions。 Let's say we have an object that's of size 2， 3。 and 4 respectively， 2 times 3 times 4。 So we get 24。 So therefore， if I create 24 ints。 going from 0 to 23， and arrange them in this way， I get this three-dimensional tensor。 Now that's not too uncommon。 For instance， I get tensors if I deal with images。
+现在张量嘛，我们可以进入三维。假设我们有一个对象，它的大小分别是2，3和4，即2乘3乘4。那么我们得到24。所以如果我创建24个整数，从0到23，然后以这种方式排列它们，我就得到这个三维张量。这并不算太罕见。例如，如果我处理图像，我会得到张量。
 
- because in images I have width and height， and unless the image is black and white， I also have RGB。 so I get three color channels。 Or if you have some fancy satellite。 you might have multi-spectral sensing， so you might have an entire spectrogram per pixel。 In this case， I wouldn't have only three dimensions for RGB， but maybe 20， 30， maybe 100。
-
-
-
-
+因为在图像中，我有宽度和高度，除非图像是黑白的，否则我还有RGB。所以我有三个颜色通道。或者，如果你有一些高端卫星，可能会有多光谱传感器，这样每个像素可能就有一个完整的光谱图。在这种情况下，我不仅仅有RGB的三个维度，可能有20个，30个，甚至100个维度。
 
 ![](img/ce93a9193d70af295add1121059b1a42_19.png)
 
- Now you can do simple things with it， you can create， you know， series of ones， I can add them。 I can multiply them， mind you， this， so A is a scalar。 This really just multiplies every entry of A by 1 in the name， and y to 8。 Right？
+现在你可以用它做一些简单的事情，比如创建，你知道的，一系列的1，我可以把它们相加。我可以把它们相乘，记住，这样A是一个标量。 这实际上只是把A中的每个元素乘以1，在名称中，y到8。对吧？
 
- So it's quite straightforward and dimensions are all still the same。
+所以这非常直接，维度仍然是相同的。
 
 ![](img/ce93a9193d70af295add1121059b1a42_21.png)
 
- I can sum things， and I can compute。 So for instance， if I have a vector of ones， right。 x is all one， one， one， one， and very unsurprisingly， if I compute sum of x， I get three。 Now。 if I had say a two or three-dimensional object， then maybe I might want to sum over only some of the dimensions。 in which case， let's try that x is in the A range of， okay， let's see， 12。 So if I do this， right。
+我可以求和，也可以计算。所以例如，如果我有一个全是1的向量，没错，x全是1，1，1，1，很不意外地，如果我计算x的总和，我得到3。现在，如果我有一个二维或三维的对象，可能我只想在某些维度上求和。在这种情况下，让我们试试看x在A范围内的值，嗯，看看，12。所以如果我这么做，嗯。
 
- so it'll still， you know， give me 66 and just add some。
+所以它仍然会给我66，并且只会做加法。
 
 ![](img/ce93a9193d70af295add1121059b1a42_23.png)
 
- But now if I wanted to compute a sum along the rows， columns， and see here you would get a row sum。 Basically that's one means that it keeps， that it sums along dimension one。 If I had zero here。 well， we'd get that， right？ And so I can define the appropriate sums as I want。
-
-
+但现在，如果我想计算沿着行或列的和，看看这里，你会得到行和。基本上，如果选择1，就表示沿维度1求和。如果我选择0，那就会得到其他结果，对吧？所以我可以定义适当的求和方式。
 
 ![](img/ce93a9193d70af295add1121059b1a42_25.png)
 
- So this is exactly what we had before。 Now， I can do interesting things like I can compute the mean of。
+这正是我们之前得到的结果。现在，我可以做一些有趣的事情，比如计算均值。
 
 ![](img/ce93a9193d70af295add1121059b1a42_27.png)
 
- let's say for instance a matrix and well， the mean is of course just a sum divided by the number of entries。 And in the mean really doesn't do anything vertically special。 but behind the scenes it just invokes in the sum and divides by the size。 But since this is awkward to write all the time， it looks much prettier this way。
+假设有一个矩阵，那么均值当然就是总和除以条目数。而均值其实没有做什么特别的垂直操作，但在幕后它只是调用总和并除以大小。由于每次都写这个很麻烦，直接这样写看起来更漂亮。
 
- and the array takes care of this for you。
+数组会为你处理这一切。
 
 ![](img/ce93a9193d70af295add1121059b1a42_29.png)
 
- Now， life wouldn't be complete without dot products。 So if I have， let's say， x and y。 and I want to compute the inner product， well， I can do that by just invoking nd。dot。 And this doesn't do anything else but just pointwise multiply in sum。 So if I wanted to find out how this looks like， I could perform print x times y。
-
-
-
-
+现在，没有点积，生活就不完整了。所以如果我有x和y，我想计算内积，嗯，我可以通过调用`nd.dot`来实现。它实际上做的就是逐点相乘并求和。所以如果我想知道这是什么样子，我可以执行`print x times y`。
 
 ![](img/ce93a9193d70af295add1121059b1a42_31.png)
 
- And I will get the same answer， right？ That's the element wise product between x and yi summed up。 and I get 10。 This is exactly the same result as in the dot product。
+我会得到相同的答案，对吧？这是x和yi之间的元素按位相乘后求和，我得到10。这与点积的结果完全相同。
 
 ![](img/ce93a9193d70af295add1121059b1a42_33.png)
 
- And that's exactly what's on the slide too。
+这正是幻灯片上的内容。
 
 ![](img/ce93a9193d70af295add1121059b1a42_35.png)
 
- Now， dot products are just a very simple case。
+现在，点积只是一个非常简单的情况。
 
 ![](img/ce93a9193d70af295add1121059b1a42_37.png)
 
- Matrix vector product is where things get more exciting。 So if I have matrix vector。 then that's really just inner， products between the x vector and the corresponding rows of a。
+矩阵向量积是事情变得更有趣的地方。所以如果我有矩阵向量，那实际上就是x向量与a的相应行之间的内积。
 
 ![](img/ce93a9193d70af295add1121059b1a42_39.png)
 
- So if I were to multiply a by x， well， I'd get this。 That's not very surprising because， yeah。 Now。 an important caveat。 If you're used to MATLAB， you're probably used to thinking that a times x。 means the matrix vector multiplication of a and x。 This is not the case。 So what a times x means in MATLAB notation is dot star。 Now you might wonder， you know。
+所以如果我将a乘以x，嗯，我会得到这个。并不令人惊讶，因为，嗯。现在，一个重要的警告。如果你习惯了MATLAB，你可能会认为`a times x`意味着a和x的矩阵向量乘法。但情况并非如此。那么在MATLAB表示法中，`a times x`的意思是点积星运算（dot star）。你可能会想知道，嗯。
 
- why does this even， you know， why does this even compute， right？ Because after all。 a is a 3 by 4 matrix and x is， you know， 4-dimensional vector。 So how can I even get something meaningful out of it？ Well。 it's very simple by something called broadcast， where you just repeat。
+为什么这个计算能进行呢？因为毕竟，a是一个3x4的矩阵，而x是一个4维向量。那么我怎么能从中得到有意义的结果呢？其实很简单，通过一种叫做广播的技术，你可以重复元素。 
 
- the entries of x until you've gone through all the entries of a。 But it's point wise multiplication。 So be careful of that because this can otherwise give you quite horrible bugs。 if you're not used to it。 We're sticking to NumPy convention here。 so it shouldn't be very surprising， if you're used to NumPy。
+直到你遍历完所有的a的条目为止，x的条目才会被处理。但这是逐点相乘。所以要小心，因为如果你不习惯，这可能会导致很可怕的bug。我们这里遵循的是NumPy的约定，所以如果你熟悉NumPy的话，应该不会感到惊讶。
 
- But if you're coming straight from MATLAB land， be careful since this is a rich source of bugs for beginners。
+但如果你是从MATLAB直接过来的，要小心，因为这对初学者来说是一个很常见的bug来源。
 
 ![](img/ce93a9193d70af295add1121059b1a42_41.png)
 
- OK， matrix multiplication。 Well， that's exactly what we had before。
+好的，矩阵乘法。这正是我们之前做的事情。
 
 ![](img/ce93a9193d70af295add1121059b1a42_43.png)
 
- So now we have two objects。 And so if you think about it。 that's really just like going through all the， rows of a and the columns of b taking inner products and writing them out in a table。
+现在我们有了两个对象。如果你仔细想想，这实际上就像是在遍历a的所有行和b的所有列，计算它们的内积，并把结果写成表格。
 
 ![](img/ce93a9193d70af295add1121059b1a42_45.png)
 
- So there we go。 nd dot between a and b。 Because one was a 3 by 4。 The other one is a 4 by 3 matrix。 So very unsurprisingly， if I multiply them， I get a 3 by 3 matrix out of it。
+所以这里是nd.dot(a, b)。因为一个是3x4矩阵，另一个是4x3矩阵。所以不出所料，如果我将它们相乘，我得到的是一个3x3的矩阵。
 
 ![](img/ce93a9193d70af295add1121059b1a42_47.png)
 
- Last thing are norms。 And that's exactly what we discussed before。 So they need to satisfy training and equality and so on。 And if we want to invoke the L2 norm。 I just call nd dot norm。
+最后是范数。这正是我们之前讨论过的内容。所以它们需要满足训练和等式等条件。如果我们想调用L2范数，我只需调用nd.dot.norm。
 
 ![](img/ce93a9193d70af295add1121059b1a42_49.png)
 
- So nd dot norm of x， there we go。 Now if I want to compute the L1 norm， I could do this。 I could just invoke nd dot sum， nd dot apps。 Or I could just invoke the norm with a different power。 That would also work。 So apps is absolute value， as you would have already， suspected。 and nd dot sum is what we did before。 And this ends our very。
+所以nd.dot.norm(x)，就这样。如果我想计算L1范数，我可以这样做。我可以调用nd.dot.sum，nd.dot.apps。或者我可以使用不同的幂来调用norm，这样也能得到结果。所以apps是绝对值，正如你已经猜到的那样，nd.dot.sum是我们之前做的操作。这也就是我们所做的。
 
- very brief introduction to linear algebra。 On MXNet， we'll look a lot more at the endear rate。 data types in the following lecture。 But for now， I hope this gives you a bit of an idea of how to do linear algebra。 in MXNet， and to see that it's fairly straightforward and not very difficult。 OK。 thank you very much。
-
-
+简要介绍了线性代数。在MXNet中，我们将在接下来的课程中详细讨论数据类型。但是目前，希望这能让你对如何在MXNet中进行线性代数有个基本的了解，看到它其实是相当直接并不复杂的。好的，非常感谢。
 
 ![](img/ce93a9193d70af295add1121059b1a42_51.png)

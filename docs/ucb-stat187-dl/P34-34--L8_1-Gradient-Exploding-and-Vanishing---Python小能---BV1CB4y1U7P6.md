@@ -1,79 +1,71 @@
-# P34：34. L8_1 Gradient Exploding and Vanishing - Python小能 - BV1CB4y1U7P6
+# P34：34. L8_1 梯度爆炸与消失 - Python小能 - BV1CB4y1U7P6
 
- This is a re-record of Nx8。
+这是Nx8的重新录制。
 
 ![](img/91fad1a55c9a8b5b86d9557c599c0501_1.png)
 
- Let's start with numerical stability。
+让我们从数值稳定性开始。
 
 ![](img/91fad1a55c9a8b5b86d9557c599c0501_3.png)
 
- Consider simple neural network。 We have D layers here。 The input of the T's layer is called hT minus 1， and the output is hT。 This layer has a function called ft， transfer the input hT minus 1 into output hT。 Given input x to the network， the final output of y is we first put x into the first layer f1。
+考虑一个简单的神经网络。我们有D层。T层的输入叫做hT减1，输出是hT。该层有一个函数ft，将输入hT减1转化为输出hT。给定输入x到网络，最终输出y，我们首先将x输入到第一层f1中。
 
- until to the last layer fd and then fit into the last function l。 The thing here we want to consider is compute the gradients of the last l with respect to wt。 The first layer of the t's is the prime of the t's layer。 Remember the chain rule we have partial l over partial wt equals firstly partial l over the last output of the t's layer。
+一直到最后一层fd，然后输入最后一个函数l。这里我们要考虑的是计算最后l相对于wt的梯度。t层的第一层是t层的偏导数。记住链式法则，我们有偏l对偏wt的导数，首先是偏l对t层最后输出的偏导数。
 
- which is hD。 Then we compute the gradients layer by layer。 We first compute the gradients over the last layer， which is partial hD over partial hD minus 1。 hD is the output of the d's layer， hD minus 1 is the input of this layer。 So we apply by d minus t times until we get partial hT plus 1 over partial hT。 Finally。
+这是hD。然后我们逐层计算梯度。首先计算最后一层的梯度，即hD对hD减1的偏导数。hD是d层的输出，hD减1是该层的输入。所以我们按照d减t次应用，直到得到hT加1对hT的偏导数。最后，
 
- we get the output of the d's t's layer with respect to the prime of the parameter。 which is partial hT over partial wt。 The key thing here。 think about the middle of these equations that is we do multiplication over d minus t matrix。
+我们得到d层t层相对于参数的输出，即hT对wt的偏导数。关键点在于，考虑这些方程中间的部分，我们在d减t矩阵上进行乘法。
 
 ![](img/91fad1a55c9a8b5b86d9557c599c0501_5.png)
 
- So this could be cause problem。 The one of the problems called gradients is floating。 So soon that we use a number larger than 1 here， we use a 1。5 and a power to 100。 then we get a very large number。 The second issue called a gradient vanishing。 That is we use a number less than 1 and a power to a large number。
+这可能会引发问题。问题之一叫做梯度爆炸。所以当我们在这里使用大于1的数时，比如1.5并且指数达到100时，我们得到一个非常大的数字。第二个问题叫做梯度消失。也就是说，我们使用小于1的数字并且指数达到很大时。
 
- and then we get a very small number。 So these two problems cause the training issues。
+然后我们得到一个非常小的数值。所以这两个问题导致了训练问题。
 
 ![](img/91fad1a55c9a8b5b86d9557c599c0501_7.png)
 
- Let's consider concrete example。 Consider we have a multi-layer perception。 That is we remove the bias for simplicity。 So because as mlp。 so we know that given the input hT plus 1， which is the input to the t's layer。 we know the functions equals to wt times hT plus minus 1。
+让我们考虑一个具体的例子。假设我们有一个多层感知机。为了简化起见，我们去除偏置项。由于是mlp，因此我们知道，给定输入hT加1，它是t层的输入，我们知道函数等于wt乘以hT减1。
 
- wt is the parameter hT plus 1 is the input。 And then we feed this one into the activation function sigma。 To compute the gradients of this layer， we know that by general we first compute the gradients with respect to the activation function。 which the output is a vector and the input is not a vector。 We know that the gradients are matrix。 So here is actually a diagonal matrix。 It's a diagonal of sigma prime。
+wt是参数，hT加1是输入。然后我们将其输入到激活函数sigma中。为了计算这一层的梯度，我们知道，通常情况下我们先计算相对于激活函数的梯度。其输出是一个向量，输入不是一个向量。我们知道梯度是一个矩阵。所以这里实际上是一个对角矩阵。它是sigma的导数的对角线。
 
- prise the gradient function of sigma and fit into the input wt plus hT plus 1。 And then we compute the gradients of the function of the dense layer function。 which is simply just the wt transpose。 So then apply the chain rule that we know that we want to do d minus 1 on multiplications。 that is a product of d minus t， diagonal matrix， and also a bunch of weight matrix as well。
-
-
-
-
+乘上sigma的梯度函数，并将其输入wt加hT加1。然后我们计算稠密层函数的梯度，实际上就是wt的转置。因此，应用链式法则，我们知道我们需要进行d减1次乘法。也就是d减t的对角矩阵与一堆权重矩阵的乘积。
 
 ![](img/91fad1a55c9a8b5b86d9557c599c0501_9.png)
 
- Then what we are going to do？ For example， let's use a value as activation function。 That is。 sigma x is just a max of 0 and x。 So then we know the gradient function of sigma is just if x is larger than 0。 then it is 1， otherwise it's 0。 So now the element of this d plus t multiplications。 it could be from just the products of all these parameters。
+那么我们该怎么办？例如，假设我们使用一个值作为激活函数。也就是说，sigma x就是0和x的最大值。所以我们知道sigma的梯度函数是，如果x大于0，则梯度为1，否则为0。那么现在这个d加t的乘积元素，可能就是所有这些参数的乘积。
 
- because the diagonal matrix can be either 0 or 1。 So then if wi contains numbers larger than 1 and d plus t is pretty large。 which means either the length will steep this large， or we use the bottom layers close to the input。 which is this small， then the element of the products may condense very large numbers。 So this causes gradient exploding。
-
-
+因为对角矩阵可以是0或1。所以，如果wi包含大于1的数字，而d加t又非常大，这意味着长度要么会急剧增大，要么我们会使用接近输入层的底层，这样它就很小，那么这些乘积的元素可能会聚集成非常大的数字。这就导致了梯度爆炸。
 
 ![](img/91fad1a55c9a8b5b86d9557c599c0501_11.png)
 
- So what problem is gradient exploding？ In the streaming case， we can run out of range。 We got infinity values。 So when we got the infinity values， nothing will get correct numbers。 This is especially true if we can use 60-bit floating point。 So this point has a very small range。 It's pretty easy to go infinity。 Even that we still in the range。
+那么梯度爆炸是什么问题呢？在流式处理的情况下，我们可能会超出范围，得到无限大的值。所以当我们得到无限大的值时，什么都得不到正确的数值。如果我们使用的是60位浮点数，这种情况尤其如此。因为该点的范围非常小，很容易就超出范围。即使我们还在范围内，情况也会如此。
 
- which is we didn't get infinity values， this large values could be sensitive to the non-irate。 If we didn't choose a small enough linear rate， then we apply very large modification to the weights by SGD。 then the larger weights in the next time cause the even larger gradients。 So it can be in go infinity。 But if we choose two small linear rate。
+也就是说，我们并没有得到无限大的值，但这些大值可能对学习率非常敏感。如果我们没有选择足够小的学习率，那么SGD在下一次应用时会对权重做出非常大的修改。然后，接下来的较大权重会导致更大的梯度，从而可能进入无限大。但如果我们选择的学习率过小。
 
- then we maybe got no progress because each time we apply little values into the weights。 And because the value can be changed in a very wide range。 then during training it could be very large， it could be very small。 and we need to change the linear rate dramatically during the training procedure according to the actual values。
+然后我们可能没有任何进展，因为每次我们将小值应用到权重上。而且由于这个值可以在非常宽的范围内变化，所以在训练过程中它可能非常大，也可能非常小。因此，我们需要根据实际值在训练过程中大幅调整学习率。
 
- So this causes a lot of trouble， and what you can see is that it causes instability during training。
+这就造成了很多问题，正如你所看到的，它在训练过程中造成了不稳定。
 
 ![](img/91fad1a55c9a8b5b86d9557c599c0501_13.png)
 
- The second problem is gradient vanishing。 So again。 let's use the previous multi-layer perception example。 But here we changed activation function into sigmoid。 We know the sigmoid definition is 1/1+e2-x。 And the gradient function of the sigmoid is just a sigmoid function times 1-digmoid output。
+第二个问题是梯度消失。再一次，我们使用之前的多层感知器例子。但这里我们将激活函数改为sigmoid。我们知道sigmoid的定义是1/（1+e^(2-x)）。而sigmoid的梯度函数就是sigmoid函数乘以1减去sigmoid输出。
 
- So here we draw a picture of the sigmoid function。 the x-axis is the input x and the y is the function value。 The important thing here is that the origin i is a gradient function of sigmoid。 What we can see is that even the small number of x values is not too large。
+所以我们画了一个sigmoid函数的图。x轴是输入x，y轴是函数值。这里的重要点是原点i是sigmoid的梯度函数。我们可以看到，即使x的值很小，也不会太大。
 
- for example slightly larger than 4， or slightly smaller than -4， then we get very small gradients。 And the problem here is that because the gradient is a multiplication of all these diagonal matrix here。 and then these diagonal matrix can contain very small numbers。 Then the gradients is just a product of t-t d-t small values。
+例如，稍微大于4或稍微小于-4时，我们会得到非常小的梯度。而这里的问题在于，梯度是这些对角矩阵的乘积，而这些对角矩阵可能包含非常小的数字。然后梯度就是这些非常小值的乘积。
 
- so which cost the elements could be very small。
+因此，元素的代价可能非常小。
 
 ![](img/91fad1a55c9a8b5b86d9557c599c0501_15.png)
 
- So what's the problem with gradients vanishing？ And on the extremely case the gradients are zero。 because it's too small， especially if we're using 16-4-bit floating point， if it's like more than 1。 e-6， then all these values are zero。 If we get a zero gradients。 no matter how we change and generate， we still get zero update for the gradients。
+那么，梯度消失的问题是什么呢？在极端情况下，梯度为零。因为它太小，特别是如果我们使用16-4位浮点数时，如果值大于1e-6，那么所有这些值都会变为零。如果我们得到零梯度，无论我们如何改变或生成，梯度更新仍然为零。
 
- So which means no training progress。 And especially that with bottom layers which is close to the input。 which means that t is small， then the bottom layers have smaller gradients comparing to the top layers。 which is close to the loss function。 And then only top layers we're aware of trend。 because it's get a larger gradients。 And the other bottom layers with the small gradients。
+所以这意味着没有训练进展，尤其是在接近输入的底层。也就是说，当t很小时，底层的梯度相较于顶层较小，而顶层接近损失函数。因此，只有顶层我们才能感知到趋势，因为它们的梯度较大，而其他底层则有较小的梯度。
 
- So on the consider stringing case that we have 100 layers and the top layers。 the top 20 layers get a large gradients and the bottom 80 layers get almost a zero gradients。 Then it's almost equals to just a joint， a nano with 20 layers。 which means it's pretty hard to make a deeper new network。
+所以在考虑字符串的情况下，我们有100层，顶层的前20层得到较大的梯度，而底部80层几乎没有梯度。那几乎等于只连接一个包含20层的纳米网络。这意味着，构建一个更深的网络变得相当困难。
 
- And also it's cost you a lot of other troubles we're going to talk about later。 [BLANK_AUDIO]。
+而且这还会带来许多其他麻烦，稍后我们将讨论。[BLANK_AUDIO]。
 
 ![](img/91fad1a55c9a8b5b86d9557c599c0501_17.png)
-
-
 
 ![](img/91fad1a55c9a8b5b86d9557c599c0501_18.png)

@@ -1,141 +1,129 @@
-# P87：87. L16_2 Bounding and Anchor Boxes - Python小能 - BV1CB4y1U7P6
+# P87：87. L16_2 边界框和锚框 - Python小能 - BV1CB4y1U7P6
 
- Okay， let's look at exactly how a bundle box works。 Because this is a key concept。 we want to know the idea how to deal with all the boxes。 So here。 we import the library and so this is a catalog images we had shown in the slides， before。 And actually， I bought this one for $10。 Otherwise。
+好吧，让我们看看一个捆绑框是如何工作的。因为这是一个关键概念。我们想知道如何处理所有的框。所以在这里。我们导入库，这就是我们之前在幻灯片中展示过的目录图像。事实上，我花了10美元买了这一张。否则的话。
 
- it's pretty hard to find the image you can use without pay that。 So it's pretty safe。 The only image I bought for this book is this one。
+找到可以使用的图片而不付费是相当困难的。所以它是相当安全的。我为这本书买的唯一一张图片就是这张。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_1.png)
 
- Well， okay。 So you can see that the bundle box can be defined by things， like by four numbers。 This is a dark bundle box。 The BB box is called a bundle box。 And the cat BB box。 I like it's common name for， I used it in detections。 Then this is a cat。 Then I can show a function here。 I can not say it's like just a plot。 The thing。
+好吧。你可以看到，捆绑框可以通过四个数字来定义。这是一个黑色的捆绑框。BB框叫做捆绑框。然后是猫的BB框。我喜欢它的常用名称，我在检测中使用过它。然后这是猫。接着我可以在这里展示一个函数。我不能说它只是一个绘图。东西。
 
- I can go out the code here。
+我可以在这里退出代码。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_3.png)
 
- You can see that， well， this is the dark。 This is a cat。 Okay。 And also， similar thing。 this is zero for the x and the y axis。
+你可以看到，嗯，这是黑色的。这是一只猫。好吧。还有，类似的东西。这是x轴和y轴的零点。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_5.png)
 
- And then another function to show multiple boxes， I can escape all the things。 This is just a plot multiple bundle boxes。 The only thing that the， the， the， the， the。 the list of bundle boxes， if you have labels， or not， and you want to pick up the color。
-
-
+然后是另一个函数，用来显示多个框，我可以逃避所有的事情。这只是一个绘制多个捆绑框。唯一需要注意的是，捆绑框的列表，如果你有标签，或者没有标签，并且你想选择颜色。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_7.png)
 
- So that's the only thing you want to know。 Okay。 So here's the thing。
+所以这就是你想知道的唯一事情。好的。所以这是事情的真相。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_9.png)
 
- So we， so we're going to generate， so this function， it's on the contributes called the。 multi box prior。 What are you going to do here？ Given the image。 So give an image here。 The height and the width is for the image。 And I just fake something here。 I don't care about the image content。 I only care about the shape of the image。
+所以我们，我们将要生成，所以下一个函数，它在贡献中被称为。多框优先。你要做什么呢？给定图片。所以这里给出一张图片。图片的高度和宽度。然后我只是做了一些假的东西。我不关心图片的内容。我只关心图片的形状。
 
- So what this bounding box we do here， for each pixel， I can generate。 So you can center with this pixel， I can generate multiple anchor boxes。 So you can control the size， which is relative to the original image。 The point five means I can generate the bound box， have 50% of the size of the original image。
+那么我们在这里做的这个边界框，对于每个像素，我可以生成。所以你可以以这个像素为中心，生成多个锚框。所以你可以控制大小，这相对于原始图像而言。0.5意味着我可以生成一个边界框，其大小为原始图像的50%。
 
- The ratio is the height to， is that width and to height ratio。 Zero。 one means the square and the two and the 0。5。 So then I can generate a bunch of anchor boxes with different size。 different ratios。 Okay。 Then you see that you're going to generate a large number of bound boxes because for each。 pixel you're going to generate multiple anchor boxes。 So I'm going to return something。
+比例是高度与宽度的比率。零。一个表示正方形，两个和0.5。所以我可以生成一堆具有不同大小、不同比率的锚框。好吧。然后你会看到，你将生成大量的边界框，因为对于每个像素，你将生成多个锚框。所以我要返回一些东西。
 
- I'm going to reshape and print all these anchor boxes， centered at 250， 250。
+我要重塑并打印出所有这些锚框，中心位于250，250。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_11.png)
 
- And now I can see， show you that。 Okay， let me， this is the image we showed in the slides。
+现在我可以看到，给你展示一下。好的，让我，这就是我们在幻灯片中展示的图片。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_13.png)
 
- So all this full anchor boxes are centered at this pixel and have different size。 This is the only get a quarter of the original image， half of the original image and a not。 half half。 Half is here， half is the green one and this one's three quarter and also different ratios。 for the image。 Okay。 So this is how to generate， you can， you can decide， okay。
+所有这些完整的锚框都以这个像素为中心，并且有不同的大小。这里获取的是原始图像的四分之一、二分之一和不同的比例。这里的半分之一是绿色的，另一个是三分之一和不同的比例。好吧，这就是如何生成的，你可以决定，好吗？
 
- what different size you're， going to try， different ratios you're going to try to generate a large number of bound。 boxes， anchor boxes。
+你将尝试不同的大小，尝试不同的比例来生成大量的边界框，锚框。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_15.png)
 
- Then the other one that if I already have the ground choose which is a bound box， the。 zero means the， the cast label and this is the bound box of this， the， the number of。 this bound box and we have a bunch of anchor boxes。 Here we have how many of them is one， two。 three， four， five， five of them。 Then we can visualize all the things， the black ones of one truth。
+然后是另一个，如果我已经有了真实框，这是边界框。零表示分类标签，这是该边界框的标签，我们有一堆锚框。这里我们有多少个？1，2，3，4，5，五个。然后我们可以可视化所有的内容，黑色的表示真实框。
 
- the dark cat， the， color ones just the anchor boxes and we show the label it one， two， three， four。 five。 Then we're going to label the anchor box to the ground choose。
+黑色的猫，颜色框只是锚框，我们展示了标签1，2，3，4，5。然后我们将锚框标注为真实框。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_17.png)
 
- What we do， I'm going to skip the definition， how exactly to implement that。 Actually。 you can use in the multi box target to given the anchors we have， given the ground， choose we have。 you can ignore this one but we can， because we single batch， we can expand。 the dimension that x is equal to zero to get the batch， a batch the version。
+我们做的是，我跳过了定义，如何准确实现这一点。实际上，你可以在多框目标中使用，给定我们已有的锚框，给定我们拥有的真实框，你可以忽略这一部分，但我们可以，因为我们是单批次，所以我们可以扩展维度，使x等于零来获取批次的版本。
 
- So it's going to return three things。 The last one is called the label。 We assign labels to each anchor boxes。 So here we have five anchor boxes and two。 two objects and we give zero to background and， this one assign to doc， this one assign to cat。 the first one assign to background and this， one to cat。 Let's see that。
-
-
-
-
+所以它会返回三个东西。最后一个是标签。我们为每个锚框分配标签。因此，这里我们有五个锚框和两个对象，我们给零表示背景，给这个一个标记为doc，给这个标记为猫。第一个标记为背景，第二个标记为猫。我们来看看。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_19.png)
 
- So zero is a background。 One is actually a cat。
+所以零是背景， 一是猫。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_21.png)
 
- One is a doc and let me see。
+一是doc，看看。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_23.png)
 
- Then two， well two is a cat， three is a background， three is a background and four is actually。 a cat。 You have different flavors how to general the things。 The reason this one is cans of label as doc because it's not better anchor boxes here。 So even this one is cans of label as doc。 It's not very accurate to the actual bond box that we have。
+然后是两个，二是猫，三是背景，三是背景，四实际上是猫。你有不同的方式来生成这些东西。之所以将这个标记为doc，是因为这里的锚框不够好。所以即使这个被标记为doc，它仍然不完全准确地对应实际的边界框。
 
- For cat， so four is much better。
+对于猫，四是最好的。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_25.png)
 
- And the rest of it is a kind of a mask which means the masses for each values for the bond， box。 zero means it's background， one means this is actually this is a part of the anchor。 boxes assigned to objects。 So we're going to use the mask letter to define the loss function。 The final thing is the offset how to map the anchor boxes to the real bond boxes。
+其余部分是一种掩膜，表示每个值对于边界框、盒子的质量。零表示背景，表示这是背景；一表示这实际上是锚框的一部分。盒子被分配给对象。因此，我们将使用掩膜字母来定义损失函数。最后是偏移量，如何将锚框映射到实际的边界框。
 
- Zero if it's just a background we don't need to map。 If otherwise we give some values here。 So this is a real value。 You can see that。 Okay。 Questions？ Okay。 So the other one that where how to output。
+如果是背景，我们不需要映射。如果是其他的，我们就给出一些值。这是一个真实值。你可以看到。好，问题？好，接下来是如何输出。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_27.png)
 
- So here we have assume we have multiple predictions here。 So before we map labels to anchor box。 Now here we assume the algorithm already have predictions for each anchor boxes。 So here similar format。 The first element is the predicting score is a confidence how we can tense the object。 and sorry this is actually the bond box is not a score。 This is actually the bond box。
+这里我们假设我们有多个预测结果。在我们将标签映射到锚框之前，现在我们假设算法已经为每个锚框生成了预测结果。所以这里是类似的格式。第一个元素是预测得分，是置信度，用来判断对象的存在。抱歉，这实际上是框，而不是得分。这个实际上是框。
 
- Don't set I just make it a zero for simplicity and also the cost probabilities is a soft max。 output we're going to predict for each anchor box we're going to predict for each cost we。 have what is the confidence score。 And we print all the things here you can see that the dog have three almost I think similar。
-
-
+不设置，我只是将其设为零，简化处理，成本概率是一个softmax输出，我们将为每个锚框预测每个成本，得到它的置信度评分。然后我们打印所有内容，你可以看到，狗有三个几乎相似的结果。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_29.png)
 
- predictions that had one。 So what do we do here we're using multiple detections given the cost probability given。 the offset given the anchors and so here's the MMS thresholding。 So we choose 0。5 here。 So we gonna if two bond boxes overlapping less than 0。5 we are most likely to just remove， them。 So you can see that the output will be zero means is actually have the class one means。
+预测值为一。那么我们在这里做什么？我们使用多个检测结果，考虑成本概率、偏移量和锚点，所以这里是MMS阈值。我们选择了0.5。所以，如果两个框的重叠小于0.5，我们很可能会去除它们。所以你可以看到，输出为零意味着它实际上是类，1意味着。
 
- is the class minus one means we just removed。
+这是类，-1意味着我们已将其移除。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_31.png)
 
- So you can see that the cat the dog we have the cat we have but the other dogs we just。
+所以你可以看到，猫、狗，我们有猫，其他狗我们就移除了。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_33.png)
 
- removed to visualize it we just we iterate all the results if equal to minus one we just。
+为了可视化它，我们遍历所有结果，如果是-1，我们就移除它。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_35.png)
 
- keep otherwise just print you can see that we print the result removal of the duplications。 Okay questions。 Okay， the other thing here is that well we want to have we maybe care about different。
+保留其余的，打印出来，你可以看到我们打印了结果，去除了重复项。好，问题？好，另一件事是，我们可能关心不同的。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_37.png)
 
- scales。 So here the bond box we actually don't care about how large the actual large images we。 have for here we tell the algorithm that the image only have four pixels for the。 width and four pixels for height。 So for the algorithm itself we think okay I only have four pixels one two three four。 and four rows for columns and for each one I can generate a bundle box for that and so。
+尺度。所以这里的框，我们实际上不关心实际大图像的大小，我们告诉算法图像仅包含四个像素的宽度和四个像素的高度。所以对于算法本身，我们认为，好的，我只有四个像素，1、2、3、4，还有四行四列，对于每个像素，我可以为它生成一个框。
 
- you can you can't get get scales much smaller because the shape here is kind of you give。 a fake shape to the algorithm。 So give a smaller one so it can actually generate small bond boxes。 Keep the same thing keep the same size and the ratio I don't change it I just tell the。
-
-
+你可以，但你不能获得更小的尺度，因为这里的形状是你给算法提供的一个假形状。所以给一个更小的形状，这样它实际上可以生成更小的框。保持相同的事物，保持相同的大小和比例，我不改变它，我只是告诉它。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_39.png)
 
- algorithms that okay the input pixels have two pixels two for the width and two for the。 height it actually generated even larger bond boxes。 So the idea here that I don't need to change all the size and the ratios I just change the。
+算法会生成输入像素，其中有两个像素代表宽度和两个像素代表高度，它实际上生成了更大的框。所以这里的想法是，我不需要改变所有的大小和比例，我只是改变预测。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_41.png)
 
- input size so I can tell the algorithms to generate different ratio bond boxes。 So that is well that is useful for like the you know we gonna talk about in the maybe。 next next year and next next year okay。
+输入大小，我可以告诉算法生成不同尺寸比率的边框框。所以这是有用的，像我们可能会在明年或者后年谈到的那样，好的。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_43.png)
 
- Also like given assume the image only have think pixel because you have a very large。 bond boxes here okay。 That's all for the bond box you have questions question。 So on the prediction the labels with the anchor boxes how does that go？
+还有，比如假设图像只有非常少的像素，因为你有一个很大的边框框，好的。关于边框框的部分，你有问题吗？那在预测标签时，和锚框是怎么处理的？
 
- Does it just do like object detection on the anchor boxes？
+它是不是像在锚框上进行目标检测一样？
 
- Just image classification okay kind of kind of show maybe we maybe have time to talk to。 you about today。 And the initial anchor boxes how are they generated to this random？
+就是图像分类，好的，可能我们有时间今天和你们聊聊。那初始的锚框是如何生成的，是随机的吗？
 
- So the algorithm different algorithms have different way to generate the anchor boxes。 And other questions？
-
-
+所以不同的算法有不同的方式来生成锚框。还有其他问题吗？
 
 ![](img/3288af57a67fc417f9f905283cee79d9_45.png)
 
- Before we talk another one。
+在我们谈下一个话题之前。
 
 ![](img/3288af57a67fc417f9f905283cee79d9_47.png)

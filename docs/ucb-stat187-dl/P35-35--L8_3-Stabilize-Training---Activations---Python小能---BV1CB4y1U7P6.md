@@ -1,31 +1,31 @@
-# P35：35. L8_3 Stabilize Training - Activations - Python小能 - BV1CB4y1U7P6
+# P35：35. L8_3 稳定训练 - 激活函数 - Python小能 - BV1CB4y1U7P6
 
- So far， we only extend identity activation functions。
+到目前为止，我们只扩展了恒等激活函数。
 
 ![](img/1494e52407436e52c04a4e1b7b070fe1_1.png)
 
- We know that if we're going to use identity activation function。 no matter how many layers we have is always equal to single layer。 So now let's consider real cases。 That is the reactivish functions we are going to use in new networks。 Let's start with a simple activation function， which is a linear function。 Given x。
+我们知道，如果我们使用恒等激活函数，无论我们有多少层，它始终等于单层。因此，现让我们考虑实际情况。这就是我们在神经网络中将要使用的激活函数。让我们从一个简单的激活函数开始，即线性函数。给定 x。
 
- the sigma x is equal to alpha x plus beta。 If we denote by the h prime to be wt times ht minus 1。 which is the input of this activation function， and then ht， the output of this layer。 equals to apply sigma to h prime。 Now we can compute the variance and expectations of ht。 We know that h prime have zero min， so then ht we have min equal to beta。 By assumption。
+sigma x 等于 alpha x 加 beta。如果我们将 h prime 定义为 wt 乘以 ht 减 1，即激活函数的输入，那么 ht，这一层的输出等于应用 sigma 到 h prime 上。现在我们可以计算 ht 的方差和期望。我们知道 h prime 的均值为零，因此 ht 的均值为 beta。根据假设。
 
- we're going to have zero min， which means beta should be equal to zero。 Similarly， for the variance。 we know that ht is a linear combination of h prime and h prime is already constant。 by if we choose the proper with initialization methods。 Then if beta is zero and we can do a bunch of other things here。
+我们将得到零的均值，这意味着 beta 应该等于零。类似地，对于方差，我们知道 ht 是 h prime 的线性组合，而 h prime 已经是常数。如果我们选择适当的初始化方法，那么如果 beta 为零，我们可以做其他许多事情。
 
- we know that the variance of ht equals to the alpha squared times the variance of h prime。 Because the variance of h prime is already constant， then alpha should be equal to 1。 Which means if we， for the fourth pass， if we're going to have satisfied assumptions that we have before。 then the linear function， the activation function should be adjusted at any function we have。
+我们知道，ht 的方差等于 alpha 的平方乘以 h prime 的方差。因为 h prime 的方差已经是常数，那么 alpha 应该等于 1。这意味着，如果我们要满足之前的假设，进行第四次迭代时，线性函数的激活函数应该根据我们所拥有的任何函数进行调整。
 
- Similarly， for the backward function， we know that by chain rule， the loss function of l。 the gradient function of loss with respect to the ht minus 1， the input of this layer。 equals to the alpha times the loss function with respect to the input of activation functions。 And so then similarly， we know the expectation of it's already zero， then we get zero beta beta。
+同样，对于反向传播函数，我们知道根据链式法则，损失函数 l 的梯度函数，关于 ht 减 1 的梯度，即这一层的输入，等于 alpha 乘以关于激活函数输入的损失函数的梯度。类似地，我们知道它的期望已经是零，那么我们得到零，beta 为零。
 
- and the variance is actually of the input is actually alpha squared of the variance of the loss of the gradient function with respect to the input of the activation function。 Again， we have r for equal to 1。 So then we actually can only choose activation function。
+输入的方差实际上是 alpha 的平方乘以激活函数输入的梯度损失函数的方差。再次强调，我们有 r 等于 1。所以我们实际上只能选择激活函数。
 
- which is close to the independent function we have。 Now let's consider the activation functions we actually used on deep learning。 So we have。 we usually using sigmoid tangent or red， but how the expansions near zero， near x equal to zero。 we know that it can approximate by a linear function here。 For example。
+这接近于我们所拥有的独立函数。现在让我们考虑一下在深度学习中实际使用的激活函数。所以我们通常使用 sigmoid、tangent 或 relu，但它们在零附近的展开情况如何呢？我们知道它们可以用线性函数近似。例如：
 
- for sigmoid is equal to 1 over 2 plus x over 4， and some high order function of x。 Similarly。 in two tangent is actually equals to zero plus x， this is the identity function。 and with some high order function of x。 For relu， if x larger than zero。 then it's actually identity function。 So then we see that close to x equals to 1。
+对于 sigmoid 函数，它等于 1 除以 2 加 x 除以 4，再加上一些 x 的高阶项。同样地，对于 tangent 函数，它实际上等于零加 x，这是恒等函数，并且带有一些 x 的高阶项。对于 relu 函数，如果 x 大于零，那么它实际上是恒等函数。所以我们看到，当 x 接近 1 时，类似地。
 
- both tangent and the relu are close to the identity functions we have。 If we choose x。 the input is actually values nearby zero， which is actually the case because you know that the weight functions are randomly initialized around zero。 and the input， the output function also have zero mean and small variance， which means。 the activation function is actually close to linear function here， you can see the graph is here。
+切线函数和ReLU函数都接近我们所拥有的恒等函数。如果我们选择x，输入值实际上是接近零的，因为你知道权重函数是随机初始化在零附近的。并且输入输出函数也具有零均值和小方差，这意味着激活函数实际上在这里接近线性函数，你可以从图表中看到这一点。
 
- Then for both tangent and the relu are fine， but the problem is the sigmoid。 because it's not close to identity function。 What we can do， we can simply fix it by scale it。 We use a four times sigmoid and the minus two， then it's close to identity function。 So you can see from the right hand figure is that the blue line is a scale sigmoid。
+那么，切线函数和ReLU函数都是可以的，但问题出在sigmoid函数上，因为它不接近恒等函数。我们可以通过缩放来修复它。我们使用四倍的sigmoid函数减去二，然后它就接近恒等函数了。所以你可以从右边的图中看到，蓝线是一个缩放过的sigmoid函数。
 
- You can see that close to x equals to 1， the curve is almost identical to the tangent and the sigmoid。 which is very different to the original sigmoid。 This is a green line here。
+你可以看到，当x接近1时，曲线几乎与切线和sigmoid函数相同，这与原始sigmoid函数非常不同。这是这里的绿线。
 
 ![](img/1494e52407436e52c04a4e1b7b070fe1_3.png)
 
- [BLANK_AUDIO]。
+[空白音频]。

@@ -1,113 +1,105 @@
-# P37：37. L8_5 Deep Learning Hardware - Python小能 - BV1CB4y1U7P6
+# P37：37. L8_5 深度学习硬件 - Python小能 - BV1CB4y1U7P6
 
- During our office hour， we get a few questions about， "Well， I have a GPU on the laptop。
+在我们的办公时间里，我们会收到一些问题，"嗯，我的笔记本电脑上有一个GPU。
 
 ![](img/d47ae8601070f1793a6d7c0595be470b_1.png)
 
- why I cannot use it？"， So maybe it's a good idea to talk about mobile hardware and what kind of hardware for deep。 learning and how to get fully utilization from this hardware。
+为什么我不能使用它？"，所以也许我们可以讨论一下移动硬件，以及什么样的硬件适合深度学习，以及如何从这些硬件中充分利用。
 
 ![](img/d47ae8601070f1793a6d7c0595be470b_3.png)
 
- So let's start with the GPU machine you can get by your own。 You can buy a reasonable Intel CPU as i7， it gives you 0。15 TFLOPS。 You can put a reasonable number of 32GB TDL4 memories for your machine and most importantly。 you can buy a media GPU here。 Here we are using a media tetraX。 This is a recent GPU two years ago。
+所以让我们从你自己可以买到的GPU机器开始。你可以购买一台合理的Intel i7 CPU，它提供0.15 TFLOPS。你可以为你的机器配备32GB的TDL4内存，最重要的是，你可以购买一块媒体GPU。在这里我们使用的是媒体TetraX，这是一款两年前的GPU。
 
- it gives you 12 TFLOPS and 16GB memory。 You can see that it gives almost a 10 times more TFLOPS which is the computational power。 can point the CPU you have。
+它提供12 TFLOPS和16GB内存。你可以看到，它提供的计算能力几乎是你拥有的CPU的10倍。
 
 ![](img/d47ae8601070f1793a6d7c0595be470b_5.png)
 
- Let's dive deeper into the CPU。 So this is the chip area of the Intel i7 CPU。 You can see that on the right hand， on the left hand， there's a large area called Intel。 processor graphics。 It's actually a GPU， it's integrated a GPU for this place but this GPU is pretty weak。 and has less memory， we usually don't use that for training deep learning。 But yes。
+让我们深入了解CPU。这是Intel i7 CPU的芯片区域。你可以看到，在右边和左边，有一个叫做Intel处理器图形的大区域。它实际上是一个GPU，这个地方集成了一个GPU，但这个GPU相当弱，内存也较少，我们通常不使用它来训练深度学习。但确实存在。
 
- we can do it for inference， that's a different topic we may not cover today。 So on the right hand。 you can see that the blue area， we have four GPU cores。 This is a physical CPU cores。 And between them， there's a shared last level cache， it's called L3 cache。 Then within each physical CPU， we have 64GB L1 cache and 256GB L3 cache。
+我们可以在推理中使用它，这是一个不同的话题，我们今天可能不会讲到。所以在右侧，你可以看到蓝色区域，我们有四个GPU核心。这些是物理CPU核心。它们之间有一个共享的最后级缓存，叫做L3缓存。然后在每个物理CPU内，我们有64GB的L1缓存和256GB的L3缓存。
 
- The shared last level cache or called L3 cache is 8MB。 Under the blue area on the right and on the top， this is the interface to memory memory。 Here we have 30GB per second to the memory。 Now this is the design of the CPU。 now let's talk about how to fully utilize the CPUs。 So for example。
+共享的最后级缓存，或称为L3缓存是8MB。在右侧的蓝色区域下方和顶部，这是与内存的接口。这里我们有每秒30GB的内存带宽。现在这是CPU的设计。接下来让我们谈谈如何充分利用CPU。举个例子。
 
- we're going to compute A+B both A are just the scalars on the CPU。 We need to do a bunch of work before we actually do the computation。 Assume both A and B are on the main memory。 Then we move both A and B into the register on the CPU before computation。 The usual way we move the data， we first move A and B into L3 cache， then to L2 to L1 and。
+我们要计算A+B，其中A都是在CPU上的标量。在实际计算之前，我们需要做一堆工作。假设A和B都在主内存中。然后我们把A和B都移动到CPU的寄存器中进行计算。通常我们移动数据的方式是，首先将A和B移动到L3缓存中，再到L2、L1缓存中。
 
- then to registers。 Access the data in L1 cache pretty fast。 It's almost as fast as your computation。 but to access data in L2 cache， it's nearly， slower， it's 14 times slower than access for L1。 Access the memory is even slower， it's 200 times slower than comparing to access L1。 Then one trick to improve the CPU performance is that we want to move data as less as possible。
+然后到寄存器。从L1缓存中访问数据非常快，几乎和你的计算一样快。但访问L2缓存中的数据会慢一些，慢了14倍。访问内存会更慢，和访问L1相比，慢了200倍。那么提升CPU性能的一个技巧就是尽量减少数据的移动。
 
- So we can call it called memory locality， usually there's two kinds of memory locality， one。 score temporal， one score spatial。 For temporal， which means we can reuse data later from now on so that we don't need to。 remove the data out from cache。 For spatial， which means if we use data in a particular location at memory。 the next time， we can use the data nearby memory so that CPU can prefetch data for me。
-
-
-
-
+所以我们可以称之为内存局部性，通常有两种内存局部性，一种是时间局部性，另一种是空间局部性。时间局部性意味着我们可以从现在起重新使用数据，这样就不需要将数据从缓存中移除。空间局部性意味着，如果我们使用某个特定位置的内存数据，下次我们可以使用附近的内存数据，以便CPU可以为我们预取数据。
 
 ![](img/d47ae8601070f1793a6d7c0595be470b_7.png)
 
- So let's make a case study here。 So soon we have a matrix and matrix is stored in a row major。 which means each element in， a row is stored in a sequential way and then row by row here。 So in this situation accessing a column is usually much slower than accessing a row。 The reason is because every time CPU reads 64 bytes， it's called cache line。
+让我们在这里做一个案例研究。假设我们有一个矩阵，矩阵是按行主序存储的，这意味着每一行的元素是按顺序存储的，然后逐行存储。在这种情况下，访问列通常比访问行要慢。原因是每次CPU读取64字节时，称为缓存行。
 
- So then to read one value， we actually read a bunch of other values in the nearby position。 So then for each row， we maybe only need a few cache lines read instead of read one by one。 Also see if you can smartly try to reduce to read the next cache line ahead when it even。 don't know if you can use it or not。 So that we can pipeline the data read and data processing so to reduce the access the。
+因此，要读取一个值时，实际上我们会读取周围位置的许多其他值。因此，对于每一行，我们可能只需要读取几个缓存行，而不是一一读取。还可以看看是否能智能地提前读取下一个缓存行，即使你还不确定是否会使用它。这样，我们可以流水线化数据读取和数据处理，从而减少访问。
 
- read performs。 By effect， if you can access by callers because we don't know how long the row it is。 the， CPU can both cache line and the CPU cannot predict where the second element is。 So then here we need to make a full request and every time we make a request with the data。 ready compute and do another request。 So it's how to pipeline all this read and the computations。
+读取性能。实际上，如果你可以通过调用者访问，因为我们不知道行的长度，CPU可以缓存行，但它无法预测第二个元素的位置。因此，在这里我们需要发起完整的请求，每次请求数据时，准备计算并进行另一个请求。这就是如何流水线化所有的读取和计算。
 
- That's why reading a call is slower here。 The second way to improve is that the modus read。 So we saw that the i7 has four calls。 But server CPU has more calls。 For example。 the largest p3 we have four physics CPUs there and 33 physical cores in total。 So to fully utilize the resources we need using at least 33 threads。
+这就是为什么这里的调用读取较慢的原因。提高性能的第二种方式是使用模式读取。我们看到i7有四个调用。但是服务器CPU有更多的调用。例如，我们的最大p3配置有四个物理CPU，共有33个物理核心。因此，为了充分利用资源，我们需要使用至少33个线程。
 
- Then to use modus read is called parallelization。 That is we can run things in parallel。 One trick here is that Intel can't tell you something called hyper-threading。 Which means if you check the CPU info in your system， it may tell you， "OK， I have 8 cores。"。 Actually you have only 4 physical cores and the other version is just to virtualize the， cores。
+然后，使用模式读取称为并行化。也就是说，我们可以并行执行任务。这里的一个技巧是Intel有一种叫做超线程的技术。如果你检查系统中的CPU信息，它可能会告诉你，“好吧，我有8个核心。”实际上你只有4个物理核心，另外的版本只是虚拟化的核心。
 
- So if you only have 4 physical cores using a thread， maybe it doesn't have too much。 Because each core only has a shared same register。 So the registers。 because it's computational intensive， the two threads on the same physical。 cores we are fired for these registers。 So that is if you're using modus read for Intel CPUs and you can optimize for dense computations。
+所以，如果你只有4个物理核心并使用一个线程，可能效果不明显。因为每个核心只有一个共享的寄存器。因此，这些寄存器是计算密集型的，两个线程在相同的物理核心上会争夺这些寄存器。因此，如果你在Intel CPU上使用模式读取，你可以为密集计算进行优化。
 
- you only want to use the number of threads equals to the physical cores。 So let's do another case study here on the homework。 We show that if I can compute a+b both a and b are vector， it's much easier。 It's much faster to just write c equals to a+b instead of writing a Python loop that。
+你只希望使用的线程数等于物理核心数。所以让我们在这儿做一个案例研究。我们展示，如果我能计算a+b且a和b都是向量，那就更简单了。直接写`c = a + b`比写Python循环要快得多。
 
- is using iterator over the length of a and do 1。1。 The results both。 Firstly the left-hand code makes a course。 Every time it's in working the back end。 you need to pass the Python virtual machines to， do the computation and every core you have a certain amount of overhead。 But on the right hand， we only have a single time and then we have only single overhead。
+使用迭代器遍历a的长度并进行1.1操作。左边的代码会导致每次工作时都进入后端。你需要传递给Python虚拟机进行计算，每个核心都会有一定的开销。但是右边的代码我们只需要做一次操作，然后只有一个开销。
 
- On the other hand， the right hand is much easier to be parallelized by writing a c++ operator。 For example， in c++ to use the modus read， I just want to hint before the for loop that。 is causing using openMP to automatically parallelize the code。 And because every time read i's element of a and b and write to the i's element of c。
+另一方面，右边的代码通过编写一个C++操作符更容易实现并行化。例如，在C++中使用modulus read时，我只需在for循环前加一个提示。这样就可以使用OpenMP自动并行化代码。因为每次读取a和b的元素并将其写入c的相应元素。
 
- they are independent to each other。 So here we can run things in parallel。 So we mentioned two tricks to improve the CPU performance once but memory locality， the。 other things for parallelization。 Let's look at GPU。
+它们彼此独立。所以在这里我们可以并行运行任务。所以我们曾提到过两种提升CPU性能的技巧，一种是内存局部性，另一种是并行化的其他技巧。我们来看看GPU。
 
 ![](img/d47ae8601070f1793a6d7c0595be470b_9.png)
 
- So this is the chip area kind of the CPU diagram for NVIDIA 10X we mentioned before。 It's pretty different to CPU here that every green dot is actual core。 And for Titan X we have over 2000 cores。 Every core is much smaller compared to CPU core。 So it have very good asmestic units but doesn't have so many control flows。
+这是我们之前提到的NVIDIA 10X CPU芯片区域示意图。它与CPU的区别在于每个绿色的点都是真正的核心。Titan X有超过2000个核心，每个核心都比CPU核心小得多。所以它有非常好的计算单元，但没有那么多的控制流。
 
- So we can only do simple arithmetic operations。 And it have a shared L2 cache， a 3 megabyte。 It's pretty smaller compared to the CPU caches we have。 But differently it has on GPU memory。 The memory bandwidth is pretty large。 It's 480 gigabyte memory bandwidth into the memory and thus GPU。
-
-
+所以我们只能执行简单的算术操作。它有一个共享的L2缓存，大小为3MB。与我们常见的CPU缓存相比，它的缓存要小得多。但不同的是，它有更大的GPU内存带宽，内存带宽为480GB/s。
 
 ![](img/d47ae8601070f1793a6d7c0595be470b_11.png)
 
- So given this different architecture， improving the GPU utilization is similar to GPU but also。 different。 Firstly we need to use thousands of threads every time instead of tens threads。 Which means each workload we push into the GPU should be large enough。 For example if we gonna sum a vector of tens of 100 at most we can use 100 threads。
+鉴于这种不同的架构，提升GPU的利用率与GPU本身类似，但也有所不同。首先，我们每次需要使用成千上万的线程，而不是几十个线程。这意味着我们推送到GPU的每个工作负载应该足够大。例如，如果我们要对一个最多包含100个元素的向量求和，那么我们可以使用100个线程。
 
- To use a thousand threads at least we need the vector to behave thousands of elements。 on the vector。 Similar thing for matrix-mature multiplication if we got a 10x10 matrix then well nothing。 you can do。 You need at least have hundreds by hundreds matrix size。 On the other hand GPU have less cache architecture and much smaller cache size。
+要使用至少一千个线程，我们需要确保向量包含成千上万个元素。对于矩阵乘法，如果我们得到一个10x10的矩阵，那么几乎什么都做不了。你至少需要有一个百行百列的矩阵。另一方面，GPU的缓存架构较少，缓存大小也更小。
 
- Which means memory locality is more important for GPUs。 Because GPU each course much smaller GPU doesn't have control flows supported well。 Which means we cannot have web serving system running on GPU because they have a lot of。 control flows and if the network itself have too much control flows it maybe doesn't run。
+这意味着内存局部性对GPU来说更为重要。因为GPU的每个核心都小得多，且GPU对控制流的支持较差。这意味着我们不能在GPU上运行Web服务器系统，因为它们有大量的控制流，而且如果网络本身有太多控制流，它可能无法运行。
 
- efficiently on GPUs。 Then because GPU is so many different kinds of GPUs here CPU is same but different model。 gives you almost a similar performance。 So we have a simple guideline for you to buy GPUs。 So the x axis is the GFLOPS。 This is a computational power of a GPU and the y axis is the price。 From Wikipedia it's not actually pretty accurate。 So we put a bunch of GPUs there and there's two kinds of blue cycles and the red cycles。
+在GPU上高效运行。然后因为GPU种类繁多，这里的CPU是相同的，但型号不同。它们的性能几乎相似。因此，我们为您提供了购买GPU的简单指南。x轴是GFLOPS，这是GPU的计算能力，y轴是价格。根据维基百科，实际上并不非常准确。所以我们列出了许多GPU，并且有两种类型的蓝色周期和红色周期。
 
- The blue one is the line series media GPUs。 And the red one is the newer one called 10 series but the latest one is called 20。 It's even higher we didn't have that here yet。 So what you can see that within a series the computational power is almost linear to。
+蓝色的是媒体系列GPU，红色的是更新的10系列，但最新的是20系列，性能更强，虽然我们还没有显示。你可以看到，在同一系列内，计算能力几乎与价格成线性关系。
 
- the price。 So which means it's a good thing because if I have more budget you can buy more power。 for GPUs。 And almost like that's linear。 But the new series is much better than the other one。 Almost like given the same price the 10 series can get two times more computational power。 than the 9 series。 So which means for a media GPUs you want to buy new models。
+这意味着这是一个好事，因为如果我有更多的预算，就可以购买更多的GPU计算能力。几乎就像是线性增长一样。但新系列的性能远好于旧系列。几乎在相同价格下，10系列的计算能力是9系列的两倍。因此，对于媒体GPU，你应该购买新的型号。
 
- And even within the 10 series you can see that 1080 Ti is even given the same price。 It gives even higher computation power because 1080 Ti is a newer model on this theory。 So a quick summary here is that while you want to buy a new model and depending on the budget。 you have you can try then you can get the calling computation power from the GPU。
+即使在10系列中，你也可以看到1080 Ti在相同价格下提供更高的计算能力，因为1080 Ti是该系列的更新型号。因此，简单总结一下，在购买新型号时，根据你的预算，你可以尝试从GPU中获得所需的计算能力。
 
- So let's do a simple comparison for CPU and over GPUs。 And we show two kinds of configuration here on the right hand。 On the left hand is the typical way you can use a typical CPU or GPU you can get on the。 right hand is a high end。 So for CPUs the number of courses range from 6 to 64。
+让我们简单比较一下CPU和GPU。右边显示了两种配置。左边是典型的CPU或GPU配置，右边是高端配置。对于CPU，核心数从6到64不等。
 
- For GPUs it is much higher from 2000 to 4000。 But accordingly the TFLOPs from CPUs can be from 0。2 to 1 but for GPUs you should return， to 100 times higher。 But the memory size for CPU could be much higher up to 1TB but for GPUs you only get 32GB at。 most currently。 So which means we want to be very careful about GPU memory utilizations。
+对于GPU，它的计算能力远高于CPU，从2000到4000。但是，相应地，CPU的TFLOPS可以从0.2到1，而GPU的TFLOPS通常高出100倍。但CPU的内存大小可以更大，最多可达1TB，而GPU目前最多只有32GB。这意味着我们需要非常小心GPU内存的使用情况。
 
- The memory bandwidth for CPUs may be smaller up to 100GB but for GPUs because the computation。 power is so strong we should use much higher memory bandwidths for from 400GB to 1TB。 For control flows CPU is pretty strong， it is designed for that but GPUs only for simple。 mass computations is pretty weak。
-
-
+CPU的内存带宽可能较小，最多为100GB，但对于GPU，因为计算能力非常强，我们需要使用更高的内存带宽，从400GB到1TB不等。CPU的控制流性能相当强，设计上就是为了这一点，但GPU在复杂的计算上较弱。
 
 ![](img/d47ae8601070f1793a6d7c0595be470b_13.png)
 
- We should we already see that on the first slide how CPU memory and GPU connected。 Now we can see that CPU connected memory with 32GB bandwidth and GPU has its own memory。 is pretty fast。 But the tricky thing here is that GPU connected to CPU you should buy PCIe and the latest PCIe。 we have is give you at most 16GB per second bandwidth。
+我们已经在第一页看到了CPU内存和GPU的连接。现在我们可以看到，CPU连接的内存带宽为32GB，而GPU有自己的内存，速度相当快。但这里的难点是，GPU与CPU连接时，你需要购买PCIe，最新的PCIe可以提供每秒最多16GB的带宽。
 
- Which means you don't want to copy frequently data， you don't want to copy data frequently。 between GPU and CPUs because the bandwidth is an imitation。 So copy data out from GPU need a little bit synchronization which give you another overhead。 So that is if you try to run a new network you want to if you have a GPU you want to put。
+这意味着你不想频繁地复制数据，尤其是 GPU 和 CPU 之间的数据复制，因为带宽是一个限制。因此，从 GPU 中复制数据需要一定的同步，这会带来额外的开销。所以，如果你尝试运行一个新的网络，并且你有 GPU，你就应该尽量将工作负载放入 GPU 中，以避免频繁地将数据从 GPU 复制到 CPU。
 
- a workload into GPU as much as possible to avoid copy data frequently from GPU to CPU。
+尽量将工作负载尽可能多地放入 GPU 中，避免频繁地从 GPU 复制数据到 CPU。
 
 ![](img/d47ae8601070f1793a6d7c0595be470b_15.png)
 
- That will destroy your performance。 Well we only talk about Intel CPU and Nvidia GPUs but there are more CPU and GPUs。 For example for CPUs we have MD CPUs and H at mobile phones a popular choice is ARM。 For GPUs it is desktop server GPU so we have MD GPUs as well and Intel GPUs we already showed。 that on the first slide。 On the H on mobile phones we have a bunch of GPU vendors， ARM。
+这会毁掉你的性能。我们这里只讨论英特尔 CPU 和 Nvidia GPU，但还有更多的 CPU 和 GPU。例如，CPU 上我们有 MD CPU 和 H，在手机上流行的选择是 ARM。对于 GPU，有桌面服务器 GPU，所以我们也有 MD GPU，以及英特尔 GPU，我们已经在第一张幻灯片中展示过了。在 H 上的手机上，我们有一堆 GPU 厂商，包括 ARM。
 
- Qualcomm and a bunch of。
+高通和一堆其他厂商。
 
 ![](img/d47ae8601070f1793a6d7c0595be470b_17.png)
 
- others。 Well programming on CPU and GPUs are a little bit different。 For CPU almost as similar to each other we can use C++ or any other high performance， language。 And no matter what CPU you have we usually have a mature compilers which can give you。 performance guaranteed。 But for GPU it is a little bit different。
+其他方面，CPU 和 GPU 的编程有一些不同。对于 CPU，几乎是相似的，我们可以使用 C++ 或其他任何高性能语言。而且无论你使用什么 CPU，我们通常都有成熟的编译器，可以保证你获得好的性能。但对于 GPU，它稍有不同。
 
- On VDA GPUs we show you the CUDA to program。 It is embedded in the C interface。 It has a lot of features and the compilers mature the Java quality is good which means。 you usually can get very good performance for MDDA GPUs。 For other GPUs one choice we can use OpenCL similar to CUDA but it is widely available。
+在 VDA GPU 上，我们向你展示了 CUDA 编程。它嵌入在 C 接口中，具有很多特性，编译器成熟，Java 质量很好，这意味着你通常可以为 MDDA GPU 获得非常好的性能。对于其他 GPU，我们可以选择使用 OpenCL，它与 CUDA 类似，但更为广泛可用。
 
- to a bunch of GPUs。 The tricky thing here is that for different GPU vendors the quality varies。 Sometimes we sometimes that a GPU you don't have so much driver so much good quality driver。 which means no matter how good the program you run it may be run slower。 And also it doesn't have the full tool to a chain to support all the deep running frameworks。
+针对不同的 GPU 厂商，质量差异很大。我们有时会遇到一个 GPU，驱动程序质量不高，这意味着无论程序有多好，运行速度可能都会较慢。而且它没有完整的工具链来支持所有深度学习框架。
 
- which means running deep running workload on GPUs instead of besides a VDA GPU sometimes， harder。 But people are getting better and better to fix it。
+这意味着在 GPU 上运行深度计算工作负载，而不是在 VDA GPU 旁边，有时会更困难。但人们越来越擅长解决这个问题。
 
 ![](img/d47ae8601070f1793a6d7c0595be470b_19.png)
 
- [BLANK_AUDIO]。
+[BLANK_AUDIO]。

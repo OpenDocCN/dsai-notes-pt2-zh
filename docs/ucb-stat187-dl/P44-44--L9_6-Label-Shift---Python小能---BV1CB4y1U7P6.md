@@ -1,61 +1,59 @@
-# P44：44. L9_6 Label Shift - Python小能 - BV1CB4y1U7P6
+# P44：44. L9_6 标签偏移 - Python小能 - BV1CB4y1U7P6
 
- Good。
+好的。
 
 ![](img/2da66bac82b569e01876c4afffcee69b_1.png)
 
- So then let's look at label shift。 Label shift is kind of a simplified case of this。 So let's say this is our training set。
+那么，让我们看一下标签偏移。标签偏移是这种情况的简化版。假设这是我们的训练集。
 
 ![](img/2da66bac82b569e01876c4afffcee69b_3.png)
 
- And our test set looks like so。 So it turns out that we have a lot more。 cast in our test set than in our training set。 So this is a bit different from just simple covariate shift。 And it's something that's actually rather more common。
+而我们的测试集看起来是这样的。结果发现，我们的测试集中有更多的病例，而训练集中较少。这与简单的协变量偏移略有不同，而且实际上这种情况更为常见。
 
 ![](img/2da66bac82b569e01876c4afffcee69b_5.png)
 
- So why would you ever do this？
-
-
+那么，为什么你会做这种事呢？
 
 ![](img/2da66bac82b569e01876c4afffcee69b_7.png)
 
- Well， let's say I use some medical diagnostic tool， and I train it on a few sick patients。 Let's say I have maybe 50/50 sick and healthy patients。 And then I deploy this in a practice。 Let's say I have a breast cancer test， and 50/50 split for training， and deploy it in practice。 And it turns out that fortunately breast cancer， is a lot more rare than what I would have actually imagined。
+假设我使用一些医疗诊断工具，并在一些生病的病人身上训练。假设我有大约50%的病人和50%的健康病人，然后我将其应用到实际工作中。假设我有一个乳腺癌测试，训练集是50/50的比例，然后应用到实践中。结果发现，幸运的是，乳腺癌比我原本想象的要少得多。
 
- So very few people are actually really sick。 And then you need to intuitively， as you can see。 down weight things such that that is corrected for。 Or I test on that at during flu season where flu is a lot more， common。 and then my test should take care of this。 Or， for instance， for speech recognition。
+所以，实际上很少有人真的生病。然后，你需要直观地调整权重，使其得到修正。或者，我可以在流感季节测试，因为流感在这个时候更常见，那么我的测试应该会考虑到这一点。或者，例如，在语音识别中。
 
- this is a very common thing。 So let's say I build a speech recognizer。 And then I build this maybe before an election， and then I have an election。 All of a sudden。 there are new names， new topics， and discussions。 They still speak the same language。 but all of a sudden they speak about walls， rather than health care。
+这是一个非常常见的情况。假设我构建了一个语音识别器，然后可能在选举前构建，之后进行选举。突然间，有了新的人物、新的话题和讨论。人们还是讲相同的语言，但突然之间他们开始谈论墙壁，而不是医疗保健。
 
- And people have weird names and weird hair。 And so your speech recognizer-- well， OK。 forget the hair， but for the rest。 It may not work so well anymore， because you now。 have a different distribution over what gets translated。 Or you have some movie star with a weird name， where all of a sudden gets popular。
+而且人们有一些奇怪的名字和奇怪的发型。所以你的语音识别器——好吧，忘掉发型，剩下的部分，它可能就不太好用了，因为现在你有了不同的分布，翻译出来的内容也不同了。或者你有一个名字很奇怪的电影明星，突然间他变得很流行。
 
- So then your speech recognizer needs to adjust to this。 Otherwise， you're just consistently。 going to get this wrong。 And so if you look at what's going on in the math。
+所以，你的语音识别器需要做出调整。否则，你会一直错误地识别。而且，如果你看一下数学上的表现。
 
 ![](img/2da66bac82b569e01876c4afffcee69b_9.png)
 
- you have a slightly different setting。 So rather than assuming that p of y given x is the same。 you now assume that p of x given y is the same， but that rather than p of y， you have q of y。 So stuff like that can， for instance， happen， if you assume that y is actually causal for x。 So if the flu causes the symptoms， rather than the symptoms causing the flu。
+你有一个稍微不同的设置。所以，不再假设在给定x的情况下y的概率相同，而是假设在给定y的情况下x的概率相同，但你不再使用y的概率，而是使用q的概率。所以，类似的事情会发生，比如你假设y实际上是x的因果因素。如果流感引起症状，而不是症状引起流感。
 
- and then if all of a sudden you have more flu， well then that happens。 So now you need to reweight things， according to the ratio of the labels。 Before that。 for covariative correction， we were kind of quite lucky， right？ I mean。 we actually have the data sets around。 But you don't really have the test labels around anymore。
+然后如果突然之间你有更多的流感，那就发生了。所以现在你需要根据标签的比例重新加权。之前，对于协变量修正，我们是相当幸运的，对吧？意思是我们实际上有现成的数据集。但你现在可能没有现成的测试标签了。
 
- So that's pretty inconvenient。 So what you could do is you want to estimate--。
+所以，这就很不方便了。你可以做的是，你想要估算——。
 
 ![](img/2da66bac82b569e01876c4afffcee69b_11.png)
 
- you want to measure in how well the estimates do on the test set。 And it turns out that all you need， is just to assume that your error confusion matrix remains。 unchanged。 This is a slightly advanced topic。 I mean， you can read the corresponding paper for that。 But the algebra behind this is actually fairly simple。
+你想要衡量的是估算在测试集上的表现。事实证明，所有你需要做的就是假设你的错误混淆矩阵保持不变。这是一个稍微高级的话题。我的意思是，你可以阅读相关的论文。不过背后的代数其实相当简单。
 
- You go and look at the error confusion matrix。 And you look at basically what the predictions on the training。 set are。 You look at the corresponding label predictions on the test set。 These are not the true labels， but they are the predictions。 Now if let's say on the training set。 I predict 10% people with flu and 90% healthy。 And on the test set。
+你去查看错误混淆矩阵。然后你基本上看一下训练集上的预测结果。你查看测试集上相应的标签预测。这些不是正确的标签，但它们是预测结果。现在假设在训练集中，我预测10%的人有流感，90%是健康的。在测试集中。
 
- I predict 40% with flu and 60% healthy。 I can infer from that that probably something must have happened。 Now if I use my error confusion matrix， then I have to assume that it's invertible。 That's basically， if I have to flu， what， are the chances that I'll say I have to flu or that I'm healthy。 then you can invert that matrix and work out exactly， what the probabilities are based on that。
+我预测40%是流感，60%是健康。我可以从中推测可能发生了某些事情。现在，如果我使用我的错误混淆矩阵，那么我必须假设它是可逆的。这基本上意味着，如果我有流感，那么，我有多大概率会说我有流感或我健康？然后你可以反转那个矩阵，精确地计算出基于此的概率。
 
- You're essentially in good shape。 So this is really just a quicker side。
+你基本上处于良好状态。所以这实际上只是一个更快的侧面。
 
 ![](img/2da66bac82b569e01876c4afffcee69b_13.png)
 
- Don't worry about the details there， but this is just for you to let you know that besides covariative。 there are also other related problems that look and feel very similar， but aren't quite the same。
+不用担心那些细节，但这只是让你知道，除了协方差，还有其他看起来和感觉很相似但其实不完全相同的问题。
 
 ![](img/2da66bac82b569e01876c4afffcee69b_15.png)
 
- Yeah， so of course you taste it and it works and yeah， whatever。
+是的，当然你尝试了一下，它有效，反正就是这样。
 
 ![](img/2da66bac82b569e01876c4afffcee69b_17.png)
 
- That's fine。
+没关系。
 
 ![](img/2da66bac82b569e01876c4afffcee69b_19.png)

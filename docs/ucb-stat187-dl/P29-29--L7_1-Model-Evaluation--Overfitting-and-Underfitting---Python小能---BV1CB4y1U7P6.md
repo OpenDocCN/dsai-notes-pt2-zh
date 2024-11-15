@@ -1,185 +1,177 @@
-# P29：29. L7_1 Model Evaluation, Overfitting and Underfitting - Python小能 - BV1CB4y1U7P6
+# P29：29. L7_1 模型评估、过拟合与欠拟合 - Python小能 - BV1CB4y1U7P6
 
- Today we're going to talk about model selection and two recognizations。
+今天我们将讨论模型选择和两种识别方法。
 
 ![](img/d6d7a474c0fb35bd9eecd0fbb6ec403f_1.png)
 
- So let's start with the homework four。 Actually， this will be very interesting homework。 You're going to do a Kaggle competition to predict the house sale price。 So we had talked about the house sale price for several times。 Now。 your job here is to submit a homework to the Kaggle。 So we're going to provide you a baseline model。
+所以让我们从作业四开始。其实，这将是一个非常有趣的作业。你将参加一个Kaggle竞赛，预测房屋销售价格。我们已经讨论了好几次房屋销售价格的问题。现在，你的任务是将作业提交到Kaggle。我们将为你提供一个基准模型。
 
- So we have all the how to download dataset， how to build a baseline model， how to submit。 we already have it。 But this one only gives a very basic model。 You probably can rank at 1。000 at the Kaggle。 Now your job is to try your best。 Half a year ago we started this same thing。 And ten students on the class actually ranked on the top ten in Kaggle。
+我们已经提供了如何下载数据集，如何构建基准模型，如何提交。我们已经有了这些步骤。但这个模型只是提供了一个非常基础的模型，你可能会在Kaggle上排到1000名左右。现在，你的任务是尽最大努力。半年前，我们也开始了这个活动，班上十个学生成功进入了Kaggle的前十名。
 
- But now it's a little bit harder because half a year passed。 There's not maybe 2。000 people have been participated on Kaggle。 So you may be unlikely you can get in the top three in a week。 but you can try your best。 So we're going to recommend you to work with the team。 Especially your project team。 So you can work with your team and get familiar with your teammates。
+但现在情况有点复杂，因为半年已经过去。可能有2000人参加了Kaggle竞赛。所以你不太可能在一周内进入前三名，但你可以尽力而为。所以我们建议你与团队合作，特别是你的项目团队。你可以和你的团队合作，熟悉你的队友。
 
- So also we're going to give 500 ADOP credits to the top three person or team。 who actually ranked on the top three amount of the submissions you have。 So this $500 is going to benefit you for your projects you can use to try and even fancy models。 So that's homework four。 In Thursday we're going to go through the notebooks we're going to use。
+因此，我们还将为前三名个人或团队提供500美元的ADOP积分，他们实际上在你提交的作品中排名前三。所以这500美元将有助于你的项目，你可以用它来尝试甚至是更复杂的模型。所以这是作业四。在周四，我们将一起回顾我们将要使用的笔记本。
 
- But we recommend you to start earlier because Kaggle have never had future accounts。 You can only start maybe five times per day。 And you have a lot of idea to try。 Then it take maybe if you're going to spend maybe five hours on that。 I recommend you to spend one hour per day instead of the five hour at the end of the day。 Okay。
+但我们建议你尽早开始，因为Kaggle没有未来账户。你每天最多只能尝试五次。而且你有很多想法需要尝试。可能需要五个小时。如果你打算花五个小时，我建议你每天花一小时，而不是在最后一天集中五小时。好的。
 
- so that's homework four。
+这就是作业四。
 
 ![](img/d6d7a474c0fb35bd9eecd0fbb6ec403f_3.png)
 
- So we're going to talk about model evaluations today。 So let's consider another example。 We don't have a cover competition for this one but this motivating example。 That is a nander that hires you to investigate who will repay their knowns。 So you are given 100 applicants。 You get the whole information for each applicant。
+所以今天我们将讨论模型评估。让我们考虑另一个例子。我们没有这个例子的竞赛，但这是一个激励性的例子。假设有一个雇主雇佣你调查谁会按时偿还贷款。你收到了100名申请者的信息。你获得了每个申请者的所有信息。
 
- You get the whole profiles， bank statement and interview videos。 And then a month of 100 applicants。 five guys defaulted within three years。 Your job is to predict in the future who cannot default on the loan。
+你获得了所有申请者的个人资料、银行账单和面试视频。然后是100名申请者的一个月数据。五个人在三年内违约。你的任务是预测未来谁可能无法违约。
 
 ![](img/d6d7a474c0fb35bd9eecd0fbb6ec403f_5.png)
 
- Then you look into the data and you surprise and you find all these five guys who defaulted。 were a bluster during their interviews。 That's a pretty strong signal because here nobody actually blurshed。 So which means that average people wear brushes pretty low maybe but here we have 100%。 It maybe means something。 It means like particularly people prefer to wear brushes and they may be preferred default。
+然后你查看数据，惊讶地发现所有五个违约的人在面试中都表现得非常自信。这是一个相当强烈的信号，因为这里没有人实际做出夸大的行为。所以这意味着，平均来说，大家的自信表现可能较低，但这里我们有100%的自信。这可能意味着某些东西。比如那些特别自信的人可能更容易违约。
 
- But you never know。 You may be a coincidence， maybe some meaningful things。 Given you can find this information， you can build model。 The model may be able to find this strong signal as well。 Then your model may be likely to put this signal as the strongest signal you have。
+但你永远不知道。可能是巧合，也可能是一些有意义的事情。只要你能够找到这些信息，你就可以建立模型。模型也许能够找到这个强信号。然后你的模型可能会把这个信号当作你拥有的最强信号。
 
- While the brochures during the interview， then your model immediately tell you， okay， this。 guy cannot default。 So what's wrong here？ Who knows what's wrong here？ Okay。 Not well。 could be another question， another answer。 Okay， the one problem here is that we only have five guys who defaulted。 If we can have 10，000 applicants and 100 people defaulted， maybe the chance that everyone wear。
+在面试期间发放传单时，你的模型会立即告诉你，好的，这个家伙不能违约。那么这里有什么问题呢？谁知道这里有什么问题呢？好的，可能是另一个问题，另一个答案。好的，这里的一个问题是我们只有五个违约的人。如果我们有10,000名申请者，其中有100人违约，也许每个人的违约机会就不那么明显了。
 
- blurshers is like his lower。 Okay， so hope this motivation example cannot tell you that a lot of things matters for you。 to build good models on your application。
+传单就像他的下属。好的，所以希望这个动机示例能告诉你，很多因素对于你在应用中构建好模型至关重要。
 
 ![](img/d6d7a474c0fb35bd9eecd0fbb6ec403f_7.png)
 
- So let's first talk about model evaluation。
+所以我们先来谈谈模型评估。
 
 ![](img/d6d7a474c0fb35bd9eecd0fbb6ec403f_9.png)
 
- So far， we only talk about how to compute the arrow on the training dataset。 The training dataset is a data you can use to train your model to get the model parameters。 In practice， we only care about the generalization arrow， which is the model arrow on the new。 coming data you never see before。 So let's take an example here。
+到目前为止，我们只谈论了如何计算训练数据集上的箭头。训练数据集是你用来训练模型以获得模型参数的数据。在实践中，我们更关心的是泛化箭头，也就是模型在新数据上的箭头，这是你之前从未见过的数据。让我们举个例子。
 
- Assume we're going to practice for future exam。 For example， we don't have final exam。 but you can maintain exam to based on the path， exams on the previous years。 Do you wear on the path exams we call the training arrow？
+假设我们要为未来的考试做准备。例如，假设我们没有期末考试。但你可以根据之前的考试路径来进行考试。你是否按照这些考试来进行训练，我们称之为“训练箭头”？
 
- It doesn't guarantee that you get a good score on the future exam。 For example。 there's a student who get zero arrows on the path exams by memorizing all， these answers。 Another good student is trying to understand the solutions for the reasons behind the solutions。 He maybe didn't get the zero arrows， but this guy maybe did a better job on the future exams。
+这并不能保证你在未来的考试中得到好成绩。例如，有一个学生通过死记硬背所有答案，在路径考试中得到了零分。而另一位优秀的学生则试图理解解决方案背后的原因。他可能没有得到零分，但这个学生可能在未来的考试中做得更好。
 
- So we can extend this one to the homeworks。 For example。 we already released the two homework solutions。 Then you can prepare the homework for homework three or homework four we talked about today。 by all the homework two solutions。 What could be wrong here？ Who knows？
+所以我们可以将这个扩展到作业上。例如，我们已经发布了两次作业的解决方案。那么你可以为今天讨论的第三次或第四次作业做准备，参考所有第二次作业的解决方案。这里可能有什么问题呢？谁知道呢？
 
- The question like why we prepare for the first two homework， sorry， the question like we。 prepare the homework three or four based on the homework for one or two。 What could be problem here？
+比如我们准备前两次作业的原因，抱歉，问题是，我们为什么要基于第一次或第二次作业来准备第三或第四次作业？这里可能有什么问题呢？
 
- The problem here is because homework one and two cover different topic。 If you do a good job on homework one and three and two， you maybe understand the topic and。 for homework one is too well， but not necessary to understand homework three and four。 But exam is different here。 The exam we covered the whole class。
+这里的问题在于，第一和第二次作业涵盖了不同的主题。如果你在第一和第三次作业中做得很好，你可能已经理解了相关的主题。但对于第一作业，你做得很好，但不一定理解第三和第四次作业。但是考试不同，考试是覆盖整个课程内容的。
 
- This year and the next year we assume this area doesn't change too much。 The exam we covered is similar topic。 That's why we can prepare future exams based on past exams but it's hard to prepare homework。 based on past the homework。
+今年和明年我们假设这个领域的变化不大。我们覆盖的考试是类似的话题。这就是为什么我们可以根据过去的考试来准备未来的考试，但基于过去的作业准备作业却比较困难。
 
 ![](img/d6d7a474c0fb35bd9eecd0fbb6ec403f_11.png)
 
- We care about the generalization error。 We need to prepare how to evaluate。 Usually one thing we're going to do is we have validation data set。 That is a data set used to evaluate this model which is not part of the training data。 This data set we're not used to update your model。
+我们关心的是泛化误差。我们需要准备如何评估。通常我们做的一件事是，我们有验证数据集。这个数据集用于评估模型，而不是训练数据的一部分。这个数据集我们不会用来更新你的模型。
 
- For example here we can take half of the training data as the validation data set and then train。 the model on the rest half of the data。 The number one common mistake machine practice made is mix up the training data and the validation。 data set。 Let me give a real example here。 A few years ago we have a team trying to train how to classify images。 The first data set they tried is to classify image net。
+比如在这里，我们可以将一半的训练数据作为验证数据集，然后在剩余的另一半数据上训练模型。机器学习中常见的第一个错误就是将训练数据和验证数据集混淆。让我举个真实的例子。几年前，我们有一个团队尝试训练如何对图像进行分类。他们尝试的第一个数据集是对ImageNet进行分类。
 
- Image net have a million images about thousands of objects。 They train the model on image net。 Then they want to evaluate how this model works。 What this team did is they asked a different guy trying to give you all the same data。 I give you all the labels we have。 Now your job is to take this label as the cat， dog。 search at Google， grab the images from， Google and use this new data set to validate this model。
+ImageNet包含了百万级的图像，涉及数千种物体。他们在ImageNet上训练了模型。然后，他们想评估这个模型的效果。这个团队做的事情是让另一个人尝试给你提供相同的数据。我给你所有的标签，现在你的任务是把这些标签当作猫、狗，去Google搜索，抓取图像，并使用这个新数据集来验证这个模型。
 
- What could be wrong here？ Anybody have ideas？ We train on image net and search on Google and grab images to validate the model you have。 The problem is like image net， on the original image net they search the queries or Google。 and get a bunch of images and label it。 If another guy trying to search a thin thing。 say the queries at Google， you may get the same， images。 It's maybe part of the training already。
+这里可能有什么问题？有没有人有什么想法？我们在ImageNet上训练，然后在Google上搜索并抓取图像来验证你拥有的模型。问题是，在原始的ImageNet数据集上，他们搜索了查询词或Google，然后获取了一堆图像并进行了标注。如果另一个人尝试搜索一个细节，假设在Google上输入查询词，你可能得到相同的图像。它可能已经是训练的一部分。
 
- Diting cancel cleanse。 We succeed because we compare to Google。 compare to other sources on our own validation data， set。 Our services give the highest score。 If we really try to actually not so good。 The different could be very tiny so you need to be very careful about training and validation。 data set。 Especially if you do research， you find， oh， I get the much higher accuracy compared to。
+取消清洗。我们成功了，因为我们与Google进行比较，与我们自己的验证数据集上的其他来源进行对比。我们的服务获得了最高的分数。如果我们真的尝试，结果可能没有那么好。不同之处可能非常微小，因此你需要非常小心训练和验证数据集的使用，特别是如果你做研究，发现哦，我得到的准确度比...要高很多。
 
- the previous works， then you can think about that 95% of good results is due to bugs。 You need to firstly care about what data set you are using for validation。 You didn't mix up the training and validation data set。 Validation data set is going to evaluate the model。
+之前的工作表明，95%的好结果可能是因为漏洞。首先你需要关注你使用的验证数据集。你不能把训练数据和验证数据集混合在一起。验证数据集将用于评估模型。
 
- You can pick up the models based on validation data set。 You can try different learning rate。 you can try a different model architecture and then。 based on the validation errors you pick up the model。 Then there's another data set we call the test data set。
+你可以根据验证数据集选择模型。你可以尝试不同的学习率，尝试不同的模型架构，然后根据验证错误来选择模型。接下来还有一个数据集，我们称之为测试数据集。
 
- So this data set is similar to validation data set。 You can evaluate on your model accuracy。 But you can only use the one。 For example， you only get a score for an exam by the first time you take it。 Next time you take it， you maybe you didn't count。 If you're going to build a house。 the final house sale price is going to be evaluated your， strategy。
+所以这个数据集类似于验证数据集。你可以用它来评估模型的准确性。但你只能使用一个数据集。例如，你在第一次参加考试时获得了分数，下次考试你可能没有算在内。如果你要建造一栋房子，最终房子的售价将会评估你的策略。
 
- You don't have the second chance。 If you have been to have a competition before。 you know that there's a public leaderboard。 Every time some of the results。 you can't get the immediate feedback for the score you have。 But there's a private leaderboard which is close to the end of the competition。
+你没有第二次机会。如果你曾经参加过比赛，你就知道有一个公开排行榜。每次有些结果，你无法立即得到反馈。但有一个私人排行榜，它更接近比赛结束时的结果。
 
- So people are going to evaluate their performance based on private leaderboards。 So it can be only used once after competition is done。 So test data set is a closer to the generalization error。 Because you only try the ones。 For validation data set， usually the accuracy will be higher because you choose a model based。
+所以人们会根据私人排行榜评估他们的表现。因此，私人排行榜只能在比赛结束后使用一次。测试数据集更接近泛化误差。因为你只会尝试一次。而验证数据集的准确率通常会更高，因为你是基于模型选择的。
 
- on the validation data set。 You pick up models， pre-fruze this data。 But in practice。 we don't actually use test data for only user ones。 So in practice， we talk about， okay。 this model has test accuracy for what usually means， validation data set。 So during this class。 we're going to use test data。 Test accuracy actually means validation data。
+在验证数据集上，你选择模型，预处理这些数据。但实际上，我们并不使用测试数据集，只会使用一次。在实际中，我们讨论的是，这个模型的测试准确率通常意味着验证数据集的准确率。所以在这门课上，我们将使用测试数据。测试准确率实际上意味着验证数据集的准确率。
 
- So a strictly speaking test data set can be the score only for you to go to competition or。 final exam。 That's the test error。
+严格来说，测试数据集只能用来作为比赛或者期末考试的成绩。那就是测试误差。
 
 ![](img/d6d7a474c0fb35bd9eecd0fbb6ec403f_13.png)
 
- Okay， so one usual problem here is that we don't have sufficient data。 Because the validation data set is the leader labels。 In practical。 we just put a part of the training data for validation purpose。 Then if we use half the data for validation， we can use half data to train the model。
+好的，一个常见的问题是我们没有足够的数据。因为验证数据集是带有标签的。在实际中，我们通常将部分训练数据作为验证数据集。如果我们使用一半的数据作为验证数据集，那么我们可以用剩下的一半数据来训练模型。
 
- If the data is small， then we can talk about why it is a problem。 You don't have sufficient data to train a model。 A common practice you can use is K for cross validation。 That is the key thing you're going to use for your homework。 So the work that's following。 Given that training data， examples have labels。 We partition into K part。 And then we repeat again。
+如果数据量很小，那么我们可以讨论为什么这是一个问题。你没有足够的数据来训练一个模型。你可以使用的一个常见做法是K折交叉验证。这是你在作业中将使用的关键方法。所以接下来的工作是这样的。给定训练数据，示例是有标签的。我们将数据分成K部分。然后我们重复这个过程。
 
- for every time， from one to K， every time we pick up the case part， as the validation data set。 And the rest of the K minus one part as the training data set。 We train the model on the training data set and get the validation accuracy on the validation data。 We repeat by K times。 And we put average validation error on this K times。
+每一次，从1到K，我们选择其中一部分数据作为验证数据集，剩下的K-1部分作为训练数据集。我们在训练数据集上训练模型，并在验证数据集上获得验证准确率。我们重复K次，然后计算K次的平均验证误差。
 
- So this one is a key for cross validation accuracy or cross validation error。 So if you choose a logic K， which means the data we're going to use for training is pretty large。 For example， we choose 100 K equals to 100， so we use 99% of data for training。 That's good for your model。 But the problem here is that you need to repeat the experiments by 100 times。
+这个是交叉验证准确率或交叉验证误差的关键。所以如果你选择一个很大的K值，这意味着我们将用来训练的数据量很大。例如，如果我们选择K等于100，那么我们将使用99%的数据来训练。这对你的模型有好处。但问题在于，你需要重复100次实验。
 
- That could be very expensive。 In practice， we should choose K equal to 5 or 10。 If the model is simple， we can choose a larger， maybe 20， 50。 But if the data。 if the algorithm is pretty complex， we can use a little bit of small K here。 Okay。 any questions here？ Good。 So this one， we will have implementation for K-fort validation on the homework 4。
+这可能非常昂贵。实际上，我们应该选择K等于5或10。如果模型比较简单，我们可以选择更大的K值，可能是20，50。但如果数据量很大，或者算法比较复杂，我们可以选择较小的K值。好，有什么问题吗？好。那么，接下来我们将在作业4中实现K折交叉验证。
 
- We're going to talk about it on Thursday。 We know how to evaluate how models we're going to talk about two abnormal cases for training。 It's once called overfitting， once called underfitting。 There's a two common problem with model training。
+我们将在星期四讨论这个问题。我们知道如何评估模型，我们将讨论两种训练中的异常情况。一种叫过拟合，一种叫欠拟合。这是模型训练中的两个常见问题。
 
 ![](img/d6d7a474c0fb35bd9eecd0fbb6ec403f_15.png)
 
- In general speaking， there are two things matters。 One is the data complexity。 one is the model capacity。 So we can now dive into detail later。 but let's give you an overview idea of how to do this。 So how to do this， how to do this。 how to do this， how to do this， how to do this。 So when data is simple， and you have a small model。
+一般来说，有两件事是关键的。一是数据的复杂度，二是模型的容量。我们稍后可以深入探讨细节，但首先给你一个概览，了解如何操作。那么如何操作呢？怎么做呢？怎么做呢？怎么做呢？所以当数据简单，你有一个小模型时，
 
- because the model is going to feed the data， if the model capacity is lower and data is simple。 everything works well。 Similar thing for if data is complex。 we can use a complex model to feed this data。 The problem here is that if the data is complex。 the model is simple， the data cannot， the model cannot learn the data too much， it's underfitting。
+因为模型将要输入数据，如果模型的容量较低而数据较简单，一切都会正常工作。类似地，如果数据复杂，我们可以使用复杂的模型来处理这些数据。这里的问题是，如果数据复杂而模型简单，数据就无法被模型充分学习，这就是欠拟合。
 
- If you have simple data， but it's complex models， then the model can remember all the data points。 it's called overfitting。
+如果你有简单的数据，但使用了复杂的模型，那么模型能够记住所有的数据点，这叫做过拟合。
 
 ![](img/d6d7a474c0fb35bd9eecd0fbb6ec403f_17.png)
 
- So formally speaking， the model capacity is the ability of the model to feed your data set。 to feed your functions， to feed the distributions。 So if you have no capacity models。 it's hard to feed this training data set。 For example， we have a bunch of dog here。 but we choose a linear model， this is a single line。
+严格来说，模型容量是模型处理数据集的能力，处理你的函数，处理分布的能力。所以如果你没有容量的模型，很难处理这个训练数据集。例如，我们这里有一堆狗，但我们选择了一个线性模型，这只是一个单一的线。
 
- it's hard to let's line to feed this curved dog。 High capacity models can memorize the whole training data set。 For example， if you use a high order curve to feed this dog， we can get zero arrows here。 but it's overfitting。 You know that while this curve is too large， it's too complex。 So this is a famous figure for how model capacity affects all this training arrow， or training loss。
+很难用一条线来拟合这条弯曲的狗。高容量模型可以记住整个训练数据集。例如，如果你使用高阶曲线来拟合这只狗，我们可以在这里得到零误差，但这就是过拟合。你知道这条曲线太大了，太复杂了。所以这是一个著名的图形，展示了模型容量如何影响所有训练误差或训练损失。
 
- or generalization loss。 So the x axis is the model capacity， or the model complexity。 The y is a loss。 You start with the left， which is you have low capacity models。 Both training loss or training arrow， and the generalization loss， generalization arrow。 could be very high。 So we call underfitting。 When we increase the model complexities。
+或者是泛化损失。所以横轴是模型容量或模型复杂度，纵轴是损失。你从左边开始，那里是你有低容量的模型。无论是训练损失还是训练误差，还是泛化损失、泛化误差，都可能非常高。所以我们称之为欠拟合。当我们增加模型的复杂度时，
 
- we see that training loss decreases with the model capacities。 So that's given the same data set。 we use complex models， then it's easy to feed the training data set。 But the generalization loss。 this is the thing we are interested， may decrease at the beginning。 but then may increase at the end。 The gap between generalization loss and the training loss is called overfitting。
+我们看到，随着模型容量的增加，训练损失在减少。所以，给定相同的数据集，我们使用更复杂的模型，那么更容易处理训练数据集。但是泛化损失，这是我们感兴趣的，可能一开始会减少，但最后可能会增加。泛化损失和训练损失之间的差距就叫做过拟合。
 
- So when the model is more complex， the gap is larger。 So it's more， I intend to be overfitting。 The optimal point is that you pick up the model， which has the lowest generalization loss。 So usually it's on the middle。 You cannot be the model too simple。 You cannot be the model too complex。 Any questions so far？ Question？ [ Inaudible ]。
+所以当模型更复杂时，差距会更大。这样就更容易过拟合。最优点是你选择一个模型，它具有最低的泛化损失。通常这个点在中间。你不能让模型太简单，也不能让模型太复杂。到目前为止有任何问题吗？问题？[听不清]。
 
- The difference between training and evaluation， I mean。 training is that the training error is the loss you compute on the training data set。 The validation error is the error computed on the validation data set。 which is not used by in the training group。 Any other questions？ Question？ [ Inaudible ]。
+训练和评估之间的区别，我的意思是，训练是你在训练数据集上计算的损失。而验证误差是在验证数据集上计算的误差，这些数据不会被用于训练。还有其他问题吗？有问题吗？[听不清楚的内容]。
 
- So why overfitting？ For example， in the first example， you see the who cannot default， well。 blue shirt。 So you get 100% of you find out default people， but that's signal is too strong。 Which means overfitting， if you have models have very complex。 you cannot try to fit the whole training data。 You fit the noises。
+那么为什么会出现过拟合？举个例子，在第一个例子中，你看到一个人无法违约，穿蓝色衬衫。所以你找出100%违约的人，但那个信号太强了。也就是说，过拟合。如果你有一个非常复杂的模型，你无法只拟合训练数据。你在拟合噪声。
 
- So because the data have a lot of noise， you fit all this noise。 Then fitting the noise。 which means you have a different noise， you cannot fit all this different noise。 Then you can the generalization error actually increases。 Any other questions？ Question？
+因为数据中有很多噪声，你会拟合所有这些噪声。而拟合噪声意味着你会遇到不同的噪声，你不能拟合所有这些不同的噪声。然后，你的泛化误差实际上会增加。还有其他问题吗？有问题吗？
 
- [ Inaudible ]， That good question cannot cover in a few minutes。 Any other questions？ Okay。 so then the key thing here， how to estimate model capacity？ It's pretty hard problem。 We have a whole field to do that thing。 So firstly。 it's pretty hard to compare capacities between different algorithms。
+[听不清楚的内容]，这个好问题不能在几分钟内涵盖。还有其他问题吗？好的。那么这里的关键是，如何估算模型的容量？这是一个相当困难的问题。我们有一个完整的领域来解决这个问题。所以首先，比较不同算法的容量是非常困难的。
 
- You may have about three algorithms， decision trees， random forests。 or you may be using edge booster before。 Then compare tree， compressive with new analysis。 this is focused on this class， it's pretty hard。 Because their assumptions differently is hard to compare different algorithms。 So given the algorithm family， for example， all these perceptions。
+你可能有三种算法，决策树、随机森林，或者你可能使用过梯度提升（XGBoost）。然后将树模型与新分析方法进行比较。这就是本课的重点，它非常难。因为它们的假设不同，很难比较不同的算法。所以在给定算法家族的情况下，例如所有这些感知机。
 
- we can't compare the complexities。 There's two main factors matter。 One is how many parameters we have on the model？ We have two examples here。 The top one is the linear perception or linear regression。 Assume the data have D dimensions。 the weight have D elements。 With a bias， we have D plus one elements on the parameters。
+我们不能简单地比较复杂度。有两个主要因素很重要。一个是模型中有多少个参数？我们有两个例子。上面的是线性感知机或线性回归。假设数据有D个维度，权重有D个元素。加上偏差，我们的参数总数是D+1。
 
- The bottom one is the two layer perception。 You have input dimension D， the hindrance size is M。 and output the number of classes K。 Then in the first layer you have D plus one times M elements on the parameters。 In the second layer we have M plus one times K elements on the second layer。 So you know that in the second model you have much more priming than the first one。
+最底层的是两层感知机。你有输入维度D，隐藏层的大小是M，输出类别数是K。那么在第一层你有(D+1)乘以M个参数。在第二层，你有(M+1)乘以K个参数。所以你知道，在第二个模型中，你的参数比第一个模型要多得多。
 
- which means the multi-layer perception is you should have high complexities。 comparing to linear regression。 So the second one is how you are now the value be peak for the models。 For example during training， I can say that this model is going to pick up the parameters only from the range between minus one and plus one。 So this model we have low capacities compared to the same model。
+这意味着多层感知机应该有较高的复杂度，相比于线性回归。所以第二个问题是，如何现在为模型设置合适的值？例如在训练过程中，我可以说这个模型只会在-1到+1的范围内调整参数。所以相比于相同的模型，这个模型的容量较低。
 
- but we can pick up values from any number or any real numbers。 So we can dive deep into the second one later。 The first one is actually the whole thing for this class。 We can talk about different new and structured architectures。 Actually different new architectures。 how to balance the model complexities of convolutional neural networks or LSTMs。
+但我们可以从任何数字或任何实数中挑选出值。所以我们稍后可以深入探讨第二个问题。第一个问题其实就是这节课的核心内容。我们可以讨论不同的新型结构化架构。实际上就是不同的新架构，如何平衡卷积神经网络（CNN）或长短期记忆网络（LSTM）的模型复杂度。
 
- We can now dive deep into the first category letter。
+我们现在可以深入探讨第一类信件。
 
 ![](img/d6d7a474c0fb35bd9eecd0fbb6ec403f_19.png)
 
- So there's a field called a statistical learning theory。 which is the theoretical area to understand this problem。 For this topic we actually have a four credit class to cover it。 We can only dive a little bit onto the static learning theory。 So in this theory。
+所以有一个领域叫做统计学习理论，这是理解这个问题的理论领域。对于这个话题，我们实际上有一门四学分的课程来讲解它。我们只能简单地介绍一下静态学习理论。所以在这个理论中。
 
- one central topic is to estimate the model capacity。 To estimate the model capacity。 there's a thing called the VC dimension。 It's not a venture capital。 like a virtual VC from two scientists guys。 So the VC dimension is to estimate the model capacities that has a general form。 but now we only talk about simplified version。 That is we can talk about classification model。
+一个核心主题是估计模型的能力。为了估计模型的能力，有一个叫做 VC 维度的概念。它不是风险投资（venture capital），而是由两位科学家提出的虚拟 VC。所以 VC 维度是用来估计模型能力的，它有一个通用的形式，但现在我们只讨论简化版。也就是说，我们可以谈论分类模型。
 
- For classification model， the VC dimension is the largest dataset we can have。 So no matter how we assign labels to this dataset。 we can always find a model to classify this dataset perfectly。 So this is the largest dataset this model can memorize all this data point。
-
-
-
-
+对于分类模型，VC 维度是我们能拥有的最大数据集。所以无论我们如何给这个数据集分配标签，我们总能找到一个模型来完美地分类这个数据集。因此，这就是该模型能记住所有数据点的最大数据集。
 
 ![](img/d6d7a474c0fb35bd9eecd0fbb6ec403f_21.png)
 
- Let's look at the concrete example。 So consider 2D perception。 We know that VC dimension 3。 which means for any three point， no matter how we give labels to this point。 we can always find a 2D perception， which is a line， to classify the dataset correctly。 So but it's not four because we show that if it's an axial problem。
+我们来看一个具体的例子。假设是 2D 感知机。我们知道 VC 维度是 3，这意味着对于任意三个点，无论我们如何给这些点分配标签，我们总能找到一个 2D 感知机，也就是一条直线，来正确地分类数据集。所以它不是四，因为我们已经证明如果是轴向问题，情况就不同。
 
- a single line is not good enough。 You have a curve or a multi-layer perception to classify it。 So which means the VC dimension for 2D perception is 3。 So for 2D perception。 which you have two dimensional inputs， which means you have two elements on the weight。 and with the bias， then the number of parameters is actually 3。 So in general。
+一条直线并不足够。你需要一个曲线或一个多层感知机来进行分类。这意味着 2D 感知机的 VC 维度是 3。所以对于 2D 感知机，它有二维输入，也就是说，它有两个权重元素，和偏置一起，参数的数量实际上是 3。所以一般来说。
 
- if you have perception， we have N parameters， which is the input is minus 1 dimension。 and with the bias， the VC dimension is M， which means the more features you have。 the more complex model you are building。 We can extend this one into multi-layer perceptions as well with some assumptions。 So we assume what the activation functions we have。 But in general。
+如果你有感知机，我们有 N 个参数，其中输入是减去 1 维度的，再加上偏置，VC 维度就是 M，这意味着你拥有的特征越多，构建的模型就越复杂。我们还可以在一些假设下将这个扩展到多层感知机。所以我们假设有激活函数。但一般来说。
 
- you can see that it's M plus log 2 M， it's the number of parameters。 In general。 the more parameters you put on the model， the higher capacity the model you have。 OK？
-
-
-
-
+你可以看到它是 M 加上 log 2 M，这是参数的数量。一般来说，你在模型中放入的参数越多，模型的能力就越强。明白了吗？
 
 ![](img/d6d7a474c0fb35bd9eecd0fbb6ec403f_23.png)
 
- So the VC dimension actually provides you some theory inside why a model works。 So we can bond the gap between the training error and the generalization error by the VC dimension。 So it's pretty useful。 But the problem here is that it actually will never talk about VC dimension and deep learning for two reasons。 The first one， this body to lose is harder to give you any insight why it works or not。 Secondly。
+所以，VC 维度实际上提供了关于为什么一个模型有效的一些理论。通过 VC 维度，我们可以缩小训练误差和泛化误差之间的差距。因此，它非常有用。但这里的问题是，它实际上从不讨论 VC 维度和深度学习，原因有两个。第一，模型的复杂性让它更难提供关于为何有效或无效的洞见。第二。
 
- it's pretty difficult to estimate the VC dimension for deep neural networks。 It only talks about perceptions， but if you're going to extend to convolutional networks。 it's pretty hard。 So the same idea is like there are a lot of tools on statistical learning theory。 but it's pretty hard to apply into deep learning。 So deep learning theory is pretty behind all this model development。
+对于深度神经网络来说，估计VC维度相当困难。它只讨论感知机，但如果要扩展到卷积网络，难度就更大了。所以，类似的想法是，统计学习理论中有很多工具，但将这些应用到深度学习中非常困难。因此，深度学习理论在所有这些模型开发的进展上还是滞后。
 
- So that's why the theory guys actually work pretty hard to catch up all this theory stuff。 So in this class， we probably will not dive into the data analysis theory here。
+所以这就是为什么理论研究者们实际上付出很多努力，试图赶上这些理论的原因。所以在这门课中，我们可能不会深入探讨数据分析的理论。
 
 ![](img/d6d7a474c0fb35bd9eecd0fbb6ec403f_25.png)
 
- The last one， we talked about model capacity。 We also have data complexities。 So it's pretty。 a lot of factors matters for the data complexities。 For example， in the top one。 since that data set we used on the notebook， the bottom one is the image net。 It has minutes for images。 So you can see that image net is more complex compared to the synthetic data set we have。
+最后一点，我们讨论的是模型的容量。我们也有数据的复杂性。所以，影响数据复杂性的因素相当多。例如，在上面那一部分，我们使用的数据集是在笔记本上，底部是ImageNet。它包含了成千上万的图像。你可以看到，ImageNet比我们使用的合成数据集更加复杂。
 
- So a lot of things matter to the data complexities。 For example， how many examples you have？
+因此，许多因素影响数据的复杂性。例如，你有多少个样本？
 
- The more example you have， likely you have more complex data set。 So for deep learning。 the preferred data set usually is between 100，000 to 1 minute。 If it's too low。 you cannot construct very deep neural。 It's too high， well， then you can do a lot of complex models。 but the complexity could be very high。 Then for each example。
+样本越多，你的数据集可能就越复杂。对于深度学习来说，理想的数据集通常在100,000到1百万之间。如果样本太少，你无法构建非常深的神经网络。如果样本太多，那么你可以构建许多复杂的模型，但复杂度可能会非常高。然后，对于每个样本来说。
 
- you can have about how many elements or how many features we have。 For image。 you can have one minute elements in the image。 For ads， for a lot of things。 you can have billions of features。 Also， we care about structure in the data。 So we have time structures， we have space structures。 For example， consider about a social network。
+你可以考虑我们拥有多少元素或者特征。对于图像，你可以在图像中有一分钟的元素。对于广告、许多其他事物，你可以有数十亿的特征。同时，我们还关注数据的结构。所以我们有时间结构，也有空间结构。例如，考虑一个社交网络。
 
- It's more complex because we have interaction between people。 It's more complex compared to you don't have interaction between people。 So for videos。 for other things you have time series there。 For stocks， you also have time series。 I have time information there。 So you also make your data set more complicated。 Also。
+它更复杂，因为我们有人与人之间的交互。这比没有人与人之间交互的情况要复杂。所以对于视频，或者其他类型的数据，你有时间序列。对于股票数据，你也有时间序列。我有时间信息。因此，你的数据集也变得更加复杂。
 
- we talk about the diversity， which means how many different objects or different concepts in the data set。 ImageNet have 1，000 objects。 You have another C file and you have 10 objects。 So imageNet is more complex。 Also， within each category， height example works。 So you see。 if you take a picture of a dog， every dog looks similar， then the diversity is low。
+我们谈论的是多样性，意思是数据集中有多少不同的对象或概念。ImageNet有1,000个对象。你有另外一个C文件，里面有10个对象。所以ImageNet更加复杂。此外，在每个类别中，示例的多样性也是一个问题。所以你会看到，如果你拍了一张狗的照片，每只狗看起来都差不多，那么多样性就很低。
 
- If you take a dog and you have a lot of colors， a lot of species， then the complexity is high。 Any questions so far？ [BLANK_AUDIO]。
+如果你拿一只狗，拥有很多颜色和物种，那么复杂性就很高。到目前为止，有什么问题吗？[BLANK_AUDIO]。
 
 ![](img/d6d7a474c0fb35bd9eecd0fbb6ec403f_27.png)

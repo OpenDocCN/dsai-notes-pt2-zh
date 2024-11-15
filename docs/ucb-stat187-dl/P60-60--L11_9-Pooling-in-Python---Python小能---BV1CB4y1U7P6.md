@@ -1,77 +1,65 @@
-# P60：60. L11_9 Pooling in Python - Python小能 - BV1CB4y1U7P6
+# P60：60. L11_9 Python中的池化 - Python小能 - BV1CB4y1U7P6
 
- Let's have a look at how pooling works in practice。 So the first thing we need to do is we need to actually define our pooling function。 It's very easy。 Okay， we need to import MXNet。 The next thing is we define our pooling function。 The important argument is the pool size， so I'm going to get the height and the width。
+让我们看看池化在实践中的效果。所以首先我们需要做的是定义我们的池化函数。这非常简单。好了，我们需要导入MXNet。接下来，我们定义我们的池化函数。重要的参数是池化大小，所以我需要得到高度和宽度。
 
- by querying the pool size。 And I'm going to distinguish between maximum and average pooling。 Default is a max pooling。 First thing I need to do is I need to allocate some memory。 That is of the size that I'm going to get by performing pooling over the input X。 So I need X shape minus pooling height plus one， the same thing for the width。
+通过查询池化大小。我将区分最大池化和平均池化。默认情况下是最大池化。首先，我需要做的是分配一些内存。这个内存的大小是通过对输入X进行池化计算得到的。所以我需要的是X的形状减去池化高度再加一，宽度也做相同的处理。
 
- So it's exactly the same semantics as what we have for convolutions。 just that we don't have any parameters。 And then I just iterate over all the pixels in the output。 So for iron j in the range of Y， I now perform the following operation。 Yij is the maximum over this patch here。 This patch goes from i to i plus 8 pH and from j to j plus pw。
+所以它与我们在卷积操作中使用的语义完全相同，只是没有参数。然后我只需遍历输出中的所有像素。因此，对于范围内的i和j，我现在执行以下操作。Yij是这个区域内的最大值。这个区域从i到i加上8倍池化高度，从j到j加上池化宽度。
 
- And if I were to use mean pooling， well， I'd do this。 Now this is a very poor implementation of pooling because it completely ignores channels。 And it also ignores padding and strides。 But since this is just for illustrative purposes。 I'm going to skip this here。
-
-
+如果我使用均值池化，那么就是这样。现在这是一个非常糟糕的池化实现，因为它完全忽略了通道，同时也忽略了填充和步幅。但由于这只是为了说明问题，我在这里跳过这些细节。
 
 ![](img/de1b1c1dba5f0fc2e23deaef9abaea88_1.png)
 
-
-
 ![](img/de1b1c1dba5f0fc2e23deaef9abaea88_2.png)
 
- So let's have a look at what happens。 So we're going to apply 2x2 max pooling to this matrix which has entry 0 to 8。 And of course， if I have the first 2x2 block， then well， that's exactly the maximum is 4。 because it has entry 0， 1， 3 and 4， and so on。 Now if I were to perform average pooling， well。 let's get something very similar。
-
-
+所以让我们看看会发生什么。我们将对这个包含0到8的矩阵应用2x2最大池化。当然，如果我选择第一个2x2的块，那么最大值就是4，因为它包含了0、1、3和4，依此类推。现在，如果我使用平均池化，那么结果也会非常相似。
 
 ![](img/de1b1c1dba5f0fc2e23deaef9abaea88_4.png)
 
- So for this first block here 0， 1， 3 and 4， the sum overall the entry is 8。 8 divided by 4 is 2。 If I were to take those entries 1， 2， 4 and 5， the sum of those entries is 12， and so I get 3。 and so on。 So that's good。 Let's have a look at how things progress if we do something a little bit more fancy。
-
-
+所以，对于这个第一个块，0、1、3和4，所有条目的和是8。8除以4是2。如果我取条目1、2、4和5，它们的和是12，所以结果是3。依此类推。这样就可以了。让我们看看如果做一些稍微复杂的操作，结果会怎样。
 
 ![](img/de1b1c1dba5f0fc2e23deaef9abaea88_6.png)
 
- The next thing is we might want to look at padding and stride。
+接下来的事情是我们可能需要考虑填充和步幅。
 
 ![](img/de1b1c1dba5f0fc2e23deaef9abaea88_8.png)
 
- So I'm going to create a matrix that's 4x4 with entries ranging from 0 to 15。 Now。 if I perform max pooling and I use the built-in functioning glue-on。 then by default if I have a 3x3 pooling， then the stride is also 3。 so therefore if I apply this 4x4 matrix， there's really only that first 3x3 block that I can grab。
+所以我要创建一个4x4的矩阵，条目从0到15。现在，如果我执行最大池化并使用内置的功能gluon，那么默认情况下，如果使用的是3x3池化，那么步幅也是3。因此，如果我应用这个4x4矩阵，实际上只有第一个3x3的块可以被提取。
 
- So the output is going to be 1x1。
+所以输出将是1x1。
 
 ![](img/de1b1c1dba5f0fc2e23deaef9abaea88_10.png)
 
- And behold， that's exactly what happens。 Mind you， the entry is 10， because well。 the largest entry in that first 3x3 block is 10。 Okay。
+看，这就是发生的事情。请注意，条目是10，因为在第一个3x3块中，最大值就是10。好的。
 
 ![](img/de1b1c1dba5f0fc2e23deaef9abaea88_12.png)
 
- Now， let's say I want to actually change this。
+现在，假设我想实际改变这个。
 
 ![](img/de1b1c1dba5f0fc2e23deaef9abaea88_14.png)
 
- Well， I could for instance have padding of 1 and stride of 2， in which case。 well because I have 3x3 applied to a 4x4， so that's actually a 6x6。 But then with a stride of 2。 that gives me a 2x2 matrix as a result。 I could have arbitrary windows with different widths and different heights and different padding and different strides。
-
-
+好吧，我可以比如说使用填充为1，步幅为2，在这种情况下，因为我把3x3应用到4x4的矩阵上，实际上得到了一个6x6的矩阵。但接着使用步幅为2，这样我就会得到一个2x2的矩阵作为结果。我可以使用任意大小的窗口，宽度和高度不同，填充和步幅也可以不同。
 
 ![](img/de1b1c1dba5f0fc2e23deaef9abaea88_16.png)
 
- And I'll leave that to anybody to verify in their own piece and quiet that the result would actually be a 3x2 matrix。 So 3 rows， 2 columns。 And yeah， so I can do that and therefore reshape the result in arbitrary ways。 Mind you， the number of input and output channels remains unchanged。
-
-
+我会把这个留给每个人自己去验证，在他们自己的安静环境中，结果实际上会是一个3x2的矩阵。所以3行，2列。是的，我可以这么做，因此可以以任意方式重塑结果。请注意，输入和输出通道的数量保持不变。
 
 ![](img/de1b1c1dba5f0fc2e23deaef9abaea88_18.png)
 
- So let's do that。 So I'm going to create a matrix that has， well， 3， well， it has 2 channels。
+所以我们来做这个吧。我要创建一个矩阵，它有，嗯，3，实际上它有2个通道。
 
 ![](img/de1b1c1dba5f0fc2e23deaef9abaea88_20.png)
 
- Right， so that's basically my 4x4 matrix just that in one case I have the entries going from 0 to 15。 the next case from 1 to 16。
+对，所以基本上这是我的4x4矩阵，只不过在一种情况下，我的条目是从0到15，另一种情况下是从1到16。
 
 ![](img/de1b1c1dba5f0fc2e23deaef9abaea88_22.png)
 
- Okay， so now if I were to apply pulling again， so padding of 1 strides of 2， 3x3 pulling。 I still get to output channels。
+好的，现在如果我再次应用池化操作，使用填充为1，步幅为2，3x3的池化，我仍然得到2个输出通道。
 
 ![](img/de1b1c1dba5f0fc2e23deaef9abaea88_24.png)
 
- And since the second channel has all the entries 1 large as in the first one， well， I get exactly 5。 7， 13 and 15， and then for the next 1， 6， 8， 14 and 16。 That's exactly what's to be expected。 So as you can see， pulling is a very easy operation。 It's straightforward to apply。 And it can be used to manipulate the dimensionality of the images in order to reduce their size as needed。
+由于第二个通道的所有条目都像第一个通道一样都为1，因此，我得到了精确的5，7，13和15，然后对于下一个1，6，8，14和16。这正是预期的结果。所以正如你所看到的，池化是一个非常简单的操作。它易于应用，且可以用来操控图像的维度，以根据需要减小它们的大小。
 
- This concludes our conversation about convolutional layers。
+这就结束了我们关于卷积层的讨论。
 
 ![](img/de1b1c1dba5f0fc2e23deaef9abaea88_26.png)

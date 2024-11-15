@@ -1,125 +1,105 @@
-# P72：72. L13_5 ResNet (Residual Networks) - Python小能 - BV1CB4y1U7P6
+# P72：72. L13_5 ResNet（残差网络）- Python小能 - BV1CB4y1U7P6
 
- So let's talk about resnets。 So if you had to pick like a worry free off the shelf network right now。 I would probably recommend that you go and pick a resnet or a resnet。
+现在我们来谈谈ResNet。所以，如果你现在不得不选择一个无需担忧的现成网络，我可能会推荐你选择一个ResNet或ResNet。
 
 ![](img/d12a011fddab3a49c8c5c057047767ab_1.png)
 
- And there's a reason why they worked significantly better。 And again。 the initial motivation was a bit strange about gradients not making it through the entire stack and whatever。 Here's what's really going on。 So suppose I have a deep network right。 And then I decide I'll go and make it even deeper right。
+而且有一个原因说明它们工作得明显更好。再说一次，最初的动机有点奇怪，因为梯度无法通过整个堆栈之类的原因。这里发生的事情才是真正的原因。所以假设我有一个深度网络，对吧？然后我决定再让它更深一些。
 
- So we can make it deeper by just you know adding another layer。 And adding another layer I get a slightly different function class right。 If I add another layer I get a slightly different function class still。 And you know of course I have more parameters so I can you know do more interesting and diverse and powerful things。
+所以我们可以通过添加另一层来使其更深。而添加另一层后，我得到一个稍微不同的函数类。如果我再加一层，得到的函数类还是稍微不同。而且，当然，我有更多的参数，所以我可以做更多有趣、多样且强大的事情。
 
- But basically my function classes you know get bigger get more powerful but they're also different。 So if you look at the picture on the left you can see a set of function classes each of which is a little bit bigger than the。 previous one so thus a little bit more powerful but they're all a little bit different。 Now let's assume that the truth is out there right this blue star is the truth and I want to approximate that truth。
+基本上，我的函数类你知道会变得更大、更强大，但它们也会有所不同。所以如果你看左边的图片，你可以看到一组函数类，每个都比前一个稍微大一点，因此也稍微更强大，但它们之间都有些许不同。现在假设真相就在那儿，对吧？这颗蓝色的星星就是事实，而我想要近似那个事实。
 
- And as you can see as you start adding you know layers and layers you're going to get closer and closer to that blue star。 And once you've reached about that third network from you know the dark black to you know the darker gray you can get kind of closest to that blue star。
+如你所见，当你开始添加层数时，层数会越来越多，你会越来越接近那个蓝色的星星。当你到达大约第三个网络，从黑色到深灰色，你就能最接近那个蓝色的星星。
 
- And then as you start you know increasing the function class further you start moving away again。 And that's really undesirable and you know there's no guarantee that you might not eventually also come back again right。 After all I mean you don't know exactly what happens if you add another layer。 You see don't know where that blue star is。 And this is awkward because this makes it very hard to reason in some meaningful engineering way over how many layers should I pick。
+然后，当你开始进一步增加函数类时，你会再次开始远离它。这是非常不理想的，你也不能保证你最终不会再回到原点。毕竟，我的意思是，你不知道如果再加一层会发生什么。你不知道那颗蓝色的星星在哪里。这很尴尬，因为这让人很难以有意义的工程方式推理出应该选择多少层。
 
- How complex should my function class be。 Now on the other hand if you look at the picture on the right things are much nicer。 And typically if you open many paper on statistical learning theory they pretty much all assume that you have a nested function class。
+我的函数类应该有多复杂？另一方面，如果你看右边的图片，情况就要好得多。通常，如果你阅读很多关于统计学习理论的论文，它们几乎都假设你有一个嵌套的函数类。
 
- So if you take any non-parametric statistics class here in the stats department I'm willing to bet you that almost all cases unless they come with specific rules。 That it's not the case assume that you have the situation on the right。 Unfortunately with deep networks you have the situation on the left。 So how can we make it a little bit closer to the one on the right。
+所以，如果你去统计系上任何一门非参数统计学课程，我敢打赌，几乎所有的情况，除非它们附带特定的规则，都会是这种情况。假设你有右边的情况。不幸的是，对于深度网络来说，你拥有的是左边的情况。那么，如何才能让它更接近右边的情况呢？
 
- On the right hand side the function class still get larger。 As a matter of fact I drew that right plot by just taking you know the picture on the left and making it smaller right and just centering it。 That's the same powerful you know power of function classes just that they're nested。 So as I move from one to the other they become more powerful more expressive I can reach a larger function class。
+在右侧，函数类仍然变得更大。事实上，我画出右侧的图是通过将左侧的图像缩小并居中得到的。这就是函数类的强大之处，它们是嵌套的。所以当我从一个函数类过渡到另一个时，它们变得更强大，更具表现力，我可以触及到一个更大的函数类。
 
- And so now as I you know keep on adding I move closer to my blue star。 They're not necessarily convex but you know that's just what it is。 So I want to have the situation on the right how do I get there。
+所以现在，当我继续添加时，我逐渐接近我的蓝色星星。它们不一定是凸的，但这就是实际情况。那么我如何才能达到右侧的情形呢？
 
 ![](img/d12a011fddab3a49c8c5c057047767ab_3.png)
 
-
-
 ![](img/d12a011fddab3a49c8c5c057047767ab_4.png)
 
- And this was the ingenious idea by here at all 2015。 Namely rather than parameterizing around the function f of x equals zero being the simplest function。 That's basically for all the weights are zero。 I parameterize around the function f of x equals x。 Because if you know all the way parameters and everything is zero。
+这是2015年这里的一个巧妙构思。也就是说，与其围绕函数f(x)=0进行参数化，认为它是最简单的函数（实际上所有权重都为零），我选择围绕函数f(x)=x进行参数化。因为你知道，如果所有的参数和其他东西都是零。
 
- If I add the input to the output then I get the identity function as the simplest function。 That's quite brilliant。 So it's like a daily expansion for neural networks right。 At least that's a similar flavor。 So now as you increase your parameters you're starting to deviate from the identity function。 So now I don't have to learn the identity function that does nothing to my data anymore。
+如果我将输入加到输出中，那么我得到的就是恒等函数作为最简单的函数。这非常聪明。所以这就像是神经网络的泰勒展开，至少在某种程度上类似。因此，随着参数的增加，你开始偏离恒等函数。所以现在我不再需要学习那个对我的数据没有任何影响的恒等函数。
 
- So it's essentially assuming a different inductive bias。 It also means that as I add another layer the identity function still goes through。 And it will still leave the outputs of the previous layers unchanged。 Just that I could now do additional things to my output。 Of course it's not exactly how it works。
-
-
-
-
+所以它本质上假设了一个不同的归纳偏置。这也意味着，当我添加另一个层时，恒等函数仍然可以通过。而且它仍然会让前一层的输出保持不变。只是现在我可以对输出做额外的处理。当然，这并不完全是它的工作原理。
 
 ![](img/d12a011fddab3a49c8c5c057047767ab_6.png)
 
- That I didn't exactly implement those nested function classes。
+我并没有完全实现那些嵌套的函数类。
 
 ![](img/d12a011fddab3a49c8c5c057047767ab_8.png)
 
- But it did something that was pretty close to that。
+但是它做了些非常接近那个的事情。
 
 ![](img/d12a011fddab3a49c8c5c057047767ab_10.png)
 
- And so this is what a resnip block looks like in detail。 So you have a convolution， a batch norm。 So this is the batch norm that we talked about before。 Rectified linear unit， another convolution。 another batch norm。 And to that you then add the input。 Or you run a one by one convolution on the input and you add that to the output。
+所以这就是ResNet块的详细样子。你有一个卷积层，一个批量归一化（batch norm）。这是我们之前提到的批量归一化。一个整流线性单元（ReLU），另一个卷积层，再一个批量归一化。然后你将输入加到输出上，或者你对输入进行一次1x1卷积，并将其加到输出中。
 
- But at the very least you're making it fairly easy for the network not to change things if not changing things is the best thing to do。 And so here's the code。 Code is fairly straightforward。 This is now skipping a lot of details of setting the variables。 This is just a forward function。 And what I get is y is batch norm one of convolution one of x。
+但至少，你使得网络在不改变任何东西时相对容易。毕竟如果不改变任何东西是最好的选择。那么这是代码。代码相对直接。现在跳过了许多设置变量的细节。这只是一个前向函数。我得到的是y是批量归一化，卷积1，x的输出。
 
- And also then I apply a relu and then I apply another batch norm two of conv two of y。 And then if I'm in the situation where I have the path on the right here。 Then I just apply conv three to x and I add the two results together。 Of course I need to pick my convolutions in everything in such a way that the dimensionality still match up。
+然后我应用 ReLU，再应用另一层批量归一化，两个卷积操作，然后如果我处于右边的路径中，我就将卷积操作应用于 `x`，并将两个结果相加。当然，我需要选择合适的卷积方式，以确保维度匹配。
 
- But we already saw how to do that。 For inception now we can use it for batch norm。 And basically to get a basic relu block。 Any questions here？
+但我们已经看到过如何做到这一点。现在我们可以将其应用于批量归一化。基本上，想要得到一个基本的 ReLU 模块。这里有任何问题吗？
 
- That's really the heart of how a resnet works。
+这实际上是 ResNet 工作原理的核心。
 
 ![](img/d12a011fddab3a49c8c5c057047767ab_12.png)
 
- Now you might think that this is straightforward。 Well people tried all those different flavors of batch norms。 They tried and you know where to place the batch norm where they place the addition。 So in some papers they used the batch norm after the addition。 In some cases they used， you know。 had the addition at the very end。 In some cases they promoted the order off you know relu conv in batch norm。
+现在你可能会认为这很简单。其实人们尝试过所有这些不同的批量归一化方式。他们尝试了如何放置批量归一化和加法操作。因此在一些论文中，他们在加法后使用了批量归一化。在一些情况下，他们把加法操作放在最后。在某些情况下，他们调整了 ReLU、卷积和批量归一化的顺序。
 
- And so they tried out all three different permutations。 So the sequence between the blocks is the same but the order is changed。 And yeah there are papers for all of those。 And for some combinations in some days。 in some settings， some of those things work better。
+他们尝试了这三种不同的排列方式。模块之间的顺序是相同的，只是顺序被改变了。是的，所有这些都有相关的论文。在某些组合和某些情况下，这些方法在某些设置下效果更好。
 
- Now this sounds thoroughly unsatisfactory but this is unfortunately the， you know。 CD underbelly of deep learning training。 But in some cases you just have to try out things。 And then at some point somebody does this， figures out okay this is a good architecture and then people pretty much stick with it。
-
-
+现在听起来似乎完全不令人满意，但这不幸地是深度学习训练的“CD底层”问题。但在某些情况下，你确实需要尝试不同的方法。然后在某个时刻，会有人做出这个尝试，弄清楚这是一个好的架构，然后大家就基本上会坚持使用它。
 
 ![](img/d12a011fddab3a49c8c5c057047767ab_14.png)
 
- Okay， so here's the resnet module。 So this looks， you know， quite familiar to what we saw before。 Just that now it's using， you know， resnet blocks rather than inception blocks。 So you might have。 you know， one of those blocks which down samples， so stride two。 And then you have a couple of the other resnet blocks。 And that works well。
-
-
-
-
+好的，下面是 ResNet 模块。这看起来和我们之前看到的非常相似。只不过现在使用的是 ResNet 模块，而不是 Inception 模块。所以你可能会有一个这样的模块，它进行下采样，步幅为二。然后你会有一些其他的 ResNet 模块。这样就能很好地工作。
 
 ![](img/d12a011fddab3a49c8c5c057047767ab_16.png)
 
- And here's the entire network in its full glory。 So that's resnet 18。 Goes up all the way to res in 150 so that's 150 layers。 And the bottom looks， you know。 kind of very scarily similar to whatever we saw before。 Wide convolution， batch norm， pooling。 And then you have a whole bunch of resnet blocks of different size。 And you train it。
+这是整个网络的完整图示。这个是 ResNet 18，一直到 ResNet 150，也就是150层。底部看起来，嗯，和我们之前看到的非常相似。宽卷积、批量归一化、池化。然后你会有一大堆不同大小的 ResNet 模块。然后你就可以训练它。
 
- And we will train that next week， not today。
+我们将在下周训练它，而不是今天。
 
 ![](img/d12a011fddab3a49c8c5c057047767ab_18.png)
 
- What this gets you to is this thing up here。 This is now resnet 152。 And it's pretty much state of the art。 It's slower。 It's much more accurate。 It's actually smaller in terms of footprint than the inception network that we saw before。 That would have been the orange circle to the right。
-
-
-
-
+这最终会得到上面的这个结果。这就是现在的 ResNet 152，几乎是最先进的技术。它的速度较慢，但准确率更高。实际上，它的计算量比我们之前看到的 Inception 网络还要小。那个网络对应的是右侧的橙色圆圈。
 
 ![](img/d12a011fddab3a49c8c5c057047767ab_20.png)
 
- I'm going to conclude with something that you think can go even further， namely res next。 And it has a neat idea in it。 And yeah， coming here was one of the co-hosts on that。 And essentially it relies on the following observation。 If this is our resnet block， right。 so we have a one by one， then maybe a three by three， then we have a one by one。
+我将总结一下你认为可以进一步发展的内容，也就是ResNext。它有一个巧妙的想法。对，来到这里是其中一个联合主持人。基本上它依赖于以下观察。如果这是我们的ResNet块，对吧。我们有一个1x1卷积，接着是一个3x3卷积，然后再是一个1x1卷积。
 
- So we have 64 channels， 64 channels， and then we have 256 channels， right？ Or， you know。 some tries like this。 So you might ask yourself， well， is this a really good idea？
+所以我们有64个通道，64个通道，然后是256个通道，对吧？或者你知道，像这样的一些尝试。那么你可能会问自己，嗯，这真的是一个好主意吗？
 
- And it turns out that you may be able to do better by just partitioning things such that my inter-channel interactions。 now happen only by groups of， let's say， four。 So what I'm doing is I'm basically taking the network on the left and slicing it up into 16。
+结果证明，你可以通过仅仅将事情分割开来做得更好，这样我的通道间交互现在只发生在每组四个通道之间。所以我做的基本上是将左边的网络切成16组。
 
- or in this case， you know， more networks， that just have four channels or， you know。 some large number of channels each。 And then in the end I stack everything together。 And so this。 of course， means if we look at that， so initially we have， you know。
-
-
+或者在这种情况下，你知道，更多的网络，它们只是有四个通道，或者你知道，每个有大量通道。然后最终我把所有东西都堆叠在一起。所以这。当然，意味着如果我们看看那个，最初我们有，你知道。
 
 ![](img/d12a011fddab3a49c8c5c057047767ab_22.png)
 
- height times width times input times output channel， you know， parameters。 And the computation is。 you know， of course， you know， output height and width times， you know。 the corresponding height and width of the kernel plus input times input times output channel。 We can break things up by， you know， one by three and one by five and five by one。
+高度乘以宽度乘以输入通道乘以输出通道，你知道，参数。计算是，你知道，当然，输出高度和宽度乘以你知道的卷积核的对应高度和宽度，再加上输入通道乘以输入通道乘以输出通道。我们可以通过你知道的1x3、1x5和5x1来分解它们。
 
- So that's what we saw before for inception。 Or we can break up the channels。 And so if I break it up into B groups， then I have C_i over B groups for the input。 C output over B groups for the output， times B， because then I have B groups。 So in other words。 I get a reduction by a factor of one over B。 And as a result。
+这就是我们之前看到的Inception结构。或者我们可以拆分通道。所以如果我把它拆成B组，那么输入的C_i就会分到B组中，输出的C_o也会分到B组中，乘以B，因为那时我就有B组了。换句话说，我通过B的一个因子来减少运算量。结果就是。
 
- I can use more dimensions and I'm in good shape。
+我可以使用更多的维度，我的状态很好。
 
 ![](img/d12a011fddab3a49c8c5c057047767ab_24.png)
 
-
-
 ![](img/d12a011fddab3a49c8c5c057047767ab_25.png)
 
- And that's really all that there is to it。 So this is very easy to add to any code that you might have。 Basically what you do is you just set in the 2D convolution the variable groups to， you know。 whatever number of groups that you want。 That's it。 Now if you compare Ristner and Ristnext。 the computational budget is very， very close。 All right。 Number of parameters is， you know。
+这就是全部内容。所以这非常容易添加到你可能有的任何代码中。基本上，你只需在二维卷积中设置变量`groups`为你需要的任何组数。就这样。现在，如果你比较Ristner和Ristnext，它们的计算预算非常非常接近。好吧。参数数量是这样的。
 
- within like a few percent of each other。 Number of flops is very close。 but it works a little bit better。 And with that， I'm going to conclude because， yeah。 we're out of time。 So any questions？ Okay。 So next week， we're going to cover different networks。 some way in code。 The other thing is， there's this thing called an exam， right？ Right。
+它们之间的差距在几乎几个百分点之内。浮点运算的数量非常接近。但它稍微表现得更好。接下来，我要总结一下，因为时间差不多了。那么，有什么问题吗？好的。那么，下周我们将讨论不同的网络，以及代码中的一些方式。还有一件事，就是有个叫做考试的东西，对吧？对。
 
- So a couple of things for the next one。
+所以接下来的几点。
 
 ![](img/d12a011fddab3a49c8c5c057047767ab_27.png)

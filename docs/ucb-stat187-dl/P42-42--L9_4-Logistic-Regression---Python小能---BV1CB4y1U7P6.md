@@ -1,57 +1,43 @@
-# P42：42. L9_4 Logistic Regression - Python小能 - BV1CB4y1U7P6
+# P42：42。L9_4 逻辑回归 - Python小能 - BV1CB4y1U7P6
 
- Okay， so now let's see how we can actually fix this。 So for that。 I need to introduce something called logistic regression。 which is actually a special case of something that we've already done before when we looked at multi-class。 So remember multi-class classification。 So this is a slide from like two weeks ago。
+好的，现在让我们看看如何真正解决这个问题。为此，我需要介绍一个叫做逻辑回归的概念，它实际上是我们之前在处理多类分类时已经做过的一种特例。记住多类分类吗？这是大约两周前的一张幻灯片。
 
- where we basically said， well， we want to have calibrated probabilities。 So you use sum over all the classes， OY， E to the OY， sum over E to the OY。 And that quantity。 the softmax， is a proper probability distribution， sums up to one， everything's well behaved。 And the negative log likelihood then would be something like， looks like the type of。
+在那里，我们基本上说过，我们希望得到经过校准的概率。所以你对所有类别求和，OY，E的OY次方，对E的OY次方求和。这个量，softmax，是一个合理的概率分布，和为1，一切表现良好。负对数似然函数则看起来像是，这种类型的。
 
- persisted sum over the E to the OY minus OY。 So that's nice。 Now what if we only have two classes？
-
-
-
-
+持续求和E的OY次方减去OY。这样就好了。那么如果我们只有两个类别呢？
 
 ![](img/c99b1e13e6c2bc0ca826fc70993a2f8e_1.png)
 
- Well actually， if we only have two classes， as you， I guess， discovered， you have shift invariance。 So you can add a constant to all the outputs， and they get the same probabilities。 OK。 so let's say I have classes 1 and minus 1。 So P of Y equals 1 given O is E to the OY divided by E to the minus O minus 1。 and E to the OY。 Now I could just add a constant to O1 and O minus 1。
+实际上，如果我们只有两个类别，正如你们可能已经发现的那样，你具有加法不变性。所以你可以将常数加到所有的输出中，它们会得到相同的概率。好的，假设我有类别1和-1。那么P（Y=1|O）是E的OY次方除以E的负O次方减去1。再加上E的OY次方。现在我可以将常数加到O1和O-1上。
 
- And so I get the same expression as before， but just now with the C's added。 and obviously I can pull those C's out again by just dividing by all of that。 they get the original expression。 In other words， I have shift invariance under additions。 OK。 now this is good if I have that， because I can actually go and maybe simplify things。
+所以我得到和之前一样的表达式，只是现在加上了C。显然，我可以通过除以所有这些C来再次提取它们，得到原始表达式。换句话说，我有加法下的不变性。好了，如果我有这个就很好，因为我实际上可以去简化一些东西。
 
- So what I could do is I could set O minus 1 to be 0。 Why would I do that？ Well， why not， right？
+所以我可以做的是，我可以将O-1设置为0。为什么我要这么做呢？嗯，为什么不呢，对吧？
 
- So I get of P of Y equals 1 given O， E to the OY divided by E to the 0， so that's 1。 plus E to the O。 Now I go and divide by E to the O， and I get 1 over 1 plus E to the minus O。 That's the logistic。 Now， the last thing that you may want to do is work out what P of Y equals minus 1 is。 OK， let's actually do this explicitly on the whiteboard。 So P of Y equals minus 1 given O。
+所以我得到的P（Y=1|O）是E的OY次方除以E的0次方，也就是1，加上E的O次方。现在我去除以E的O次方，就得到了1/(1+E的负O次方)。这就是逻辑回归。现在，你可能想要做的最后一件事是计算P（Y=-1|O）。好吧，让我们在白板上显式地做这个计算。P（Y=-1|O）。
 
- that's 1 minus 1 over 1 plus E to the minus O， right？ Which is 1 plus E to the minus O。 and here I have E to the minus O。 Because I have 1 plus E to the minus O， minus 1。 so that's what I get。 In which case， I can kill this。 So divide by this。 So I get 1 here。 and I get E to the O here， so in other words， I get this。
+这是1减去1/(1+E的负O次方)，对吧？也就是1+E的负O次方。这里我有E的负O次方。因为我有1+E的负O次方，减去1。所以这是我得到的结果。这样，我就可以消去这个。所以除以它。这样我得到1，然后得到E的O次方，换句话说，我得到这个。
 
- Which is now something that I can simplify。 P of Y given O is 1 over 1 plus E to the minus YO。 Which is exactly what we had here。 And that's just a very convenient simplification because now I don't need an ifton else。 condition when I evaluate the loss， but I can just take care of that with a simple multiplication。 And here's the logistic loss function。 So the blue function is the logistic loss。
+现在我可以简化这个。P（Y|O）是1/(1+E的负YO次方)。这正是我们之前得到的结果。这只是一个非常方便的简化，因为现在在计算损失时，我不需要if else条件，而是可以通过简单的乘法来处理。下面是逻辑回归损失函数。所以蓝色的函数就是逻辑回归损失。
 
- That's minus log P of Y given X。 The orange function is the condition， class probability。 That's right， it's not。 It's actually the slope， sorry。 But it also so happens to be the conditional class probability， but will not delve into that。 The interesting thing is， so this orange curve is computed by using luan。
+那是负对数P(Y | X)。橙色函数是条件类概率。没错，它其实不是斜率，抱歉。它也恰好是条件类概率，但我们不会深入探讨这一点。有趣的是，这个橙色曲线是通过使用luan计算的。
 
- I didn't actually take the derivative， I just ran autograd。 Because I'm lazy。 and it's just so much easier to have one line of code rather than using my brain。 Now。 the last thing that we probably want is get the asymptotes。 And so if I have the asymptote for X going to infinity。
+我实际上并没有求导，我只是跑了自动求导。因为我很懒。而且用一行代码要比动脑筋简单得多。现在，最后一件我们可能需要做的事情是得到渐近线。所以如果我有X趋向于无穷大的渐近线。
 
- this should look extremely familiar from past homework。 So I get， of course， X going to infinity。 E to the minus X goes to 0， so I get a lot of 1， which is 0。 So that just proves that the asymptote for X going to infinity is the constant function 0。 And for X going to minus infinity， I'm going to subtract the function minus X from it。
+这应该和以前的作业非常相似。所以我得到的，当然，X趋向于无穷大。E的负X次方趋向于0，所以我得到很多1，这就是0。所以这就证明了X趋向无穷大的渐近线是常数函数0。对于X趋向负无穷大，我将从中减去函数负X。
 
- So I get log of 1 plus E to the minus X plus X。 Pulling that into the exponential gives me the log of 1 plus E to the X。 Now， again， for X going to minus infinity， the second term vanishes， so I get 0 again。 So with that。 I've just proven that this green function gives me the asymptotes for both plus and minus infinity appropriately。 And yet the orange function is the slope。 Any questions so far？
-
-
-
-
+所以我得到的是1加上E的负X次方加X的对数。将其转化为指数形式后，我得到的是1加E的X次方的对数。现在，再次地，对于X趋向于负无穷大，第二项消失，所以我又得到了0。因此，通过这一点，我刚刚证明了这个绿色函数给了我X趋向正负无穷大的渐近线。而橙色函数是斜率。到目前为止有任何问题吗？
 
 ![](img/c99b1e13e6c2bc0ca826fc70993a2f8e_3.png)
 
- So to just quickly wrap this up and don't worry， we'll actually need this quite a bit in what follows。 namely when we look at covariative correction。 So I have some data and conveniently people pick classes 1 and minus 1。 I have some objective， which is log of 1 plus E to the minus this term。
-
-
+所以，为了快速总结一下，不用担心，接下来的内容我们会经常用到。特别是当我们看看协方差修正时。所以我有一些数据，方便的是人们选择了类1和类-1。我有一些目标，它是1加E的负某个项的对数。
 
 ![](img/c99b1e13e6c2bc0ca826fc70993a2f8e_5.png)
 
- And actually， I screwed up here。 There needs to be a minus there。 Let me just quickly fix this。 And I might have some penalty on the parameters。
+事实上，我这里搞错了。需要加一个负号。让我赶紧修正一下。我可能还会对参数加上一些惩罚项。
 
 ![](img/c99b1e13e6c2bc0ca826fc70993a2f8e_7.png)
 
- And the conditional probability is just 1 over 1 plus E to the minus O。 which just happens to also give me the derivative。 This is not a coincidence and has a lot to do with how exponential families work。 If you like that。 take a stats class on exponential families。 There's a lot of really beautiful math that simplifies a lot of things if you just realize that they all follow the same mathematical underpinnings。
-
-
-
-
+条件概率就是1除以1加E的负O次方。这也恰好给了我导数。这不是巧合，它和指数族的工作方式有很大关系。如果你对这方面感兴趣，可以去修一门关于指数族的统计学课。如果你理解了它们都遵循相同的数学基础，你会发现有很多非常漂亮的数学，可以简化很多事情。
 
 ![](img/c99b1e13e6c2bc0ca826fc70993a2f8e_9.png)

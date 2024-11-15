@@ -1,123 +1,103 @@
-# P47：47. L10_1 Deep Learning Frameworks, Gluon (1) - Python小能 - BV1CB4y1U7P6
+# P47：47. L10_1 深度学习框架，Gluon (1) - Python小能 - BV1CB4y1U7P6
 
- After hardware， we can talk a little bit more about the pre-end frameworks。
+在硬件之后，我们可以进一步讨论前端框架。
 
 ![](img/e8103c642e51a58b38312abcef92ac57_1.png)
 
- So we know that there's a bunch of frameworks， the x-axis the years。 And so you can see that Ciano。 Cafe， Cafe is from Berkeley and a lot of new things， especially。 there's four frameworks at three years ago and the other things。 So we can briefly introduce like each frameworks， what is the major design decisions and what。
+所以我们知道有一堆框架，横轴是年份。你可以看到，Ciano，Cafe，Cafe 来自伯克利，尤其是很多新的东西，特别是。大约三年前有四个框架，其他的东西。所以我们可以简要介绍每个框架的主要设计决策以及其他内容。
 
- is the one agent or the one that is just。
+是那个代理，或者说是仅仅存在的那个。
 
 ![](img/e8103c642e51a58b38312abcef92ac57_3.png)
 
- The first one is Cafe。 Cafe is made from Berkeley。 It's the most popular different framework for computer vision about four years ago。 So the program interface is that you give me a protocol above。 You can write a text and describe the layer。 And for example。
+第一个是 Cafe。Cafe 来自伯克利。它是大约四年前最流行的计算机视觉框架。所以它的程序接口是这样的，你给我一个协议规范。你可以写一段文本来描述网络层。例如。
 
- this is the part of the RESTNet 1011 network， how to define the layers。 So we have layers。 we have what is the bottom layer， what is the top layer and the top and， also prime layers here。 So the one here is that Cafe have really good Cvmore coverage。 It's a bunch of convolution networks we cannot teach in the next week。 And it's portable。
+这是 RESTNet 1011 网络的一部分，如何定义层。我们有层次结构，我们有底层是什么，顶层是什么，还有顶层及其前置层在这里。所以这里提到的，是 Cafe 拥有非常好的 Cvmore 覆盖。它是一堆卷积网络，我们下周无法讲解。并且它是可移植的。
 
- which means it's a single binary。 You can grab it and run everywhere。 But it's not so flexible at that time if you want to do like a Python level interactive。 program is so hard。 And also this layer， I didn't show the whole thing actually。 The single definition have four thousand lines for code， which means a four single layer。
-
-
-
-
+这意味着它是一个单一的二进制文件。你可以抓取它并在任何地方运行。但是，如果你想做像 Python 级别的交互式编程，那时它并不那么灵活，程序会非常困难。而且，这一层我实际上没有展示完整。单一定义有四千行代码，这意味着有四个单独的层。
 
 ![](img/e8103c642e51a58b38312abcef92ac57_5.png)
 
- a four single network。 After that， TensorFlow is probably the most popular depraved framework right now。 It's provide domain-specific language， it's called DSL for Python。 So TensorFlow is like Python but not Python。 So it has thousands operators。 So that's actually the one that you have everything you want to use in TensorFlow。
+一个四层网络。之后，TensorFlow 可能是目前最流行的深度学习框架。它提供了特定领域的语言，叫做 DSL（领域特定语言）用于 Python。所以 TensorFlow 就像 Python，但又不是 Python。它有成千上万的运算符。事实上，TensorFlow 就是你想要的所有东西都可以在其中找到。
 
- You also have a lot of features you want to do training， do deployment， do everything you， want。 But the problem here is that TensorFlow code is a little bit hard to understand。 If you don't learn that before it's a Python user， if for example you read this code you。 don't know what this state OPs assignment is actually equal to。
-
-
-
-
+你还可以使用许多功能，进行训练、部署，做你想做的一切。但这里的问题是，TensorFlow 的代码有点难以理解。如果你之前没有学习过，它对 Python 用户来说会比较难。举个例子，如果你阅读这段代码，你可能不知道这个 state OPs 赋值到底等于什么。
 
 ![](img/e8103c642e51a58b38312abcef92ac57_7.png)
 
- But it's a little bit hard to understand。 Chaos on the other hand， it's a client。 It's just the one designed to simplify how to develop things。 For example。 here's how to use Chaos to define a multi-layer perception。 It's pretty similar to what we have in Groom before。 Chaos are just a client。
+但它有点难理解。另一方面，Chaos 是一个客户端。它就是一个旨在简化开发过程的工具。例如，下面是如何使用 Chaos 来定义一个多层感知机。它跟我们之前在 Groom 中所做的非常相似。Chaos 只是一个客户端。
 
- You can use a different back end。 So for example， you can， indeed， for like original use。 CML now it's using TensorFlow， you can also use M stand or CNT cache back ends。 So the one that you care of says like， it's pretty easy to use compared to TensorFlow。 But it may be slower because you have a little overhead on the front end and then you're。
+你可以使用不同的后端。例如，你可以，实际上，对于原始用途。现在 CML 使用的是 TensorFlow，你也可以使用 M stand 或 CNT cache 后端。所以你关心的是，它比 TensorFlow 使用起来要简单一些。但可能会更慢，因为前端有一些开销，然后你就。
 
- trying to a TensorFlow probe while your libia looks a little bit more efficiently at the， end。 It's less convenient to develop debug because you see the， you see there's a compile step， here。 The define model you compile is actually called symbolic programming。 We talked a little bit about before， like it's a little bit harder to get the intermediate。
+尝试使用TensorFlow时，你的库看起来可能在最后更高效一些。但它在开发和调试上不太方便，因为你会看到这里有一个编译步骤。你定义的模型进行编译，实际上就是所谓的符号编程。我们之前稍微提到过，这使得获取中间结果变得有些困难。
 
- result and do interactive things。
+结果并进行交互式操作。
 
 ![](img/e8103c642e51a58b38312abcef92ac57_9.png)
 
- The other one is pretty popular called PyTorch。 It's PyTorch is from PyTorch。 PyTorch actually grabbed the Tensor interface from Torch and also grabbed a UNL interface。 from Channel。 So it's purely in Python， so which means it's pretty easy to understand。 If you're a Python user， you can read PyTorch called easily。
+另一个非常流行的框架是PyTorch。PyTorch来自于PyTorch。实际上，PyTorch从Torch中获取了Tensor接口，并且还获取了来自Channel的UNL接口。所以它完全基于Python，这意味着它非常容易理解。如果你是Python用户，你可以轻松阅读PyTorch代码。
 
- And because it's so closely integrated with Python， PyTorch will be hard to deploy especially。 for industrial applications。 Sometimes your application is right in Java while you need to run Python in Java that's。 pretty powerful。 And if you want to run mobile phones， you're not necessary to have Java。 which is have a， lot of efficiency issues。 But PyTorch is so easy to use。
+由于它与Python紧密集成，PyTorch在部署时可能会遇到一些困难，尤其是在工业应用中。有时候你的应用是用Java编写的，而你需要在Java中运行Python，这会比较强大。而且如果你想在手机上运行，通常不需要Java，这会带来很多效率问题。但PyTorch使用起来非常简单。
 
- it's getting very popular in the research world。
+它在研究领域变得越来越流行。
 
 ![](img/e8103c642e51a58b38312abcef92ac57_11.png)
 
- So this class is based on M-Snet。 The original M-Snet have a long part like Tensor library。 which is， you already see that before， it's called ND。 The end of like。 cares like neural network is a simple network， which means you define network。 you compile it and fit data in the train。 The original design for M-Snet is for performance。
+所以这门课是基于M-Snet的。原始的M-Snet包含了一个类似Tensor库的长部分，正如你之前看到的，叫做ND。最后像神经网络这样的网络是一个简单的网络，这意味着你定义网络，编译它，并将数据输入进行训练。M-Snet的原始设计是为了提高性能。
 
- We want to get the best performance， so then we sacrifice a little bit of usability。 At that time。 people don't know， it's still earlier a lot， a small community， everybody's， expert。 so we don't care about usability at that time。
+我们希望获得最佳性能，因此我们牺牲了一些可用性。在那个时候，大家还不太了解，因为那时社区很小，几乎都是专家，所以我们并不关心可用性。
 
 ![](img/e8103c642e51a58b38312abcef92ac57_13.png)
 
- After that， the community growth， PyTorch， like 10 times easier to use than TensorFlow， we learned。 yes， let's have a PyTorch like thing。 So Gluong is actually very similar to China and PyTorch for neural networks。 So here we define network and then we can do this and normal thing we introduced before。 So Gluong make much easier and to develop code and debug， which is similar to PyTorch。
+之后，社区的发展使得PyTorch变得比TensorFlow容易使用十倍，我们意识到是时候做一个类似PyTorch的框架了。所以Gluon实际上和PyTorch非常相似，都是用于神经网络的框架。所以在这里我们定义网络，然后可以做类似我们之前介绍的事情。Gluon使得开发代码和调试变得更加容易，这和PyTorch类似。
 
- comparing to the symbolic interface， sometimes slower because you lose a little bit performance。 for the interactive experience using PyTorch。 By most cases。 you don't care unless you are a several driving car company， you have like。 a lot of 4K videos and you really care about performance that matters。 But in most cases。
+与符号接口相比，有时会稍微慢一些，因为你会失去一点性能。在使用PyTorch进行交互体验时，通常情况下你不需要太在意，除非你是自动驾驶公司，拥有大量4K视频，真的非常注重性能。然而在大多数情况下，这并不是问题。
 
- for homeworks， you don't care about that。 So that's kind of what we have two years ago and what we really learned in the last two。 years， like we're more and more student come in and engineers come in， the less care about。 framework。 It's just a tool。
+对于作业来说，你不需要担心这些。所以这就是我们两年前的情况，以及我们过去两年真正学到的东西，随着越来越多的学生和工程师加入，大家对框架的关注越来越少，它只不过是一个工具。
 
 ![](img/e8103c642e51a58b38312abcef92ac57_15.png)
 
- Framework is a tool that lets you to finish things。 So for example， for researchers。 they really want to have baseline models。 Already implemented so I can base on the baseline model to just hack it and train my own applications。 And for engineers， I really care about less grab data， train the model and deploy。 And that's really care about。 So start from one year ago， we tried to， okay。
+框架是一个工具，可以帮助你完成任务。例如，对于研究人员，他们真的想要一个已经实现的基准模型。这样我可以在基准模型的基础上进行修改，训练我自己的应用。而对于工程师来说，我更关心的是数据抓取、模型训练和部署。那些才是我真正关心的。所以，从一年前开始，我们尝试了，好的。
 
- let's have two kids actually focus on applications。 For example， one thing is called Glone CV。 This is a toolkit for computer vision。 It provides a bunch of image specifications。 all these popular models here， object detection， somatic segmentation。 a lot of segmentation also like a phase again， a lot of stuff。
+让我们把注意力集中到应用上。例如，有一个叫做Glone CV的东西。它是一个计算机视觉工具包，提供了大量的图像规格，涵盖了所有这些流行的模型，比如物体检测、语义分割等，许多分割任务，像人脸识别、许多其他应用。
 
- So it have a bunch of pre-channel models。 You can just grab and use it。 also have all these training scripts to reproduce the results。 The reproducing results pretty hard because to make your paper fancy， you need a lot of。 fancy things but to get the results， you have a lot of tricks。 So for example。
+它有一堆预训练模型，你可以直接抓取并使用，也有所有这些训练脚本来重现结果。重现结果其实很难，因为为了让论文看起来炫酷，你需要很多花里胡哨的东西，但要得到结果，你需要很多技巧。例如。
 
- a lot of famous papers we are also going to teach in the class， claim， that yes。 let's design a network， I have this story。 And we aren't performing the baseline by 5%。 Oh。 that's a big thing and people jump in。 Yeah， that's so fancy。 In fact， we look into that。 look into the implementation。 We find the major trick give you 3% improvement is like for Softmax。
+很多著名的论文我们也会在课堂上讲到，声明说是的，我们设计了一个网络，我有这个故事。而且我们已经让基准测试提高了5%。哦，这可是一件大事，大家都会跃跃欲试。是的，那太炫了。实际上，当我们深入研究实现过程时，我们发现提升3%的主要技巧就是针对Softmax的。
 
- either you give 0 for， NACTIVE 1 for positive。 But you know that for the Softmax regression to fit 0 otherwise too hard。 What you can do is you can change the positive number from 0 to 0。9 and change NACTIVE to 0。 from 0 to 0。1。 It's a cost of soft label and this one give you 3% improvement。 Okay。 there are a lot of tricks to make things happen。 So this tool is trying to yes。
+你可以给0表示NACTIVE，1表示正数。但你知道，Softmax回归需要适应0，否则会太难。你可以做的是，将正数从0改成0.9，并将NACTIVE从0改成0.1。这是软标签的成本，这样可以提升3%的效果。好吧，确实有很多技巧可以让事情发生。所以这个工具正是为了实现这些目的。
 
- let's survey all the tricks and find a prior order trick， to all these models。 you can actually get a lot of good things from it。 So also there's a bunch of projects like yes。 how about let's grab a data set to find you， a model for that。 Our feedback is like， yeah。 it's a homework project because you just grab it and to our， 3。9 code you can just find you。
-
-
-
-
+让我们调查所有的技巧，并找到优先级更高的技巧，来应用于所有这些模型。你实际上可以从中获得很多好的成果。所以，也有一堆项目，比如，好的，如何利用数据集为你找到一个模型。我们的反馈是，嗯，这是一个家庭作业项目，因为你只是简单地抓取它，并用我们3.9的代码就能找到你想要的。
 
 ![](img/e8103c642e51a58b38312abcef92ac57_17.png)
 
- That's so easy。 Finally we have LOP， a lot of production models， scripts and do a lot of LOP jobs。 especially， if you read the news， there's a new algorithm called birds or transformer based on network。 you're pretty popular and also from opening I called GPT2。 You get a lot of good results。 It's a big thing for LOPs。 So originally we probably don't teach transformer birds too much but according to the written。
+这真是太简单了。最后，我们有LOP，很多生产模型，脚本可以做大量的LOP工作。特别是，如果你看新闻，你会发现有一个新的算法叫做基于鸟类或变换器网络的算法，特别流行，还有来自OpenAI的GPT2。你可以获得很多不错的结果。这对于LOP来说是一件大事。所以最初我们可能不会过多讲解变换器鸟类模型，但根据写作的需要，
 
- news we maybe take one to nectar for birds or transformer models。
+也许我们接下来要采用一种叫做鸟类或变换器模型的技术。
 
 ![](img/e8103c642e51a58b38312abcef92ac57_19.png)
 
- The other one you guys have a team to do graph new networks。 So which means you can take social graph data set， you can take a sound recommendation data， set。 you can build cantaloung relational new network for that。 DGI is for that。 It's a relatively new research topic。 Every framework is just a big area。
+另一个你们团队可以做的是图神经网络。也就是说，你可以利用社交图数据集，或者声音推荐数据集，来构建关联的图神经网络。DGI就是为此而设计的。这是一个相对较新的研究领域，每个框架都可以成为一个重要的研究领域。
 
- It's pretty slow at this time but we are moving very fast on this area。
+目前进展比较慢，但我们在这一领域的进展非常快。
 
 ![](img/e8103c642e51a58b38312abcef92ac57_21.png)
 
- So every framework is pretty fast in the past few years。 For example。 for MSNAT we have more toolkits this year and the other thing we learned is。 like for the first homework we get feedback。 Yes， it told me ND erased Lumpy like what is actually not compatible。 For example if you do boe indexing it actually doesn't support that。 So yes。
+过去几年，每个框架都非常快速。例如，MSNAT我们今年有更多的工具包，另外我们学到的一点是，像第一次作业我们得到的反馈，告诉我ND删除了Lumpy，实际上它是不兼容的。例如，如果你做BOE索引，它实际上不支持这一点。所以是的。
 
- we take this feedback and now we can duplicate ND maybe in a year and then you。 introduce a new package called NP it's 100% non-pack compatible which means we can add。 in GPU support to Lumpy and also autograph to Lumpy。 So that's like again if maybe next year we can teach again at Berkeley we can use a， non-pack。
+我们采纳了这些反馈，现在我们可以复制ND，也许一年后，你会引入一个新的包，叫做NP，它是100%不兼容现有包的，这意味着我们可以在Lumpy中添加GPU支持，也可以在Lumpy中加入自动图优化。所以这就像是，如果明年我们再次在伯克利教授课程，我们可以使用一个非兼容包。
 
- It's just use non-pack。 The second area we see that yes people care about performance like for CPU and GPU we are。 able to use in compiler technologies to for the compiler actually we can see the whole network。 and do the graph the network scale optimizations。 Here on CPU and GPU we can get another 50% performance boost and more importantly more。 and more deep learning applications going around on H or mobile phones on the ASIC so we hope。
+它就是使用非兼容包。我们看到的第二个领域是，确实人们关心性能，像是对于CPU和GPU，我们能够利用编译器技术，实际上我们可以看到整个网络，并对网络的图进行规模优化。在CPU和GPU上，我们可以获得额外50%的性能提升，更重要的是，越来越多的深度学习应用在H或移动电话、ASIC上运行，所以我们抱有希望。
 
- at the end of this year we'll cover more hardware as well。 And another question like yes my laptop have GPU why I cannot use my GPU on my laptop。 Sorry you are not usually smack you don't have a video GPU you maybe have Intel GPUs。 but now maybe at the end of this year people can run all GPU code on the Intel or MD GPUs。
-
-
-
-
+今年年底我们将涵盖更多硬件内容。另外，还有一个问题，像是我的笔记本有GPU，为什么我无法在笔记本上使用GPU。抱歉，你通常没有独立显卡，你可能只有英特尔集成显卡。但现在，也许到今年年底，人们可以在英特尔或AMD的GPU上运行所有GPU代码。
 
 ![](img/e8103c642e51a58b38312abcef92ac57_23.png)
 
- So on the rest of it let's give a few tutorials about Groom。 We already talked about the NDR interface now we talk a little bit more about how to write。
+接下来，关于Groom我们会提供一些教程。我们已经讨论过NDR接口，现在再多讲一点如何编写代码。
 
 ![](img/e8103c642e51a58b38312abcef92ac57_25.png)
 
- new networks。 So there's three things here how to create and define new networks and layers and how。 to initialize and manipulate the parameters。 And the last one because we can start to teach convolutional new networks in next week we。 probably prefer to use GPUs for multi-layer perceptions the laptop is maybe good enough。 but for convolutional new networks CPU is too slow。
-
-
-
-
+新网络。所以这里有三件事，如何创建和定义新的网络和层，如何初始化和操作参数。最后，因为我们下周可以开始教授卷积神经网络，可能更倾向于使用GPU进行多层感知器，笔记本可能足够好，但对于卷积神经网络，CPU速度太慢。
 
 ![](img/e8103c642e51a58b38312abcef92ac57_27.png)
 
- [BLANK_AUDIO]。
+[BLANK_AUDIO]。

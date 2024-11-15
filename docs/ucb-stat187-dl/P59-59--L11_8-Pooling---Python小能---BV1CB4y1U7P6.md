@@ -1,43 +1,37 @@
-# P59：59. L11_8 Pooling - Python小能 - BV1CB4y1U7P6
+# P59：59. L11_8 池化 - Python小能 - BV1CB4y1U7P6
 
- The last part of our conversation about convolutional layers is the pooling layer。 So pooling is actually a very， very simple operation and it's probably easier just to。 look at what's going on。 So let's look at an image。 In this case， admittedly a very primitive image。 it's a 5 by 4 pixel image which consists， of 1's on the 2 left columns and 0's throughout the rest。
+我们关于卷积层的最后部分是池化层。因此，池化实际上是一个非常简单的操作，可能看起来更容易理解。让我们来看一张图。在这个例子中，确实是一个非常原始的图像。它是一个5 by 4像素的图像，左边两列是1，剩下的部分全是0。
 
- If I now apply an edge detector， I'm going to find an edge at column number 2。 So if I then were to shift that image by 1 pixel to the left or to the right， well。 that edge would shift by 1 pixel。 So that doesn't sound like a lot but if I want to have maybe later on features that。 are somewhat translation invariant， then I clearly can't have it if my features all。
+如果我现在应用边缘检测器，我会在第2列找到一个边缘。所以，如果我将图像向左或向右移动1个像素，那么这个边缘也会移动1个像素。这听起来似乎不多，但如果我希望以后能得到一些具有平移不变性的特征，那么显然，如果我的特征都依赖于位置，就无法实现这一点。
 
- depend exactly on where they occur。 So we need to have some mechanism for giving us invariance with regard to translations。 lighting， object positions， scales， appearance and so on。
+它们完全依赖于它们发生的具体位置。因此，我们需要一些机制来提供对平移、光照、物体位置、尺度、外观等的 invariance（不变性）。
 
 ![](img/0b81775b89d6c0f48ee1ab2b3f1d5875_1.png)
 
- And this is exactly where pooling comes in handy。 So let's look at 2D max pooling。 So max pooling does the following thing。 It takes an input。 For instance here it's a 2 by 2 patch。 Let's just take the maximum of that patch and it moves one block to the right。 It performs that again and it does that and so if we do 2 by 2 max pooling， we turn a。
+这正是池化派上用场的地方。那么我们来看2D最大池化。最大池化的操作如下：它接受一个输入。例如这里是一个2 by 2的小块。我们只取这个小块中的最大值，然后将窗口向右移动一个单元。然后再执行相同的操作，如果我们进行2 by 2的最大池化，我们会得到一个。
 
- 3 by 3 input into a 2 by 2 output。 So the semantics in terms of the size work exactly like what we saw before by convolutions。 except that rather than multiplying and adding terms we just take the maximum。 Or if I have a 4 by 4 image and if I perform max pooling over a 3 by 3 window， then I'll。 get a 2 by 2 output which is exactly what we're seeing on the right。
-
-
-
-
+将3 by 3的输入转换为2 by 2的输出。因此，尺寸方面的语义与我们之前通过卷积看到的完全相同。不同之处在于，我们不再是进行乘法和加法，而是取最大值。或者，如果我有一张4 by 4的图像，并且在3 by 3的窗口上执行最大池化，那么我将得到一个2 by 2的输出，这正是我们右侧看到的。
 
 ![](img/0b81775b89d6c0f48ee1ab2b3f1d5875_3.png)
 
- So what you can see is in the previous example， so let's say we have a vertical edge detector。 we perform convolution and so now the 2 by 2 max pooling becomes tolerant relative to。 1 pixel shift。
+所以你可以看到，在前面的例子中，假设我们有一个垂直边缘检测器。我们执行卷积，现在2 by 2的最大池化对1像素的位移变得具有容忍性。
 
 ![](img/0b81775b89d6c0f48ee1ab2b3f1d5875_5.png)
 
- That's exactly what we wanted。 Now if you want to make sure that by pooling the output doesn't really change or maybe。 change it in a well defined way， then you can use padding and stride in exactly the same。 way as what you would have done before。 So first of all in terms of input and output channels。 they are the same because you perform， pooling per channel and in terms of stride。
+这正是我们想要的。现在，如果你想确保通过池化，输出不会真正改变，或者可能改变得很有定义，那么你可以使用与之前相同的填充和步幅方式。首先，在输入和输出通道方面，它们是相同的，因为你是按通道进行池化的；在步幅方面。
 
- well it's just a matter of how many pixels， you shift before you apply that window again。 They're no learnable parameters but for instance if I wanted to preserve exactly the same size。 of the image， then I could for instance take a 3 by 3 max pooling and pad by 1 pixel on。 either side and I'd get the same output。 So there we go。 If I do this。
+其实，这只是取决于你在应用窗口之前，移动了多少像素。没有可学习的参数，但例如，如果我想保持图像的大小不变，那么我可以使用3 by 3的最大池化，并在两边填充1个像素，这样就能得到相同的输出。好了，如果我这么做。
 
- so here's a 3 by 3 pooling and as a matter of fact， here's I get a smaller。 image out of it because well I'm using a stride of 2。 So this is padding of 1 stride of 2 which will reduce the image resolution。
+这是一个3 by 3的池化，事实上，我从中得到了一张更小的图像，因为我使用了2的步幅。所以这是1的填充和2的步幅，这会降低图像的分辨率。
 
 ![](img/0b81775b89d6c0f48ee1ab2b3f1d5875_7.png)
 
- Now besides max pooling， there's also average pooling。 Now average pooling。 what you do is you simply average over the interest in that window。 So this is a very common operation that everybody knows。 For instance if I take a very high resolution image with my camera and I want to reduce。
+除了最大池化，还有平均池化。平均池化的做法是你简单地在该窗口内对感兴趣区域的像素进行平均。所以这是一个非常常见的操作，大家都知道。例如，如果我用相机拍摄一张高分辨率的图片，然后想要减小。
 
- the resolution， I might just down race that image。 Now what the photo processing software does is actually performs average pooling where。 it averages over a larger number of pixels to get that。 This is what was commonly used in the 90s in the early convolutional networks but switching。
+解析度，我可能会降低图像的分辨率。现在，照片处理软件实际上执行的是平均池化操作，它在更大范围的像素上进行平均。这在90年代早期的卷积网络中被广泛使用，但随着技术发展，逐渐发生了变化。
 
- from average pooling to max pooling improves accuracy which is why by now everybody uses。 average max pooling。 There's one exception namely at the very last layer when you perform global average。 pooling you actually add them together。 We'll talk about that in a lot more detail in the next lectures。
-
-
+从平均池化到最大池化的转换可以提高准确性，这也是现在大家普遍使用**平均最大池化**的原因。唯一的例外是在最后一层，当你执行全局平均池化时，你实际上会将它们加在一起。我们将在接下来的讲座中详细讨论这一点。
 
 ![](img/0b81775b89d6c0f48ee1ab2b3f1d5875_9.png)
 
- [BLANK_AUDIO]。
+[BLANK_AUDIO]。

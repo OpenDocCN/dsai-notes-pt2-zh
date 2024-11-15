@@ -1,81 +1,69 @@
-# P31：31. L7_3 Squared L2 Regularization in Jupyter - Python小能 - BV1CB4y1U7P6
+# P31：31. L7_3 在 Jupyter 中的平方 L2 正则化 - Python小能 - BV1CB4y1U7P6
 
- The weight decay we also like import something， we can ignore that。 Here we can fit a high。
+我们还像导入某些东西一样使用了权重衰减，可以忽略这一点。在这里我们可以拟合一个高维数据。 
 
 ![](img/b988a25518ad00873e72acbcaeeb4b38_1.png)
 
-
-
 ![](img/b988a25518ad00873e72acbcaeeb4b38_2.png)
-
-
 
 ![](img/b988a25518ad00873e72acbcaeeb4b38_3.png)
 
- dimension on linear regression。 That's d is a number of dimensions we have。 The weight。
+线性回归中的维度。d 是我们拥有的维度数。权重。
 
 ![](img/b988a25518ad00873e72acbcaeeb4b38_5.png)
 
- is pretty simple， all equal to 0 minus 0， 1 and plus a noise。 We can know how we actually。
+这个过程相当简单，全部初始化为 0 减去 0，1，并加上噪声。我们可以知道我们实际上是怎么做的。
 
 ![](img/b988a25518ad00873e72acbcaeeb4b38_7.png)
 
- obtain this data。 And then similar to before we construct linear regression and initialize。
+获取这些数据。然后像之前一样，我们构造线性回归并进行初始化。
 
 ![](img/b988a25518ad00873e72acbcaeeb4b38_9.png)
 
- the weight， attach gradients。 Then define the square L2 long penalty or。
+权重，附加梯度。然后定义平方 L2 长度惩罚或。
 
 ![](img/b988a25518ad00873e72acbcaeeb4b38_11.png)
 
- regularization。 So it actually is given W， power to 2 and the sum of the elements and， divided by 2。 That's L2， regularization。 The training is actually pretty similar to before。
+正则化。所以实际上是给定 W，平方并求和元素，除以 2。这就是 L2 正则化。训练过程实际上和之前非常相似。
 
 ![](img/b988a25518ad00873e72acbcaeeb4b38_13.png)
 
-
-
 ![](img/b988a25518ad00873e72acbcaeeb4b38_14.png)
 
- The only difference here is that the loss function， sorry， it's a lot， original loss。 And you do not afford and compare the loss between against the Y plus lambda times the， L2。 regularization of W。 So this is the only thing we have here。 All the others are similar， to before。 Okay？ They ignore that。 The net first fit number that equals 0， which means。
-
-
-
-
+唯一的区别是损失函数，抱歉，它是很多，原始损失。你不能负担并比较损失，跟 Y 加上 lambda 乘以 L2 正则化的 W 相比。所以这是我们这里唯一有的不同。其他的都和之前类似。好吗？他们忽略了。网络第一次拟合的数字等于 0，意味着。
 
 ![](img/b988a25518ad00873e72acbcaeeb4b38_16.png)
 
- no regularization here。 You can see that similar thing， the blue line is a training。 error and the dotted line is the validation error。 You can see that the training curve。 decreases but the validation accuracy actually is up。 It didn't change too much。 The reason。 is because we are using 100 dimensions but we are only using a very small number of examples。
+这里没有正则化。你可以看到类似的情况，蓝色线是训练误差，虚线是验证误差。你可以看到训练曲线下降，但验证准确率实际上上升了。它没有变化太多。原因是因为我们使用了 100 个维度，但我们只用了非常少的样本。
 
- So even linear model can overfeed this data set a lot。 And we can compute the final W2。 long is to 13。 Now let's try if I use weight decay。 We use lambda equal to 3。 You can see。
+所以即使是线性模型也会严重过拟合这个数据集。我们可以计算最终的 W2，长为 13。现在让我们试试看如果我使用权重衰减。我们使用 lambda 等于 3。你可以看到。
 
 ![](img/b988a25518ad00873e72acbcaeeb4b38_18.png)
 
- that we still have a little bit of over-fitting here but it's much better。 We actually drop。 the test error down by a lot。 But given that we still have only a few examples for this。 high dimension data set， the model is still over-fitting the data but the adding number。 actually decreases the test error a lot。 And also we can see that there are two long W。
+我们仍然有一点过拟合，但是情况好多了。我们实际上大幅度降低了测试误差。但是鉴于我们仍然只有少数几个样本用于这个高维数据集，模型仍然在过拟合数据，但增加的样本数实际上大大减少了测试误差。而且我们还可以看到有两个长的 W。
 
- is pretty small compared to before。 So if implementing from scratch what we did， we just。
+相比之前，它非常小。所以如果从头开始实现我们所做的，我们就直接。
 
 ![](img/b988a25518ad00873e72acbcaeeb4b38_20.png)
 
-
-
 ![](img/b988a25518ad00873e72acbcaeeb4b38_21.png)
 
- changed the loss function and if you're going to use a coroure or using any deep brain library。
+更改了损失函数，如果你要使用一个库或任何深度学习库。
 
 ![](img/b988a25518ad00873e72acbcaeeb4b38_23.png)
 
- we usually just tell the SGD function that is apply weight decay that we directly apply。 to the SGD function。 For example in Gruell you can say that when you get the linear rate。 besides the linear rate you can specify that the weight decay Wd you could do a particular， number。 So here we did libiof more complex thing here。 We only apply to weights so we。
+我们通常只是告诉SGD函数应用权重衰减，我们直接将其应用于SGD函数。例如，在Gruell中，你可以说在获取线性率时，除了线性率外，你可以指定权重衰减Wd，并为其指定一个具体的数值。所以这里我们做了更复杂的操作。我们只应用于权重。
 
- cannot talk about how actually this API works。 Actually we connect also to weight and apply。 with weight decay and for bias turns we didn't apply any weight decay。 That is close to what。 we talk about on the equations。 And then because we are already at the weight decay on the。 optimization method we don't need to change the loss function here。 So in practice you。
+不能详细讨论这个API的具体工作原理。实际上，我们也会连接到权重并应用。对于偏置项，我们没有应用任何权重衰减。这与我们在公式中讨论的非常相似。然后，因为我们已经在优化方法中应用了权重衰减，所以这里不需要更改损失函数。因此在实际操作中，你…
 
- don't need to do that you just specify the weight decay。 Apply on bias or not doesn't。 matter too much in most of the cases。 Then similar thing using weight decay equal to zero you。
+不需要做那些，你只需要指定权重衰减。是否应用于偏置在大多数情况下并不重要。
 
 ![](img/b988a25518ad00873e72acbcaeeb4b38_25.png)
 
- see a big gap between test accuracy and training accuracy and then if you apply weight decay。
+我们可以看到测试准确度与训练准确度之间存在很大的差距，如果应用了权重衰减…
 
 ![](img/b988a25518ad00873e72acbcaeeb4b38_27.png)
 
- equal to three you also see the test accuracy drops。 So also the L2 law of W decreases as， well。 Any questions so far？ Good。
+当等于三时，你也会看到测试准确度下降。因此，W的L2范数也减少了。到目前为止有什么问题吗？好的。
 
 ![](img/b988a25518ad00873e72acbcaeeb4b38_29.png)

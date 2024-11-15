@@ -1,79 +1,73 @@
-# P7：7. L2_2 AWS EC2 Instances - Python小能 - BV1CB4y1U7P6
+# P7：7. L2_2 AWS EC2 实例 - Python小能 - BV1CB4y1U7P6
 
- So in the office hours， I had a whole bunch of people come to me and ask me， "Oh my god。 how do I actually start an instance？"， Okay。 So the one thing that we are not going to go through is how to sign up for AWS。 You can do that in the comfort of your dorm room or whatever， but you go to aws。amazon。com。
-
-
+所以在办公时间，我有一大堆人来问我，“天哪，我到底怎么启动一个实例？”好的。所以我们不打算讲解的是如何注册 AWS。你可以在宿舍或者其他地方自己做这个操作，但你只需要访问 aws.amazon.com。
 
 ![](img/92d14ad3b5957c1bdfa656fa30bec1f2_1.png)
 
- And then you click on sign into your console。
+然后点击登录到你的控制台。
 
 ![](img/92d14ad3b5957c1bdfa656fa30bec1f2_3.png)
 
- And okay， I've signed in before， but if not， then it will ask you to create an account and， so on。 And yeah， you should do that。 Okay。 So a couple of basics。 AWS operates in different regions。 They're up here。 That's some of the regions。 And different regions have often slightly different equipment。 sometimes different services。 And they very much have different prices。
+好的，我之前已经登录过了，如果没有，它会要求你创建一个帐户，等等。是的，你应该这样做。好的，基础知识。AWS 在不同的地区运营。它们在这里展示了部分地区。不同的地区通常有略微不同的设备，有时还有不同的服务，并且它们的价格差异也很大。
 
- The regions you want to pick are probably the north Virginia region or maybe the US west， in Oregon。 You might ask， you know， why on earth does AWS have all those regions？
+你可能会选择北弗吉尼亚地区，或者也许是美国西部的俄勒冈州。你可能会问，为什么 AWS 会有这么多地区呢？
 
- That wouldn't be much nicer if you could just say， "Hey， give me a machine。"， Well。 that's true in theory until you， let's say， are a startup in Indonesia。 And you want to be able to serve your service from machines that are very close to where。 your customers are。 In which case， well， you might go and pick a machine in Singapore or in Seoul。
+如果你能说：“嘿，给我一台机器。”那该有多好呢？嗯，理论上是对的，直到你，比如说，成为了印度尼西亚的一家创业公司。你想从离你的客户非常近的机器上提供服务。在这种情况下，你可能会选择在新加坡或者首尔的机器。
 
- Yeah， that would be probably something you would do。 Or you might pick it in Mumbai if you want to launch a service in India。 Now those zones are supposed to behave in the same way and they mostly do。 But they often have slightly different amounts of servers and not all servers are launched。
+是的，这可能是你会做的事情。或者如果你想在印度推出一个服务，你可能会选择孟买的区域。现在这些区域应该是以相同的方式运行的，大多数情况下是这样的。但它们通常拥有略微不同数量的服务器，并不是所有的服务器都已经启动。
 
- in all regions。 In some cases also for regulatory reasons。 That's why you have all those things for the European Union。 You need to have machines in the European Union， sometimes in a specific country。 So don't pick the North California region， pick the North Virginia region。 Okay， good。
+在所有区域。有些情况下，出于法规原因也是如此。这就是为什么你会看到欧盟地区的那些选择。你需要在欧盟有机器，有时还需要在特定国家。所以不要选择北加州地区，选择北弗吉尼亚地区。好的，明白了。
 
- Now within that， there's a whole bunch of services。 The one that we are really interested in for this here is EC2。 And EC2 will give you computers。 You can spin one up。 And so what you do is you say， well， go forth and create an instance。 Okay。 And now when you select and create an instance， you get to select from a specific instance， AMI。
+在这一部分，里面有很多服务。我们真正感兴趣的是 EC2。EC2 会提供计算机，你可以启动一个实例。所以你做的就是，嗯，启动并创建一个实例。好的。现在，当你选择并创建一个实例时，你可以从一个特定的实例 AMI 中选择。
 
- So AMIs are， if you will， what kind of software there should be pre-installed on your machine。 And you can build your own AMIs。 Typically you start with one that you like。 you configure it and then you save it。 Or you pick one that's pre-built。 And so if it's completely generic， I mean you would probably pick something like Amazon。
+所以 AMI 就是你可以预先安装在你的机器上的软件种类。你可以自己构建 AMI。通常你会从一个你喜欢的开始，配置它，然后保存它。或者你选择一个预先构建的。如果是完全通用的，我想你可能会选择类似 Amazon 的东西。
 
- Linux or rather Ubuntu because everybody knows how to use Ubuntu。 But for this purpose here we want to get a deep learning army that already has all the。 NVIDIA drivers installed。 So we search for deep learning。 And we'll find a couple of AMIs。 So there's the deep learning army Ubuntu and then there's the base army。
+选择 Linux 或者说是 Ubuntu，因为大家都知道如何使用 Ubuntu。但在这里，为了这个目的，我们想要获取一个已经安装了所有 NVIDIA 驱动程序的深度学习 AMI。所以我们搜索深度学习。我们会找到几个 AMI。比如有深度学习 Ubuntu 版本，也有基础版本。
 
- And you want to pick the base army because that one is free for you to configure with。 everything that you need。 But it doesn't have anything else installed yet。 So let's select this。 Now there's a lot of different instance types and I cannot walk you through the probably。 over 100 different instance types that we have by now。
+你可以选择基础的 ARM 实例，因为它是免费的，你可以根据需要配置一切，但它还没有安装任何其他东西。所以选择这个。现在有很多不同的实例类型，我无法一步步带你了解现在可能有的 100 多种实例类型。
 
- But suffice it to say that you can pick different amounts of CPU， different amounts of memory。 different amounts of network bandwidth， different amounts of storage optimization。 And for different purposes and also different load profiles。 And for different purposes。 different instances are the right choice。 So at some point when you're bored。
+但简而言之，你可以选择不同数量的 CPU、不同数量的内存、不同的网络带宽、不同的存储优化。针对不同的目的和不同的负载配置，也有不同的实例类型是合适的。所以在某些时候，当你感到无聊时。
 
- look through that list and you'll be amazed what， you can find。 For instance if you need to do any hardware project on ARM servers， well you can launch。 them here so you don't need to build your own or deal with a Raspberry Pi。 Or if you need FPGAs then usually they tend to be kind of expensive to buy and maintain。
+看一下那个列表，你会惊讶地发现你能找到什么。例如，如果你需要在 ARM 服务器上进行硬件项目，那么你可以在这里启动它们，这样你就不需要自己构建或者处理树莓派。如果你需要 FPGA，通常它们购买和维护起来相对较贵。
 
- and all the software stack or you can just use an F1 instance。 In our case what we care about is GPU instances and if I pick this then we'll find a couple。 of them here。 These are probably the most ancient GPU instances that we're ever offered in cloud computing。 They're like five years old and slow and cheap。 These are essentially K80s。 So KAAT。
+所有的软件堆栈，你也可以直接使用 F1 实例。在我们这种情况，关注的是 GPU 实例，如果我选择这个，我们可以找到几个这样的实例。它们可能是我们在云计算中提供的最古老的 GPU 实例。大约五年了，既慢又便宜。这些基本上是 K80。也就是 KAAT。
 
- it's probably about state of the art three to four years ago from Nvidia。 If you want to have something a little bit and the 8X or 16X just means you get more of。 the GPUs in these machines， this is the current generation。 This is Nvidia Volta。 Each Volta GPU would probably happily sell it to you for around $10，000 per GPU。
+它大概是 3 到 4 年前 Nvidia 的顶尖技术。如果你想要一些更高性能的，8X 或 16X 只是意味着你可以获得更多的 GPU。这是当前一代的产品，这是 Nvidia Volta。每个 Volta GPU 可能会很乐意以每个 $10,000 的价格卖给你。
 
- If you need eight of those so that gives you one petaflop you can do that but it costs。 So that's around the equivalent of maybe $200，000 for a DGX2。 Cost on AWS is I think $20 which sounds like a lot of money。 On the other hand if you rent like an expensive Ferrari for $200，000 it'll cost you more than。
+如果你需要八个这样的实例，那就能提供一个佩塔级的计算能力，但它是有成本的。所以大概相当于 $200,000 用于 DGX2。在 AWS 上的费用大概是 $20，听起来很贵。但另一方面，如果你租一个昂贵的 Ferrari，花费 $200,000，可能比这还贵。
 
- $20 an hour。 On the other hand if you crash the GPU instance it's not so bad。 So let's pick like a P3 to X large。 Pick one。 If you want to make your money go further。 pick a spot instance and you can see that they， are quite cheap。 They're around $1 per hour。 The spot instances are the eBay equivalent of machines basically this is excess capacity。
+每小时 $20。另一方面，如果你崩溃了 GPU 实例，也不会那么糟糕。所以我们选择一个 P3 X 大型实例，选择一个。如果你想让你的钱花得更值，可以选择一个抢占实例，你会发现它们相当便宜，大约每小时 $1。抢占实例基本上是机器的 eBay 等价物，也就是剩余的计算资源。
 
- The first time you try this it's going to fail。 It's going to fail because you probably don't have the quota for it and you'll need to open。 a support ticket and go to support center and kindly request a quota increase。 It's fairly self-explanatory and it's in supremely tedious。 I'm not going to do this right now because I didn't bother before。
+第一次尝试时，它肯定会失败。它会失败，因为你可能没有足够的配额，你需要提交支持请求，前往支持中心，友好地请求增加配额。这是相当直白的，而且过程极其繁琐。我现在不打算做这个，因为我之前懒得去做。
 
- So you pretty much leave everything else as you would。 You then maybe 50 gigabytes here。 okay if you need a larger disk you can do that。 You can add additional volumes。 it's pretty like attaching disks。 There are lots of ways how you can optimize things。 For instance you can have SSDs that are just generic。
+所以你基本上可以保持其他所有设置不变。然后可能这里选择 50GB 的磁盘，好的，如果你需要更大的磁盘，可以调整。你可以添加额外的卷，这和挂载磁盘差不多。你可以通过很多方法优化设置。例如，你可以选择一些普通的 SSD。
 
- You can have a hard disk or you can have provisioned IOPS in other words。 That's an SSD with a certain speed guarantee whereas otherwise it's essentially what you， get。 But that's fine for most cases。 And then well actually we don't need to add tags。 At least not here。 But yeah create a new security group that's fine and this means it's open to the world。
+你可以拥有硬盘，或者你可以拥有预配置的 IOPS，换句话说，那是一个具有特定速度保证的 SSD，而其他情况下，它基本上就是你拿到的性能。但这对于大多数情况来说已经足够了。然后，实际上我们不需要添加标签，至少在这里不需要。但是是的，创建一个新的安全组没问题，这意味着它对外开放。
 
- So if you're a little bit more paranoid you would probably figure out what IP number you're。 going to connect from and then make it accessible only from that or maybe only from the Berkeley。 range and whatever。 Otherwise you'll soon have some friends from Russia logging in。 Okay so yes it tells me that Alex this was a foolish idea。
+所以如果你有些过于谨慎，你可能会弄清楚你将从哪个 IP 地址连接，然后只允许从那个地址访问，或者也许只允许从 Berkeley 范围内访问，反正就这些。否则你很快会发现一些来自俄罗斯的朋友在登录。好吧，所以是的，它告诉我，Alex，这是个愚蠢的想法。
 
- You shouldn't have done it but I'm going to do it anyway and by the way it'll cost you， money。 Okay fine。
+你本不该这么做，但我还是要这么做，顺便说一下，这会花你钱。好的，没问题。
 
 ![](img/92d14ad3b5957c1bdfa656fa30bec1f2_5.png)
 
- We'll ignore this。 Now the last thing is you need a SSH key and in this case I picked this one in case you。 wonder why Blenheim well it's a small orange apple。 Well my laptop name but you can call the key whatever you want and you can create a new。
+我们忽略这个。现在最后一件事是你需要一个 SSH 密钥，在这种情况下，我选择了这个，如果你想知道为什么是 Blenheim 呢，因为它是一个小橙色的苹果。好吧，这是我的笔记本的名字，但你可以随意给这个密钥命名，你也可以创建一个新的。
 
 ![](img/92d14ad3b5957c1bdfa656fa30bec1f2_7.png)
 
- one but anyway so it launches an instance。 And after some time well launch failed because apparently my quota has been set back to what。 it。 Yeah okay so I would have to contact AWS right now about this。 Apparently it didn't change the quota for those machines。 In any case once you have that you can SSH into the machine。
+好吧，所以它启动了一个实例。经过一段时间后，启动失败了，因为显然我的配额被恢复到了原来的限制。是的，好的，我现在必须联系 AWS。显然它没有更改那些机器的配额。无论如何，一旦你解决了这个问题，你就可以通过 SSH 连接到机器。
 
- All the NVIDIA drivers are installed from there on it's really straightforward as if you had。 a GPU server on the desk。 So what I would have to do now let's just actually walk through this exercise support。 center and I would create a case。 Service limit increase limit type EC2 instances case description region well fine primary instance。 type search P3 to X large and instance limit let's set it to maybe 4。
+所有的 NVIDIA 驱动程序都从这里安装，之后的步骤非常简单，就像你桌面上有一个 GPU 服务器一样。那么我现在需要做的就是，实际上走一遍这个操作支持中心的流程，我会创建一个案例。服务限制增加，限制类型为 EC2 实例，案例描述，区域，好的，主实例类型搜索 P3 到 X 大型，实例限制我们将其设置为大约 4。
 
- And okay the web and at some point I'll get that。 I'm not going to pick phone up with otherwise they will call me within the next 60 seconds。 and you'd have me on the phone right which would be utterly boring。 Okay so they'll contact me and tell me what to do。 Okay good。 So this was the cloud computing 101 with the obligatory failure because I didn't have enough。
+好的，网页上的操作，等一会儿我会搞定的。我不会接电话，否则他们会在接下来的 60 秒内打给我，届时我就得在电话上接待你了，这肯定非常无聊。好吧，所以他们会联系我并告诉我该做什么。好的，明白了。这就是云计算 101，顺便带着失败的教训，因为我没有足够的。
 
- instances。 Yes。 Do you need to have the CLI to use it in your domain？
+实例。是的。你是否需要在你的域中使用 CLI 才能使用它？
 
- Yes so if you don't like clicking through web forms there's something called photo so。 everything on AWS can be done through a command line。 Not just the command line you can also do it through Python。 So let me go to show you。 Go to 3。 And you can look through this and if you ever do things at scale or you want to launch like。
+是的，所以如果你不喜欢通过网页表单进行操作，还有一个叫做 Photo 的工具。AWS 上的一切都可以通过命令行完成。不仅如此，你还可以通过 Python 来操作。所以让我带你看一下。进入 3。你可以查看这些内容，如果你做大规模的操作或者你想启动像是。
 
- a thousand machines and launch jobs on them you will not use the web form but you'll probably。 use something like photo this the equivalent version for JavaScript or you could use you。 could send JSON packets if you feel like you want to have some punishment but I guess probably。 Python or JavaScript are the things that I would use。
+一千台机器并在它们上启动任务，你不会使用网页表单，而是可能会使用类似于 Photo 的工具，这是 JavaScript 的等效版本，或者你也可以使用 JSON 数据包，如果你觉得需要进行一些优化，但是我想大概 Python 或 JavaScript 是我会使用的工具。
 
- But for testing things out quickly the web interface is very nice other than that yeah。 basically use Python you can script and this is of course all available。 Okay。 Any questions so far？
-
-
-
-
+但是为了快速测试，网络界面非常好，除此之外是的，基本上可以使用 Python，你可以编写脚本，而且这些当然都是可用的。好了，到目前为止有任何问题吗？
 
 ![](img/92d14ad3b5957c1bdfa656fa30bec1f2_9.png)
 
- Good。 So then let's move on。
+很好。那么我们继续。

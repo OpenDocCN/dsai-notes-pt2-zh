@@ -1,139 +1,127 @@
-# P94：94. L18_2 Sequence Models - Python小能 - BV1CB4y1U7P6
+# P94：94. L18_2 序列模型 - Python小能 - BV1CB4y1U7P6
 
- Sequence models。 Okay， so， with so far we just saw， yeah， the data isn't the ID。
+序列模型。好了，到目前为止，我们已经看到，数据不是 ID。
 
 ![](img/3f7583b6f2583bc017d8cea6cc60610b_1.png)
 
- So let's actually see how we can model this。 So if I have some dependent random variables。 x1 through xt， right？ I mean in arbitrary order， whatever， you know， they're drawn from some p of x。 And just by writing out conditional probabilities， I can write p of x as p of x1。 time p of x2 given x1， times p of x3 given x1 and 2， up to p of xt given x1 through xt minus 1。
+那么，让我们看看如何建模这个。如果我有一些依赖的随机变量，x1 到 xt，对吧？我意思是，任意顺序，反正它们是从某个 p(x) 中抽取的。只要写出条件概率，我可以将 p(x) 写成 p(x1)，然后是 p(x2|x1)，再到 p(x3|x1 和 x2)，一直到 p(xt|x1 到 xt-1)。
 
- And that， I can do no matter whether I have a time series or not， right？
+而这个，我可以做，无论我是否有时间序列，对吧？
 
- I could also even do that in the reverse direction， right？
+我也可以做反向的那种情况，对吧？
 
- So just to find out that you can come up with very absurd models。 And it's still technically correct， it's just that those models are very absurd。 So， you know。 why bother？ Any ideas why you would want to bother？ Well， so let's just write this out again。
-
-
+所以，单纯为了发现，你可以提出非常荒谬的模型。而这些模型在技术上是正确的，只不过这些模型非常荒谬。那么，知道了这个，有什么意义呢？有没有人有想法为什么你需要去在意这个呢？好了，那我们再写一遍。
 
 ![](img/3f7583b6f2583bc017d8cea6cc60610b_3.png)
 
- So in one case all the arrows go to the right， in the other case all the arrows go to the left。 And causality， in other words， reality usually prevents the reverse direction。 So the future doesn't affect the present or the past。 I mean， unless you watch sci-fi movies。 where they travel back from the future。 And that's why we're not going to see time travel。
+所以在一种情况下，所有的箭头都指向右侧，而在另一种情况下，所有的箭头都指向左侧。而因果关系，换句话说，现实通常会防止反向的因果关系。因此，未来不会影响现在或过去。我的意思是，除非你看科幻电影，里面有从未来穿越回来的情节。那就是为什么我们不会看到时间旅行。
 
- But anyway， so one way usually to find out which way time goes is。 you try to model the data with both models， and， you try to see which one fits better。 which one leads to a much more complex explanation。 And you can actually mathematically prove under a reasonable range of circumstances。
+不过，通常找出时间走向的一种方法是，你尝试用两种模型来建模数据，然后，你尝试看看哪一种更合适，哪一种能引出更复杂的解释。你其实可以在合理范围内的情况下，数学上证明这一点。
 
- that the wrong direction of causality leads to the more complex model。 So there's a lot of nice work by Bernard Cholkopf and Dominic Yansing in this direction。 So they've wrote a book on that。 Read that if you're interested in this work。
+错误的因果关系方向会导致更复杂的模型。所以在这个方向上，Bernard Cholkopf 和 Dominic Yansing 做了很多很好的工作。他们写了本书。如果你对这个领域感兴趣，可以去读一下。
 
 ![](img/3f7583b6f2583bc017d8cea6cc60610b_5.png)
 
- Okay， so how do we deal with this？ I mean， after all， this is a deep learning class， right？
+好的，那我们怎么处理这个呢？毕竟，这是一个深度学习课程，对吧？
 
- So one thing we could do is we could have some more to regressive model。 So because after all。 we're after some term p of x t given x1 through x t minus 1。 I could just say， well。 that's p of x t and， then given some function of all the past data。 So far， this is perfectly okay。 because I haven't actually specified how smart。
-
-
+所以我们可以做的一件事是，我们可以使用某种回归模型。因为毕竟，我们的目标是某个 p(xt|x1 到 xt-1)。我可以简单地说，这就是 p(xt)，然后给出所有过去数据的某个函数。到目前为止，这完全可以，因为我还没有具体说明这个模型有多智能。
 
 ![](img/3f7583b6f2583bc017d8cea6cc60610b_7.png)
 
- this function f should be。 Okay， this is a little bit where the problem lies。 That if I have this function to capture everything， then well。 it gets really hard to compute and everything。 And we'll look at a couple of ways how to fix it。 So plan A is I use the Markov assumption。 And the Markov assumption just means that if I have this chain。
+这个函数 f 应该是。好了，这里有一点问题。如果我有这个函数来捕捉所有内容，那么，嗯，它计算起来会非常复杂。而且我们会看几种方法来解决这个问题。所以计划 A 是我使用马尔科夫假设。马尔科夫假设只是意味着，如果我有这个链条。
 
- then the dependency only can look back so far， namely， tall steps。 Can somebody tell me what tall is in the graph above？ Okay。 Who votes for one？
+那么，依赖关系只能回溯到这么远，也就是 t 步。有人能告诉我图中 tall 是什么吗？好吧，谁支持选 1？
 
- Who votes for tall equals one in the graph above？ Who votes for two in the graph？ Okay。 Okay。 who votes for three？ Okay， who votes for zero？ Okay。 so half of the audience doesn't have a strong opinion。 The two's had it， right？
+谁投票支持图中 tall 等于 1？谁投票支持等于 2？好，好的。谁投票支持等于 3？好，谁支持 0？好吧。所以一半的观众没有明确的看法。最后 2 得票最多，对吧？
 
- So the dependency here is two steps。 So basically， the observations two steps into the past。 they affect what happens next。 And in that case， you can write out some water-aggressive model。 P of x t given x one up to t minus one is f of x t minus tau up to x t minus one。 And this is a perfectly reasonable model。 If tall is long enough if I have a lot of data and all of that。
+所以这里的依赖关系是两步的。基本上，观察值是过去两步的内容，它们会影响接下来的结果。在这种情况下，你可以写出一些类似水文的模型。P（x t 给定 x 1 到 t-1）是 f（x t - tau 到 x t - 1）。这是一个完全合理的模型。如果 tau 足够长，如果我有很多数据，这一切都成立。
 
- But there are plenty of cases where this actually can fail。
+但也有很多情况下，这种方法实际上会失败。
 
 ![](img/3f7583b6f2583bc017d8cea6cc60610b_9.png)
 
- But let's see what we can do。 So you could basically solve a regression problem。 Like x hat is some function f of x t minus tau up to x t minus one。 And then I regress。 Any questions about that？ This is a very simple approach， right？ So I can just take the past data。 I perform the regression。 And if that's all that there is to it。
+但让我们看看我们能做什么。所以你基本上可以解决一个回归问题。比如 x hat 是某个函数 f（x t - tau 到 x t - 1）。然后我做回归。对此有任何问题吗？这是一个非常简单的方法，对吧？所以我可以直接使用过去的数据，执行回归。如果这就是所有的内容。
 
- we can now all go home and relax and， say， well， yeah， we can do time series models。 And the obvious thing is， yeah， there is more to it， but we'll start with that。 Right。
+现在我们都可以回家休息，想着，嗯，是的，我们可以做时间序列模型。而显而易见的是，嗯，确实还有更多的内容，但我们先从这里开始。对吧。
 
 ![](img/3f7583b6f2583bc017d8cea6cc60610b_11.png)
 
- Plan B。 And this is something that has been popular for a long time。 It is a late and variable model。 So instead of saying， well， I'm going to truncate that history。 I'm going to kind of carry that history around by assuming that there's some hidden state age。 And this hidden state gets updated based on the past observation and the past hidden state。
+计划 B。这是一个长期以来都很流行的方法。它是一个延迟和可变模型。所以我们不说，我要截断历史，而是通过假设存在某个隐藏状态 h，来携带这些历史。这个隐藏状态会基于过去的观察和过去的隐藏状态进行更新。
 
- And the new observation depends on the current hidden state and the x t's。 The green dots are the hidden state and the blue ones are the observations。 And so now you could easily see， at least， you know。 can convince yourself that if h t is essentially a function of h t minus one， right。
+新的观察值依赖于当前的隐藏状态和 x t 的值。绿色的点表示隐藏状态，蓝色的点表示观察值。所以现在你可以很容易地看到，至少，你知道。你可以让自己相信，如果 h t 实际上是 h t - 1 的一个函数，对吧。
 
- that's what we have and the new observation。 Then， you know。 if my hidden state was really powerful and could store a lot of， things。 that's exactly the same thing as having a function of all the data from start to finish。 It's just a really weird way of writing it down。 Okay。 So this is a subtle difference， right？
-
-
-
-
+这就是我们所拥有的，新观察值也随之而来。那么，如果我的隐藏状态真的很强大，能够存储很多信息，那就等同于拥有从开始到结束的所有数据的函数。只是写法上有点奇怪。好吧，这是一个微妙的区别，对吧？
 
 ![](img/3f7583b6f2583bc017d8cea6cc60610b_13.png)
 
- So in one option， if we have a Markov model， we just have some function that depends on past observations。 So everything's observed and we can basically form some training data and we solve it。
+所以在一个选项中，如果我们有一个马尔可夫模型，我们只需要有一个依赖于过去观察值的函数。所以一切都是可观察的，我们基本上可以形成一些训练数据并解决它。
 
 ![](img/3f7583b6f2583bc017d8cea6cc60610b_15.png)
 
- Or we assume that there's some hidden state。 Okay。 Let me give you an example of such a hidden state model。 Actually。 your brain is currently solving one of those， at least I hope it does。 Namely。 there's a hidden state。 What Alex is thinking when he speaks and let's assume that I think before I speak。
+或者我们假设存在某种隐藏状态。好吧，让我给你一个隐藏状态模型的例子。事实上，你的大脑现在正在解决其中一个问题，至少我希望它正在解决。也就是说，存在一个隐藏状态。假设我在说话前会思考。
 
- right？ Now， what your brain is doing， it's solving the inverse problem。 You know。 sound comes out of my mouth， goes into your ears and now， based on the observation。 you're trying to infer what the hidden state is of what I might have tried to say when， you know。 that noise came out of my mouth。 So this is where your brain is now solving the inverse problem to my problem of generating。
+对吧？现在，你的大脑在做的事情是解决逆向问题。你知道，声音从我的嘴巴发出来，进入你的耳朵，然后根据观察，你试图推测我在说话时隐藏的状态是什么。你知道，当那个声音从我的嘴巴发出时，你大脑正在解决逆向问题——我生成声音的过程，而你则是从声音中推理出思维。所以这是你大脑现在正在解决的逆向问题。
 
- making noise from thought and you're making thought from noise。 And when you ask a question。 it goes the other way around。 Okay。 Any questions here？ So this seems like a。 quite a subtle distinction。 And， but it leads to very different algorithms as we will see in a moment。 But I wanted to， you know， get that out of the way right now because later on。
+产生噪音从思想中出来，而你则从噪音中产生思想。当你问问题时，它会反过来。好吧，这里有问题吗？所以这似乎是一个相当微妙的区别。但是，正如我们稍后看到的，它会导致非常不同的算法。我想现在先把这个问题解决掉，因为后面我们会进一步讨论。
 
- we'll encounter a lot of models which do either plan A or plan B。 And mostly plan B actually。 So the late in the model is pretty much what we'll entertain ourselves with for。 the next three lectures。 So I want to make sure everybody is kind of cool with why we're doing this。 Okay。
-
-
+我们会遇到很多模型，它们会选择计划 A 或计划 B。实际上，大多数是计划 B。所以模型后期几乎就是我们接下来三节课要讨论的内容。我想确保大家都理解我们为什么要这么做。好吧。
 
 ![](img/3f7583b6f2583bc017d8cea6cc60610b_17.png)
 
- So yeah， if basically I had some function f of x1 through xt minus one， right？
+所以，基本上如果我有一个函数 f，涉及从 x1 到 xt-1，对吧？
 
- So this is the function that we wanted， which can be written as some function f of ht minus one and xt minus one。 In that case， you know， this is， you know， completely analogous。 And there are distributions for which such a form exists。 So the。 in an alternate universe where spectral methods would be the new exciting thing。
+所以这是我们想要的函数，它可以写成 ht-1 和 xt-1 的某种函数 f。在这种情况下，你知道，这完全是类比的。对于某些分布，存在这样的形式。所以，在一个替代宇宙里，光谱方法将成为新的令人兴奋的事物。
 
- And at some point that wasn't clear。 You could actually prove that certain embeddings are all that you need to deal with certain such models。 Okay。 But that alternate universe doesn't exist where deep learning land。
+在某个时刻，这一点并不清楚。你实际上可以证明，某些嵌入是处理某些模型所需要的全部。好吧，但在深度学习领域里，这种替代的宇宙并不存在。
 
 ![](img/3f7583b6f2583bc017d8cea6cc60610b_19.png)
 
- Okay。 So you may have heard of some of those things before。 And I just want to give you a little bit of a context such that when somebody comes to you and says。 well， we don't use deep networks because we use blah， like， you know， H of M's or。 common filters or topic models over time or whatever。
+好吧，你可能以前听说过其中的一些东西。我只是想给你提供一点背景，这样当有人跟你说，"我们不用深度网络，因为我们用的是比如 HMMs 或者常见的滤波器，或者随着时间推移的主题模型"之类的，你就能理解。
 
- That at least you know how what they're telling you fits in with what you're doing。 And that what you're doing is just as principled as all the other things。 So that's the soon we have some， you know， temporal sequence of observations like。 purchases likes or app use or emails or at clicks or queries or ratings。 Right， so any of this。
+至少你知道他们告诉你的东西与你正在做的事情是如何契合的，并且你正在做的事情和其他所有事情一样有原则。所以，我们很快就会遇到一些，比如，时间序列观察数据，像是购买记录、点赞、应用使用、邮件、点击、查询或评分。对吧，这些都属于其中。
 
- Then one thing that I could do is I could just endow this hidden state with some meaning。 Right。 so I could have clusters。 People have done that for search where they would break down search into three。 different types。 So there is the navigational or the informational or there's a third type that I've。 now forgot， but basically you can already see from that that this is very。
+然后我可以做的一件事是赋予这个隐藏状态某种含义。对吧？我可以把它分成不同的簇。人们在搜索中做过类似的事情，他们会把搜索分为三种不同的类型。所以有导航型的、信息型的，或者有一个我现在忘记的第三种类型，但基本上从这些你可以看出，这个过程非常。
 
- tenuous and then they would have humans hand label things and model transitions and， so on。 And yeah， let's put this with a company that did this， didn't do very well on search。 Yeah。 but basically you could try to model this way you know。 whether you're within the same search session and a lot of other features。
+然后他们会让人类标注一些东西，建模过渡过程，等等。是的，接下来我们来看看一个做过这些的公司，尽管在搜索领域做得不太好。是的。但基本上，你可以尝试这样建模，不管你是否在同一个搜索会话内，还有许多其他特征。
 
- You could assume that you know there are topics of interest for a user over time。 And we did this at some point。 It worked quite well for computational advertising。 This was at a time when deep learning wasn't quite so popular yet。 This was around 2011， 2012。 And you'd see how the network then for instance learns that you know there's。
+你可以假设随着时间的推移，用户有兴趣的主题是存在的。我们曾经做过这个，效果很好，特别是在计算广告领域。那时，深度学习还没有那么流行。大约是在2011年到2012年之间。你可以看到网络如何学习到，比如说，知道。
 
- you know sports or education or health and other things and finance。 And you can really tell you can see stories like this this guy who's into sports。 but then he realized it doesn't have money then he starts looking for jobs。 So you can see those topics interact with each other quite nicely。 And yeah。
+你知道，体育、教育、健康、金融等其他领域。你确实能看到像这样的故事：这个人喜欢体育，但后来他发现自己没钱了，于是开始找工作。你可以看到这些话题相互交织，产生了不错的互动。是的。
 
- you can tell a nice story。 And if you want to have simple interpretable models。 it's not a bad place to start。 Or then we can look at something which is essentially 1960s technology。 namely the common filter。 And probably by now still a lot of control theory lectures will teach you。 the common filter。 And if you're tracking a plane on radar。
+你可以讲述一个不错的故事。如果你想要简单且可解释的模型，这不是一个坏的起点。或者我们可以看看一些本质上是1960年代的技术，也就是常见滤波器。大概到现在，很多控制理论的课程还是会教你常见滤波器。如果你在雷达上追踪一架飞机。
 
- well they probably use something like this， right？ These are cool things， right？
+嗯，他们可能会使用类似这样的东西，对吧？这些都是很酷的东西，对吧？
 
- And again they basically assume that there's some latent state like where the plane is。 And then what you observe is where the radar ping shows up。
+再次强调，他们基本上假设存在某种潜在状态，比如飞机的位置。然后你观察到的是雷达回波的位置。
 
 ![](img/3f7583b6f2583bc017d8cea6cc60610b_21.png)
 
- So for instance in computational biology， you can go over a DNA sequence and you have those introns and。 exons which is like the start part of a function call。 So if you think about transcription like a function call。 then you need to have some way a start and an end of that function call。 And you can model that。
+比如在计算生物学中，你可以遍历一段DNA序列，你会看到其中有内含子和外显子，这就像是一个函数调用的起始部分。所以，如果你把转录想象成一个函数调用，那么你就需要有某种方式来标明函数调用的开始和结束。你可以对它进行建模。
 
- And yeah， don't be scared about the math， we're not going to do this。
+是的，不要害怕数学，我们不会做这个的。
 
 ![](img/3f7583b6f2583bc017d8cea6cc60610b_23.png)
 
- But you could do that with deep learning now。 You can probably still do a startup if you tell UVC。 I'm doing deep learning for Compile。 Okay， don't tell them that I said that。 You can do temporal PCA， which is common filters。 Basically you have some latent factor model。 right， latent variables which are drawn from some normal distribution。
+但你现在可以通过深度学习来做到这一点。如果你告诉UVC，你可能还是能做一个初创公司。我正在为Compile做深度学习。好的，别告诉他们我这么说的。你可以做时间主成分分析（PCA），这是一种常见的滤波器。基本上，你有一些潜在因子模型。对，潜在变量是从某个正态分布中抽取的。
 
- And then you have some simple sequential factorial structure。 So you basically have some observations and， then you basically transform the data based on those observations。 And yeah， this works nicely and mostly。
+然后你有一些简单的序列因子结构。所以基本上，你有一些观察值，然后根据这些观察值来转换数据。是的，这通常能很好地工作。
 
 ![](img/3f7583b6f2583bc017d8cea6cc60610b_25.png)
 
- Or basically any other thing。 So this begs the big question。 given that people have done this for decades。
+或者基本上是其他任何事情。所以这引出了一个大问题：既然人们已经做了几十年了。
 
 ![](img/3f7583b6f2583bc017d8cea6cc60610b_27.png)
 
- what am I doing here？ Why am I trying to talk into something new？ And the big question is really。 should we actually believe all those parametric models？
+我在这里做什么？为什么我想要尝试进入一些新的领域？而真正的大问题是，我们是否应该相信所有这些参数化模型？
 
- Which is a bit of a rhetorical question because if I say yes， then I could go home now， right？
+这个问题有点像修辞性的问题，因为如果我回答“是”，那我现在就可以回家了，对吧？
 
- And actually they're not really true， right？ They're just very convenient assumptions that scientists have made。 to deal with small amounts of data。 Or to force certain structures that they thought should exist。 For instance， for speech recognition it's a perfectly reasonable assumption to make。 that what comes out of people's mouth isn't givirish but words， right？
+实际上，这些并不完全正确，对吧？它们只是科学家们为了处理少量数据，或者强行推导出他们认为应该存在的某些结构而做出的非常方便的假设。例如，对于语音识别，假设人们嘴里说的不是乱码，而是单词，这个假设是完全合理的，对吧？
 
- And so therefore you have discrete terms。 Yeah， so but then there are more。
+因此，你会有离散的术语。是的，不过还有更多的术语。
 
 ![](img/3f7583b6f2583bc017d8cea6cc60610b_29.png)
 
- elegant ways of dealing with this。 So what you basically want is you want to have some richer representation。 You want to be able to deal with， for instance， the fact that people do things， at random times。 not necessarily at quantized every 15 minutes。 And yeah， we're going to have fun with this。
-
-
+处理这个问题的优雅方法。所以你基本上想要的是拥有一些更丰富的表示方式。你希望能够处理，例如人们在随机时间做事的事实，而不是每15分钟定量一次。是的，我们会在这方面玩得很开心。
 
 ![](img/3f7583b6f2583bc017d8cea6cc60610b_31.png)

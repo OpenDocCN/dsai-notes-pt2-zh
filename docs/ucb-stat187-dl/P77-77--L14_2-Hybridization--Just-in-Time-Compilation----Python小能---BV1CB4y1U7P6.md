@@ -1,53 +1,41 @@
-# P77：77. L14_2 Hybridization (Just in Time Compilation) - Python小能 - BV1CB4y1U7P6
+# P77：77. L14_2 混合化（即时编译） - Python小能 - BV1CB4y1U7P6
 
- >> Yeah， let's continue。 I like to talk about a lot about network stuff。 If you did homework。 you will find that the network getting， More complex and you're going to need more time to train。 The networks。 So in this lecture， maybe， Awesome， this Thursday we're going to talk about how to make。 Your program faster on your gpu's or using multiple gpu's。
+>> 是的，让我们继续。我喜欢谈论很多关于网络的内容。如果你做过作业，你会发现网络变得越来越复杂，你将需要更多时间来训练网络。所以在这次讲座中，可能，太棒了，本周四我们将讨论如何让你的程序在 GPU 上运行得更快，或者使用多个 GPU。
 
- So that's unfortunately because the hardware is not so， Grow so fast。 even that media manager to do two times， Speed up every year， but then the net will itself。 maybe it， Goes to four times speed up， four times more complex every。 Year and data set also increases。 So it makes us pretty。
+所以这不幸的是，因为硬件增长得并没有那么快。即便是媒体管理器每年都能加速两倍，但网络本身可能每年增长四倍，变得更复杂，数据集也在增加。这让我们感到非常困扰。
 
- Harder to try our best to get the performance from the hardware。 Maybe after ten years the net was getting too stabilized and， Harder was still being fast。 then we don't need to manage， But all the things anymore。 So the first topic is how to。 Do hybridize the training to mix up all the imperative and。
-
-
-
-
+我们更难尽最大努力从硬件中获得性能。也许十年后网络会变得更加稳定，变得更难保持快速。那时我们就不再需要管理所有的事情了。所以第一个话题是如何混合训练，结合所有命令式和。
 
 ![](img/c6e8dda0102da41ee5bffe308ddd7c2b_1.png)
 
- Subbonding program。 We talked about the imperative， Programming before。 so far we all used the imperative， Programming。 So that is the common way to do。 The first step is to use the， Productizing in Java in c++。 So here example， just three lines。 Of code on the right， we first assign values to a and b and， Then compute c equals to a plus b。
+子绑定程序。我们之前谈过命令式编程。到目前为止，我们都使用了命令式编程。这是做事情的常见方式。第一步是使用 Java 或 C++ 进行产品化。所以这里的示例仅有三行代码。首先我们将值赋给 a 和 b，然后计算 c 等于 a 加 b。
 
- So every time we execute every， Nine， we actually run the code here。 So it's pretty straightforward。 It's easy to debug if everything goes strong and just print the， Byde， that's all。 But if it did the homework before， you see， That this have some issues here。 Firstly。 if you use a python， That's nothing called a python interpreter。 Every time you run a， Life code。
+所以每次我们执行每个，Nine，我们实际上在这里运行代码。所以这非常直接。如果一切顺利，很容易调试，只需要打印`Byde`，就是这样。但如果之前做过作业，你会发现这里有一些问题。首先，如果你使用 Python，根本没有所谓的 Python 解释器。每次你运行一个，Life 代码。
 
- the interpreter very first compile your code into a， Bight code。 Then this byte code we run on the。 Virtual machine for the python。 So every time the compilation and。 The run on the virtual machine have overhead。 So here we have three。 Overheads because we issues three calls to the python virtual， Machines。
+解释器首先会将你的代码编译成字节码。然后这个字节码会在 Python 的虚拟机上运行。所以每次编译和在虚拟机上运行都有开销。所以在这里我们有三个开销，因为我们向 Python 虚拟机发出了三次调用。
 
- And also because it has interpreter， you need to run the， Code in python。 If the mobile phones don't have python， Or it's not。 it's hard to run your python code in your mobile， Phones。 So the major issue for imperative。 Program is that the performance and the portability。 On the other。
-
-
-
-
+而且因为它有解释器，你需要在 Python 中运行代码。如果手机没有 Python，或者它无法运行 Python 代码，那就很难在手机上运行你的 Python 代码。所以命令式程序的主要问题就是性能和可移植性。在另一方面。
 
 ![](img/c6e8dda0102da41ee5bffe308ddd7c2b_3.png)
 
- Hand， we mentioned something called symbolic programming。 If we。 Use tasafro or keros before it's actually using symbolic， Program。 In this program model。 we first define the， Program and then we give data to ask good。 So in mass we do it， That way。 We first define the equations and then feed the， Data to run。 If we use the sql before。
+另外，我们提到了一个叫做符号编程的东西。如果我们之前使用过 tasafro 或 keros，它实际上就是使用符号编程。在这种编程模式下，我们首先定义程序，然后给定数据以请求好。所以在大规模计算中我们就是这样做的。我们首先定义方程式，然后输入数据来运行。如果我们之前使用过 SQL。
 
- we first define a， SQL synthesis and then feed the data table to get the results。 So here we give the example。 We first write a string expression。 About c equals a plus b and then we compile this expression to。 Get executable objects and then we give data a and b with values， And then we divide it。
+我们首先定义一个SQL合成，然后将数据表传入以获取结果。所以这里我们给出了一个示例。我们首先写一个字符串表达式，关于c等于a加b，然后我们编译这个表达式以获得可执行对象，然后我们给a和b赋值，然后进行计算。
 
- So the problem here is that people don't， Like this way to program because they're pretty hard to use。 And how to debug all this way。 How to print。 We're going to show。 Re-examples later on how it's hard to debug all this code。 But the benefit here is the speed。 Given because when you're， Going to compile this code， you know the whole program here。
+所以这里的问题是人们不喜欢这种编程方式，因为它们相当难以使用。如何调试这些代码呢？如何打印呢？我们稍后会展示如何调试这些代码的示例。这里的好处是速度。因为当你要编译这些代码时，你知道整个程序的情况。
 
- You can do a lot of optimizations because you know the， Whole program。 For example。 if i know that a and b are going to， Use the after we finish the c。 then we can just delete a and b to， Release the memory because gpm memory is so expensive。 Similarly， if we have a very long program here and we actually， To compute c。
+你可以进行很多优化，因为你知道整个程序。例如，如果我知道a和b会在完成c之后使用，那么我们可以删除a和b来释放内存，因为GPU内存非常昂贵。同样，如果我们有一个非常长的程序，并且我们实际上是要计算c。
 
- but in fact we didn't use c in any place， then， We don't need to ask you to see a plus b。 This is not the， Optimization we can do。 And the other thing is that because。 We can have the program first and we compile one and run the， Code one。 So it has a single core。 No matter how long the program you have， i only do a single。
+但实际上，如果我们在任何地方都没有使用c，那么我们就不需要让你查看a加b。这就是我们可以做的优化。另一点是，因为我们可以先拥有程序，然后编译并运行代码。所以它有一个单核。无论程序多长，我只做一个单一的操作。
 
- Combulation and run a single and call the function one。 In addition。 if you're using the symbonic way， we probably can， Present the program using the not so python way。 We can present by an intermediate presentation and then it's。 Maybe not so related to python and we can run the code without， The python。
+组合并运行一个单一的函数调用。此外，如果你使用符号方式，我们也许可以不那么以Python的方式来呈现程序。我们可以通过中间表示来呈现，然后它可能和Python关系不大，我们可以在没有Python的情况下运行代码。
 
- Which means we may be running the， Code in c++。 So far we see two programming things。
+这意味着我们可能在运行C++代码。到目前为止，我们看到两种编程方式。
 
 ![](img/c6e8dda0102da41ee5bffe308ddd7c2b_5.png)
 
- One is easy to use， one is faster and ems and actually we can， Get two things together。 So far we see that how to define， Network by using dot sequential or un-dot block and using the。 Hypotize model just using the hybrid sequential or un-dot hybrid， Block。 Everything here is similar to before， Only saying that we define the network dot equals to un-dot。
+一种是易于使用，一种是速度更快，实际上我们可以将两者结合起来。到目前为止，我们看到如何通过使用点式顺序或非点式块来定义网络，使用混合顺序或非点式混合块来使用假设模型。这里的一切都和之前类似，只是说我们将网络定义为点等于非点。
 
- Hybrid sequential and adding two dense layers as normal as， Before。 The only thing here that if we call net， Don't hybridize。 we can switch from impality of execution mode to， The symbonic execution mode。 That's all。 So let me give some concrete examples how to do the things。
-
-
-
-
+混合顺序并添加两个密集层，就像之前一样。这里唯一不同的是，如果我们调用net，不进行混合，我们可以从执行模式的影响切换到符号执行模式。就是这样。那么让我给出一些具体示例，展示如何实现这些操作。
 
 ![](img/c6e8dda0102da41ee5bffe308ddd7c2b_7.png)
