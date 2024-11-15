@@ -1,493 +1,485 @@
 # P15：15.Mar_30_Lecture - Tesra-AI不错哟 - BV1aJ411y7p7
 
- All right， shall we get started？
-
-
+好的，我们开始吧？
 
 ![](img/1a390db9ccea54fc27724ba4a0c0017c_1.png)
 
-
-
 ![](img/1a390db9ccea54fc27724ba4a0c0017c_2.png)
 
- Okay。 So the topic， the main topic for today is multi-class classification。 It sets the stage nicely for even more advanced topics such as structure， prediction， ranking。 problems。 You can view them all as instances of multi-class classification。 all the practical methods differ， a bit。 So multi-class setting， input space is arbitrary， X。
+好的。那么今天的主题，主要主题是多分类。它为更加高级的话题如结构预测、排名问题等提供了一个很好的基础。你可以将它们看作是多分类的实例。所有的实际方法都有一些不同。所以在多分类的设置中，输入空间是任意的，X。
 
- Our output space is now a discrete set of， classes， one through K。 Initially。 we don't make any assumptions about any relations， between the element to the output space。 one through K。 Later， we may add some assumptions。 So far。 our only method for attacking these problems that we've talked about are trees， decision trees。
+我们的输出空间现在是一个离散的类集，从1到K。最初，我们没有对输出空间1到K中的元素之间的关系做任何假设。稍后，我们可能会添加一些假设。到目前为止，我们讨论的唯一方法是树，决策树。
 
- classification trees。 In those cases， it was very easy to make things multi-class。 as opposed to just binary。 With trees by extension， we could do random forests。 So far。 those are methods for multi-class。 But so today， we're going to talk about a linear method for multi-class that's really。 designed from the ground up to be a multi-class method。 So first。
+分类树。在那些情况下，将问题转化为多分类是非常容易的，而不仅仅是二分类。通过树扩展，我们可以做随机森林。到目前为止，这些都是用于多分类的方法。但今天，我们将讨论一种为多分类设计的线性方法，它从头开始就是为多分类设计的。所以首先。
 
- let's talk about an easy way to get multi-class from a binary classification。 It's called a reduction， where you take a problem of one sort and you manage to solve。 it using a solution to another， usually simpler problem you already have。 So suppose we have a binary classifier， how can we use that to solve multi-class？ So this。
+让我们谈谈从二分类得到多分类的一种简单方法。它叫做归约方法，即你将一个问题转化为另一个你已经有的、更简单的问题来解决。那么假设我们有一个二分类器，我们如何用它来解决多分类问题呢？就是这样。
 
- maybe you've seen this before， one verse all， one verse rest。 Yeah， it's a simple idea。 So in this picture， we have three classes， plus， minus， and circle。 And what we've done here is we've fit three different linear classifiers。 Each one separates one class from the rest of them。 So this w0 classifier。
+也许你以前见过这个，一类全部，一类休息。是的，这是一个简单的想法。所以在这张图中，我们有三个类：加号、减号和圆圈。我们在这里做的就是拟合了三个不同的线性分类器。每个分类器将一个类与其他类分开。所以这个w0分类器。
 
- w0 separates the o's from the plus of the minus。 The minus classifier separates the minus from the plus of the o's and so on。 And then what would we do with these classifiers？ Suppose we get a new point。 Well。 there are lots of ways to combine these classifiers。 One would be to， I mean hopefully。 if you find a point in this space， only one of the， classifiers says that one belongs to me。
+w0将圆圈与加号和减号分开。减号分类器将减号与加号和圆圈分开，以此类推。那么我们该如何处理这些分类器呢？假设我们得到一个新的点。那么，有很多方法可以结合这些分类器。一种方法是，理想情况下，如果你在这个空间中找到一个点，只有一个分类器说这个点属于我。
 
- So if you're in this area， then the only classifier that says that's part of my space is the minus。 one。 So we predict minus。 The problem comes when you're in this area。 So now two classifiers want to claim u， minus and o in that corner region。 And there you have to find some way to resolve it。 Okay， that's the general idea。
+所以如果你处于这个区域，那么唯一一个说这是我的空间的分类器是减号分类器。所以我们预测为减号。问题出现在你处于这个区域时。现在有两个分类器想要认领这个区域，减号和圆圈在那个角落区域。你必须找到一种方法来解决这个问题。好吧，这就是大致的思路。
 
- So let's write that down a little bit more mathematically。 So we're going to take k binary classifiers， one for each class， each train to separate。 one class from the rest。 And let's denote the k classifiers by h1 through hk。 And they can output either hard classifications or scores and whatever they do， what we're。
+那么我们来稍微更数学化地写一下。所以我们将使用k个二分类器，每个类一个，每个分类器训练来将一个类与其他类分开。我们用h1到hk来表示这k个分类器。它们可以输出硬分类或分数，无论它们做什么，我们。
 
- going to predict in our final prediction is， whichever classifier gives the largest score， for x。 All right， so denote the class by i。 And we're going to look at the predictions of each of the i classifiers。 one for each class。 And whichever gives the highest score。 That's the one that we will use as a prediction。 If there's a tie， you can break ties arbitrarily。
+我们最终的预测是，根据哪个分类器给出 x 的最大得分。好吧，所以用 i 来表示类。我们将查看每个 i 分类器的预测，每个类都有一个分类器。无论哪个得分最高，我们将使用那个作为预测结果。如果有平局，你可以随意打破平局。
 
- That would be a method。 Any questions on this general setting？ All right。 Okay。 All right。 so we're going to see if this method is good。 But to get there。 I want to refresh you guys on some intuition on how to understand linear， classifiers。 All right。 So let's go back to binary classification case。 Suppose we have Rd， Euclidean input space。
+这就是一种方法。关于这个一般设定，有什么问题吗？好吧。好的。那么我们来看看这个方法是否有效。但在此之前，我想让大家回顾一下如何理解线性分类器的一些直觉。好吧。我们回到二分类的情况。假设我们有 R^d，欧几里得输入空间。
 
- Our output space is negative one and one。 And our linear classifier score function is。 today I'm using this notation a little bit， because that's what the book I referred you guys to uses is the inner part of W and x。 Or W transpose x， same thing。 And this produces our score for the positive class and binary classification。 Remember this？ So this is a score function and binary classification greater than zero is predicting one less than。
+我们的输出空间是 -1 和 1。我们的线性分类器得分函数是。今天我使用这个符号，因为我参考的书籍用了这个符号，就是 W 和 x 的内积，或者说 W 的转置与 x 的内积，意思是一样的。它产生我们对正类的得分，用于二分类。记得吗？所以这是一个得分函数，二分类中大于零表示预测为 1，小于零表示预测为 -1。
 
- zero is negative one。 All right。 Good。 And if we want to predict a hard classification。 we can do this time。 All right。 So geometrically speaking。 what do we know about the relationship between x and W when we're。 predicting a plus one versus a minus one？ Say again？ So let's see。 X and W are vectors。
+0 对应的是 -1。好吧。很好。如果我们想做硬分类，我们可以这样做。好吧。那么从几何的角度来看，我们知道 x 和 W 之间有什么关系呢，当我们预测为 +1 与 -1 时？再说一遍？那么我们来看一下。x 和 W 是向量。
 
- So let's write idea。 Okay。 Their cosine similarity is positive。 I like it。 Let's dig into that。 So I was thinking of buying an iPad with the pencil so I could sketch beautiful drawings， for you。 But it。 All right。 So what do we have here？ We have W representing our classifier。 And here's a vector x which is our input。 All right。 So what's the prediction for W and x？
+那么我们来写一下这个想法。好吧。它们的余弦相似度是正的。我喜欢这个。我们来深入探讨一下。其实我在考虑买一个带有触控笔的 iPad，这样我就能为你画出漂亮的画。但它……好吧。那么我们这里有什么呢？我们有 W，代表我们的分类器。这里有一个向量 x，它是我们的输入。好吧。那么 W 和 x 的预测是什么？
 
- What's the score function？ The inner product of W and x。 So suppose that W is not zero。 All right。 That's reasonable。 And let's all suppose that x is greater than zero。 The norm of x is greater than zero。 So x is not zero。 Then you'll remember this from some math class that the inner product of W and x is magnitude， of W。
+什么是得分函数？W 和 x 的内积。假设 W 不为零。好吧，这很合理。并且我们假设 x 大于零，x 的模长大于零。那么 x 就不为零。你应该记得你在某些数学课上学过，W 和 x 的内积是 W 的模长。
 
- magnitude of x times cosine of theta。 Right？ Great。 So when is this thing greater than zero？ Well。 magnitude of norm of W and norm of x are both greater than zero。 So this whole thing is greater than zero。 If cosine of theta is greater than zero。 which is what you are saying。 So when is cosine of theta greater than zero？
+x 的模长乘以余弦值。对吧？太好了。那么什么时候这个值大于零？嗯，W 和 x 的模长都大于零。所以如果余弦值大于零，这个整个值就大于零。这就是你所说的。那么，什么时候余弦值大于零呢？
 
- For what theta is negative 90 degrees to 90 degrees。 All right。 And what exactly is theta？
+对于 theta 来说，角度在 -90 度到 90 度之间。好吧。那 theta 究竟是什么？
 
- Theta is this angle between x and W between our two vectors。 So if this angle is between negative 90 degrees and 90 degrees， then the score， the inner。 product will be positive， the score is positive， the prediction is a one。 So anywhere on this side of this line， what's this line？ This line is the normal to W， right？
+Theta 是 x 和 W 之间的夹角，两个向量之间的角度。所以如果这个角度在负 90 度到 90 度之间，那么得分，即内积将是正的，得分为正，预测结果是 1。所以在这条线的这一侧，这条线是什么？这条线是 W 的法线，对吧？
 
- W is normal to this line。 This is the actual separating hyper plane represented by W。 the separating line。 So we have our negative one class to the left of the line and the positive one to the right。 All right。 Good refresher。 All right。 Now let's consider a three class example。 I also could have used chalk。 So I have three classes。 I've drawn the points with little x's。
+W 与这条线垂直。这就是由 W 表示的实际分隔超平面。分隔线。所以我们将负类 1 放在线的左边，正类 1 放在右边。好的，复习完毕。现在我们来考虑一个三分类的例子。我本来也可以用粉笔。现在我有三类。我用小 x 画出了这些点。
 
- And let's see what we can do with the one-versal classifier here。 So first。 let's specify our base hypothesis space。 That's the space in this case that we're going to do our one-versal classifiers with。 So we'll call， we'll use linear classifiers。 W transpose x。 Like we said， but importantly。 know that there's no bias term。 And so this separating hyper plane will always， what？
+让我们看看在这里我们能用单一分类器做什么。所以首先，让我们指定我们的基本假设空间。这个空间就是我们将在其中使用单一分类器的空间。所以我们将使用线性分类器，W 转置 x。就像我们之前说的，但重要的是，注意这里没有偏置项。因此，这个分隔超平面将始终，什么？
 
- Go through the origin。 Always contain the origin， just like it did here。 Zero is orthogonal to W always。 So， okay。 Good。 So what would the separating hyper plane be between one and the rest？
+经过原点。始终包含原点，就像这里一样。零与 W 始终是正交的。所以，好吧。那好，分隔超平面在 1 和其他类别之间是什么？
 
- You could see pretty clearly maybe look like this。 There's our separating hyper plane between one and the rest。 And let's put the other ones in。 All right。 So now I've drawn three boundaries。 Let's analyze the boundary for two。 What's going on here？ So we've tried to separate two from the rest。 So W2 is pointing down。
+你可以很清楚地看到，可能看起来像这样。这是我们在 1 和其他类别之间的分隔超平面。现在我们将其他类别放进来。好的。所以现在我画了三个边界。让我们分析一下 2 的边界。这里发生了什么？我们试图将 2 从其他类别中分开。所以 W2 向下指向。
 
- So which side of this blue line is classifying positive for two？ Is classifying for two？
+那么，这条蓝线的哪一侧是在分类为 2 的正类？是在分类为 2 吗？
 
- Below the line。 Yes。 Anything that's within 90 degrees of the W2 vector is going to be predicting two。 So that's not great in this example because it gets every two incorrect。 On the other hand。 it's getting all the not two is correct。 Why did it choose to put the bottom half of this plane for the class two and not the。 other way around？ Yeah。 Because there are more examples that it's getting correct by saying the class of two。
+在这条线下面。对，任何在 W2 向量 90 度范围内的东西都会被预测为 2。所以在这个例子中这不是很好，因为它把所有的 2 都预测错了。另一方面，它正确地预测了所有非 2 的类别。为什么选择将这个平面的下半部分归为类别 2，而不是反过来？对，因为通过将类别 2 放置在这里，它能够正确预测更多的例子。
 
- is below because that means the class of not two is above and it gets all these points。 in one and three correct。 And it's not getting nearly as many points in two wrong。 So that's how that separation occurs。 Any questions on this？ Okay。 All right。 So let's use this as an opportunity to understand what the， what areas of this space are assigned。
+在下面，因为这意味着非 2 类别在上面，并且它正确预测了 1 和 3 中的所有点。并且它在 2 中预测错的点远不如之前那么多。所以这是分隔的方式。对此有任何问题吗？好的。那么让我们利用这个机会来理解这个空间的哪些区域是被分配的。
 
- to each class， right？ So let's play our score game again。 So we need the score for a given class。 Let's say score for class I， we have this inner product between WIX， fine。 And again。 norm WI norm X cosine theta。 Or theta I is now the angle between X and this particular WI。 All right。 Now we're going to predict the class that has the highest score。
+对每个类别，是吧？那么让我们再玩一次得分游戏。所以我们需要一个给定类别的得分。假设类别 I 的得分，我们有 WIX 之间的内积，好的。再次是，||WI|| ||X|| cosθ。或者 θI 现在是 X 和这个特定 WI 之间的角度。好了。现在我们将预测得分最高的类别。
 
- So let's make a slight simplifying assumption。 Note that the separate hyperplane doesn't change with the normal W。 right？ So nothing will change if we assume that W is all have the same norm。 Let's do that。 And then W is all have the same norm。 X is always the same。 So the only thing differing among these scores is the cosine of the angle。 All right。
+所以我们做一个稍微简化的假设。注意，分隔超平面在正常的 W 下不会变化，对吧？所以如果我们假设 W 的范数都相同，什么都不会改变。我们就这么假设。然后 W 的范数都相同。X 始终相同。所以唯一在这些得分之间不同的是角度的余弦值。好的。
 
- So which class will we assign X to in terms of angles？ OK。 So X is class 5。 but which ever has the smallest cosine of theta。 So we're going to have。 we're going to have three scores， one for each class。 And if we write them out。 the first two factors and all three scores are the same。 Because WI。
+那么我们将根据角度为X分配哪个类别呢？好的。那么X是类别5，但无论哪个类别的余弦值最小。我们将会有三个分数，每个类别一个。如果我们写出来，前两个因素和所有三个分数都是一样的。因为WI。
 
- we assume all have the same norm。 X is always the same。 So we're just left with cosine theta。 1 cosine theta， 2 cosine theta， 3。 So the score is greatest for wherever the cosine of theta I is largest。 When is cosine of theta maximized？ When？ Cosine theta is maximized at theta equals 0 at no angle。 So if the angle between X and W is 0， that's a sure thing。
+我们假设所有的范数相同。X始终相同。所以我们只剩下余弦θ。1余弦θ，2余弦θ，3。得分最高的是余弦θi最大的地方。余弦θ何时达到最大值？什么时候？当θ等于0时，余弦θ达到最大值，即无角度。所以当X和W之间的角度为0时，这是肯定的。
 
- And we will classify it by whichever angle between X。 Basically。 whichever WI X is closest to in angle measure， cosine distance or something。 All right。 So I've sketched that up。 So here's W。 Let's look at the separating values between W1 and W2。 So it's a little bit off here， but anything that's closer to an angle to W1， you have to。
+我们将根据X之间的角度进行分类。基本上，X与哪个WI在角度上最接近，就与哪个类别进行分类，使用余弦距离或其他方法。好的。所以我画了这个。看这里的W。让我们看看W1和W2之间的分隔值。所以这里稍有偏差，但任何与W1角度更接近的，都必须...
 
- sign to red。 And anything closer in angle to W2 is assigned to blue。 So you can use that to break the plane up into the different classes that's going to， predict。 Is that clear？ So I've just drawn this kind of angle bisection between each of the WIs。 Okay。 So you could actually think of this as a--as an instance of a--it's a decision function。
+将红色分配给标记。任何与W2的角度更接近的都分配给蓝色。所以你可以使用这种方式将平面划分为不同的类别，以进行预测。清楚吗？我刚才画了一个这样的角度二分法，分隔了每个WI。好的。所以你可以实际上将这个看作——作为一个实例——它是一个决策函数。
 
- It's outputting three levels。 In this picture， it's outputting red， green， and blue。 If we could code it up， it's outputting one， two， or three。 The input space is the plane X。 And this is an instance of the hypothesis space of our， kind of--not our base hypothesis space。 but our final multi-class hypothesis space。 This is an instance of a prediction function from that space。
+它输出三个级别。在这张图中，它输出红色、绿色和蓝色。如果我们能将其编码，它就输出一、二或三。输入空间是平面X。这是我们假设空间的一个实例，算是——不是我们的基本假设空间，而是我们最终的多类假设空间。这是该空间的一个预测函数实例。
 
- All right。 So this approach didn't seem to work very well for this example， right？
+好的。那么这种方法似乎在这个例子中效果不好，对吧？
 
- It's completely getting too wrong。 Any ideas on how we can fix this？ Okay。 Add a bias term。 So what would that allow you to do？ That would allow you， for instance--let me use the cursor here。 To draw separation like here， right？ Or here。 How would a bias help you separate two out？
+这完全错得太离谱了。有任何想法如何修正吗？好的。加一个偏置项。那么这能让你做什么？这将允许你，比如——让我用光标标出这里。画出像这里这样的分隔，对吧？或者这里。偏置项如何帮助你将两个分开？
 
- I don't see that。 What else can we do？ Is there--but that's a good direction。 You're suggesting change the hypothesis space， the base hypothesis space。 Can we do something in that direction？ Okay。 So again， kernel--something else？ New features。 Make a nonlinear hypothesis space。 Yeah。 Sure。 That's a possibility。
+我不明白。我们还能做什么？有没有—但这是个不错的方向。你建议改变假设空间，即基本假设空间。我们能朝那个方向做点什么吗？好的。那么再次提到，核—其他的呢？新特征。创建一个非线性的假设空间。对。没错。这是一种可能性。
 
- We can make score functions or base hypothesis space， for instance， carve out a circle around， two。 for instance。 That would be a way to do it。 We could do absolute value or something。 Yeah。 That would be an approach。 So the question is whether we have to do that。 So let's talk about this hypothesis space that I was mentioning here。
+我们可以为得分函数或基本假设空间创建一个圆圈，比如围绕2做出划分。这就是一种方法。我们可以使用绝对值或其他方式。对。这是一种方法。那么问题是我们是否需要这么做。让我们来谈谈我之前提到的假设空间。
 
- So we have this base hypothesis space of linear score functions。 And what we finally produce is this arg max over the different score functions。 We predict a--well。 this is our final hypothesis space。 What is the action space for a prediction function in this hypothesis space？
+所以我们有这个基础的假设空间，是线性评分函数。我们最终生成的是这些不同评分函数中的最大值。我们预测一个——好吧，这是我们的最终假设空间。那么，在这个假设空间中，预测函数的行动空间是什么？
 
- Remember what action spaces are？ Yes， one through K。 And action spaces contains the set of things that you produce by your prediction function。 So yes。 in this case， we're producing a number one through K， one of the K classes。 Great。 So this defines the hypothesis space that we are just dealing with。 So here's a question。
+记得什么是行动空间吗？是的，从一到K。行动空间包含通过预测函数生成的一组事物。所以是的。在这种情况下，我们生成的是从一到K的一个数字，即K类中的一个。很好。那么这定义了我们正在处理的假设空间。这里有个问题。
 
- This method one versus all with this hypothesis space failed on the example I gave。 Is this an issue with the hypothesis space or is this an issue with the method of using。 one versus all or both？ That is our question。 Okay。 So again？ [ Inaudible ]， All right。 So you're suggesting the hypothesis space is inherently not going to be a problem。
+这种一对多方法在我给出的例子中失败了。这是因为假设空间的问题，还是使用一对多方法的问题，或者两者都有问题？这是我们的问题。好的。那么再说一遍？[听不清]，好的。那么你是说假设空间本身应该没有问题。
 
- It's going to be sufficient for this setup。 Not so sure。 Not so sure。 Any other thoughts？ Yeah。 [ Inaudible ]， Okay。 So you're saying， what's so bad about this？ Well， I mean， just looking at it。 it's pretty clear how you can separate two from one and， three。 It's not like there's no way。 It's like just visually， it seems very obvious that， you know， two is this zone and one is。
+这个设置应该是足够的。不是很确定。不是很确定。还有其他想法吗？是的。[听不清]，好的。那么你是在说，这样有什么不对吗？嗯，意思是，仅仅看这个，怎么将二与一、三分开是很明显的。并不是说没有方法。只是从视觉上看，似乎非常明显，你知道，二是这个区域，一是。
 
- this zone and three is this zone。 So if I would say that we are underfitting here in some kind of very obvious sense that。 So you're saying， well， it's maybe the best it could have done with this hypothesis space。 and that's the question。 That's the question。 Okay。 So what about this？ No， not that。 What about this？ What's going on here？ So I have three new W's。 None of them point down。
+这个区域是二，三是这个区域。所以如果我说我们在某种非常明显的意义上发生了欠拟合。那你是在说，好吧，这可能是这个假设空间能做的最好了。这就是问题。就是这个问题。好的。那么这个呢？不，不是那个。那这个呢？发生了什么？所以我有三个新的W。它们都没有指向下方。
 
- They all point towards their respective classes。 I've drawn these class boundaries。 First of all。 do we agree that I've drawn the class boundaries correctly？ So between one and two。 I've looked at which the angle distance and everything in red is。 closer in angle to the red W then to the blue。 And everything in green is closer to the green arrow than the blue arrow in angle。
+它们都指向各自的类。我画了这些类边界。首先，我们是否同意我画的类边界是正确的？所以在一和二之间。我看了角度距离，所有红色的都更接近红色的W，而不是蓝色的。而所有绿色的都更接近绿色箭头，而不是蓝色箭头。
 
- Okay。 So you agree with the boundaries， the decision areas that I've drawn。 All right。 And this gets perfect classification。 Is it from the same hypothesis space？ Some yes or no？
+好的。那么你同意我画的边界，决策区域吗？好了。这能得到完美分类。它来自相同的假设空间吗？是的还是不是？
 
- I claim yes because we have three linear score functions。 The score functions are all linear。 They're all W transpose X。 And we're taking an R max of the score functions。 So yes。 this is from the same hypothesis space。 The difference is that this is not the result of a one-versal training。 All right。 So one-versal fails us in this example， but the hypothesis space is vindicated。
+我认为是的，因为我们有三个线性评分函数。评分函数都是线性的。它们都是W转置X。我们正在取这些评分函数的最大值。所以是的，这是来自相同的假设空间。区别在于这不是一对多训练的结果。好了。所以一对多在这个例子中失败了，但假设空间得到了验证。
 
- It still does the trick。 So what we're going to talk about as we go on today is how can we get something like this？
+它仍然起作用。所以我们今天接下来要讨论的是，如何获得像这样的东西？
 
- We need something that does more than just reducing to binary class。 Question？ >> Yeah。 I wonder if what happens when you are taking center in a far-grouping proposition。 So in a situation like that， two classes would be called the zero-vector。 So if there's something that you would want to transform to a sugar rating or。 Okay。 So。
+我们需要做的事情不仅仅是**降维**到二分类。问题？>> 是的。我想知道当你在做中心化的远程分组时会发生什么。所以在那种情况下，两个类会被称为零向量。那么如果你想把它变换成一个糖评分或者。好的。那么。
 
- I think the question is， if you were going to use this reduction one verse off。 are there smarter ways to do it， such as shifting the data， just the flavor？
+我想问题是，如果你打算使用这个**降维**的方式。是否有更聪明的方法，比如只对数据进行平移，改变其“味道”？
 
- I know my thought is that， I mean， this is a pretty， this might be a good example that if you。 if you restricted hypotheses that have to go to the origin。 then shifting to the origin doesn't let you， discriminate if the entire class is。 censored at the origin。 That wouldn't work so well。 >> So， I'm not sure。 I'm not sure。
+我知道我的想法是，意思是，这个例子可能是一个很好的例子，如果你。如果你限制假设必须归于原点，那么移到原点并不会让你区分整个类是否在原点处被**截断**。那样就不太奏效了。>> 所以，我不确定。我不确定。
 
- It's an interesting question。 So， for ease of interpreting pictures。 we made all the W's the same length。 What that， the W's don't have to be the same length。 What do things change if we change， the W's in this hypothesis space？ My original argument was that。 if you change the length of W's， nothing changes。 What I really was saying is that you change the length of W。
+这是一个有趣的问题。为了方便解释图片，我们让所有的W长度相同。实际上，W的长度不需要相同。如果我们改变假设空间中的W的长度，事情会有何变化？我最初的观点是，如果你改变W的长度，什么也不会改变。我真正想说的是，你改变了W的长度。
 
- the separating hyperplane does not change。 But that's separating hyperplane。 This is a binary classification thing。 Right？ When we have， see。 these are separating hyperplanes for binary class。 In this scenario。 we don't have separating hyperplanes。 We have regions of different classes。 So now in this setting。
+**分离超平面**没有改变。但那就是分离超平面。这是一个二分类问题。对吧？当我们有时，看到。这些是二分类问题中的分离超平面。在这个场景中，我们没有分离超平面。我们有不同类别的区域。所以现在在这个设置下。
 
- does the norm of the， do the norm of the W's matter？ Okay。 What happens if we make W1 longer？
+W的**范数**，W的范数重要吗？好的。如果我们让W1变长，会发生什么？
 
- What happens to its region of class 1？ Yeah， it expands。 Right。 That's right。 Okay。 So。 our hypothesis space is even more general， than I'm kind of suggesting here in that。 you can have W's in different light。 So for instance， one of the hypothesis can be W equals 0。 Right。 So， okay。 Yes， please。 Okay。 So in this setting， we have three W's。
+那么它的类别1的区域会发生什么呢？是的，它会扩展。对。没错。好的。那么。我们的假设空间比我在这里所暗示的要更广泛，因为。你可以在不同的光照条件下有不同的W。举个例子，假设其中一个假设是W等于0。对。好的。是的，拜托。好的。那么在这个设置下，我们有三个W。
 
- And each gives rise to a score function。 And the idea of the score function is that this。 this is W1。 So we have an X， and then we take the inner product between W1 and X。 and that gives you a number。 And the bigger the number is， the more it's voting for a class 1。 All right。 And same thing for 2 and same thing for 3。 And now at any point in space。
+每个都会引出一个分数函数。分数函数的思路是这样的。这是W1。所以我们有一个X，然后我们计算W1与X的内积，这会给你一个数字。数字越大，越偏向于类别1。好的。对于类别2和类别3也是一样。现在在空间的任何一点。
 
- we can get the three scores given by inner product with W1， inner product with W2。 and inner product with W3。 Each of those give a score。 And the red zone is the zone where all the X's have， the highest score coming from W1。 And blue is the highest scores from W2， and green is the highest score from W3。 How did you get。
+我们可以通过W1与X的内积、W2与X的内积和W3与X的内积来得到三个分数。每个内积都会给出一个分数。而红色区域是所有X的区域，其中W1给出的分数最高。蓝色区域是W2给出的分数最高的区域，绿色区域是W3给出的分数最高的区域。你是怎么得到的？
 
- thank you。 That's， well， that's the next section。 That's a good question。 Yeah。 I've only。 I'm trying to justify the hypothesis space so far， but not telling you how to get it。 What。 that's next。 >> And that's why you think the author， is shouting that the score was higher。 >> Exactly。 When you make W longer， the score gets bigger。 And so the region of red gets larger。
+谢谢。这是，嗯，这是下一个部分。是个好问题。是的。我只是到目前为止在尝试证明假设空间，但并没有告诉你如何得到它。什么。那是下一步。>> 这也是你认为作者在喊分数更高的原因。>> 正是如此。当你让W变长时，分数增大。因此，红色区域变得更大。
 
- That's right。 >> And you had a 3， it's like a， this， there's no one factor expected by the other。 >> Well， yeah。 These are， they're not rounded， they're angular。 Yeah。 That's right。 Yes。 >> Are you saying my diagram is not accurate？ Wait， wait， wait， say it again。 Where is the issue？
+没错。 >> 而且你有一个3，就像是，这里没有一个因素被其他的预期。 >> 嗯，是的。这些，它们不是圆的，它们是角度的。是的。没错。是的。 >> 你是说我的图不准确吗？等，等，等，再说一遍。问题在哪里？
 
- >> The region that we draw the blue， the direction that we draw the blue。 >> Yes。 >> The blue transform that could be maximum。 >> W transpose X is maximized in the direction of that W vector。 Yes。 >> We move away。 >> Yes。 >> It reduces。 >> The score decreases， correct。 >> So。 when we move away towards the negative by axis。 >> Down， okay。 >> And we move away from the。
+>> 我们画的蓝色区域，蓝色的方向。 >> 是的。 >> 蓝色变换可以是最大值。 >> W转置X在W向量的方向上最大化。是的。 >> 我们往外走。 >> 是的。 >> 它减少了。 >> 分数下降了，正确。 >> 所以。当我们朝着负轴的方向移动时。 >> 向下，好吧。 >> 然后我们从。
 
- from the other side also。 >> How do you get to do all this， this， this， this， yeah。 >> You mean like right here？ You mean where I've drawn the hand？ >> Yeah。 >> How do we resolve it you're asking？ >> I've read it a little bit something that we're seeing。 >> Yeah， break ties arbitrarily。 >> [INAUDIBLE]， >> That is not in my hypothesis space。 Is it？ Well。
+从另一边也可以。 >> 你是怎么做到这一切的，这个，这个，这个，嗯。 >> 你是指这里吗？你是指我画手的地方？ >> 是的。 >> 我们该怎么解决呢，你是问这个吗？ >> 我稍微读了一点我们看到的东西。 >> 是的，任意打破平局。 >> [听不清]， >> 这不在我的假设空间里。是吗？嗯。
 
- certainly not without bias。 You can't， you're saying if three parallel lines would be like here and here。 Yeah， that's not， that's not a not hypothesis space。 We cannot do that。 Is that answer your question？ Okay。 Yes。 >> The question is like if you're wrong or vector here。 why is the space， still here？ I mean， I'm not here。 I mean。
+当然，这并不是没有偏差。你说的三条平行线就像是这里和这里。是的，这不是，不是一个假设空间。我们做不到这一点。这个回答了你的问题吗？好。是的。 >> 问题是，如果你的向量错了，为什么空间仍然存在？我的意思是，我不在这里。我是说。
 
- what kind of video has to be written on the， [INAUDIBLE]， >> How did I know this region is red？
+这种视频必须在，[听不清]，写出来吗？ >> 我怎么知道这个区域是红色的？
 
- >> Yeah。 >> Oh， because in angle it's closer to the red vector than the green vector。 >> Do you agree？ That's， it's from the argument earlier that the you look at。 >> So the points they are close to the new light。 >> These points， yes。 >> Yeah， so。 when you're going to be， should that be being like， a triangle， not there any， no region？
+>> 是的。 >> 哦，因为在角度上它比绿色向量更接近红色向量。 >> 你同意吗？这是之前论点的延续，你看。 >> 所以这些点它们离新光线更近。 >> 这些点，是的。 >> 是的，那么。你打算把它变成三角形吗，不会有区域吗？
 
- >> You mean no classification？ >> No。 >> But just to the left of the axis。 it really is close to the red vector and， to the right it's closer to the green。 >> It's true that all the score functions are negative， but the red one still has。 the arg max by having the smallest magnitude of its negative value。 >> Oh， thank you。
+>> 你是说没有分类吗？ >> 不。 >> 但就在轴的左边，确实是更接近红色向量，右边则更接近绿色。 >> 确实所有的分数函数都是负的，但红色的仍然有。通过其负值的最小大小，获得了arg max。 >> 哦，谢谢。
 
- I didn't rise out of the issue。 >> So， is that an issue the question？ Okay， so to reiterate for。 that was a pretty good voice， but just in case you， didn't hear。 >> [LAUGH]， >> So， down， down here。 in this certain triangle down here， all the scores are， negative。 That's a good point。 But that's okay。 Because we are predicting with the highest score and it doesn't matter if it's。
+我没有从问题中跳出来。 >> 所以，这个问题是问题吗？好吧，那为了重申一下。那是一个相当不错的声音，不过万一你没听到的话。 >> [笑]， >> 所以，在这下面。这里的这个特定三角形里，所有的分数都是负的。这个点很好。但没关系。因为我们是用最高分来预测的，分数是正是负并不重要。
 
- positive or negative。 Yeah。 >> [INAUDIBLE]， >> Well， that's interesting。 >> Yeah。 >> [INAUDIBLE]。 >> Good call。 All right。 Let's talk about that。 Good point。 So， the point was that if。 when the score is negative， increasing the norm of w will， make it more negative。 which will make it less likely to be selected。 But if it's positive。
+正的还是负的。是的。 >> [听不清]， >> 哇，那很有趣。 >> 是的。 >> [听不清]。 >> 很好的提醒。好吧。我们来谈谈这个。很好的点。就是，当分数是负的时，增加w的范数会使它更负，这会使其被选中的可能性更小。但如果是正的。
 
- it'll make it more likely to be selected。 It's a very good point。 Think about that。 Good point。 Yes。 Or questions。 The question is， can I give an example of when there's a problem with the。 hypothesis space？ Maybe we'll talk about that later。 Yeah。 Okay。 All right。 So。 let's talk about how we can actually -- more questions？ W transpose x， dot w。 Yeah。 >> [INAUDIBLE]。
+这样会更有可能被选择。这是一个非常好的观点。 想一想。 很好的观点。 是的。 或者有问题吗？ 问题是，我能举个例子说明何时会出现假设空间的问题吗？ 也许我们稍后会讨论这个问题。 是的。 好的。 好的。 所以。 让我们讨论一下我们如何实际操作——更多问题吗？ W 转置 x，点乘 w。 是的。 >> [听不清]。
 
- >> Yes。 No， no。 It's one。 There， it's negative when the angle between x and w is more than 90 degrees。 So， for instance --， >> [INAUDIBLE]， >> Yeah。 So， this vector and this are more than 90 degrees apart。 So， it's negative。 Right。 Yeah。 Cool。 Okay。 So， we're about to reframe things a little bit to prepare us for some more。 advanced methods。 So， right now we have our base hypothesis space。 I made it general now。
+>> 是的。 不，不。 是一个。 当 x 和 w 之间的角度大于 90 度时，它就是负数。 所以，举个例子——， >> [听不清]， >> 是的。 所以，这个向量和这个向量之间的角度超过 90 度。所以，它是负数。 对的。 是的。 酷。 好的。 所以，我们现在准备稍微重新框架一下，来为一些更先进的方法做准备。 所以，现在我们有了我们的基础假设空间。我现在把它做得更通用了。
 
- no linearity。 We'll bring linearity back in a minute。 So。 we have a hypothesis space of h's and our multi-class hypothesis space。 that's predicting an actual class。 It's going to be the argmax of these individual score functions。 We have k of them。 k score functions。 Okay。 And to search for the right class。
+没有线性。稍后我们会再引入线性。所以，我们有一个 h 的假设空间，以及我们的多类假设空间。它正在预测一个实际的类别。它将是这些单独评分函数的 argmax。我们有 k 个它们。 k 个评分函数。好的。为了寻找正确的类别。
 
- we evaluate h1 through hk。 See which is the biggest。 So。 we're going to switch it a little bit to a framework that at least subsume， as the other framework。 Let's now assume we have a general output space y。 All right。 So。 one example would be a discrete set of k classes。 But， let's just call it a general space y。
+我们评估 h1 到 hk。看哪个最大。所以，我们将它稍微调整一下，转为一个框架，至少能够包含其他框架。现在假设我们有一个一般的输出空间 y。好的。所以，一个例子可能是 k 个类的离散集合。但我们就称它为一般的空间 y。
 
- And our base hypothesis space now， instead of just mapping from x to r， it takes a y， to。 All right。 So， this is going to be giving us a way to think about this new thing instead of。 it being a score function for a particular class。 And now。 this h we're going to think of as giving a compatibility score between。
+而我们的基础假设空间现在，不再仅仅是从 x 映射到 r，它还接受 y，来。 好的。所以，这将为我们提供一种思考新事物的方法，而不是仅仅将它视为某一类的评分函数。现在，我们将把这个 h 看作是给出 x 和 y 之间兼容性分数的函数。
 
- the provided x and the provided class y。 All right。 So， this is a new type of object。 It takes an input x and an output y and predicts a score for the pair。 So。 it's not that big a change really。 Before we had a separate function for each possible y that gave the score。 Now， we have a single function that takes the next and a y。
+提供的 x 和提供的类别 y。 好的。所以，这是一种新的对象类型。它接受输入 x 和输出 y，并预测这个对的分数。 所以，这并不是一个巨大的变化。之前我们为每个可能的 y 有一个独立的函数来给出分数。现在，我们有一个单一的函数，它接受 x 和 y。
 
- The difference is now we could have y be a much bigger space。 Maybe we don't want to have a hundred billion different functions。 We just want to have one and you could provide any y that's relevant to that function。 Okay。 So。 now the final hypothesis space， rather than doing an arg max over your， classes。
+不同之处在于，现在 y 可以是一个更大的空间。也许我们不想要有一百亿个不同的函数。我们只想要一个，并且你可以提供任何与该函数相关的 y。好的。所以，现在最终的假设空间，不再是对你的类别进行 arg max。
 
- we have the arg max over， rather than being over i from once a k。 So。 we have the arg max over an element of the output space and then we evaluate。 the compatibility between x and y and whichever has the highest compatibility， that's our winner。 That's the why we predict。 Is that clear？ It's not a massive change， but it's a subtle change。
+我们有 arg max，它不再是对 i 从 1 到 k 的求最大值。所以。 我们有 arg max 对一个输出空间中的元素进行求值，然后我们评估 x 和 y 之间的兼容性，哪个兼容性更高，哪个就是我们的胜者。 那就是我们预测的 y。 这样清楚吗？ 这不是一个大的变化，而是一个微妙的变化。
 
- All right。 And this is the framework we're going to use today。 All right。 So， how do we do learning？
+好的。这就是我们今天将使用的框架。好的。那么，我们如何进行学习呢？
 
- Let's do the question。 How do we choose these base hypotheses or this hypothesis from this。 multi-class space？ All right。 So， we have our base hypothesis space now taking x and y。 We have some training data。 And so a learning process， I don't know if I ever defined a learning。 algorithm。 A learning algorithm is something that takes a training set and produces a。
+让我们来做个问题。我们如何从这个多类空间中选择这些基础假设或这个假设呢？好吧。所以，我们现在有了基础假设空间，带有 x 和 y。我们有一些训练数据。因此，学习过程，我不确定我是否曾经定义过学习算法。学习算法是某种接受训练集并产生结果的过程。
 
- hypothesis space and chooses the hypothesis from the hypothesis space。 And fine。 So。 we're going to have a learning process that chooses h from the， hypothesis space。 And the question is what type of h do we want to -- how do we know we， found a good h？
+假设空间并从假设空间中选择假设。没错。那么，我们将有一个学习过程从假设空间中选择 h。问题是我们想要什么类型的 h —— 我们怎么知道找到了一个好的 h 呢？
 
- That's my question for you。 How do we know we found a good h？
+这是我想问你的问题。我们怎么知道找到了一个好的 h 呢？
 
- Given this is the way we do our prediction。 Well， how about for a single training point， x and y？
+假设这是我们进行预测的方式。那么，对于一个单一的训练点 x 和 y 呢？
 
- Suppose we have x and y。 How do we know if h is doing a good job on x， y， or not？ All right。 So。 given the function h， when will we actually predict y for x？ Yeah。 when the compatibility is score between x and y。 Is high。 Right。 If we want to predict y given x。 the compatibility score between x， and y better be high。 And in fact。
+假设我们有 x 和 y。我们怎么知道 h 在 x, y 上表现得好不好？好吧。那么，给定函数 h，我们什么时候会预测 x 的 y 呢？是的，当 x 和 y 之间的兼容性得分很高时。对吧。如果我们想根据 x 预测 y，那么 x 和 y 之间的兼容性得分应该很高。实际上。
 
- it should be higher than the compatibility score between， x and all the otherwise。 Right？
+它应该高于 x 与所有其他类别之间的兼容性得分，对吧？
 
- Because that's how we're going to finally choose what we predict。 Whichever has the highest compatibility score， that's the class that we， predict。 All right。 So。 we want h of x， y to be large， and in fact larger than h of x， y， prime for y prime。 not equal to y or something。 All right。 So， here's in math。 So， h of x。
+因为这将决定我们最终选择的预测值。无论哪个兼容性得分最高，那个类别就是我们预测的类别。好吧。所以，我们希望 h(x, y) 很大，实际上它要比 h(x, y') 大，其中 y' ≠ y 或其他的值。好吧。下面是数学形式。所以，h(x)。
 
- y classifies a particular training example， x， y， correctly， if and only if h， x， i， y。 is bigger than h， x， i， y for all y， not equal to y， i。 Right？ Okay。 So， this， from here。 we can almost start to see what a good， objective function would be。 So。 an equivalent to this is simply h of x， y is bigger than the， score of the correct combination of x。
+y 只有在正确地分类了特定的训练示例 x, y 时，才会成立，也就是当 h(x, i, y) 大于 h(x, i, y) 对所有 y ≠ y_i 时。对吧？好吧。那么，从这里开始，我们几乎可以开始看到一个好的目标函数是什么了。所以，等价的形式就是简单地 h(x, y) 大于正确组合的 x 的得分。
 
- y， i。 Should be bigger than the score of all the， the biggest of the， scores of all the other ones。 It's just an equivalent way to write it。 All right。 So。 if we want the thing on the left to be bigger than that thing on， the right。 and we want to make an objective function out of it， well。
+y，i。应该大于所有其他得分中的最大得分。这只是写法上的等价方式。好吧。所以，如果我们希望左边的东西大于右边的东西，并且我们想把它作为目标函数来处理，那么。
 
- we can bring the thing on the right over to the thing on the， left and take a difference。 then we want that to be bigger than， zero。 Maybe we could have a loss function that penalizes things when。 that's difference is small。 So， we're thinking about an objective function that looks like， this。 Inside the brackets， this is a thing we want to be big， right？ Because hx， y， i。
+我们可以将右边的东西移到左边并取差值。然后我们希望这个差值大于零。也许我们可以有一个损失函数，当差异较小时给予惩罚。因此，我们正在考虑一个类似于这样的目标函数。括号里面的东西是我们希望它变大的部分，对吧？因为 h(x, y, i)。
 
- we want that compatibility to be a lot bigger， than the other one。 So， this thing should be big。 We could put a loss function on that。 So， a loss function should penalize when it's， when this。 difference is small and be small and this difference is big。 Does this remind you of anything？
+我们希望这个兼容性要比另一个大得多。所以，这个值应该很大。我们可以在这个上面加一个损失函数。因此，损失函数应该在这个差异较小时给予惩罚，而在差异较大时则较小。这个是否让你想起了什么？
 
- Like some other problem we've dealt with， like classification。 With margins。 Yeah。 hinge loss has this property。 If you take hinge loss is small for when it's arguments big， so。 when margin is big， and it's big when the arguments small and， margin is negative。 So。 you might imagine taking something like a hinge loss or， some other margin loss。
+就像我们处理过的其他问题一样，比如分类。使用边距的情况。是的。hinge损失具有这种性质。如果你取hinge损失，当它的参数值很大时，损失很小。所以，当边距很大时，损失小，而当参数值很小时，边距为负时，损失就很大。所以，你可以想象，使用像hinge损失这样的损失函数，或者其他边距损失。
 
- margin based loss and applying it to this， sort of object。 And that seems like it be on the right track。 All right。 We're going to come back to this。 A little more rigger later。 Okay。 Well， so what do we have so far？ We have a。 we have the idea of a base hypothesis space of， compatibility functions。
+基于边距的损失并将其应用于这种对象。这似乎是正确的方向。好的，我们稍后会回来再讨论这个。好吧。那么到目前为止我们有什么？我们有了一个，我们有一个兼容性函数的基础假设空间的概念。
 
- And then we know how to take these compatibility functions and， make a final prediction of a class。 And what we're going to talk about now is a little bit more， practical。 How do we make these compatibility functions？ How do we make these linear compatibility functions？
+然后我们知道如何将这些兼容性函数转换为最终的类预测。现在我们要讨论的是一些更实际的内容。我们如何生成这些兼容性函数？我们如何生成这些线性兼容性函数？
 
- Because we've never done this before。 All of our functions have been， score functions on just the。 input。 So we make features of x。 But now we have a function of x and y。 So do we make features of x and y or what's going on there？
+因为我们之前从未做过这种事。我们所有的函数都是基于输入的得分函数。所以我们创建了x的特征。但是现在我们有了x和y的函数。那么我们是应该创建x和y的特征，还是说这里到底发生了什么？
 
- That's the question that we're posed with。 All right。 So we define a linear class sensitive score function。 So not just a score function。 Now we're putting a class in there too。 Class sensitive score function has hxy inner product of some。 parameter vector w。 And this new entity psi of xy。 Psi of xy is a class sensitive feature map。
+这是我们面临的问题。好的。所以我们定义了一个线性的类敏感得分函数。所以不仅仅是得分函数。现在我们也把类加进去了。类敏感得分函数有hxy和某个参数向量w的内积。这个新的实体psi(xy)就是类敏感特征映射。
 
- It's the analog of a feature vector except packed into that。 feature vector is also information about a class y。 So we have x and we have y。 And we somehow come up with a feature vector that we're then。 going to multiply by parameter vector w to come up with our。
+它是特征向量的类比，只不过在该特征向量中还包含了有关类y的信息。所以我们有x，也有y。然后我们以某种方式生成一个特征向量，接着用它与参数向量w相乘，得出我们的预测结果。
 
- score function for the compatibility between x and y。 Is that confusing？ [INAUDIBLE]， OK。 So we built a model。 What does that mean？ We built a model means-- well， two pieces。 We had to define this class sensitive feature map。 And then we had to learn w。 OK。 So we've done that。 And then we have a new data form and we don't know the， y and how to do it。
+x和y之间的兼容性得分函数。 这让人困惑吗？[听不清]，好的。我们建立了一个模型。这是什么意思？我们建立模型意味着——嗯，两个部分。我们必须定义这个类敏感特征映射。然后我们要学习w。好的，我们已经做到了。然后我们有一个新的数据形式，我们不知道y是什么，怎么做。
 
- Great question。 OK。 So we've determined-- we've figured out w and we've defined， psi。 All right。 And we have a new x。 How do we figure out what y to predict？
+很好的问题。好的，我们已经确定——我们已经找到了w，并且定义了psi。好的。然后我们有了一个新的x。我们如何确定要预测的y？
 
- You try every y and plug it in to hxy and see which has the， highest compatibility score。 And that's what you predict。 If it's hard to try every y， like I just said， like maybe。 there's too many y's， we're going to need another shrek。 And that's where this notion of structure prediction comes in。
+你尝试每个y并将其代入hxy，看看哪个具有最高的兼容性得分。然后就是你预测的内容。如果尝试每个y很难，正如我刚才所说，可能是因为y的数量太多，我们就需要另一个方法。这就是结构化预测这个概念的作用所在。
 
- which I think we'll mention at the end。 Yeah。 [INAUDIBLE]。 So what's interesting here is just the question is， I， wrote this as an RDE。 So remember in that futures lecture， we-- up until the， futures lectures， we were saying， oh。 x is an， element of RDE。 Then during the futures lecture， we said， you know what， let。
+我想我们会在最后提到。对。[听不清]。所以这里有趣的是问题本身，我将其写成了RDE。所以记得在那个特征讲座中，我们——直到特征讲座之前，我们都说，哦，x是一个RDE的元素。然后在特征讲座中，我们说，你知道吗，假设。
 
- x be arbitrary in arbitrary space x。 And that's introduced a feature map that maps x to RDE。 Now what we're doing is we're letting the input space and， the output space both be arbitrary。 x and y are， arbitrary spaces。 And we're asking that the feature map map into RDE。 Cool。 All right。 All right。 So the question is， what should this class sensitive， feature map look like？
+x 是任意的，在任意的空间 x 中。我们引入了一个特征映射，将 x 映射到 RDE。现在我们所做的是让输入空间和输出空间都可以是任意的。x 和 y 是任意空间，我们要求特征映射映射到 RDE。好吧。好了。所以问题是，这个类敏感的特征映射应该是什么样的？
 
- What are some strategies？ What are R？ What are our options？
+有什么策略？R 是什么？我们有哪些选择？
 
- And this is the final multi-class hypothesis space， what， we just described。 Great。 So somehow。 the feature vector has to represent--， has to be a representation somehow of how well y matches x。 And more precisely， we're going to have to take this。 feature vector and through just a linear combination of the， features of psi。
+这就是我们刚才描述的最终多类假设空间。很好。所以不管怎么说，特征向量必须表示——必须以某种方式表示 y 与 x 的匹配程度。更精确地说，我们必须取这个特征向量，并通过对 psi 特征的线性组合来实现。
 
- we're going to have to come up with the， score。 So the feature vector doesn't have to do all the work to。 come up with how well y matches x。 But it has to get close enough that all we need to do is。 take a linear combination of the elements of that feature。 vector to come up with a good compatibility score。
+我们需要得出分数。所以特征向量并不需要完成所有的工作，去判断 y 与 x 的匹配程度。但它必须足够接近，以至于我们只需要对这个特征向量的元素做线性组合，就能得出一个好的兼容性得分。
 
- This is just an issue of just being a linear method。 All right。 So this was the classification that worked well for the， three classes， right？
+这只是一个线性方法的问题。好了，所以这是对三类有效的分类，对吧？
 
- So how can we code this up into our new framework？ Because we coded this up into w1， w2， w3。 So how do we put this into our score function that takes x， and y？
+那我们怎么将这段代码嵌入到我们的新框架中呢？因为我们已经把它编码成了 w1，w2，w3。那么我们如何将它放入需要 x 和 y 的分数函数中呢？
 
- So let's write down some actual vectors for w1， w2， and w3。 Angles are a little off。 but that's the right idea。 And we had the--， OK， so we've gone over this enough。 So this was our final prediction function。 And the question is how do we map that？
+所以让我们写下实际的向量 w1，w2 和 w3。角度稍微偏离了一些，但这就是正确的思路。我们已经讨论过这个——好的，我们已经讲得够多了。这是我们的最终预测函数。那么问题是我们怎么将它映射出去？
 
- Is this something that looks like this？ Instead of the argmax over 1， 2， 3 with 3w's， we have a。 single w and this new type of feature vector。 Any ideas？ It's actually not so difficult。 It's a little funny。 So what if we stack all these w's together in one giant， vector？
+这看起来像这样吗？不是对 1、2、3 做 argmax 操作，带着 3 个 w，而是我们有一个单独的 w 和这种新的特征向量类型。有想法吗？其实并不难。虽然有点搞笑。那么如果我们把所有的 w 堆在一起，形成一个巨大的向量会怎么样？
 
- So that's what I've done here。 I've taken w and I've put w1 first and then I put w2 and。 then I put w3 in。 So now w is in r246， r6。 All right， so that's w。 And then what if we make our feature vectors like this？ So--， Second？ Second？ Yeah。 there should be 3 in the third line， thanks。 Maybe you could send me an email with that correction。
+所以这就是我在这里做的。我取了 w，然后把 w1 放在前面，然后是 w2，再然后是 w3。所以现在 w 在 r246，r6 里。好了，这就是 w。那么如果我们把特征向量做成这样呢？所以——第二个？第二个？对，第三行应该有 3，谢谢。也许你可以发封邮件给我，告诉我这个修正。
 
- later。 That'd be helpful。 All right， so we have to make this class sensitive feature， vector。 So if we have-- so x is in r2。 x is in r2。 It's represented by x1 and x2。 So what's going on here is when we plug in psi of x with， class 1。 we're going to put x1 and x2 in the first two， positions。 And we put psi of x2。
+稍后再说。那会很有帮助。好了，所以我们必须制作这个类敏感的特征向量。如果我们有——所以 x 在 r2 中。x 在 r2 中。它由 x1 和 x2 表示。那么这里发生的事情是，当我们插入带有类别 1 的 psi(x) 时，我们将把 x1 和 x2 放在前两个位置，然后把 psi(x2) 放进去。
 
- we're going to put x1 and x2 in the， second two positions。 And psi of x3， that should be 3。 and we put it in the third， position。 So does this work？ Is this nonsense or does this work？
+我们将把 x1 和 x2 放在后两个位置。然后 psi(x3)，应该是 3，我们把它放在第三个位置。那么这样可行吗？这是胡说八道还是行得通？
 
- What happens if we take the inner product of w and psi x1？ Well。 the last four entries of psi x1 are 0。 So the only thing that's relevant is basically w1。 inner product with x1， x2， which is exactly what we need。 Et cetera。 So this definition of psi。 which is a mapping from x and y， to r6， and this r6 parameter vector can reproduce the same。
+如果我们计算w和ψx1的内积会发生什么？嗯，ψx1的最后四个条目是0。所以唯一相关的就是w1与x1、x2的内积，这正是我们需要的，依此类推。所以这个ψ的定义，作为从x和y到r6的映射，而这个r6的参数向量可以重现相同的效果。
 
- thing that we had in the other setting。 So this strategy， where we take our axes and we increase。 our feature space--， if our original feature space was of size， in this case 2， and。 we have three classes， we multiply 3 by 2 for our new， space。 We just replicate as many times as we have classes。 Great。 Question， yeah？
+我们在其他设置中所用的东西。所以这个策略，我们把我们的轴增加。我们的特征空间--，如果我们原始的特征空间大小是2，在这种情况下，且我们有三个类别，我们将3乘以2得到新的空间。我们就按照类别数复制特征空间。太好了。问题，嗯？
 
- You said psi of x on y incorporates the class into， the feature band。 Where is it in co-creature over here？ See this number here， 1， 2， 3。 That's the psi of x comma space。 This space is where the feature is where the class goes。 See psi xy。 So this is the slot for the class。 And how does that manifest itself？
+你说ψ(x, y)将类别包含到特征带中。那么它在哪里与协同特征相交？看到这里的这个数字了吗，1，2，3。那就是ψ(x, 空格)。这个空间是特征，类别在其中。看到ψ(x, y)了吗？所以这是类别的槽位。那么它是如何表现出来的？
 
- Depending on what class is here， we put the x1 and x2 in a， different position。 More questions？
+根据这里的类别，我们将x1和x2放在不同的位置。更多问题？
 
- Yeah？ [INAUDIBLE]， OK。 Is this equivalent to--， sorry， I say it one more time？
+是吗？[听不清]，好的。这个等价于--，抱歉，我再说一遍？
 
- So this is great all the combinations of x and y。 All combinations of the features of x and y。 And all the different categories of uy。 Yes。 Yes， OK。 So and then your--。 you kind of got to just 1 and 0。 1， you say x then。 Category， so y is the right combination。 OK。 And then the strong regression of interaction of uy， the top， of y， and the major， the aperture。 OK。
+所以这太好了，所有的x和y的组合。x和y的所有特征组合。以及所有不同的uy类别。是的。是的，好的。那么接下来，你--。你基本上得到了1和0。1，你说x，然后。类别，所以y是正确的组合。好的。然后强回归是uy交互的，y的顶部，主要的，开口。好的。
 
- So suggesting maybe we could do like logistic regression， or something？ Or linear regression。 And what would the response that we're trying to predict， be 0 or 1， depending on--。 I mean 1 or negative 1。 1 or negative 1。 OK。 So if I think what you're suggesting。 correct me if I'm， wrong， is what if we took our problem， and we reformulated it as follows。
+所以，是否可以建议我们做类似逻辑回归，或者其他什么？或者线性回归。我们试图预测的响应是什么，是0还是1，取决于--。我是说1或者-1。1或者-1。好的。如果我理解你在建议的内容，纠正我如果我错了，那么如果我们把我们的这个问题重新表述成如下形式，会怎样。
 
- Every xy pair gets recast as xy is the input。 And the output is plus 1 because that xy actually。 happened， plus 1。 And maybe you would make up some artificial examples。 of xy pairs where it's xy prime。 And the label would be negative 1。 And then you try to separate the ones that happen， from the ones that didn't happen。 Yeah。
+每个xy对都会重新构建，xy作为输入。输出是+1，因为这个xy实际上发生了，+1。也许你会制造一些虚拟的xy对，其中是xy'。标签将是-1。然后你尝试将发生的与未发生的分开。是的。
 
- [INAUDIBLE]， And the features are this very obvious interaction。 between the original features and the classes。 So the feature space is certainly。 the interaction between the original features on the class。 That's for sure。 Now。 whether it's equivalent， I haven't actually， completely defined what we're--。
+[听不清]，特征是这个非常明显的交互作用。原始特征和类别之间的交互。因此，特征空间肯定是原始特征和类别之间的交互。那是肯定的。现在，是否等价，我实际上还没有完全定义我们--。
 
- we haven't defined the learning method yet， so I can say it's equivalent or not。 I would say based on the idea that we're making， negative examples in this setting。 it may not be equivalent。 [INAUDIBLE]， Yeah， yeah， I don't think--， I mean， maybe。 I don't think-- I don't see that necessarily。 Maybe it is。 It's interesting。 OK。
+我们还没有定义学习方法，所以我不能说它是否等价。我会根据我们在此设置中所做的负面示例来判断。它可能不是等价的。[听不清]，对，嗯，我不认为--，我是说，也许吧。我不认为-- 我不一定看到那种情况。也许它是。很有趣。好的。
 
- It would still depend on what your final thing is， logistic regression or linear regression。 Yes？
+这仍然取决于你最后的模型是逻辑回归还是线性回归。对吗？
 
- [INAUDIBLE]， [INAUDIBLE]， What's that？ You said one for all？ Yeah。 Actually。 you have a final solution， to write for the hyperplane because every constant。 would apply by day that you dissolve， so you're up most of the correct。 It would apply W plus--。 would apply by 3/4， it's also your best solution， right？ OK， so you're talking about finding this W。
+[听不清]，[听不清]，那是什么？你说“一体适用”？是的。其实，你有一个最终的解，要为超平面写出，因为每个常数都会按你解算的方式应用，所以你大致是对的。它会应用W加上——会按3/4应用，这也是你最优的解，对吧？好的，所以你是在谈论找到这个W。
 
- Yes。 OK， go on。 You can apply， for example， W1 for my 2， my 3， my 4。 It's also your best solution。 right？ Yes。 Because you have a kind of type of solution。 Yes。 So imagine that you're running once。 your algorithm， and your delay of W1 is 1 if 1。 And in another situation， it's true。 It could change the W length。 And you can change the score according to your simulation。
+是的。好的，继续。你可以应用，例如，W1给我的2、3、4。它也是你最优的解，对吧？是的。因为你有一种类型的解。是的。所以假设你运行一次你的算法，而你的W1的延迟是1如果是1。在另一种情况下，是真的。它可能改变W的长度。然后你可以根据模拟结果改变得分。
 
- because you're with your brand SEM algorithm。 You have an old poem about what's， the lane cost W1。 2， and 3。 You're saying W1， 2， and 3。 Oh， I see。 So you mean your SEM solves for W。 and you're saying you don't have any control on W1， 2， and W3， and if it's-- OK， this is true。 They're not going to all be 1 like they are here。 But if you change the-- you know， the first time。
+因为你在使用你自己的品牌SEM算法。你有一个关于W1、W2和W3的旧诗。你说W1、W2和W3。哦，我明白了。所以你是说你的SEM求解W，而你说你无法控制W1、W2和W3的值，如果它是——好的，这是真的。它们不会像这里一样全是1。但如果你改变——你知道，第一次的时候。
 
- that you're rough， if the lane of W1 could be 10， and then another one could be 20。 and it could be 30。 And how can you compare because through the simulations。 could be different type of cost force？ So you're saying that--。 so the question or claim is that we can run--， I haven't even specified the method yet。
+你说得对，如果W1的长度可以是10，然后另一个可以是20，再另一个可以是30。那么你怎么比较呢？因为通过模拟，可能会有不同类型的成本力？所以你是说——所以问题或主张是我们可以运行——我甚至还没有指定方法。
 
- but suppose eventually we have an optimization problem。 and we're going to find W by minimizing some objective， function as we usually do。 And what you're saying is that you're saying--， OK。 You said because the length of the individual W1， W2， and W3， vectors don't matter for the--， OK。
+但是假设最终我们有一个优化问题，我们将通过最小化某个目标函数来找到W，就像我们通常做的那样。你说的是——好的。你说，因为单独的W1、W2和W3的长度对——不重要，对吧？
 
- this is already not quite true， right？ Because when we change the lengths of these。 the regions change。 Yes， that's exactly what I'm saying， because I could look by， for example。 dot dot dot 10 to 10， by 10， you know？ And you could have different solutions， but it's the same。 Hyperplan that's separating--， but--， yeah， these are not-- well， that's the point。
+这已经不完全正确了，对吧？因为当我们改变这些的长度时，区域会发生变化。是的，这正是我在说的，因为我可以通过举例来看，像是点点点 10 到 10，乘以 10，你知道吗？你可能会有不同的解，但它是相同的。分隔的超平面——但是——是的，这些不是——嗯，这就是关键。
 
- is that these are not going to be found based， on separating hyperplains。 That's-- yeah。 that's kind of how things--， so it's kind of exactly what we talked about here。 Well。 back on the separating hyperplane slide。 So-- anyway， I think we agree。 OK。 It's not-- we're not going to be finding separating hyperplains， because that-- yeah。
+这些是不会基于分隔超平面来找到的。那——是的，这就是我们在这里讨论的东西。嗯，回到分隔超平面的幻灯片。所以——总之，我认为我们达成一致。好的。我们不会找到分隔超平面，因为那——是的。
 
- it doesn't work。 All right， let's take a break， unless there's， another question before。 OK， break。
+它不起作用。好的，我们休息一下，除非在此之前有其他问题。好的，休息。
 
 ![](img/1a390db9ccea54fc27724ba4a0c0017c_4.png)
 
- [INAUDIBLE]， [INAUDIBLE]。
+[听不清]，[听不清]。
 
 ![](img/1a390db9ccea54fc27724ba4a0c0017c_6.png)
 
- [INAUDIBLE]。
+[听不清]。
 
 ![](img/1a390db9ccea54fc27724ba4a0c0017c_8.png)
 
- [INAUDIBLE]。
+[听不清]。
 
 ![](img/1a390db9ccea54fc27724ba4a0c0017c_10.png)
 
- [INAUDIBLE]， [INAUDIBLE]， [INAUDIBLE]， [INAUDIBLE]， [INAUDIBLE]， [INAUDIBLE]， All right。 So we have-- we've gone through one way， and each vector is fast enough to implement--。 so we've called it--， they've called it in the book， and it's called， the multi-sector。 and it's fine。 That's it。 From natural and processing。 So here， our input space is over--。
+[听不清]，[听不清]，[听不清]，[听不清]，[听不清]，[听不清]，好的。所以我们有——我们已经通过了一种方法，每个向量足够快速地实现——所以我们称它为——书中也称它为——它被称为多部门。没错。就是这样。来自自然语言处理。所以在这里，我们的输入空间是——。
 
- set them all over， and then we'll put them over。 Any output is going to be part of the amount of--。 now I'm going to add it to that， and the particle is going to--， [INAUDIBLE]， [INAUDIBLE]。 [INAUDIBLE]， [INAUDIBLE]， All right。 So， input space all possible words， output space。 these six parts of speech。 What kind of features would we make for x？
+将它们都放在一起，然后我们再放到一起。任何输出都将是数量的一部分——现在我要把它加到那个上面，粒子将会——，[听不清]，[听不清]。[听不清]，[听不清]，好的。所以，输入空间是所有可能的单词，输出空间是这六个词性。我们为 x 制作什么样的特征？
 
- You guys have done something like this before on homework， maybe。 What features might use for words if this is your goal？
+你们可能在作业中做过类似的事情，可能。你们会为单词使用什么特征，如果这是你的目标？
 
- Maybe native speakers should have some ideas， at least。 Okay， I have an idea。 What？
+也许母语者应该至少有一些想法。好的，我有一个想法。什么？
 
- Character engrams。 Character engrams。 All right。 Wow。 Better than what I was going to say。 Just put all character engrams in there， so of how long？ Length one， two， three， four， five。 Great。 That's the right approach。 I was going to say something really heuristic。 Like。 how about word ends in LY， or word ends in NESS？ But your approach is better。 Okay。 So features。
+字符 n-gram。字符 n-gram。好的。哇。比我打算说的还要好。把所有字符 n-gram 放进去，长度是多少？长度 1、2、3、4、5。太好了。这是正确的方法。我本来打算说一些非常启发式的东西。比如。单词以 LY 结尾，或单词以 NESS 结尾？但是你的方法更好。好的。所以特征。
 
- You could have the word itself as a feature of x。 How do you represent that？ You could use a。 We're just talking about it。 What do these things call？ Tell me variable representation。 But a particular dimension gets the value one if the word is hello。 and it gets the value zero otherwise。 It gives you a high dimensional space。
+你可以把单词本身作为 x 的特征。你怎么表示它？你可以使用 a。我们刚才在讨论它。它们叫什么？告诉我变量表示。可是如果单词是 hello，特定的维度就会得到值 1，否则它会得到值 0。这就给你一个高维空间。
 
- but it's a standard in natural， language processing。 All right。 So we have some of a few ends in features。 We have the word itself。 Is it that word feature？
+但这是自然语言处理中的一个标准。好的。所以我们有一些特征的结束部分。我们有单词本身。那是一个单词特征吗？
 
- So those are features of x。 And then， okay， we want to end up with features of x and y。 So we'll use our multi vector approach and just take the interactions， between those。 So we can write psi of x， y in terms of individual feature， functions， psi one through psi d。 each one determining the value of a， particular feature。 So here are a few examples。 So psi one。
+所以这些是 x 的特征。然后，好的，我们希望得到 x 和 y 的特征。所以我们将使用我们的多向量方法，并且只考虑它们之间的交互。因此，我们可以将 x，y 的 psi 表示为单独特征函数的形式，psi 一到 psi d。每个函数决定特定特征的值。所以这里有几个例子。比如 psi 一。
 
- the first entry， could be the word is apple and the class is， noun。 All right。 Word is run and classes noun。 These are features depending on x and y。 Word is run and classes verb。 All right。 So each of these gets a parameter， right？
+第一个条目，可能是单词是 apple，类别是名词。好的。单词是 run，类别是名词。这些是依赖于 x 和 y 的特征。单词是 run，类别是动词。好的。那么这些每个都有一个参数，对吧？
 
- For every entry of the class dependent feature vector we have an， entry in the parameter vector。 So when you think the w one， the first entry of w would be for， psi one。 Would it be large or small？
+对于每一个类别依赖的特征向量条目，我们在参数向量中也有一个条目。所以当你考虑 w 一时，w 的第一个条目应该对应于 psi 一。它会大还是小？
 
- This is， yeah。 Yeah， okay。 With lots of hand waving， we'll say that it's going to be large because。 it's correct。 Maybe run and noun， run can be a noun， but maybe less frequently than， verb。 So maybe this number is smaller than this one。 This is by no means precise because what happens is when you build a model there。 might be other ways to derive the same information。
+这个，嗯，是的。好的。经过大量的手势描述，我们可以说它会很大，因为它是正确的。也许 run 和名词，run 可以是名词，但可能比动词少见。所以也许这个数字比这个小。这一点并不准确，因为当你构建模型时，可能有其他方法可以得出相同的信息。
 
- And so just because this is correct doesn't necessarily mean it's going to。 get a positive weight because it might be giving positive weight somewhere else。 It's a little bit hard to predict， but at least intuitively we think that the。 weight would be higher for the ones that are correct and smaller for the ones that， are wrong。 Okay。
+所以仅仅因为这是正确的，并不一定意味着它会得到正权重，因为它可能在其他地方给出了正权重。预测起来有点困难，但至少直观上我们认为正确的权重应该更高，错误的权重应该更小。好的。
 
- All right。 So I just want to make sure we're 100% clear。 I think we're clear。 but I just want to make sure we're 100% clear on how we would， actually use this thing。 So suppose we've done training， which we still haven't quite said how we're going， to do。 and we've learned our parameter vector w， suppose it's like， you know。
+好的。我只是想确保我们百分之百清楚。我觉得我们已经清楚了，但我只是想确保我们百分之百清楚如何实际使用这个东西。所以假设我们已经做了训练，虽然我们还没有完全说明我们将如何进行训练，并且我们已经学会了参数向量w，假设它是这样的，你知道的。
 
- we have actual numbers of the parameter vector， and someone gives us an input， apple。 X is equal to apple。 And then how do we actually figure out the final prediction？
+我们有参数向量的实际数字，某人给我们输入，apple。X等于apple。那么我们如何实际上得出最终的预测呢？
 
- We're going to compute these， those compatibility scores by taking the inner。 product between w and the class specific feature vector。 So we have psi of apple noun。 psi of apple verb， psi of apple adverb。 Each of those gives us a vector。 We take the inner product of each of those with w。 Those inner products give us scores。
+我们将通过计算w与类特定特征向量的内积来计算这些兼容性分数。所以我们有apple名词的ψ，apple动词的ψ，apple副词的ψ。每一个都会给我们一个向量。我们将每个向量与w进行内积。这些内积给我们分数。
 
- We see which score is the highest。 That's the class we use。 That's the method。 Okay。 All right。 I just want to be sure。 All right。 So I'm going to talk about a different kind of feature。 I mean。 one thing you notice here is that this feature space is the size of the。 feature space is the size of your original feature space for x times the number of。
+我们查看哪个分数是最高的。那就是我们使用的类别。这就是方法。好的。我只是想确保。好的。那么我将谈论一种不同类型的特征。我是说，你在这里会注意到，这个特征空间的大小是你原始特征空间的大小乘以类别的数量。
 
- classes you have。 So if your classes， size of， if the number of classes you have is very large。 Your feature space really blows up。 So now we're going to talk about a feature that doesn't blow up that way。 We had it on one of the homeworks。 That's an optional TFIDF features。 So here。 a natural problem is we have a news article as an input。
+你有多少个类别。所以如果你的类别数量非常大，你的特征空间真的会膨胀。所以现在我们要谈论一种不会这样膨胀的特征。我们在其中一个作业中提到过它。那就是可选的TFIDF特征。所以这里的一个自然问题是，我们有一篇新闻文章作为输入。
 
- We want to figure out what class it is from a set of topics。 All right。 So our approach is going to be to look at the individual words and certain words are。 going to be indicative of certain topics and not of others。 So for instance。 maybe White House is indicative of the politics topic。 And because it shows up mostly in politics。
+我们想从一组主题中找出它属于哪个类别。好的。所以我们的方法是查看单个单词，某些单词会指示某些主题，而不会指示其他主题。例如，可能“White House”是政治主题的标志，因为它主要出现在政治领域。
 
- maybe not as much in the other ones。 Whereas the word "the" well。 that shows up a lot in all these topics， so it's not very， predictive。 And how do we capture that？
+可能在其他领域中出现得不多。而“the”这个词，嗯，它在所有这些主题中都会出现很多，所以它并不是非常具有预测性。我们怎么捕捉到这一点呢？
 
- So TFIDF is an approach。 The TF stands for term frequency。 which is nothing but the count of the number of times， a word shows up in a particular document x。 So TF of Wx is how many times the word shows up。 And then we want to control the fact that certain words show up a lot everywhere。 So we've got to normalize this thing。 So there's this thing called the document frequency。
+所以TFIDF是一种方法。TF代表词频，这不过是一个词在特定文档x中出现的次数。所以Wx的TF就是这个词出现的次数。然后我们要控制某些词在所有地方都出现得很多这一事实。所以我们必须对其进行归一化。因此，有一个东西叫做文档频率。
 
- which is a function of the word， and the class。 Everything can be a function of x and y。 So here。 this is a count of how many documents contain the word W that are not in class y。 So this is how do we figure this out？ We have to look at our training set。 If we find the feature。 we have to look at the training set， which is kind of interesting， but it's fair。
+这是一个关于单词和类的函数。一切都可以是x和y的函数。所以这里，这是一个计数，表示不属于类y的文档中有多少包含单词W。那么我们怎么弄明白这一点呢？我们必须查看我们的训练集。如果我们找到了这个特征，我们必须查看训练集，这有点有趣，但也是公平的。
 
- You can do anything you want with the training set。 It's clear。 so when we're testing out the document frequency for Wy， TF or Wy， we're going to look。 in the training set for all the documents not in y。 And see how many of those documents contain the word W。 So the final feature is almost the ratio。
+你可以随意操作训练集。很明显。所以当我们测试Wy的文档频率，TF或Wy时，我们会查看训练集中的所有不属于y的文档。然后看看有多少这些文档包含了单词W。所以最终的特征几乎是一个比例。
 
- It's the term frequency。 So the more often the word appears in the document is a stronger vote for that word。 And then we normalize it by how often how many other documents contained in that aren't the class。 To kind of downweight the impact of that word。 All right。 so this is used a lot for these types of text classification problems。 And this is just。
+它是术语频率（TF）。所以单词在文档中出现的频率越高，这个单词的投票就越强。然后我们通过该单词出现在其他文档中的频率来进行归一化，从而降低这个单词的影响。好的，这种方法在文本分类问题中经常被使用。其实就是这样。
 
- this is actually， I've never actually seen this particular TF idea。 This is what the textbook had。 It's usually， there's lots of different variations of it though。 You can go to Wikipedia。 it gives you like 25 different TF idea variations。 Different normalizations and stuff。 But this captures the idea。 So， so here's a question to see if we're getting it。
+这实际上是，我从来没有见过这种特定的TF思想。这是教材上说的。虽然通常情况下，有很多不同的变体。你可以去维基百科，它会给你列出25种不同的TF思想变体。不同的归一化方式之类的。但这个捕捉了核心思想。所以，接下来是一个问题，看看我们是否理解了。
 
- Suppose we have D words in our vocabulary and we have K classes。 And we have a TF idea feature for each word。 What's the dimension of psi？
+假设我们的词汇表中有D个单词，且我们有K个类。我们为每个单词都有一个TF思想特征。那psi的维度是多少？
 
- So how many TF idea features do we have？ What's the dimension of the vector？ Yeah。 so we want to say D times K。 But actually， here's the definition of TF idea for a single word。 And you'll see that it's just a number。 We don't have to have a separate dimension for every class。 We plug the class Y into this function and we get a number。
+那么我们有多少TF思想特征？向量的维度是多少？是的，所以我们想说是D乘以K。但实际上，这里是单个单词的TF思想定义。你会看到它只是一个数字。我们不需要为每个类设置一个单独的维度。我们将类Y代入这个函数，就能得到一个数字。
 
- And this number changes depending on which class we're using。 So a particular entry of the feature vector will change as we try out different classes。 So it's kind of this entry measures the compatibility between a particular word and each of the classes。 And the class that's representing the compatibility with changes as you feed in different Y's into the feature function。
+而且这个数字会根据我们使用的类而变化。所以特征向量中的一个特定条目会随着我们尝试不同的类而变化。所以这种条目衡量的是特定单词与每个类之间的兼容性。代表兼容性的类会随着你将不同的Y代入特征函数而变化。
 
- So I'm going to make an analogy here with the other type。 So let's go back to our NLP style feature function。 So here for every class and every word。 we have a different dimension that's either one or zero。 So the indicator for X being run and Y being noun and X being run and Y being verb。
+所以我这里打算用另一种类型做个类比。我们回到我们的NLP风格的特征函数。这里对于每个类和每个单词，我们有一个不同的维度，要么是1，要么是0。所以X是“run”且Y是名词，X是“run”且Y是动词的指示器。
 
- We plugged in different Y's。 True。 But the feature vector here was turning on zero and one in different entries in different coordinates。 So the analog， if we made a kind of TFIDF style， we would have -- that's a bug。 So we have this -- we would have a feature function called like X's run and then we would say when we plug in different Y's。 we would have -- there would be a score a number that changes depending on how compatible run is with the class Y。
+我们代入了不同的Y。没错。但这里的特征向量在不同条目和不同坐标的开关是0和1。所以类比一下，如果我们做一个TFIDF风格的特征，我们会有——那是一个bug。所以我们有这个——我们会有一个特征函数叫做X的运行，然后我们会说，当我们代入不同的Y时。我们会有——有一个分数，这个分数会根据“run”与类Y的兼容性而变化。
 
- So this would be the closest analog of what TFIDF is doing to this type of feature。 So why is it into the IDF part of the TFIDF？ Is this information of Y？
+所以这将是最接近TFIDF在这种类型特征中所做的类比。那么为什么它会进入TFIDF的IDF部分？这是关于Y的信息吗？
 
- It's on the IDF part of the TFIDF。 IDF depends on Y。 Yeah， IDF depends on the class part。 That's right。 So yeah， the class -- the Y part only enters into the feature in the normalization and the DF。 the document frequency part。 Good。 Okay。 All right。 Yes？ [ Inaudible ]。 So the arguments are X and Y， a particular Y， and a particular X。 [ Inaudible ]。
+它位于TFIDF的IDF部分。IDF取决于Y。是的，IDF取决于类别部分。没错。所以，是的，类别——Y部分仅在归一化和DF中进入特征。文档频率部分。好。好的。是吗？[听不清]。所以参数是X和Y，一个特定的Y，和一个特定的X。[听不清]。
 
- This subscript thing？ Yeah， sorry。 So it's -- this is confusing。 Apologies。 So I'm creating a particular feature function and I'm naming it -- the name of that function is X equals run。 So the word is run。 And then that's indicating -- like --。 I'm going to have a single dimension in my feature vector that corresponds to X equals run。
+这个下标的事？是的，抱歉。所以这是——这有点让人困惑。抱歉。所以我正在创建一个特定的特征函数，并且我命名它——那个函数的名字是X等于run。所以单词是run。然后那表示——像是——。我要在我的特征向量中有一个单一维度，代表X等于run。
 
- And this will -- it'll be a numeric score and that'll be what it is。 All right。 Okay。 So here's another approach which is more intuitive。 So suppose we have a huge number of classes。 So。 like， advertising。 Input is a user， maybe the context the user is in。 And then we're going to show them a lot of ads and we want to see what they click on。 Okay。
+而这将——它将是一个数字评分，就这样。好的。好的。那么这里有另一种更直观的方法。假设我们有大量的类别。所以。比如，广告。输入是用户，也许是用户所在的上下文。然后我们会展示很多广告，我们想看看他们点击了哪些。好的。
 
- So maybe there's a huge space of ads and we don't even have time to learn a lot about every ad because we get new ads all the time。 All of the ads disappear。 So rather than having to learn， like。 parameters for every -- separately for every ad， another approach is to featureize -- make a feature-ized representation of an ad。 So rather than just referring to an ad as， like， you know， ads number seven or ad number 28。
+所以可能有一个巨大的广告空间，我们甚至没有时间去了解每个广告，因为我们不断会有新广告。所有广告都会消失。因此，另一种方法是特征化——为广告做一个特征化表示。所以，不仅仅是把广告称为，像，广告编号七或广告编号二十八。
 
- which is kind of what we're doing for kind of the same way we're treating parts of speech。 So we're just unrelated entities that we know nothing about except it's particular class number or class name。 Here we're saying we can actually represent -- describe the label itself in a certain way。 So。 for example， so the input for a feature one would be， okay， the user X and the ad Y。
+这有点像我们处理词性的方法。所以我们只是一些互不相关的实体，除了它的特定类别编号或类别名称，我们对它们一无所知。在这里，我们说我们实际上可以以某种方式表示——描述标签本身。所以。例如，特征一的输入会是，好的，用户X和广告Y。
 
- so the ad number or something。 And the feature could be a one if user is interested in sports from some metadata we have about the user and the ad Y is relevant to sports。 Right？ So this feature we can learn about its importance from lots of ads。 Any ads that are relevant to sports would potentially fire this feature。 And any users that are interested in sports would be in this feature。
+比如广告编号或类似的东西。如果用户对体育感兴趣，特征可以是1，这些信息来自我们关于用户的一些元数据，并且广告Y与体育相关，对吧？所以这个特征我们可以从很多广告中学习它的重要性。任何与体育相关的广告都会触发这个特征。任何对体育感兴趣的用户都会出现在这个特征中。
 
- So this is where we're able to leverage characteristics of the label itself in the feature vector representation。 Okay。 Any questions about this？ If anybody asks you how to do ad targeting。 this might be a good way to think about it。 Like， you have some information about an ad and you have some information about a person and you want to see if they're compatible。 It helps to characterize the ad as well as the person。 [ Inaudible ]， Okay。
+所以这是我们能够在特征向量表示中利用标签本身的特征的地方。好的。对此有任何问题吗？如果有人问你如何做广告定位，这可能是一个不错的思路。比如，你有一些关于广告的信息，也有一些关于一个人的信息，你想看看它们是否兼容。帮助描述广告和人。这是[听不清]，好的。
 
- if your categories are not -- so in this -- so our categories are mutually exclusive right now。 If -- yeah。 So the question is what about non-mutually exclusive categories？
+如果你的类别不是——所以在这里——我们的类别现在是互斥的。如果——是的。那么问题是，如果类别不是互斥的怎么办？
 
- That's -- usually you can reframe that into mutually exclusive categories like sets of categories。 And then your Y is a set of sets or something。 And then the only question is how do you score how good one set is at approximate another set。 And this is how you get to things like multi-label。 You can see multi-label which I may be getting at as a complicated instance of multi-class except that the labels themselves are sets of things。
+那通常你可以将其重新构架为互斥类别的集合。然后你的Y就是一组集合，或者类似的东西。然后唯一的问题是，如何评估一个集合在逼近另一个集合时的表现。这样你就能理解像多标签问题。你可以看到多标签问题，我可能正要提到它，作为多类问题的一个复杂实例，唯一不同的是标签本身是事物的集合。
 
- Okay。 All right。 Okay， you guys ready for the multi-class SVM？ All right。 So first we can -- so SVM has this notion of margin and we can generalize this idea of margin to the multi-class framework。 So we're going to think about the margin between the correct class and every other class。 Right？
+好的。好的。好了，你们准备好多类SVM了吗？好的。首先我们可以——SVM有这个边际的概念，我们可以将边际的概念推广到多类框架中。所以我们将思考正确类和每个其他类之间的边际。对吧？
 
- So now because I have lots of classes。 So we'll say the margin of a prediction function H when predicting Y on the i'th example。 xi， yi。 We're inputted xi。 We want to predict yi。 Yi is the correct thing。 That's the right thing。 And then we're going to look at what's the margin between the score of the correct thing yi and the score of y which may be incorrect。 Right？ This Hxiy we want that to be the biggest score and this xiy we want that to be smaller whenever y is not equal to yi。
+现在，因为我有很多类。所以我们可以说，当预测Y时，预测函数H在第i个样本上的边际。xi，yi。我们输入xi。我们想预测yi。Yi是正确的事物。那是对的。然后我们要看正确事物yi的分数与可能是错误的y的分数之间的边际是什么。对吧？这个Hxiy我们希望它是最大分数，而这个xiy我们希望它较小，当y不等于yi时。
 
- So the difference， that's what we're going to call the margin。 And so we don't just have a margin on a particular example。 We have a margin between for an example and an alternative y。 So you have y in the subscript。 So m sub i is the example number to tell us which xiy pair to use。
+所以差异，就是我们将称之为边际的东西。我们不仅仅在一个特定的样本上有边际。我们在一个样本和一个替代y之间有边际。所以你在下标中有y。所以m sub i是示例编号，用来告诉我们使用哪个xiy对。
 
- Y is the thing that we're comparing it to。 The super margin is and H is our prediction function。 Should we sum over the y's as well？ Should we sum over the y's？ Yes。 We could take a sum over the y's and then you're saying penalize that？ Is this a suggestion？ No。 I mean this is all open field。 We can make up our own objective function。 Yeah。
+Y是我们正在比较的对象。超边际是，H是我们的预测函数。我们是否也应该对y进行求和？是否应该对y进行求和？是的。我们可以对y求和，然后你是在说要惩罚那个吗？这是建议吗？不。我是说这一切都是开放的领域。我们可以自行设计目标函数。是的。
 
- we can invent something so one proposal is let's penalize the sum of those differences。 That's been proposed。 There's a paper on that。 What would another possibility be？ Yeah。 so let's worry about the worst case difference。 What's the worst case difference？
+我们可以发明一些东西，所以有一个提议是，让我们惩罚这些差异的总和。这已经被提出过了。对此有一篇论文。还有其他可能性吗？是的。那么，让我们关注最坏的情况差异。最坏的情况差异是什么？
 
- The smallest difference is the bad one。 Well， for y not equal to yi， right？ So y equal yi is zero。 Let's look at the next worst one， the next one。 That's closest and let's try to make that as big as possible。 Margin speed big。 So you can just max， you can use sum of any other possibility。 Okay。 All right。 so we want this margin to be large and positive for all y not equal to yi。 All right。
+最小的差异是坏的。嗯，对于y不等于yi，对吧？所以y等于yi时是零。我们来看下一个最差的差异，接下来那个。它最接近，让我们尽量把它弄得尽可能大。边际速度大。所以你可以直接最大化，你可以使用任何其他可能性的和。好的。那么，我们希望这个边际对于所有y不等于yi的情况都足够大且为正。好的。
 
- so in terms of our linear spaces， we can just rewrite the h's in terms of the inner products。 The usual thing。 All right， so let's remember the binary SVM for inspiration。 We have W and R D。 We have our L2 regularization term。 We have this average of this hinge loss on the margin。 This is the binary。 Well， this is the margin and then we have the hinge loss on the margin。
+所以在我们的线性空间中，我们可以只通过内积来重新写h的形式。通常的做法。好的，让我们记住二分类SVM作为灵感。我们有W和R D。我们有L2正则化项。我们有这个边际上的合页损失的平均值。这是二分类。嗯，这是边际，然后我们有边际上的合页损失。
 
- Remember this plus I introduced that momentarily。 This basically takes the positive part。 All right。 so let's try to make an analog for a multi-class in the obvious way。 So multi-class SVM version one。 Looks really similar。 We have this margin notion and then now we have a margin for every alternative y。 So let's take the worst case hinge loss over all alternatives y。 Okay。
+记住这个加号，我稍后会介绍它。这基本上是取正的部分。好了，接下来我们尝试为多类问题做一个类似的类比。多类 SVM 版本一看起来非常相似。我们有这个间隔概念，然后现在我们为每一个可能的 y 都有一个间隔。所以让我们考虑所有可能的 y 中的最坏情况铰链损失。好。
 
- And that's our average loss and then we compare that to。 we regularize that and that would be SVM version one。 Yeah。 Multi-class SVM。 Is there a little more？
+这就是我们的平均损失，然后我们将其与……我们对其进行正则化，这就是 SVM 版本一。嗯。多类 SVM。还有更多吗？
 
- All right， so let's move on。 Well， you'll get to think about this again because we have slightly different version now。 So now one， another difference from binary classification is for binary classification。 it seemed like the obvious ultimate goal was zero one loss， right？
+好的，接下来让我们继续。嗯，你们将再次思考这个问题，因为我们现在有了一个稍微不同的版本。那么，另一个与二分类的不同之处在于，二分类问题中，似乎显而易见的最终目标是零一损失，对吧？
 
- You either get it right or you get it wrong and that's the you'd want to score on your test set。 But when you have multiple classes， it's not obvious if that's the case。 Maybe certain errors are worse than others， right？ Maybe if you， yeah。 you could just imagine certain classes have a larger penalty for confusing than other ones。
+你要么做对，要么做错，这就是你希望在测试集上得到的结果。但当你有多个类别时，情况就不那么明显了。也许某些错误比其他的更严重，对吧？也许，如果你，嗯，你可以想象某些类别之间混淆的惩罚比其他类别更大。
 
- And so we can introduce this delta。 So delta takes the actual label and your predicted label A for action space and it maps to a loss。 which is your target loss。 So this could be zero one or it could be something more general。 And then we can take this kind of target loss that we want to minimize and make that like our target margin。 So binary hinge loss， we're trying to get our margin to be at least one because greater than one。
+因此，我们可以引入这个 delta。delta 取实际标签和你预测的标签 A（在动作空间中的标签），然后它映射到一个损失，也就是你的目标损失。所以这个损失可以是零一损失，也可以是更一般的损失。然后我们可以将这种目标损失作为我们要最小化的目标间隔。所以二分类铰链损失，我们试图使我们的间隔至少为 1，因为大于 1。
 
- there's no penalty。 Remember that？ All right， so we carry the same thing over to multi class。 but now we can， we have a method to the madness of adjusting the target margin for each class pair。 So we can look at， we can put instead of a one， we can put this target loss or target margin delta yi y。 And this is a more standard form of the multi class SVM。
+没有惩罚。记得吗？好了，接下来我们将相同的做法应用到多类问题中。但现在我们有了一种方法，可以为每一对类别调整目标间隔。所以我们可以看，代替一个常数1，我们可以放入这个目标损失或目标间隔 delta yi y。这就是多类支持向量机（SVM）的一个更标准的形式。
 
- People want to make it a little bit more general。 Yeah。 [ Inaudible ]， Yeah。 so what's the use case of this？ I'll give a， a weak use case first and then I'll tell you a more important use case。 So first is just you have six classes and two of them are like really similar and hard to distinguish and even if you mix them up。 it's not that big a deal。 Okay， make delta small。 And then there's another class that's really different and it's a terrible mistake。
+人们希望让它更具普适性。嗯。[无法听清]，嗯。那么，这有什么用例呢？我先给你一个弱的用例，然后再告诉你一个更重要的用例。首先就是你有六个类别，其中两个类别非常相似且难以区分，即使你把它们弄混，也没有太大问题。好，令 delta 较小。然后还有另一个类别，它和其他类别有很大区别，混淆它是个严重的错误。
 
- You don't want that to happen。 Make delta large。 That's use case one。 I don't know in most practical situations， I don't see that happening very often that people actually have strong opinions that make them want to tune delta。 For that simple class classification。 But what we're going to maybe get to later is structure prediction。 Where now your output space is huge， exponentially large。
+你不希望那种情况发生。令 delta 较大。这是用例一。我不知道在大多数实际情况中，我并不常看到人们有强烈的意见，想要调节 delta。对于这种简单的类别分类来说。 但我们可能稍后会讨论结构化预测。现在你的输出空间非常大，呈指数级增长。
 
- An example would be take the part of speech tagging problem。 But let's do part of speech for an entire sentence at once。 So if your sentence is ten words long and we have forty parts of speech which is actually more typical in part of speech problems。 then what's the size of our output of our output space？ Forty to the tenth power。 Because in every。
+一个例子是，假设我们处理词性标注问题。但我们一次处理整个句子的词性标注。所以如果你的句子有十个单词，而我们有四十个词性，实际上在词性标注问题中更常见，那么我们输出空间的大小是多少？四十的十次方。因为每个。
 
- for every word we need to pick a part of speech out of forty parts of speech and then we have if the sentence is how long was it？
+对于每个单词，我们需要从四十个词性中选择一个词性，那么如果句子有多长呢？
 
- The sentence is ten words long， then we have ten different parts of speech to stick together。 So the possible set of outputs that we're producing are forty to the tenth power。 Which is really big。 Okay。 Now， I will claim that in that case it's much more obvious。 There are much more obviously good errors versus bad errors。 So for example。
+这句话有十个单词，那么我们有十个不同的词性来组合。所以我们生成的输出可能集合是四十的十次方。这个数字真的很大。好吧。现在，我声称在这种情况下，错误的好坏更容易看出。比如说，更容易明显区分出好的错误与坏的错误。例如。
 
- suppose you have your true part of speech labeling。 a sequence of ten parts of speech and then you have the one you predicted which is exactly the same except in one position。 I would claim that loss is much smaller than if you were wrong in every position。 Okay。 So that's a much more obvious situation where you want delta to adjust based on what you predicted and what's actually true。
+假设你有真实的词性标注。一组十个词性的序列，然后你预测的结果完全相同，只是在一个位置上有所不同。我会声称，这种损失要比你在每个位置都预测错来的要小得多。好的。所以这是一个更加明显的情况，你希望根据你预测的结果和实际情况来调整 delta。
 
- Do you buy that？ Do that convince anybody？ Now I think it's， I think that's。 talk about it after unless you have another question to follow up。 Okay。 Say again。 Yeah。 so we're looking basically for every y that we might confuse with yi。 We。 there's a certain badness to it and we want to make sure that the margin is suspecting that amount of badness。
+你理解了吗？这个说服任何人了吗？现在我想，嗯，我想那样说。除非你有其他跟进问题，否则我们之后再讨论。好的，再说一遍。是的。所以我们基本上在寻找每个可能与 yi 混淆的 y。我们……对它有一定的不良影响，并且我们希望确保边际能怀疑到这种不良影响。
 
- Okay。 So it's still a little bit of a geometric discussion。 So prediction。 Once again。 we're predicting which has the largest inner product between W and our class sensitive feature vector。 Great。 And this inner product， the prediction is not changed if we normalize W。 Right。 Because all of the inner products are scaled by same amount。 If we replace W by W over norm W， fine。
+好的。所以这仍然有点几何讨论。预测。再次强调，我们正在预测 W 和我们的类别敏感特征向量之间内积最大的那个。很好。并且这个内积，预测是不会因我们对 W 进行归一化而改变的。对吧？因为所有内积都按相同的比例缩放。如果我们将 W 替换为 W 除以 W 的范数，那也没问题。
 
- So let's assume W is norm one。 And the reason I like that is because then this inner product is just a projection。 Right。 So norm of W is one set falls out and we get psi x y， length of psi x y cosine theta。 So that's the projection of psi x y on W。 I drew a picture for you。 So here's W， length one。 Here's psi x y。 Let's start this thing about this for a second。
+所以假设 W 的范数是 1。我喜欢这样假设，因为这样内积只是一个投影。对吧？W 的范数是 1，常数就消掉了，我们得到 psi x y，psi x y 的长度乘以 cos θ。所以这是 psi x y 在 W 上的投影。我为你画了张图。这里是 W，长度为 1。这里是 psi x y。我们先停一下，思考一下这个。
 
- So psi x y basically takes an input and an output and embeds it in the same space as W。 Right。 So this is R2。 So psi x y is embedded in R2。 And then psi x y cosine theta。 That's the length of this thing here。 So I've written S。 All right。 So the score if W is norm one。 which is reasonable to assume， is the length of the projection of psi x y onto W。 All right。
+所以，psi x y 基本上是接受一个输入和一个输出，并将其嵌入到与 W 相同的空间中。对吧？所以这是 R2。psi x y 就是嵌入在 R2 中。然后，psi x y 乘以 cos θ。这是这个东西的长度。所以我写了 S。好吧。所以如果 W 的范数是 1，假设这是合理的，那么分数就是 psi x y 在 W 上的投影长度。好的。
 
- So then look at this。 So here I've， now that took us from the book。 it's quite a very professional looking。 So here we have three classes， y y prime and y double prime。 And we evaluate psi x y for each of them。 And we end up at three different points in our feature space。 Right。 So it's three different embedding points。 And now we have our W vector。
+所以看看这个。这里我，已经从书中拿出来了。它看起来非常专业。所以我们这里有三类，y，y prime和y double prime。我们为每一类评估psi x y。然后我们在特征空间中得到了三个不同的点，对吧？所以这是三个不同的嵌入点。现在我们有了W向量。
 
- And then the scores are the， are kind of how far away we are from the origin on。 in the direction of the W vector， so the projection。 And what they've drawn here is so psi x y that's the correct。 So why is the correct prediction？
+然后分数是，基本上是我们从原点在W向量的方向上有多远，所以是投影。而他们在这里画的是psi x y，这是正确的。那么，为什么这是正确的预测？
 
- And then here is y prime， which is the first incorrect prediction。 And we want the gap between these things to be at least delta y y prime。 So delta y y prime is kind of the target margin， our target loss。 And y double prime it should be bigger。 So， I don't know。
+然后这里是y prime，这是第一个错误的预测。我们希望它们之间的间隔至少为delta y y prime。所以delta y y prime是目标边距，我们的目标损失。而y double prime应该更大。所以，我不确定。
 
- intuitively what I think about is that you have this direction vector W。 And when you project all of your embeddings of the x's and y's onto W。 There's a natural ranking to the y's， right？ The one that's further out on W in the positive direction。 That's the one you're going to predict。 You're going to predict the question？
+直观上，我想的是你有这个方向向量W。当你将所有x和y的嵌入投影到W上时。y的排序是自然的，对吧？那个在W的正方向上更远的，就是你要预测的那个。你要预测那个问题吗？
 
- You're going to predict the one that's， here's the origin I guess。 You're going to predict the one that's furthest this way along W。 So we'll predict y， it's good。 And then there's a ranking kind of a hierarchy to the otherwise。 And we want to make sure that that ordering is correct。
+你将预测那个，这里是我的猜测来源。你将预测沿着W方向最远的那个。所以我们预测y，这样很好。然后其他的有一个排名的层级。我们要确保这个排序是正确的。
 
- And that the spacing is respective of the class density of loss functions we have。 Questions？ Yeah？
+而且这个间隔是相对于我们所拥有的类密度和损失函数的。有什么问题吗？是吗？
 
- [ Inaudible ]， Okay， hold on。 So normalizing the features。 The features。 so make the feature vectors so that they are nicely contained。 So the more closer to the W。 I mean that's how I see。 You size y points in a particular direction and W points in a particular direction。 So generally we take the case and psi x y would be both closer to the W。
+[听不清]，好的，稍等。归一化特征。特征。所以使特征向量如此它们可以很好地被包含。所以越接近W，我是这样看的。你在特定方向上给y点定向，W也指向特定的方向。所以通常我们会认为psi x y也会更接近W。
 
- But even the magnitude of psi， I mean the normal psi x y is making the vector so shouldn't they be non-related。 You don't want it to be a factor。 You can design psi x y however you want but once you design it。 you do not normalize the outputs。 Like you can build normalization into the definition of psi but then you fix psi and then you learn W and then you do not normalize psi after that。 That's clear。 Okay。 Same thing when we're doing any kind of linear regression or just a regression。
+但即使是psi的大小，我是说正常的psi x y正在使向量，所以它们不应该相关。你不希望它成为一个因素。你可以按任何你想的方式设计psi x y，但一旦你设计好了。你不再归一化输出。就像你可以在psi的定义中加入归一化，但之后你固定psi，然后学习W，之后不再归一化psi。明白了吗？好的。做线性回归或任何回归时也是一样的。
 
- If you want to normalize your features you can but you do that before you train your model and you use it through the normalization base just on training data。 Okay。 All right。 Any questions？ I think we have enough time to do an introduction to structure prediction which I think is pretty cool。
+如果你想对特征进行归一化，可以，但你需要在训练模型之前完成，并且你只在训练数据上使用归一化的基础。好的。好的。有什么问题吗？我想我们有足够的时间来介绍结构预测，我觉得这很酷。
 
- Yes？ Yes？ It's not inspired by it。 It's in spite of it。 It's instead of it。 But like。 were you trying to compare both sides versus all the others？
+是吗？是吗？它不是受它的启发，而是尽管如此。它是替代它的。但是，就像。你是在尝试对比两边与其他所有的吗？
 
- We're trying to figure out which of many classes is the correct class。 Because when you use the progress of the music， will you be better than the woman's soul or the other foot that uses the feature vector and extended feature vector in a way that compares all the souls。
+我们试图弄清楚哪些类别是正确的类别。因为当你使用音乐的进度时，你是否会比使用特征向量和扩展特征向量，比较所有类别的那种方法更好？
 
- Yeah， okay。 So the question is basically I motivated the talk by saying that I set up a strong argument that this one verse all fails so let's find something better。 What you're suggesting is that there are other ways to reduce multi-class classification to binary classification。
+对，好的。问题基本上是，我通过说我提出了一个强有力的论点，说明这个一对多方法（one vs all）失败了，因此我们要找到更好的方法来激励今天的讨论。你提出的建议是，有其他方法可以将多类分类降维为二类分类。
 
- I only gave one example。 Another example is called all verse all where you take all pairs of classes and you make a classifier to distinguish between any pair of classes。 And then you vote or do something like that to combine the results into a single prediction。
+我只举了一个例子。另一个例子叫做全对全方法（all vs all），你需要把所有类别的每一对都拿出来，为每一对类别建立一个分类器。然后你可以投票或做类似的操作来将结果合并成一个单一的预测结果。
 
- Another fancier way is you encode the classes with something called an error correcting code and you predict each bit of the error correcting code representing the class using a different binary classifier。 And that's cool and works well sometimes but yeah all those are reductions and I don't know that any is。
+另一种更高级的方法是用一种叫做纠错码的东西来编码这些类别，然后你使用不同的二元分类器来预测表示类别的每一位纠错码。这很酷，有时效果很好，但这些都是降维方法，我不知道是否有哪种方法是有效的。
 
- I'm not sure if they found if there is a reduction that's as good as multi-class。 I'm not sure about that's a good question but certainly the one we showed isn't and all pairs isn't either。 Okay。 Good question。 Does anyone know the answer？ Okay。 Alright so start with an example which I said verbally。
+我不确定他们是否找到了一种与多类分类一样好的降维方法。我不确定，这个问题很好，但肯定我们展示的方法并不是，所有对的方式也不是。好的，问题很好。有人知道答案吗？好的。那么，开始举个我之前口头讲过的例子。
 
- This is the actual part of speech tagging problem that you'll find in lecture two of an NLP class which I suggest you might want to take some time。 It's interesting stuff。 So the input is a sentence。 We've got a special token start at the beginning of the sentence。 He eats apples。 The input is X。 We'll denote the individual words by X。 X1 to X3。 And we want the output we want to give is a。
+这就是你在NLP课程的第二讲中会遇到的实际词性标注问题，我建议你可以花些时间去学习它。这是非常有趣的内容。所以输入是一个句子。我们在句子开始时有一个特殊的标记“start”。他吃苹果。输入是X。我们用X1到X3来表示单个单词。我们想要的输出是我们要给出的标签。
 
- is also a sequence of labels this time。 And this is a sequence of parts of speech。 So the output is Y and it too has， we can treat it as a sequence Y0 through Y3。 Okay。 Okay。 And what you should note is that the output space is huge。 So the number of parts of speech to the nth power or n is the length of the sentence。
+这次也是一个标签序列问题。而且这是一个词性序列问题。所以输出是Y，它也有，我们可以把它看作是一个从Y0到Y3的序列。好的，明白了。你应该注意的是，输出空间非常庞大。所以词性的数量是n次方，n是句子的长度。
 
- So I've only given a few parts of speech。 The classic part of speech problem is something like 40 parts of speech because they break things up into subcategories。 Which I mean truly exclusive。 Okay。 So what's the structure prediction problem？
+所以我只给了几个词性。经典的词性问题是像40个词性这样的东西，因为它们将事物划分为子类别。我的意思是，确实是排他性的。好的。那么，什么是结构预测问题？
 
- The structure prediction problem loosely speaking is a multi-class problem where the output space is huge。 And we also assume it has some structure。 So it's this structure that saves us from having to do an evaluation of the score function for 40 to the tenth power of different classes。
+结构预测问题，大致来说是一个多类问题，其输出空间非常庞大。我们还假设它有一定的结构。正是这个结构使我们不必对40的十次方个不同类别进行评分函数的评估。
 
- We can get around that using dynamic program。 So it's the dynamic programming part that we won't have time to talk about today。 But there's more to it than just that。 There's the problem。 So the structure in the part speech study problem is basically that we believe most of the information we need to use is about some input。 The first part of speech is either near the particular label of victim。
+我们可以通过使用动态编程来解决这个问题。所以这是动态编程部分，今天我们没有时间讨论它。但是这不仅仅是这样的问题。结构问题是这样的，词性研究中的结构问题基本上是我们认为大部分需要使用的信息是关于某些输入的。第一个词性通常接近受害者的特定标签。
 
- Is this the other particular label of victim？ So we're trying to find a part speech for a word in a sentence。 Most likely ignore what's going on five words that。 Okay。 Give me some information。 But a structure assumption that is to make this data。 Definitely。 So here's how we build a structure into the type of state。 We get everything。
+这是受害者的另一个特定标签吗？所以我们正在尝试为句子中的一个单词找到词性。最有可能忽略接下来五个单词的情况。好吧，给我一些信息。但是，一个结构假设是为了生成这些数据。没错。所以这是我们如何构建一个结构到状态类型的方法。我们获取所有信息。
 
- Those are called local pieces。 That's actually just my definition。 Maybe it's not there。 And then the book calls the type of out-of-the-sky type one。 Type one local pieces function。 So type one local pieces。 The only difference remember these things are now pieces of text and white。 We moved on to the part that's here。 So type one depends on the label at a single dimension。
+这些被称为本地片段。那实际上只是我的定义。也许它不在那里。然后书中将其称为类型的"out-of-the-sky"类型一。类型一本地片段功能。所以类型一本地片段。唯一的区别是记住这些东西现在是文本片段和空白。我们已经转到了这里的部分。所以类型一取决于单一维度的标签。
 
- We'll say white eye。 We'll type label。 And what produces a ten-unaccident。 That's a difference。 So okay。 So here's how we build a set of words。 So here's how we build a set of words。 So here's how we build a set of words。 So here's how we build a set of words。 So here's how we build a set of words。 So here's how we build a set of words。
+我们说白眼。我们将标签类型。并且什么会产生一个十字事故。那是区别。所以好吧。那么这里是我们如何构建一组单词的。这里是我们如何构建一组单词的。这里是我们如何构建一组单词的。这里是我们如何构建一组单词的。这里是我们如何构建一组单词的。
 
- And those are the only ones looking at some type words in the type of word。 And to look at any words we usually want， the X-O-M-N-T-X-I-Z。 And then these labels are the first ones。 These are type one。 And then type two is where we look at two adjacent labels。 So for instance。
+这些是唯一那些查看某种类型单词的人。为了查看我们通常需要的任何单词，X-O-M-N-T-X-I-Z。然后这些标签是第一个。这些是第一类型。然后第二类型是我们查看两个相邻标签的位置。例如。
 
- we'll just use the theta one。 There'll be one if the 3DS label is turned out and it's turned out to be a little bit。 And here's one of the 3DS labels where it's turned out。 So what do you think？ The， uh。 how to the parameter for this verb verb combo in the swab。 It's very unusual to have two verbs in the world。 Okay。
+我们就用theta一。会有一个，如果3DS标签被处理并且被处理成有点那样。这里是一个3DS标签，它已经被处理。你怎么看？呃，如何处理这个动词组合的参数呢？在swab中。世界上很少有两个动词出现在一起。好吧。
 
- So it leaves type two pieces that are encoding kind of the tenon between a adjacent label。 The fact that verbs don't very rarely occur right next to each other is a signal。 That if there's some word that seems like a， like for instance。 that's a computer program and you could call it like， you know， a run of the program。
+所以它留下了类型二片段，编码了相邻标签之间的某种联系。动词很少会紧挨着出现，这是一个信号。如果有某个看起来像是，例如说，计算机程序，你可以称之为，你知道，程序的运行。
 
- And then I could say， oh， the run run。 Right？ So that actually is。 that's not a verb or even if you just looked at the word， run and run。 It's not just a few my quotes words but when I say the run runs。 I know that actually the first one is now that is a verb。 And this fact is， second or verb。
+然后我可以说，哦，run run，对吧？所以那实际上是。那不是动词，或者即使你只看“run”和“run”这两个词。它不仅仅是几个我的引用单词，但是当我说"the run runs"时。我知道实际上第一个是，现在是动词。这个事实是，第二个是动词。
 
- we'll probably have a parameter diet。 It's like， yeah， it is。 Voting against this ever happened。 It's what lets me deduce that the run run is not for a verb。 Now。 [inaudible]， Right。 So we define local pieces somewhat like one， so much like two。 It's counter-mole with one long local piece of that just diet。
+我们可能会有一个参数列表。就像，是的，的确是。反对这从未发生过。正是这让我推断出run run不是动词。现在。[听不清]，对。所以我们定义本地片段有些像1，也有些像2。它与一个长本地片段的反向作用。
 
- So you can actually add some local pieces of diet。 It does look at any action that it wants but it only looks at why I'm at one of the vitamins。 It's a local piece of my choice。 And so our local compatibility works in the D。 What's most plenty or is fine。 You just multiply it from the standard exercise that we're going to do in the world。
+所以你实际上可以添加一些局部的饮食片段。它确实查看它想要的任何动作，但它只查看我在其中一个维生素的位置。这是我选择的局部片段。所以我们的局部兼容性在D中有效。大部分情况或者说很好。你只需从我们在这个世界中将要做的标准练习中进行乘法运算。
 
- And it's kind of locally how compatible the X and Y look。 So， some of it。 Even the X and Y want to figure out how compatible the label is。 Why is it the input？
+这基本上是在局部中，X和Y的兼容性如何看待。所以，其中一部分。即便是X和Y也想弄清楚标签的兼容性。为什么它是输入？
 
- And then with this is saying it， well I don't know about overall but it's like just look at the position Y。 in that region X and Y look， and how do we get it to the lower side of the lower side of the lower side？
+然后，这句话的意思是，嗯，我不清楚总体情况如何，但就看一下位置Y。在那个区域X和Y的关系，看，我们怎么才能把它移到最底层的最底层的最底层呢？
 
- So we add the lower side of the lower side。 So， how do we store it to the third sequence？
+所以我们添加了最底层的最底层。那么，我们如何将其存储到第三个序列中呢？
 
- Some of it will be higher on the lower side。 Some of it will be in the final。 What can you do to some of it in the final？ And now we have these some of these local piece of X。 All these piece of X are in our E。 With some in them you get a vector in our E。 You get another down there。 And we can call that side。
+其中一些会在较低的一侧更高。另一些会在最终部分。那么，怎么在最终部分处理其中一些呢？现在我们有这些X的局部片段。所有这些X的片段都在我们的E中。你得到其中的一些，你就能得到一个E中的向量。你会得到另一个在下面的。我们可以称之为侧面。
 
- And that's the piece of vector in the entire sequence。 The piece of vector in the entire sequence is the sum of the local piece of X。 And that's the sum of X and Y。 Now we are exactly in the multi class scenario。 There's nothing local left。 We have side Y which is our feature of the piece of notation that our comparison pairs into an output。
+这就是整个序列中的向量部分。整个序列中的向量部分是X局部片段的和。而这就是X和Y的和。现在我们正好处于多类别场景中。没有任何局部的部分了。我们有Y作为我们符号片段的特征，它将我们的比较对照成一个输出。
 
- And we can give it a regular， and then we can give it a regular and a regular and a class of。 The issue is given an X， find the Y with one of six。 We have to give it an R of X of all possible sequence。 Which we can't do as many in a new course way。 But you ever do an interview with Google or Facebook or the actual movie？
+我们可以给它一个常规，然后我们可以给它一个常规和一个常规以及一个类别的问题。关键是给定一个X，找到其中一个Y。我们必须给出一个X的R，包含所有可能的序列。这是我们无法通过新课程的方式做到的。但是你是否曾经和Google或者Facebook进行过面试，或者看过实际的电影？
 
- You'd be very， more or if you think problems are these dynamic programming publications。 And if you ever prepare for this novel set， the way to solve this non-cidation is very。 very straightforward。 So here I have some new science background。 Very simple。 Alright。 so now we talk about the party sequence box。 So you think why do we want GELP to be different for different characters？
+你会发现，更多的，或者说如果你认为这些问题是动态编程的发布。假如你曾经准备过这种新颖的设置，解决这个非一致性问题的方式是非常直接的。所以这里我有一些新的科学背景。非常简单。好了，现在我们来讨论派对序列框。你会想，为什么我们希望GELP对于不同的字符有不同的处理？
 
- We're able to do not think， oh， really good。 That's a still hand here。 We have this Y in a sequence and Y in a solution to how bad is by time。 One easy way to discuss it is how many conditionaries， how many different areas。 We look at the point 10， we look at the two different kind of labels and how many of them are along。
+我们能够做到不去想，哦，真的很好。这仍然是个手段。我们有这个Y在序列中，以及Y在解决方案中，时间上的差距有多大？一种简单的讨论方式是，有多少条件，有多少不同的区域。我们看10这个点，观察这两种不同标签，它们有多少个是相邻的。
 
- And that would be that。 That would be that。 And we set it up as a target as a part of the environment。 To generalize that to have actual different penalties。 So we see it says the hard part is sticking out of the target mask and why is it the right word。 And we see it sitting in our setup that allows us to solve this。
+然后就是这样。就是这样。我们将其设置为一个目标，作为环境的一部分。为了将这一点推广到具有实际不同惩罚的情况。所以我们看到，它说困难的部分是从目标掩码中脱颖而出，为什么它是正确的词。我们看到它坐在我们的设置中，允许我们解决这个问题。
 
- Side breaks down to the sum of local things and we depend on the second character。 And that's what allows us to use the dynamic。 How many people here are something that's going to be？
+侧面可以分解为局部部分的总和，我们依赖于第二个字符。这就是我们能够使用动态处理的原因。这里有多少人是准备做这件事的？
 
- I don't know。 What happens？ Great。 So the place will really learn this。 In front of the representation。 Maybe we'll do it。 We'll do it。 This is the answer。 So any questions？ That's my last question。 Yeah。 You want you guys to be。 Thank you。 Thank you。 [inaudible]， [inaudible]， The question is allowing us to all act and load something up inside the bloody rail。
+我不知道。发生了什么？太好了。那么这个地方就真的能学到这个。面对展示。也许我们会做。我们会做的。这就是答案。那么有任何问题吗？这是我最后一个问题。是的。你们想要怎么样。谢谢。谢谢。[听不清]，[听不清]，问题是让我们都能行动，并在这该死的轨道内加载一些东西。
 
- So we could have access to exponentially different subset of X， but we don't have to use them all。 And in fact， typically use only a small window of X around the time。 You can find sci-hats or something like that。
+所以我们可以接触到X的指数级不同子集，但我们不需要全部使用。事实上，通常只使用X周围的一个小窗口。你可以找到类似科幻帽子这样的东西。
 
 ![](img/1a390db9ccea54fc27724ba4a0c0017c_12.png)
 
- Another question？
-
-
+还有问题吗？
 
 ![](img/1a390db9ccea54fc27724ba4a0c0017c_14.png)
 
- [inaudible]。
+[听不清]。
 
 ![](img/1a390db9ccea54fc27724ba4a0c0017c_16.png)
-
-
 
 ![](img/1a390db9ccea54fc27724ba4a0c0017c_17.png)

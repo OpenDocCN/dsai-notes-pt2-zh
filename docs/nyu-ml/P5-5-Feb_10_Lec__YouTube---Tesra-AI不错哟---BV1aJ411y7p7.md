@@ -1,475 +1,473 @@
 # P5：5.Feb_10_Lec__YouTube - Tesra-AI不错哟 - BV1aJ411y7p7
 
- So the main topic for today is support vector machines。
+今天的主要话题是支持向量机。
 
 ![](img/699ee5803e89d940b0d5771a1d623770_1.png)
 
-
-
 ![](img/699ee5803e89d940b0d5771a1d623770_2.png)
 
- But along the way， we're going to talk about some other things we're going to talk about。 loss functions。 Today， for the first time， we'll discuss loss functions that are not square loss。 right？ Things besides regression。 And we'll do kind of a almost self-contained unit on， well。 very introductory unit on， convex optimization and Lagrangian duality。
+但在这个过程中，我们还会讨论一些其他内容，我们会谈论损失函数。今天，我们将首次讨论不仅仅是平方损失的损失函数，对吧？不仅仅是回归损失。我们还将进行一个几乎自成一体的单元，关于凸优化和拉格朗日对偶性，算是一个非常入门的单元。
 
- which are very useful tools in their own right。 They'll kind of make accessible a lot of more advanced literature and methods in machine。 learning。 And for our purpose， they'll help us gain a lot of insight into the support vector machine。 itself and what its properties are。 So it'll be kind of a little mini lecture in the middle on optimization。 and then we'll， go to support vector machines at the end。
+这些工具本身非常有用。它们将使你能够接触到更多高级的文献和机器学习方法。对于我们的目的，它们将帮助我们深入了解支持向量机本身及其特性。因此，它会是一个关于优化的小讲座，然后我们将在最后讨论支持向量机。
 
- And we're going to start with the discussion of loss functions。 All right。 so let's start with regression。 So far， we've only really spoken about regression concretely。 And a regression of loss function， yes， it takes a prediction y hat and the actual value， y。 These are real numbers， as we've dealt with so far。
+我们将从损失函数的讨论开始。好的，首先我们讨论回归。到目前为止，我们只具体讨论了回归。回归损失函数，没错，它接受一个预测值ŷ和实际值y。这些是实数，就像我们到目前为止所处理的。
 
- And most of these regression loss functions can be written in terms of the residual。 So the residual is defined as the difference between the true value of y and your prediction。 of y hat。 So yes， generically， the loss depends on y hat and y。 but we can write it as just a function， of the residual。 The residual would be the difference。
+大多数回归损失函数都可以用残差来表示。所以残差被定义为y的真实值和你预测的ŷ之间的差异。是的，通常情况下，损失依赖于ŷ和y，但我们也可以将其写成仅依赖于残差的函数。残差就是差异。
 
- So just to get you guys thinking， when might you not want to have a loss， a regression loss。 dependent on the residual？ Or might that not be capturing the type of thing you want to capture？
+让我们思考一下，当你可能不希望回归损失依赖于残差时会是怎样的情况？或者它是否没有捕捉到你想要捕捉的类型的东西？
 
- All right， to keep things moving along， suppose that error is kind of an initial percentage， error。 So if you predict 100， but the actual value is 50， in some sense you're off by a factor， of 2。 And if you predict 10， but the actual value is 5， you're getting off by a factor of 2。 And in some scenarios， it's the factor that you're off by， kind of the ratio that's more。
+好的，为了保持进度，假设误差是某种初始百分比，误差。所以如果你预测的是100，但实际值是50，从某种意义上讲，你偏差了一个倍数，即2。若你预测的是10，但实际值是5，那你偏差的也是一个倍数，2。在某些场景下，偏差的倍数，也就是这个比例，才是更重要的。
 
- important than the absolute value。 So these are things that keep in mind。 So often in those situations you can transform your y variable， like maybe with a log transform。 or something， to try to reduce it back to a form where the loss， again， depends just。 on the difference。 But I just wanted you guys to think about that a bit。 But generally speaking。
+比绝对值更重要。所以这些是需要记住的事项。在这些情况下，你通常可以对y变量进行变换，比如通过对数变换，或其他方式，尽量将其转回到一种形式，其中损失函数再次只依赖于差异。但我只是想让你们稍微考虑一下这个问题。总的来说，还是有很多可以思考的地方。
 
- the regression loss is dependent on the residual。 The square loss is the one we've dealt with so far。
+回归损失依赖于残差。平方损失就是我们迄今为止使用的损失函数。
 
 ![](img/699ee5803e89d940b0d5771a1d623770_4.png)
 
- And it's certainly what people usually use。 But there's some issues with square loss。 And it has to do with how robust it is to outliers。 So an alternative loss-- and we'll kind of think about both of these-- is called the。 absolute loss or the Laplace loss or the L1 loss。 So yes。
+这无疑是人们通常使用的方法。但平方损失存在一些问题，特别是它在对抗异常值时的鲁棒性。所以有一个替代的损失函数——我们将讨论这两者——叫做绝对损失，或者拉普拉斯损失，或者L1损失。是的。
 
- the same L1 as we saw for in Lasso as a regularizer。 But here we're using it as a loss。 So here's a little table。 For instance， on the far left we have a column of y hat。 These are our predictions。 So in these examples I'm saying we're always going to predict a 0。 And the second column is y。 And that's the true value of y。
+与我们在Lasso中看到的作为正则化器的L1相同。但在这里我们将其用作损失函数。所以这里有一个小表格。例如，在最左边，我们有一列y帽。这些是我们的预测值。所以在这些例子中，我说我们总是预测0。第二列是y。那是y的真实值。
 
- And then third column is what's the loss that we incur under absolute loss。 And the fourth last column is the square loss。 And what I want to note is that as the gap between y hat and y grows little by little。 the absolute loss grows-- well， it's exactly the same for difference， right？
+然后第三列是我们在绝对损失下产生的损失。第四列是平方损失。我想指出的是，当y帽和y之间的差距逐渐增大时，绝对损失的增加——嗯，差异是完全相同的，对吧？
 
- But the square loss grows much more dramatically， like the square。 And so what's the point？
+但是平方损失增长得更为剧烈，就像平方一样。那么重点是什么呢？
 
- The point is that if a single point that differs dramatically from our prediction can--。 so suppose the true value is 50 when we predict 0。 Whereas most of our other errors are around the range of 5。 So most of our errors are around 5。 But one particular point we're incurring kind of an absolute error of 50。 It's 10 times bigger。
+重点是，如果有一个与我们预测差异很大的单个点——假设真实值是50，而我们预测的是0。虽然我们其他大部分错误都在5的范围内。所以大部分错误都在5附近。但有一个特定的点，我们产生了大约50的绝对误差。它是10倍大。
 
- But if we have square loss， we get penalized 100 times as much， 25 to 100。 So square loss gives kind of a lot of attention to severe errors and kind of magnifies them。 And when you have your empirical risk， the average loss， it's going to be weighted very。 heavily to try to fix those extreme errors。 So you may say。
+但是如果我们使用平方损失，我们会被惩罚100倍，25到100。所以平方损失对严重的错误给予了很多关注，并且放大了它们。当你计算经验风险，即平均损失时，它会被很重地加权，以试图修正这些极端错误。所以你可能会说。
 
- that's good because you don't want extreme errors。 But on the other hand， once in a while。 you have an outline of your data， you have an error， in your data。 And this can-- the square loss can really affect your final prediction。 So let's look at some example。 So here we have data points on these black circles。 All right。
+这是好事，因为你不想有极端错误。但另一方面，偶尔你会遇到数据中的离群点，数据中存在错误。而这可能——平方损失可能会严重影响你最终的预测。所以让我们看一些例子。所以这里我们有这些黑色圆点上的数据点。好的。
 
- And we have two fits。 So there's， I don't know， 10 or 15 of these data points。 And we're doing linear regression。 The red line is the square loss using square loss。 This is the regression you guys are running at homework that we've been talking about。 And the blue line is using kind of an L1 loss。 And you'll see that the red line， the square loss。
+我们有两个拟合结果。所以有，我不知道，10个或15个数据点。我们正在做线性回归。红线是使用平方损失的回归。这是你们在作业中进行的回归，我们一直在讨论这个。蓝线是使用L1损失的回归。你会看到红线，平方损失。
 
- is pulled down quite a bit by these three， outlier points down below。 Whereas the L1 loss is not affected nearly as much。 The L1 loss。 it's almost going through the middle of these top points。 But let's pull down a little bit by the outliers， but nowhere near as much as the square loss。
+这三个离群点把它拉低了很多。而L1损失则没有受到太大影响。L1损失几乎穿过这些顶部点的中间。但它被离群点稍微拉低了一点，但远没有像平方损失那样影响这么大。
 
- So this is-- if you're in a situation where you have a lot of noise in your data or you。 worry about outliers， you might want to use something a little bit more robust than L2。 So robustness is the term we use to describe how effected a decision-- the algorithm is。 the learning algorithm is by outlier points， extreme outliers。 There are more formal definitions。
+所以这是——如果你处在一个数据中有很多噪声或你担心离群点的情况下，你可能希望使用比L2更鲁棒一点的方法。所以鲁棒性是我们用来描述一个决策——算法受离群点、极端离群点影响的程度的术语。这里有更正式的定义。
 
- That's good enough for our purposes。 All right。 So we have the L2 loss。 It's not robust in the way we just described。 The L1 loss is robust， but it's not differentiable。 That's a little bit annoying， as we've seen before。 Side bar。 the L1 loss is something called median regression。
+这对于我们的目的来说已经足够好了。好了。我们有了L2损失。它并不像我们刚才描述的那样具有鲁棒性。L1损失是鲁棒的，但它不可微分。正如我们之前看到的那样，这有点烦人。旁白，L1损失被称为中位回归。
 
- Then there's a nice compromise between a 1L2 called the Huber loss。 And I just want to mention it。 Excuse me， near zero loss， we have a quadratic loss。 It's kind of a blend between quadratic and linear。 And as your residual gets large。 the penalty is linear。 So we're not penalizing big errors with a quadratic loss。
+然后有一个不错的折衷方法，称为Huber损失。我只想提一下。抱歉，接近零时的损失，我们使用的是二次损失。它是二次损失和线性损失的混合体。随着残差变大，惩罚变为线性。所以我们并不会因为大错误而使用二次损失进行惩罚。
 
- Whereas close to zero with small residual， we do have a quadratic penalty。 And all in all。 it's smooth because it's a nice blend。 So it's differentiable。 So Huber loss seems like a win-win。 It's not used very often， I think， unless you're， in this scenario where you're very attentive to issues。 of robustness。 That's pretty much all that I have， to say about regression losses。
+接近零时，残差较小，我们确实有一个二次惩罚。总的来说，它是平滑的，因为它是一个很好的混合体。所以它是可微的。因此，Huber损失看起来是双赢的。它并不常用，我认为，除非你处在一个非常关注鲁棒性问题的场景中。差不多就是我对回归损失的所有看法了。
 
- I don't know very many others that are used in practice。 There's something called the Epsilon。 Sensitive Loss for Regression Loss。 But I don't think in most situations。 people need to go beyond these handful of losses for regression。 So let's move on to classification。 This is kind of the original thing， that one would think of as a learning problem。
+我在实践中不太知道有其他损失函数被广泛使用。有一种叫做Epsilon敏感损失的回归损失。但我认为在大多数情况下，人们无需超出这些回归损失函数。接下来我们来说分类问题。这是最初被认为是学习问题的那种情况。
 
- Does this picture have an animal in it or not？ Yes or no？ Classification。 So let's set it up in our usual way。 Our action space-- initially， we'll。 set our action space as negative 1 at 1 for the two classes。 The output space is， again。 negative 1 at 1。 And the most natural loss is the 0-1 loss。
+这张图片里面有动物吗？有还是没有？是与否？分类。那么我们就像往常一样设置它。我们的动作空间——最初，我们将动作空间设置为负1和1，表示两类。输出空间同样是负1和1。最自然的损失函数是0-1损失。
 
- Did we get the prediction correct or not？ Is our prediction f of x equal to y or not？ If it's not。 we get a loss of 1， and otherwise a loss of 0。 All right。 So a concept here that's nice。 Let's loosen it up a bit。 Let's allow ourselves to predict a real number instead。 of just negative 1 at 1。 Why-- you know， this is a combination of things。
+我们的预测正确与否？我们的预测 f(x) 是否等于 y？如果不等，我们得到损失为1，否则损失为0。好吧。这里有个不错的概念。我们稍微放宽一下。我们允许自己预测一个实数，而不仅仅是负1或1。为什么——你知道，这是几个因素的结合。
 
- like logistic regression or vector machines。 In general， we can use this a real number。 to encode a class simply by looking， if it's positive or negative。 So if we're predicting a number that's bigger than 0， that's equal to predicting 1 less than 0。 negative 1。 So that's a little relaxation we're going to give ourselves。 Now。
+比如逻辑回归或支持向量机。一般来说，我们可以使用实数来简单地编码一个类别，方法是看它是正数还是负数。所以如果我们预测一个大于0的数字，这就等同于预测1；如果小于0，就是预测-1。所以这是我们给自己的一些放松。现在。
 
- so now our action space is reals， and we can introduce some situation。 So in the classification situation， where we predict real values-- so f of x。 is the value we're predicting。 f of x， the value is called a score。 So f of x would also be known as a score function， in addition to being a decision function。
+所以现在我们的动作空间是实数，我们可以引入一些情况。那么在分类的情况下，我们预测实数值——所以 f(x) 是我们预测的值。f(x) 的值被称为分数。因此，f(x) 也可以被称为分数函数，除了作为决策函数外。
 
- And the idea is that the larger the score--， I mean， intuitively， we want a big score。 to indicate more confidence in our prediction， and a score close to 0 as being less confident。 Kind of be intuitive understanding of the score。 All right， so the score gives us the prediction。 and some confidence， hopefully。 And then there's something else， which， is very important today。
+这个想法是，分数越大——我的意思是，从直观上讲，我们希望一个大的分数表示对我们的预测有更多的信心，而接近0的分数表示信心较低。对分数的直观理解。好了，分数给了我们预测，和某种信心，希望如此。然后还有一些其他的东西，今天非常重要。
 
- called the margin。 And the margin is-- well， formally， it's， the class y times f of x。 Y， remember。 now is plus 1 or minus 1。 And f of x is our score。 And the product is the margin。 So what happens here？ So suppose the true class is 1， and we predict 10。 Margin is 10。 And if we predict 100 in the class， is 1， the margin is 100。 Now， what if we predict incorrectly？
+叫做边距。边距是——嗯，正式来说，它是类 y 乘以 f(x)。记住，y 现在是 +1 或 -1，而 f(x) 是我们的得分。它们的乘积就是边距。那么这里发生了什么？假设真实类别是 1，我们预测是 10，边距就是 10。如果我们预测 100，类别是 1，边距就是 100。现在，如果我们预测错了呢？
 
- Both of those were correct predictions， because our prediction was the same sign as the true class。 So if we predict negative 10， but the true class is 1， our margin is negative 10。 We predicted negative 100， and it's really 1。 Our margin is negative 100。 So you can see that margin， on the one hand， margin gives us whether we are right or wrong。
+这两者都是正确的预测，因为我们的预测和真实类别的符号相同。所以如果我们预测负 10，但真实类别是 1，我们的边距是负 10。我们预测了负 100，而它实际上是 1，边距是负 100。所以你可以看到，边距从一方面告诉我们是否正确。
 
- Because if we're wrong， the margin is negative。 If we're right， the margin is positive。 It also tells us how badly or how well we predicted。 So really， big negative number。 like negative 10， is-- well， negative 100 is a much worse error， than negative 10， potentially。 because it's， even more confidently wrong。 100 is a better prediction than 10。
+因为如果我们错了，边距是负的。如果我们对了，边距是正的。它还告诉我们预测的好坏。所以，实际上，大的负数，比如负 10，--嗯，负 100 是一个比负 10 更糟的错误，因为它更加自信地错了。100 的预测比 10 更好。
 
- and that it's more confidently right。 So we want to have big positive margin。 That's what we're going for。 Is that clear？ Yeah？ [INAUDIBLE]。 When we make a prediction between 0 and 1， yeah， so that's when we make a prediction between 0。 or negative 1 and 1， it's not a very confident prediction。 It's a small margin。
+而且它更自信地正确。所以我们希望有大的正边距。这就是我们的目标。明白了吗？嗯？[听不清]。当我们在 0 和 1 之间做预测时，是的，就是说，当我们在 0 或负 1 和 1 之间做预测时，这不是一个非常自信的预测。它是一个小边距。
 
- and it could either-- the prediction， itself can either be right or wrong， depending on， yeah。 if it's wrong， the right side of 0 or not。 OK。 All right， so we want to think in terms。 of maximizing the margin。 Margin's good， I think margin。 And just like regression losses， mostly。 can be written in terms of the residual， turns out most classification losses we use。
+它可能——预测本身可能对也可能错，取决于，嗯，是否在 0 的右侧。好了，接下来我们要思考的是如何最大化边距。边距是好的，我认为边距很好。就像回归损失一样，大多数分类损失我们都可以用残差来表示。
 
- can be written in terms of this margin， which， comes out to be pretty convenient。 So let's look at some。 So first， we have this 0， 1 loss， which I think I mentioned。 before is a very scenario is proven， to be like computationally intractable NP-hard。 So we don't know how to solve--， we don't know how to minimize the empirical risk， with the 0。
+可以用这个边距来表示，这非常方便。让我们看看一些例子。所以首先，我们有这个 0，1 损失，我想我之前提到过，这个场景已经证明是计算上不可行的 NP 难题。所以我们不知道如何解决——我们不知道如何最小化带有 0 的经验风险。
 
- 1 loss over even simple hypothesis spaces。 So-- and why， well， one reason， it's not convex。 Not differentiable。 It's difficult to work with。 It's pretty much a combinatorial optimization problem。 All right。 Nevertheless， we can look at the classification loss， in terms of the margin。 So we're looking at it once these plots today， so I'll take some time to explain it here。
+即使在简单的假设空间中，1 损失也很难解决。所以——为什么呢？一个原因是，它不是凸的，不可微分，很难处理。它几乎是一个组合优化问题。好了。不过，我们可以从边距的角度来看分类损失。所以我们今天看这些图，所以我会花一些时间在这里解释。
 
- On the x-axis is the margin。 And remember， positive margin is good。 That means we correctly classify it。 Negative margin is bad， incorrectly， class， but。 So the 0。 1 loss gives 0 penalty whenever， we have positive margin。 And a penalty 1 will make a negative margin。 Yeah。 All right。 So that's our 0。
+在 x 轴上是边距。记住，正边距是好的。这意味着我们正确地分类了它。负边距是坏的，分类错误。所以 0。1 损失在我们有正边距时不会有惩罚。负边距则会给出惩罚 1。明白了。好吧。这就是我们的 0。
 
- 1 loss in terms of the margin。 So now we're going to introduce our first loss。 that for classification that we might actually use， which is called the hinge loss or the SVM loss。 And this will be the focus of today's work later on。 So the hinge loss is--。 let's look at the picture first。 To the right of 1， when margin is 1 or larger。
+以间隔为基础的1损失。那么现在我们要介绍我们可能实际使用的第一个损失函数，那就是铰链损失或SVM损失。这将是我们今天工作后续的重点。那么，铰链损失——我们先看看图。对于间隔大于或等于1的情况，位于1的右侧。
 
- so it's good to correctly classify， and it's with some confidence， it's over 1。 we don't penalize it all。 Makes sense。 We got it correct。 So no penalty。 But as the margin decreases from 1， we get penalty and the penalty increases linearly。 as the margin gets worse and worse， as the margin gets more and more negative。
+因此，正确分类并且有一定信心时，间隔大于1，我们完全不惩罚它。合理吧？我们做对了，因此没有惩罚。但当间隔从1减小时，我们会受到惩罚，并且惩罚是线性增加的。当间隔变得越来越差，变得越来越负时，惩罚也会增加。
 
- So what is good to see here is that this hinge loss， is convex， it's convex function， which。 is going to help us with optimization。 And there's one little issue， which is not differentiable 1。 which is a bit of a nuisance， but we'll， have ways around that。 All right。 So that's the hinge loss。 Let's look at a few more losses。 OK。 So another loss you might have heard of is。
+所以这里看到的好消息是，这个铰链损失是凸的，它是一个凸函数，这将有助于我们进行优化。而且有一个小问题，就是它在1的地方不可微，这有点麻烦，但我们会有办法解决的。好了，这就是铰链损失。让我们再看看几个其他的损失函数。好吧，你们可能听说过另一种损失函数。
 
- logistic loss from logistic regression。 So if we write that in terms of margin， it looks like this。 And the takeaways here are that this is also convex。 It never stops penalizing you for margin。 So no matter how confidently and correctly you pricked it。 it's still a little bit non-zero in a loss， whereas the hinge loss hits zero and stays at zero。
+逻辑回归的逻辑损失。如果我们把它写成间隔的形式，看起来就是这样。这里的结论是，这也是凸的。它永远不会停止对间隔进行惩罚。所以无论你预测得多么自信和准确，它的损失总是会有一点非零，而铰链损失在零时就停住了。
 
- as the margin gets very large。 All right。 And it's also differentiable everywhere。 which is convenient for optimization。 So what about the square loss for classification？
+当间隔变得非常大时，好吗？而且它在任何地方都是可微的，这对优化非常方便。那么，平方损失对于分类来说怎么样呢？
 
- Have you guys heard about people trying， to use the square loss for classification？
+你们有没有听说过有人试图用平方损失进行分类？
 
- Sometimes people hear that and they're like， oh， it's terrible。 It's like the worst thing ever。 So let's dig in a little bit and see how bad it really is。 So what does it mean to use the square loss， for classification？
+有时候人们听到这个消息会觉得，哦，这太糟糕了，简直是最糟糕的事情。那么我们来深入探讨一下，看看它到底有多糟糕。那么，使用平方损失进行分类究竟意味着什么呢？
 
- So we're still predicting real values， still predicting scores。 And the output space is negative 1 and 1 as before。 But the loss is literally the square loss。 So y will always be negative 1 or 1。 And f of x will be a real value score。 And we look at the square difference。 So it turns out that this loss， which。
+所以我们仍然预测的是实值，仍然预测的是分数。输出空间仍然是-1和1，就像之前一样。但损失实际上就是平方损失。因此，y将始终是-1或1，而f(x)将是一个实值分数。我们看一下平方差。结果是，这个损失函数。
 
- is the standard regression loss， you can re-write it， as a margin loss。 You can work this out。 It's not too difficult。 So it turns out it's 1 minus-- it's the square of 1 minus， the margin。 Let's look at what that looks like。 So square loss， drawn as a function of the margin。 So that's interesting。 As we go far to the right， that means， we're doing really well。
+这是标准的回归损失，你可以把它重新写成间隔损失。你可以自己算一算，这并不难。那么，结果是1减去——它是1减去间隔的平方。让我们看看那是什么样子。平方损失，作为间隔的函数绘制出来。那么这很有趣。当我们往右走得很远时，意味着我们做得非常好。
 
- correcting correctly， confidently。 Square loss is penalizing us。 The square loss penalizes us even when we're doing very well。 It also penalizes us pretty aggressively when we're doing badly。 So I'm a little bit more concerned。 with what's happening to the left， the penalizing in our mistakes extremely aggressively。
+正确地纠正，充满信心。平方损失正在惩罚我们。即使我们做得很好，平方损失也会惩罚我们。当我们做得很糟糕时，它也会非常积极地惩罚我们。所以我更关心的是，左边的部分，惩罚我们在错误上的表现非常积极。
 
- Because this is similarly to square loss for regression。 This leads to a lack of robustness。 If there's an error in a class label in your training， data， for instance--。 and it's really a really obvious case。 And the classifier correctly predicts。 a positive class with great confidence， but the example is mislabeled。
+因为这与回归中的平方损失类似。这导致了缺乏稳健性。如果你的训练数据中有一个类别标签错误，比如——而且这个错误是一个非常明显的例子。而分类器正确地预测了一个正类，并且非常有信心地做出了预测，但这个示例被误标记了。
 
- So it's getting it wrong with large margin。 So that example occurs a huge penalty under square loss。 And that's going to affect the minimization。 It's going to have a large effect， not in a good way。 on the decision function we end up with。 So there may indeed be issues with the square loss。 for classification in the case of label noise， or these sorts of things。
+所以它是以大间隔来做出错误的预测。那样的示例在平方损失下会受到很大的惩罚。这会影响最小化过程。它会对我们最终得到的决策函数产生很大的影响，但不会是好的影响。因此，对于分类任务中标签噪声等问题，平方损失可能确实存在问题。
 
- There's a paper reference here which discusses it in more detail。 And they find that in general you require more samples。 when you use square loss for a classification。 Then you do， for instance， with logistic or the SVM。 So there might be some justification for people， to be horrified at using square loss for classification。
+这里有一篇论文引用，详细讨论了这个问题。他们发现，一般来说，当你使用平方损失做分类时，你需要更多的样本。相比之下，使用逻辑回归或支持向量机（SVM）时就不需要那么多。因此，人们对于使用平方损失做分类感到震惊，可能是有理由的。
 
- But I've seen worse。 It works。 It's not that crazy an idea。 All right。 any questions on loss functions？ Yeah。 [INAUDIBLE]， Well， the question is， why does this。 cause non-robusteness？ By robustness， what we mean is the extent。 to which a single example can really， have changed the outcome。 So there's a single example that's。
+但我见过更糟的情况。它是有效的。这个想法并不疯狂。好了，有关于损失函数的问题吗？是的。[听不清]，嗯，问题是，为什么这会导致不稳健性？所谓稳健性，指的是一个单一示例究竟能在多大程度上改变结果。也就是说，某个单一示例是这样的。
 
- an outlier， it's mislabeled， or something。 It can have a big effect because if it's particularly。 far out， that error is magnified by the square。 Yes？ Yes？ OK。 So it's a good question。 So one thing is， maybe you have a lot of data。 You have a hope to actually predict not just the class。 correctly， but the probability of the class correctly。 So when you use the logistic loss。
+一个异常值，它被误标记了，或者之类的。它会产生很大的影响，因为如果它特别远离，那种错误会被平方放大。是的？是的？好。这个问题很好。那么有一点，可能是你有很多数据。你希望不仅仅是正确预测类别，而是正确预测类别的概率。所以当你使用逻辑损失时。
 
- there's a way--， I don't have it on one of these slides--， there's a way to transform the score。 f of x， into a probability that actually will converge， to the probability of a particular class。 So that's a nice。 SVM does not have that property。 So that would be a trade-off between SVM and logistic。 And really， I've only given you two。
+有一种方法——我没有在这些幻灯片上——有一种方法可以将分数 f(x) 转换为一个概率，实际上它会收敛到某个特定类别的概率。所以这是一个优点。SVM 并不具备这个特性。所以这将是 SVM 和逻辑回归之间的一个权衡。而实际上，我只给了你们两种。
 
- that I endorse it off。 0， 1 can't be used， square， I don't suggest。 So far。 it's just between hinge and logistic。 The hinge loss has some nice properties。 that will come to a the end in terms of sparsity， in the final representation。 But that will be clear later。 Yeah？ [INAUDIBLE]， [INAUDIBLE]， So the question was-- so it's noted。
+我支持把它去掉。0，1 不能用，平方，我不建议。到目前为止，就只有 hinge 和 logistic 之间的比较。hinge 损失有一些很好的特性，最终会导致稀疏性，在最终的表示中。但这一点稍后会清楚。是的？[听不清]，[听不清]，所以问题是——是的，已记录。
 
- that the hinge loss is a strict upper bound to the 0， 1， loss。 And does that suggest we should be more inclined to use the hinge。 loss if we're only interested in whether classification is， correct or not， as opposed to logistic？
+hinge 损失是 0，1 损失的严格上界。那这是否意味着如果我们只对分类是否正确感兴趣，而不是对逻辑回归感兴趣时，我们应该更倾向于使用 hinge 损失呢？
 
- OK。 It's not obvious to me。 I'm not sure if there's theory playing in that direction。 That's a good question。 Yeah？ [INAUDIBLE]， [INAUDIBLE]， Oh， yeah。 I am。 It's--， [INAUDIBLE]。 [INAUDIBLE]， [INAUDIBLE]， [INAUDIBLE]， [INAUDIBLE]， [INAUDIBLE]。 The last left-hand side was more concerning for the outlier piece。 It's， I guess。
+好的，这对我来说并不明显。我不确定是否有理论朝那个方向发展。这个问题很好。是的？[听不清]，[听不清]，哦，是的。我是——，[听不清]，[听不清]，[听不清]，[听不清]，[听不清]。最后左侧更关心异常值的问题。我猜。
 
- I think I had it more。 But the right-hand side？ [INAUDIBLE]， [INAUDIBLE]， [INAUDIBLE]， [INAUDIBLE]。 Yeah。 That was just my understanding， is， that when-- that the penalty on the right。 would just engend on this courage， aggressive， confident scores。 One thing about the square loss。 though， is that the square loss， although it takes more samples。
+我认为我理解得更多了。但右边呢？[听不清]，[听不清]，[听不清]，[听不清]。是的，那只是我的理解，就是，当--右边的惩罚项，应该会影响到这些勇敢、激进、自信的分数。不过，关于平方损失的一点是，平方损失，尽管需要更多的样本。
 
- perhaps it does also give you a score function that， can be transformed into a probability。 All right。 Good questions。 So now let's jump into some optimization theory。 Danny。 do you guys do some prereading， prethinking？ Nice。 Nice。 All right。 So some of these slides are--。 there's some interesting nuggets in there， that you'll be able to follow to put your mind to it。
+也许它确实为你提供了一个评分函数，能够转化为概率。好了，好问题。那么现在让我们进入一些优化理论吧。丹尼，你们做过一些预读或者预思考吗？不错，不错。好了，接下来这些幻灯片有一些--里面有些有趣的内容，你们可以跟着理解，集中精力去思考。
 
- And some of them are very algebra-heavy， and they require kind of solving little equations。 And it's not that hard， but it's hard to see on the slide。 It's the type of thing that you need to take pen to paper， and work it out yourself。 So I'll try to alert you to--， this is a thing that you're just going to have to trust me。
+有些问题非常依赖代数，且需要解一些小方程。其实并不难，但在幻灯片上看不清楚。那是你需要拿起笔，自己推导出来的东西。所以我会尽量提醒你们--这是你们必须信任我，或者快速在脑海中解决，或者之后再解决的事情。
 
- or work really quickly in your head or work it out later。 And then some things you should be able to follow along with， and I'll try to tell you what's what。 So take a swig of your coffee， and let's go。 All right。 So convex optimization。 Why convex optimization？ Well， first， historically， the distinction。
+还有一些事情，你们应该能够跟得上，我会尽量告诉你们什么是怎样的。所以喝一口咖啡，咱们开始吧。好了，凸优化。为什么要做凸优化呢？首先，从历史上来看，这个区分。
 
- was more about linear programming， where we have an optimization problem that。 has a linear objective and linear constraints。 And those are the things we knew how， to solve， well。 like simplex algorithm， you might have heard of。 We can solve nicely。 And then the harder things were the nonlinear programs。
+更偏向于线性规划，我们有一个优化问题，具有线性目标和线性约束。这些是我们知道如何解决的，像单纯形算法，你可能听说过。我们能够很好地解决这些问题。然后更难的事情是非线性规划。
 
- And some of those were easy and some were hard。 And so it wasn't a very good split。 And more recently， the split that seems more sensible。 is between convex problems and non-convex problems。 And it's the convex problems that we have algorithms that。 we can solve to arbitrary precision and accuracy。 Whereas the non-convex problems are。 the ones that we don't really know how to solve。 And so that's the division that is more instructive these days。 So in any case， a lot of the theory， for solving convex optimization leads。 to nice algorithms that work in the convex setting。 And then they're transferred and applied anyway。
+有些问题比较简单，有些则比较难。所以那个划分并不太好。而最近，更为合理的划分是，凸问题和非凸问题之间的区别。我们有算法可以解决凸问题，能够达到任意精度和准确度。而非凸问题则是我们还不太知道如何解决的问题。因此，现在更有指导意义的划分是这个。无论如何，解决凸优化的很多理论，导致了很好的算法，这些算法在凸设置中能够很好地工作，然后这些算法就被转移并应用到非凸设置中，通常也能取得不错的效果。
 
- to the non-convex setting and often with good results。 So stochastic gradient descent， for example。 is applied-- it really works for convex problems， provably。 In the same sense。 it doesn't work for non-convex problems。 But in practice， it works well enough in the sense。 that it may not find the absolute global minimum。 And it almost certainly wouldn't in many situations。
+比如随机梯度下降，它应用于--实际上它对凸问题非常有效，并且是可以证明的。用同样的方式，它对非凸问题并不起作用。但在实践中，它仍然能取得足够好的效果，也就是说，它可能无法找到绝对的全局最小值，而且在很多情况下几乎肯定找不到。
 
- But it finds a local minimum that's， kind of good enough for a lot of problems。 So a reference I'm going to recommend， to you if you continue your study of convex optimization。 or even for this class is sport， abandoned burger， book， convex optimization。 It's got a lot of detail。 It's a little-- it's very well written。 The problem is it's thick。
+但它能找到一个局部最小值，这对于许多问题来说已经足够好了。所以，如果你继续学习凸优化，或者甚至是这门课程，我推荐你参考《凸优化》这本书，作者是 Sport，Abandoned Burger。它有很多细节，非常好写。问题是它有点厚。
 
- It's got a lot to go through to get to the tools that we need。 So I made a little cheat sheet。 It's like about 10 or 12 pages where， I extracted kind of the definitions and the theorems。 from the book that you need for kind of to get， to Lagrangian duality and the concepts that we need。 So you might look through that。 And you can cross-reference the book as needed。
+它有很多内容需要掌握才能到达我们需要的工具。所以我做了一张小抄，大约 10 到 12 页，其中提取了书中的定义和定理，这些是你需要的，帮助你理解拉格朗日对偶及我们所需的概念。所以你可以看看这些，并根据需要查阅书籍。
 
- These are posted on the website。 They use a little bit of a weird notation in the book。 I'll just alert you to it。 So they'll write a function F mapping from Rp to Rq。 And what they mean is F maps from potentially a subset， of Rp。 And they call that subset the domain of F， which， is correct terminology。
+这些资料已发布在网站上。书中使用了一些有点奇怪的符号，我只想提醒一下。它们会写一个函数 F，从 Rp 映射到 Rq。意思是 F 从 Rp 的某个子集映射过来。他们称这个子集为 F 的定义域，这是正确的术语。
 
- But just to alert you that they may have--， F may not be defined on all of Rp。 even if they write it in that way。 All right， so convex sets and convex functions。 I've mentioned convex many times， but we haven't actually defined it。 So let's do that。 So first。 a convex function has to live on a convex set。 So we start with convex sets。 In formly。
+但我只是提醒你们，它们可能有——F 可能并没有在整个 Rp 上定义，即使它们是这样写的。好了，凸集和凸函数。我提到过凸多次，但我们实际上还没有定义它。现在我们来定义。所以首先，凸函数必须定义在一个凸集上。所以我们从凸集开始。正式地说。
 
- a convex set is if you look at any two points， in the set， you connect the two points by a line。 The line lies by a line segment。 Those segment lies entirely inside the set。 So on the left。 it's convex。 On the right， it's not because here's， our segment that exits the set。 Let me connect that。 All right， convex function。 First of all。
+凸集是指，如果你在这个集内选择任何两点，你用一条线连接这两点。这条线就构成了一条线段，而这些线段完全位于集内。所以左边是凸的。右边不是，因为这里的线段出了这个集合。让我连接一下。好了，凸函数，首先。
 
- convex function must be defined on a convex set。 Then， kind of graphically， the definition。 would be if you draw a graph of a function， F， and you take two points on its graph。 you connect them by a line segment。 The graph lies on or below that line segment。 So this on the right would not be convex， because the graph goes above and below and the left。
+凸函数必须定义在一个凸集上。那么，图形上来说，它的定义是，如果你绘制一个函数 F 的图像，并且你选择图像上的两个点，你用一条线段连接这两个点。图像位于该线段的上方或下方。所以右边这个图形就不是凸的，因为图像既在上方也在下方，而左边是凸的。
 
- It is convex because for any two points you choose， the positive function is below the segment。 between those two points。 Yeah？ Yes？ Theta between 0 and 1 is that this is the mathematical way。 to express the line segment connecting this point to this point。 So if you work this out。 you'll see， that the set of all theta x plus 1 minus theta y， as theta ranges between 0 and 1 is。
+它是凸的，因为对于你选择的任何两个点，正函数都在这两点之间的线段下方。对吧？是吗？θ 在 0 和 1 之间，这就是用数学方式表达连接这个点和那个点的线段。所以如果你计算一下，你会发现所有 θx + (1-θ)y 的集合，随着 θ 在 0 和 1 之间变化，是。
 
- the set of points connecting them by a line segment。 Two and a half。 Roughly speaking。 it's a bowl shaped facing up。 That's a convex function。 So a few quick examples of convex functions。 This is called an affine function， ax plus b。 It's like a linear transform of variable plus some offset。 That's convex and concave。 By the way， what's concave？ We've defined convex。 Concave。
+连接它们的点的集合形成一条线段。大致来说，它是一个朝上的碗形。那就是一个凸函数。所以一些凸函数的快速例子。这个叫做仿射函数，ax + b。它像是变量的线性变换加上一些偏移。这是凸的也是凹的。顺便问一下，什么是凹的？我们已经定义了凸函数。凹函数呢？
 
- function is concave is the negative of the function， is convex。 So it's a bowl upside down。 it's in down。 How I know exponents are convex， absolute value， of x to the p。 exponential functions are convex。 Linear combinations of convex functions are convex。 Is that true？
+函数是凹的就是该函数的负值是凸的。所以它像一个倒扣的碗。它是向下的。如何判断指数函数是凸的，x 的绝对值，x 的 p 次方。指数函数是凸的。凸函数的线性组合是凸的。这是真的吗？
 
- That make a true or false statement。 Linear combinations of convex functions are convex false。 because minus， negative of a convex function is concave。 So that's not right。 Not negative combinations of convex functions are convex。 There you go。 And you can see the notes if you want it for more rules。
+这是对还是错的陈述？凸函数的线性组合是凸的，错。因为凸函数的负值是凹函数。所以这不对。不是所有凸函数的负组合都是凸的。就是这样。如果你需要更多规则，可以查看笔记。
 
- for combining convex functions and generating new convex， functions from old convex functions。 All right， strict convex， this is useful as well。 Function is strictly convex if that line segment lies。 strictly above the function itself。 So what's not strictly convex would be a line， for instance。 or-- yeah， basically if there's a linear part to the function。
+用于组合凸函数并从旧的凸函数中生成新的凸函数。好，严格凸性，这也很有用。一个函数是严格凸的，如果该线段严格位于函数本身的上方。那么不严格凸的函数可能就是一条直线，或者——是的，基本上如果函数有线性部分的话，它就不是严格凸的。
 
- So what does convex do for us in terms of optimization？ So here's the key thing。 In a convex function， if there is a local minimum， that local minimum is also a global minimum。 So you can't get into a local minimum。 And then over here， there's a further down local minimum。 for a convex function。 So that's key that lets us use things like these， to pass a gradient descent。
+那么凸性对于我们在优化中的作用是什么呢？关键点是，在一个凸函数中，如果存在局部最小值，那么这个局部最小值也是全局最小值。所以你不可能进入一个局部最小值，然后在另一个地方找到一个更低的局部最小值。对于凸函数来说这是不可能的。所以这是关键，让我们能够使用像梯度下降这样的算法。
 
- or gradient descent algorithms， because we're guaranteed that if we get stuck。 in a little local minimum， that's also a global minimum。 That's what gives us the power， yeah？ Yeah。 OK， the question is， what if we have a function that， looks like this。 a line decreasing and a flat and then， decreasing？ Like that？ OK， so it--， Oh， key。 Not convex。
+或者梯度下降算法，因为我们可以确保如果我们被困在一个局部最小值中，它也是全局最小值。这就是给我们带来能力的原因，是吗？对。好，问题是，如果我们有一个像这样的函数呢？一条先下降然后平坦再下降的曲线？是这样吗？好，那——哦，关键，不是凸的。
 
- right？ OK。 All right， so with yeah？ How does one have a non-unique global minimum？ Yeah。 OK。 Well。 the value of the function， the value of the global minimum， is the same。 but it's not attained at a unique point。 That's the-- that's that。 All right。 so we're going to present， kind of the general optimization problem in a certain sense。
+对吗？好。那么，怎么样才能有一个非唯一的全局最小值呢？是吗？好。那么，函数的值，全局最小值的值是相同的，但是它不是在一个唯一的点上达到的。这就是——就是这样。好，我们将展示一种意义上的一般优化问题。
 
- Here's the general optimization problem。 We're going to write as a minimization problem。 So minimize f0 of x， subject to--， we have some inequality constraints。 So f of x is less than or equal to 0， for how many of those we'd like。 And some equality constraints， h i of x is equal to 0。 And as many of those as we like。
+这是一般的优化问题。我们将其写成一个最小化问题。所以最小化 f0（x），受以下约束——我们有一些不等式约束。比如 f（x）小于或等于 0，取决于我们有多少个这样的约束。还有一些等式约束，h i（x）等于 0。我们可以有任意数量的这些约束。
 
- This is pretty much the most general optimization， formulation I've seen。 The x's are called optimization variables。 f0 is the objective function。 It's just the terminology here。 And then this is the domain issue that in their book。 we have to be alert to the fact that each of these functions。
+这几乎是我见过的最通用的优化公式。x 叫做优化变量。f0 是目标函数。这只是术语问题。然后这是书中的域问题。我们必须注意到每个函数的定义域。
 
- may be defined on some subset of Rd or whatever。 And we need to keep track of where these functions are defined。 In our case， they're always defined everywhere。 So it's not really an issue for us。 It's not learning to-- learning to it， for when you read the book。 OK。 So some more terminology。 The set of points satisfying the constraints， that's called the feasible set。
+可能在某个 Rd 的子集上定义，或者其他什么地方。我们需要追踪这些函数定义的位置。在我们的案例中，它们总是定义在每个地方。所以这对我们来说并不是问题。学习它并不是——学习它，是当你读书的时候。好。接下来是一些术语。满足约束条件的点的集合叫做可行集。
 
- So any x that satisfies all of these inequalities， and equalities as the feasible set。 A particular point that satisfies it， is called a feasible point。 There's a notion of an active constraint， and an inactive constraint。 Now this is interesting。 For these inequality constraints， we could have an x where f of x is strictly less than 0。
+所以任何满足所有这些不等式和等式的x，构成了可行解集。满足这些条件的一个特定点，叫做可行点。这里有一个关于活跃约束和非活跃约束的概念。现在这很有意思。对于这些不等式约束，我们可能会有一个x，使得f(x)严格小于0。
 
- And we could have it when it's actually equal to 0。 It's right on the border。 So if it's f of i of x is equal to 0， that's called an active constraint。 We're like right at the edge of the constraint set， for that constraint。 And that does actually have some relevance for us later on。 All right。
+当它实际上等于0时，它就在边界上。所以如果f(i)(x)等于0，那叫做活跃约束。我们就处在那个约束集的边缘。这对我们后面会有一些影响。好的。
 
- The optimal value of the optimization problem， is the smallest value of the function。 The objective function attains on the feasible set， instead of x set are in the feasible set。 And x star is an optimal point。 If the objective function of q is its minimum。 it's optimal value at x star。 All right。 So I want to make things a little bit simpler。
+优化问题的最优值是目标函数在可行集上取得的最小值，而不是在x集合中取得的最小值。x星是最优点。如果目标函数q的值为其最小值，那么它在x星处的值就是最优值。好了，我想让事情变得稍微简单一些。
 
- So I claim we can really get rid of the equality constraint， for our purposes。 So we have h of x equals 0。 That could be inequality constraint。 Now really you can write that as two inequality constraints。 h of x greater than equal to 0。 and h of x less than or equal， to 0。 So we can drop the equality constraints。
+所以我声称我们实际上可以去掉等式约束，基于我们的需求。所以我们有h(x) = 0，这可能是一个不等式约束。实际上，你可以将它写成两个不等式约束：h(x) ≥ 0 和 h(x) ≤ 0。所以我们可以去掉等式约束。
 
- Just by rewriting it as two inequality constraints。 All right。 OK。 All right。 So far so good？ Yeah。 [INAUDIBLE]， Well， that's a good question。 Yeah。 That's a good point。 This-- it's awkward to have strict inequalities， but it doesn't lead to kind of compact stats on what。 you're guaranteed to actually attain an optimum。 So there you really need to rely on your instant soups。
+通过将其重写为两个不等式约束。好的。好的。到目前为止怎么样？是的。[听不清]，嗯，这是个好问题。是的，这是个好点子。这个——严格不等式确实有点尴尬，但它不会导致你无法获得最优解。所以在这种情况下，你真的需要依赖于即时的最优性。
 
- Good。 I don't know。 Yeah。 Good question。 OK。 How many of you guys have heard of Lagrangians？
+好的。我不知道。是的。好问题。好。你们有多少人听说过拉格朗日？
 
- And Lagrangian multipliers then？ OK。 Good。 So this is part of that theory。 All right。 So here we now have the general， but now just， the inequality piece of the optimization problem。 And we find the Lagrangian of the optimization problem like this。 You have your objective f0x。 And then we have this linear combination， of the f by x functions， f constraint functions。
+那拉格朗日乘子呢？好。好的。这是那种理论的一部分。好了，这里我们现在有了一般形式，但现在仅仅是优化问题中的不等式部分。我们像这样找到优化问题的拉格朗日函数。你有你的目标函数f0x。然后我们有这个线性组合，包含了f(x)函数和f约束函数。
 
- where these variables in the linear combination， are introduced， lambda i's。 And they're called Lagrangian multipliers。 So we introduce a new Lagrangian multiplier， lambda i。 for every function that's giving us a constraint。 So it's a pairing between the constraint function。 and a new variable called Lagrangian multiplier。 Later they'll be called dual variables。 Awesome。
+其中这些在拉格朗日线性组合中的变量是引入的lambda i，这些叫做拉格朗日乘子。所以我们为每个给我们约束的函数引入一个新的拉格朗日乘子lambda i。所以这是约束函数和新变量（称为拉格朗日乘子）之间的配对。以后它们将被称为对偶变量。太棒了。
 
- All right。 So here's something pretty--， I find amazing about the Lagrangian-- is that it。 encodes the full problem in this function。 So how does that work？ All right。 So I claim that if you take the supremum of the Lagrangian。 over these Lagrangian variables of the Lagrangian function。
+好的。所以这里有一些我觉得关于拉格朗日非常令人惊讶的地方——它将整个问题编码进了这个函数。那么这是如何工作的呢？好的。我声称，如果你对拉格朗日函数的拉格朗日变量取上确界的话。
 
- we're going to get back something that pretty much tells us。 everything we had in the original optimization problem。 So let's take a quick look。 Suppose there's two cases。 X is either going to be in the feasible set。 or it's going to not be in the feasible set。 Let's first see what happens when x is in the feasible set。
+我们将得到的结果基本上告诉我们原始优化问题中的所有内容。那么让我们快速看一下。假设有两种情况。x 要么在可行集合中，要么不在可行集合中。让我们首先看看当 x 在可行集合中时会发生什么。
 
- So what happens with f of i of x when x is in the feasible set， with that set up？ Right。 With that set up， all of our constraints， are of the form f of i of x is less than or equal to 0。 less than or equal to 0。 So if x is feasible， then f of x is less than or equal to 0。 Now we're taking the supremum over landos。 So if f of x is negative and landos--， oh。
+那么当 x 在可行集合中时，f(i, x) 会发生什么？对吧？在这个设置下，我们所有的约束都是 f(i, x) ≤ 0 的形式。所以如果 x 是可行的，那么 f(x) 就是小于或等于 0。现在我们在对 lambda 取上确界。所以如果 f(x) 是负的，lambda 的结果...
 
- this notation is that we're taking， this supremum over landos of vector。 Landos of vector L1 through Lm。 And this means that each entry of the vector lambda。 has to be greater than or equal to 0。 That's the notation。 So if f of x is negative。 we can drive this whole expression。 It's only going to get smaller when lambda i's are bigger。
+这个符号表示我们正在对向量 lambda 取上确界。lambda 向量 L1 到 Lm。这意味着向量 lambda 的每个条目必须大于或等于 0。这就是符号表示。所以如果 f(x) 是负的，我们可以推动整个表达式。当 lambda i 增大时，结果只会变小。
 
- because if f of negative。 And we want to make the whole thing as big as possible。 So the best thing we can do if f of x is negative， is send lambda i equal to 0。 My best thing we can do， what I mean， is we're trying to figure out what the supremum is。 over lambda。 So we can make this function bigger， by sending lambda i to 0 in the case that f of x is negative。
+因为如果 f(x) 是负的，我们希望让整个表达式尽可能大。所以如果 f(x) 是负的，最好的做法就是将 lambda i 设为 0。我的意思是，最好的做法是我们正在尝试弄清楚上确界是什么。所以在 f(x) 为负时，我们可以通过将 lambda i 设为 0 来使这个函数增大。
 
- All right。 So if x satisfies all of the constraints。 then we're going to set all these lambda i's to 0。 And then this entire summation is going to be 0。 And we're going to be left with f of 0， of x for the supremum over lambda greater than or equal to 0。 All right。 So to summarize， if x is feasible， then the supremum is just giving us back。
+好的。如果 x 满足所有约束，那么我们将把所有这些 lambda i 设置为 0。然后整个求和结果将是 0。我们将得到 f(0, x) 对于 lambda 大于或等于 0 的上确界。好的，总结一下，如果 x 是可行的，那么上确界就是返回我们原来的结果。
 
- the objective function f of x。 What's cool is on the other hand， if x is not feasible。 then for at least one f of x is positive， if f of x is positive。 we can take the corresponding lambda， as big as we want going towards infinity。 And that makes this expression go to infinity。 And the supremum is indeed infinity。
+目标函数 f(x)。有趣的是，另一方面，如果 x 不是可行的，那么至少有一个 f(x) 是正的，如果 f(x) 是正的，我们可以让对应的 lambda 变得任意大，趋向于无穷大。这样会使得这个表达式趋向于无穷大。因此，上确界确实是无穷大。
 
- if x is not in a feasible set。 All right。 So in some sense， we're encoding x not being feasible。 by having this supremum return in infinity。 That's kind of neat。 And we can use this to rewrite our objective function。 So it's called a primal form of the object of the optimization， problem。
+如果 x 不在可行集合中。好的，从某种意义上讲，我们通过让上确界返回无穷大来编码 x 不可行。这是一个相当巧妙的方法。我们可以用这个来改写我们的目标函数。所以这被称为优化问题的原始形式。
 
- We have this supremum over lambda。 So this function， and now we take the infimum over x。 So of course， infinity will never， be the infimum over x。 So we're always going to choose x that's feasible。 because otherwise we get something that's infinity。 And if x is feasible， then the supremum。
+我们在 lambda 上取这个上确界。所以这个函数，现在我们对 x 取下确界。当然，无穷大永远不会是 x 的下确界。所以我们总是选择一个可行的 x，因为否则我们会得到无穷大。如果 x 是可行的，那么就是上确界。
 
- is just giving us f0 of x。 So this is kind of equal to the infimum over x。 being feasible of the objective。 So the Lagrangian gives us another way。 to write the same optimization problem。 In this infimum of a super form or minimum of a max。 it's kind of an interesting rewrite。 And in this form， it's very easy to introduce。
+这只是给我们 f0(x)。所以这在某种程度上等同于在 x 可行的情况下对目标函数取下确界。所以拉格朗日函数给我们另一种写同样优化问题的方法。在这个上确界的最小化或最大化的形式下，这是一个有趣的重写。在这种形式下，引入新内容非常容易。
 
- this notion of the dual optimization problem。 So the Lagrangian dual problem is where。 we take the same Lagrangian function， and we just swap the infimum and the supremum。 and the infimum for the super。 And what's amazing is that under certain circumstances。 these two solutions are equal。 What's also cool-- and we're going to prove it here--。
+这是对偶优化问题的概念。所以拉格朗日对偶问题是这样的，我们取相同的拉格朗日函数，然后交换下确界和上确界，交换下确界和超极限。令人惊讶的是，在某些情况下，这两个解是相等的。还有一个很酷的地方——我们将在这里证明这一点。
 
- it's very easy。 So this is something you should follow along with--， is that in all circumstances。 p* is greater than or equal to d*。 So the Lagrangian dual problem， the solution。 to the dual problem， when we swap the infinist 2， is always smaller or equal to the original problem。 the primal problem。 And this has some uses when you're doing optimization。
+这非常简单。所以这是你应该跟着做的——在所有情况下，p*大于或等于d*。所以拉格朗日对偶问题的解，交换下确界和上确界后的对偶问题，始终小于或等于原始问题，也就是原始问题。做优化时，这有一定的用途。
 
- to see maybe the dual problem is easier to solve， than the primal problem。 So it gives you your target because you， know your primal minimum will never。 be less than your dual maximum。 This the dual problem is actually， a maximization problem out front。 the supreme number。 So it's all right。 So let's work through this proof。
+这样你就可以看到，也许对偶问题比原始问题更容易解决。所以它为你提供了目标，因为你知道你的原始最小值永远不会小于你的对偶最大值。这个对偶问题实际上是一个前置的最大化问题，超极限值。所以没关系。接下来我们来做这个证明。
 
- It's called the weak max min inequality。 It's very easy， but kind of neat。 So the soup of a function of w and z， is always less than or equal to the infinist 2。 Prove it。 All right。 Let's choose any w0 and w and z0 and z。 And let's start in the middle here。 So if f of w0 is a0， let's go to the right。 Certainly fw0， z0 is less than or equal to fw0， z。
+它被称为弱极大极小不等式。非常简单，但很有趣。所以，w和z的一个函数的上确界，总是小于或等于下确界2。证明它。好了，让我们选择任意的w0和w，以及z0和z。我们从中间开始。如果w0的f值是a0，那就往右走。显然fw0，z0小于或等于fw0，z。
 
- where z is allowed to range over the entire set z。 Certainly the supremum overall z。 going put into that function， is going， to be bigger than a particular z0 in that same place。 So this right inequality is clear。 And the left one is the same way。 In the f of overall w。 it's certainly， going to be less than f of a particular w and z0。 All right。 So we sandwich fw0。
+其中z被允许在整个集合z上取值。显然，对于所有z的上确界，代入那个函数后，结果会大于某个特定的z0。在同一位置上，所以上边的不等式是显然的。下边的不等式也是一样的。在整个w的f函数中，显然会小于某个特定的w和z0的f值。好了。所以我们夹住了fw0。
 
- z0 between an infinist 2。 Now this whole claim holds for every w and every z。 So in particular。 it's going to hold， for the supremum overall the z's on the left。 and the infimum overall w is on the right。 And now we've got our proof。 [SIDE CONVERSATION]。 So we've just proved what's called weak duality。 So this applies to Lagrangian。
+z0介于下确界2之间。现在这个主张适用于每个w和每个z。所以特别地，它将在左边所有z的上确界和右边所有w的下确界之间成立。现在我们已经完成了证明。[旁白]。所以我们刚刚证明了所谓的弱对偶性。这个适用于拉格朗日。
 
- And we've proved that the dual， say， Lagrangian dual， which is just 2n， is less than or equal to n。 And what remains to be attained， what we want later。 is that it meant we want to find cases where they're equal。 And there's theorem that have very light conditions， for this equality to hold。
+我们已经证明了对偶，假设是拉格朗日对偶，它的值就是2n，少于或等于n。接下来要实现的目标，或者说我们接下来想要做的事情，是找到这些值相等的情况。而且有一个定理，在非常轻的条件下，能够保证这个等式成立。
 
- And we'll improve that theorem， but we're going to be using it。 So weak duality。 we've proved ourselves。 Great。 So far， we haven't used convexity at all。 All this is for a generic optimization problem。 So for convex problems。 we often have strong duality。 We just need a little bit some small conditions。
+我们将改进那个定理，但我们将在此基础上使用它。所以弱对偶性，我们已经证明过了。太棒了。到目前为止，我们还没有使用凸性。所有这些都是针对一般的优化问题。对于凸性问题，我们通常会有强对偶性。我们只需要一些小的条件。
 
- to get that strong duality。 So we'll come to that in a few slides。 Let's introduce this-- let's dig into this Lagrangian dual， problem a bit more。 So here's， again。 your soup and your inf of the Lagrangian。 And we're going to introduce some more terminology。 This function in the middle， this infimum of the Lagrangian。
+要获得强对偶性。所以我们将在接下来的几张幻灯片中讨论这个问题。让我们深入了解这个拉格朗日对偶问题。这里再次展示了你的拉格朗日函数和下确界。我们将引入一些新的术语。这个中间的函数，即拉格朗日的下确界。
 
- it's called the Lagrangian dual function。 And we often write it with a G， or we'll。 be writing it today with a G。 And what's it a function of？ So L is a function of x and lambda。 but we have the infimum over x。 So what's left is lambda。 So the Lagrangian dual function is a function of lambda， which is our Lagrangian multiplier。
+它被称为拉格朗日对偶函数。我们通常用G来表示它，或者今天我们将用G来表示它。那么它是关于什么的函数呢？L是x和lambda的函数，但我们对x求下确界。所以剩下的就是lambda。因此，拉格朗日对偶函数是lambda的函数，而lambda是我们的拉格朗日乘子。
 
- Or now we're going to start calling it also a dual variable， as the argument of the dual function。 And it's the infimum of the Lagrangian， like that。 So we have to find our Lagrangian dual problem。 We have our Lagrangian dual function。 And just as a reminder， this dual function。 can take on the value negative infinity。 When would the dual take on negative infinity？ OK。
+或者现在我们也将其称为对偶变量，作为对偶函数的自变量。它是拉格朗日函数的下确界。我们必须找到我们的拉格朗日对偶问题。我们有我们的拉格朗日对偶函数。提醒一下，这个对偶函数可以取负无穷的值。什么时候对偶会取负无穷呢？好的。
 
- I have an example here。 So as we move on， for the SVM， we're。 going to keep an eye out for when this dual function attains， negative infinity。 We're going to make sure we are careful in that case， and account for it。 So here's another way to write this weak duality， in terms of the Lagrangian dual。
+我这里有一个例子。接下来，对于SVM，我们要特别留意当这个对偶函数达到负无穷时的情况。我们将确保在这种情况下小心处理并进行考虑。所以这是另一种方式来表示弱对偶性，使用拉格朗日对偶的形式。
 
- I mentioned that the dual gives the lower， balance on the optimal solution because by weak duality。 again， OK。 All right， so let's do this slide and then take a break。 So Lagrange dual problem。 We have-- the problem is to maximize-- we can now write it， as the dual function--。 constraint to these Lagrange multipliers， lambda being greater than or equal to 0。
+我提到过，对偶提供了对最优解的下界，因为根据弱对偶性，依然是如此。好的。那么我们做完这一张幻灯片之后，休息一下。拉格朗日对偶问题。我们现在可以写成最大化问题，将其写成对偶函数的形式，约束条件为这些拉格朗日乘子，lambda大于或等于0。
 
- We say lambda is dual feasible if lambda satisfies。 these constraints and that g is not negative infinity。 We have the dual optimal value or dual optimal Lagrange， multipliers for this dual problem。 And why do we introduce it？ Well， in our case， for SVM， there's two main reasons。
+我们说lambda是对偶可行的，如果lambda满足这些约束，并且g不是负无穷。我们有这个对偶问题的对偶最优值或对偶最优拉格朗日乘子。为什么要引入它呢？好吧，在我们的SVM案例中，有两个主要原因。
 
- One is that the dual problem has a nice efficient solution。 It's not used as much anymore。 but in the early days of SVM， that was kind of the way to solve the SVM was using the method。 that applied to the dual formulation。 So something along these lines， it was a maximization problem。 It's supposed to a minimization problem。 And also in our case， what we'll talk about today is that。
+其中一个原因是对偶问题有一个高效的解法。现在使用得不多了，但在SVM的早期阶段，解决SVM的方式之一就是采用这种方法，应用于对偶形式。所以是类似这样的，问题是最大化问题，而不是最小化问题。今天我们将讨论的内容之一就是。
 
- through the dual， we can also reveal some interesting。 structure about the solution to the primal problem。 especially when we have strong duality when the two solutions， are the same。 And that's what we're going to be exposing， hopefully today。 Yeah， question？ Sure。 So。
+通过对偶，我们还可以揭示一些关于原问题解的有趣结构，尤其是在强对偶成立时，两个解是相同的。这就是我们今天希望展示的内容。对，问题？当然。
 
- two questions。 Is this problem exactly the original problem？
+两个问题。这个问题是原始问题吗？
 
- Is this problem equivalent to the original problem？ No， this problem is exactly the dual problem。 The dual problem is equivalent to the dual problem。 The solution to the dual problem is a lower bound， and the solution to the primal problem。 That's the weak duality。 When we have strong duality， the solutions are the same。
+这个问题是否等同于原始问题？不，这个问题正是对偶问题。对偶问题等同于对偶问题。对偶问题的解是一个下界，原始问题的解是弱对偶性。当我们有强对偶性时，解是相同的。
 
- The second question is the equation of the problem。 So there's no obvious reason。 Well。 one thing is that notice the constraints are of a simple form。 Originally。 constraints were arbitrary functions less than or equal to zero。 Now constraints are kind of these。 That's the same。 No， these are simple。 There's no function here。
+第二个问题是问题的方程式。所以没有明显的原因。嗯。有一点需要注意，约束是简单形式的。最初，约束是任意小于或等于零的函数。现在，约束是这样的。这个是一样的。不是，这些是简单的。这里没有函数。
 
- Just a value of being greater than or equal to zero。 So that's a simpler form， potentially。 But also， this is not the track we need to go， but whether or not the primal problem is convex。 the dual problem is concave。 So we can maximize it and it has a unique maximum。 Or it has any local maximum is a global maximum。 So that's helpful。 Okay。 Yeah。
+只是一个大于或等于零的值。所以这是一种更简单的形式，可能。但同样，这不是我们需要走的路线，而是原始问题是否是凸的。对偶问题是凹的。所以我们可以最大化它，并且它有一个唯一的最大值。或者它的任何局部最大值都是全局最大值。所以这是有帮助的。好的。是的。
 
- so if you have an optimization problem that may or may not be convex， the dual will be concave。 You can optimize that and that gives you a lower bound。 All right。 let's take a 10 minute break and we'll start writing it in 10。 So far。 what we've spoken about was the general optimization problem。
+所以，如果你有一个可能是凸的也可能不是凸的优化问题，对偶将是凹的。你可以优化它，这将给你一个下界。好了，休息10分钟，我们将在10分钟后开始写作。到目前为止，我们讨论的是一般优化问题。
 
- No discussion of convexity in the problem。 Now it comes in。 And the reason it comes in is because it gives us this strong duality with very few conditions。 So the convex optimization problem looks just like the general except now the functions f0 and the constraint functions。 fi are convex functions。 Okay。 So I just， you can look at this later。
+现在没有讨论问题的凸性。现在它开始进入。之所以它会进入，是因为它为我们提供了这种强对偶性，而且条件非常少。所以凸优化问题看起来就像一般问题一样，只是现在的函数f0和约束函数fi是凸函数。好的。所以我只是，你可以稍后再看这个。
 
- Not every convex function has strong duality。 Here's an example I pulled from someone's notes。 but there's these additional conditions that are needed to have strong duality for convex problems。 They're called constraint qualifications for whatever reason。 And so now we'll give these very nice sufficient conditions for strong duality in a convex problem。
+不是每个凸函数都有强对偶性。这里有一个例子，我从某人的笔记中提取的。但为了具有强对偶性，凸问题需要一些附加条件。它们被称为约束资格，不知道为什么。现在我们将给出这些非常好的凸问题强对偶性的充分条件。
 
- It's called Slater's condition。 And it's more general than what I'm presenting here。 Roughly speaking， we need the problem to be strictly feasible。 What do you think strictly feasible means？ So， okay。 It means that there's a point that satisfies all of those inequality constraints with strict inequality。
+这叫做斯莱特条件。它比我在这里展示的更为一般。粗略来说，我们需要问题是严格可行的。你觉得严格可行是什么意思？所以，好吧。这意味着有一个点，满足所有这些不等式约束，并且是严格的不等式。
 
- So it's strictly less than zero for all of those things。 So that's just roughly。 So the supplies and the domain of all our functions are open sets。 So in our case。 that's going to be like R_e or something。 So that's our case。 Just to remind you that the domain that we refer to is not the feasible set。
+所以对于所有这些东西，它是严格小于零的。所以大致上就是这样。供应和我们所有函数的定义域是开放集。所以在我们的情况下，可能是像R_e之类的东西。所以这是我们的情况。只是提醒你，我们所提到的域不是可行集。
 
- The domain is the set that the functions are defined on。 So this bold face line is the first thing to look at。 Strict feasibility is sufficient。 So if there's an x such that every inequality constraint is satisfied with strict inequality。 so f_i of x is less than zero， not equal。 If there's a single x that way in the domain in the feasible set。
+域是定义函数的集合。所以这条粗体线是首先要看的。严格可行性是充分条件。所以如果存在一个x，使得每个不等式约束都被严格满足。即f_i(x)小于零，不等于零。如果在可行集的域中有一个这样的x。
 
- then we have strong duality assuming that our problem is common。 So that's the Slater's constraint qualification。 It actually gets even easier if this function f_i。 if any of those functions f_i are affine functions。 Remember。 it's like a linear function plus some bias term。 So for any affine inequality constraints like a_xi plus b。
+然后我们假设有强对偶性，前提是我们的问题是常见的。也就是斯莱特约束资格条件。如果这些函数f_i是仿射函数，实际上就更容易了。记住，这就像是一个线性函数加上一些偏置项。所以对于任何仿射不等式约束，例如a_xi加b。
 
- we don't even need strict feasibility just being feasible is sufficient。 So that's actually the case we'll come into with the SVM。 So all of our constraints are going to be the affine inequality constraints。 And so all we're going to need to show strong duality is that there's a single point that's feasible。
+我们甚至不需要严格可行性，只要可行性就足够了。所以这实际上就是我们在SVM中遇到的情况。所以我们所有的约束都会是仿射不等式约束。因此，我们只需要证明强对偶性存在，就只需要找到一个可行的单点来满足所有这些约束。
 
- that satisfies all this constraint。 So it's almost trivial。 All right。 So this is our strong duality theorem。 One more piece of theory we're going to need from this general comment。 optimization。 It's called complementary slackness。 This is cool。 This is a little mini proof that you should follow along with。 It's pretty cute。
+这几乎是显而易见的。好了。这就是我们的强对偶性定理。接下来是我们从这个一般优化问题中需要的另一个理论。它叫做互补松弛性。这个很酷。这是一个小小的证明，值得你跟着做。它相当有趣。
 
- And it gives us a lot of insight。 Applying this， we give us a lot of insight into the SVM predictor。 All right。 So we're back now to general optimization problem。 We don't need convexity for this。 We do need strong duality。 So supposedly a strong duality。 Okay。 So let's let -- I should have had a star here。 Let's let lambda i star and x star be corresponding -- like a look -- optimal of grand multiplier。
+它给了我们很多的见解。应用这个，我们对SVM预测器有了很多的洞察。好了。现在我们回到一般的优化问题。我们不需要凸性来解决这个问题。我们确实需要强对偶性。所以假设有强对偶性。好了。那么我们设——我应该在这里加一个星号。设lambda i星和x星是对应的——就像是看——最优的拉格朗日乘子。
 
- and the primal optimal variable。 And what we're going to show is that the product of -- so lambda i star and the i。 of constraints so that the grand multiplier corresponds to the i of constraint。 The product of these things at the primal optimal solution x star is equal to zero。 So in practice。 what that means is that if you know one of them is not zero， that means the other one is zero。
+以及原始问题的最优变量。我们要证明的是——lambda i星和约束i的乘积，也就是拉格朗日乘子对应于约束i的部分，在原始最优解x星处的乘积为零。所以实际上，这意味着如果你知道其中一个不为零，那么另一个必定为零。
 
- And that's mostly how we use it。 So let's prove that。 Is it clear？
+这基本上就是我们如何使用它的方式。那么我们来证明这个。清楚吗？
 
- Remember we have a lot of inequality constraints。 In F_i for each of these inequality constraints。 And when we made the Lagrangian， we assigned each inequality constraint a Lagrange variable。 Look at the Lagrange multiplier。 So these are the Lagrange multiplier。 lambda i corresponding to the F_i constraint function。 All right。 Okay。
+记住，我们有很多不等式约束。对于这些不等式约束中的每一个F_i。当我们构造拉格朗日函数时，我们为每个不等式约束分配了一个拉格朗日变量。看一下拉格朗日乘子。这些是拉格朗日乘子lambda i，对应于F_i约束函数。好了。好的。
 
- So here's another interpretation in words。 So if lambda i star is non-zero， for example。 this complement just， like this tells us that F_i and x star must be zero。 And remember when the constraint is equal to zero， that's called an active constraint。 All right。 So either if lambda i star is non-zero， then our constraint is active。 Yeah？
+这是另一个文字解释。所以如果lambda i星不为零，比如说，这个互补条件就告诉我们F_i和x星必须为零。记住，当约束等于零时，这叫做活动约束。好了。所以如果lambda i星不为零，那么我们的约束就是活动的。对吗？
 
- Is it a k star is the solution to the prime？ The prime of prime。 Yeah。 x star is the solution to prime of prime。 So remember， lambda is a solution to the dual problem。 So here's our Lagrange dual problem。 And we'll write the optimum of that as lambda star。 Yeah。 All right。 Okay。 So let's prove this complement of your slackness。
+这是一个k星是素数的解吗？素数中的素数。对。x星是素数中的素数的解。所以记住，lambda是对偶问题的解。所以这是我们的拉格朗日对偶问题。我们将其最优解表示为lambda星。对。好了。好的。现在让我们证明这个互补松弛性。
 
- So we start F_0 of x star as the prime objective function。 With strong duality。 we have that that equals g of lambda star。 That's the definition of strong duality。 The primal optimal objective function equals the dual optimal objective。 Great。 That's strong duality。 Now let's expand this g of lambda star out of it。 It's just by definition。
+所以我们将F_0 of x star作为原始目标函数。通过强对偶性，我们有它等于g of lambda star。这就是强对偶性的定义。原始最优目标函数等于对偶最优目标函数。很好。这就是强对偶性。现在让我们展开g of lambda star。这只是根据定义。
 
- the infimum over x over this Lagrange， Lagrangian。 So we're now plugged in lambda star。 the optimal lambda star。 Okay。 Well， what next？ The infimum over x， what's going on here？
+这个Lagrange，拉格朗日的下确界。现在我们插入了lambda star，最优的lambda star。好。那么接下来呢？对x的下确界，这里发生了什么？
 
- Notice this is not inequality yet。 It's a less than or equal to。 Very easy。 We have the infimum over all x， so this expression must be less than or equal to the value of this expression out of a particular x。 Let's choose x star。 That's what's happening here。 The infimum over x is certainly less than or equal to the same expression evaluated at a particular point。
+注意，这还不是不等式。它是小于或等于。非常简单。我们有对所有x的下确界，所以这个表达式必须小于或等于在某个特定x处该表达式的值。让我们选择x star。这就是这里发生的事情。对x的下确界肯定小于或等于在某个特定点计算得到的相同表达式。
 
- Let's choose x star， the primal optimal。 Great。 Okay。 So if F_0 of x star plus this stuff， now。 x star being the primal optimal must be feasible。 Optimum must be feasible。 If it's feasible。 each of these inequality， each of these F_i x stars must be less than or equal to zero。 just by feasibility。 Lambda i's recall are greater than or equal to zero。 So this whole。
+让我们选择x star，原始最优解。很好。那么，如果F_0 of x star加上这些东西，现在x star作为原始最优解必须是可行的。最优解必须是可行的。如果它是可行的，那么每一个不等式，每个F_i x star都必须小于或等于零，仅仅因为可行性。lambda i的回想是大于或等于零。所以整个表达式...
 
- each of these individual terms is less than or equal to zero。 No problem yet。 All right。 Well。 then this whole expression must be less than or equal to F_0 of x star。 If each of these pieces is negative and we're adding it to F_0 of x。 then it's certainly less than F_0 of x star。 All right。
+每一个独立的项都小于或等于零。还没有问题。好了。那么整个表达式必须小于或等于F_0 of x star。如果这些项每个都是负数，而我们把它们加到F_0 of x，那么它肯定会小于F_0 of x star。好的。
 
- So if F_0 of x star is less than or equal to F_0 of x star。 we have this kind of sandwich of inequalities。 Which means they must all be equal。 All right。 So each of these expressions must be equal because it's been。 they've been bounded between the same thing。 Neat。
+所以如果F_0 of x star小于或等于F_0 of x star，我们就得到了这种不等式的夹心结构。这意味着它们必须全部相等。好的。所以这些表达式每个都必须相等，因为它们已经被限制在同样的范围之间。整洁。
 
- So from that we can conclude that each of these things must be zero。 Great。 So lambda i star F_i x star is equal to zero for each i。 That's our complementary slackness。 That's simple proof， right？ Very nice。 Any questions？
+所以从这个我们可以得出结论，这些东西每一个必须为零。很好。那么lambda i star F_i x star对于每个i都等于零。这就是我们的互补松弛条件。这是简单的证明，对吧？非常好。有问题吗？
 
- Because that's all we have to say about combat optimization。 And now we're going to apply it to the SVM。 It's going to get a little bit complicated。 But I think we'll get through it。 You guys ready？ All right。 Did anyone do that？
+因为这就是我们要说的关于对偶优化的所有内容。接下来我们要将其应用到支持向量机（SVM）。这会有点复杂。但我认为我们能够搞定。大家准备好了吗？好了。有谁做过那个吗？
 
- Those exercises I sent up？ I know you did。 You still want to admit it。 So first。 what is the support vector machine？ We know what the support， the SVM loss is。 I talked about that at the beginning。 So first of all， the support vector machine。 And it's vanilla flavor。 It uses a hypothesis space of linear functions or app-line functions that we。
+我之前发给你们的那些练习？我知道你们做了。你们还是想承认吗？那么首先，什么是支持向量机（SVM）？我们知道什么是支持向量机的损失函数。我在一开始讲过。首先，支持向量机。它的标准版本使用的是线性函数或近似线性函数的假设空间。
 
- transpose to x plus b。 Just what we've been using for ridge and for lasso， same hypothesis space。 Excuse me。 Again， here's our loss。 This time I'll draw your attention to a way to write it with this plus。 Do you remember the subscript plus or the， maybe had a super script plus before？ The positive part。 If 1 minus x is greater than or equal to 0 or 1 minus m， it's just 1 minus m。 If it's less than。
+转置到 x 加 b。正是我们在岭回归和套索回归中使用的，采用相同的假设空间。抱歉，继续，这里是我们的损失函数。这一次，我要提醒大家以这种加号的方式来写它。你们记得那个下标加号吗？或者之前可能有过上标加号？是正部分。如果 1 减去 x 大于等于 0 或 1 减去 m，那就是 1 减去 m。如果小于的话。
 
- if 1 minus m is less than 0， this expression is going to be 0。 That's that interpretation。 So this is the loss that we're going to be looking at。 So here's the SVM objective function or the SVM optimization problem。 First。 let's look at the right piece。 This is the， this is like the empirical risk for the hinge loss。
+如果 1 减去 m 小于 0，这个表达式将会是 0。这就是它的解释。所以这是我们将要观察的损失函数。那么这里是 SVM 的目标函数或 SVM 优化问题。首先，看看右边的部分。这就像是铰链损失的经验风险。
 
- So we have this right in the middle， w transpose x， x， x plus b。 What's that？ That's our， again？
+所以我们在中间有这个，w 转置 x，加 x，加 b。那是什么？这是我们的，再来一次？
 
- Exactly。 W transpose x plus b， that's f of x， all right。 Now I'm multiplying it by y。 and what's that？ Margin， great。 Good job。 And now we have this 1 minus margin positive part。 What's that？ The hinge loss of the prediction。 Great。 And now we have this c over n sum of these hinge losses on the predictions。
+完全正确。W 转置 x 加 b，这就是 f(x)，对吧。现在我将它乘以 y，那是什么？是间隔，太棒了。做得好。接下来我们有这个 1 减去间隔的正部分。那是什么？是预测的铰链损失。很好。现在我们有这个 c/n 乘以这些预测的铰链损失的总和。
 
- This is c times the average hinge loss of our decision function。 All right。 Great。 What's the first term that you've seen before？ It's L2 regularization。 Right。 So the only thing a little bit different than what we've seen before is usually put a lambda。 in front of the L2 regularization， and we just have a 1 over n on this average。
+这是 c 乘以我们决策函数的平均铰链损失。好，太好了。你们看到的第一个项是什么？是 L2 正则化。对吧。所以，唯一稍微不同的是我们通常会在 L2 正则化前加一个 lambda，而在这个平均值上，我们只有 1/n。
 
- You could see there's no real difference。 It's just traditional in SVM to write a c with the empirical risk part and nothing on the L2。 regularization piece。 No big change。 It's just how it's traditionally written。 So this is our objective function。 Is the bias term regularized？ No。 We have a B it's on regularized just like we had in Ridge。 Okay。 So that's our objective function。
+你们可以看到其实没有什么区别。只是传统上在 SVM 中，我们会将 c 和经验风险部分一起写，而 L2 正则化部分什么都不加。没有什么大的变化，只是它传统的写法。所以这是我们的目标函数。偏置项有正则化吗？没有。我们有 B，它没有正则化，就像我们在岭回归中一样。好，这就是我们的目标函数。
 
- It's an unconstrained optimization， which is nice。 It's not differentiable。 It's not so nice。 We're going to transform it in a few steps to some of it's more amenable to these techniques。 we've been developing。 So let's see what we can do。 So here's a common technique。 So we introduce a new variable。 So what we've done is introduce a new variable。
+这是一个无约束优化，挺不错的。它不可微，没那么好。我们将通过几个步骤将其转化为更适合我们一直在开发的这些技术的形式。让我们看看我们能做些什么。这是一个常见的技巧。所以我们引入了一个新变量。我们做的就是引入了一个新变量。
 
- You guys know this letter？ This Greek letter？ Zai。 All right。 You want to say sai？
+你们知道这个字母吗？这个希腊字母？zai。好吧，你们想说 sai 吗？
 
- I'm going to say zai。 Okay。 All right， I'll say sai。 All right。 So we introduce a sai。 And we're going to say sai must be greater or equal to this hinge loss of our prediction。 And when we have something written in this form， what it means is we're minimizing over。 every variable that we don't know。 So we don't know w and now we don't know the sai。
+我说 zai。好吧，没问题，我说 sai。好了。所以我们引入了一个 sai。我们说 sai 必须大于或等于我们预测的铰链损失。当我们以这种形式写出来时，意味着我们正在对每个我们不知道的变量进行最小化。所以我们不知道 w，现在我们也不知道 sai。
 
- This minimization problem is over w which we started with and a new thing sai。 So I claim that this is equivalent to the previous problem。 Do you guys see this？ Why would that be？
+这个最小化问题是关于 w 和一个新的变量 sai。所以我声称这是等价于之前的问题。你们看得出来吗？为什么会这样？
 
- Well， I claim that at an optimum sai is really going to be equal to this thing。 Why？
+好吧，我声称在最优时，sai 实际上会等于这个值。为什么？
 
- If sai are greater than it， greater than this minimum possible。 So we'd be increasing the sum and we're trying to minimize it。 So this minimum sends the sai is all the way down to the lowest allowed by the inequality。 Okay。 Yes。 Great。 So this is an equivalent formulation and now we do one step further。 It's no big deal。
+如果 \( \text{ sai} \) 大于它，超过了这个最小可能值。那么我们会增加总和，而我们试图最小化它。所以这个最小值将 \( \text{ sai} \) 降到不等式所允许的最低值。好的。是的。很棒。那么，这是一个等效的公式，现在我们再做一步。没什么大不了的。
 
- We split this thing into two inequalities。 We say， so this is a positive part。 So it's always greater than or equal to zero。 So it turns out this inequality is equal to that sai is greater than or equal to zero。 and it's greater than or equal to this piece without the positive part。 See， decent number of nods。 So I'm going to take that as good enough。 So these are equivalent。 And if you take your time。
+我们把这个问题分成两个不等式。我们说，这是一个正部分。所以它总是大于或等于零。所以事实证明，这个不等式等同于 \( \text{ sai} \geq 0 \)，而且它大于或等于这个没有正部分的部分。看，很多人点头了。那么，我就当这是足够了。所以这些是等效的。如果你慢慢来。
 
- I think you'll be able to convince yourself it's pretty straightforward。 because these are equivalent。 All right。 So this is a reformulation。 I'm sorry。 I don't look like these kind of optimization problems that we're looking at， before。 It's a little bit different because we had everything less than or equal to zero。
+我想你会相信自己这其实是很简单的，因为这些是等效的。好的。所以这是一个重新公式化。抱歉，看起来这些优化问题和我们以前看的有些不同。它有点不同，因为我们把所有东西都限制为小于或等于零。
 
- So that can be rearranged easily enough。 So now we have these inequality is less than or equal to zero。 That's our standard form。 And sai bar， this is called a quadratic program。 I mentioned this before。 A quadratic program is something that has a quadratic objective， convex quadratic objective。 and linear constraints。 And a lot of software is written to solve quadratic programs。
+所以这个可以轻松地重新排列。现在我们有了这些小于或等于零的不等式。这是我们的标准形式。而 \( \text{ sai bar} \)，这叫做二次规划。我之前提到过。二次规划是指具有二次目标、凸二次目标以及线性约束的问题。很多软件是为了解决二次规划问题而编写的。
 
- So from this point， we could plug this into the software and get a solution using it。 Generic quadratic program solver。 That's not always the best case。 And what I claim is that by taking the dual， if we consider this the prime， we'll take the。 dual optimization problem。 We examine its solutions and we're going to get a lot of insight into the solution to this。
+所以从这一点开始，我们可以将其输入到软件中并利用通用二次规划求解器得到一个解。这并不总是最好的情况。我所声明的是，通过取对偶，如果我们将其视为原问题，我们将采用对偶优化问题。我们将检查其解，并且我们将获得很多关于这个问题解的洞察。
 
- original primal problem。 All right。 So now objective for the next 10 slides or so is to drive this dual formulation。 Yeah。 Okay。 So the question is， I've been making a little bit of a deal of the fact that it's not a。 differentiable function。 And the point is， yeah， there are even generic ways to optimize non-differentiable functions。 as long as they're nice。 There's sub-gradient methods。 This is true。 This is true。 In fact。
+原始的原问题。好吧。那么接下来的 10 张幻灯片的目标是推导这个对偶公式。是的。好的。那么问题是，我一直在强调它不是一个可微分的函数。关键是，是的，实际上有一些通用的方法来优化不可微分的函数，只要它们足够“好”。有子梯度法。这是对的。没错。事实上。
 
- in the homework， we're going to have one， Pegasos， which is kind of like the most。 of years ago is kind of the best way to solve an SVM。 All right。 So here's our SVM。 Yes。 Oh。 there's a question。 [ Inaudible ]， No。 I mean， it's just the primal is the problem you start with。 Any problem can be a primal。 And then you take the dual and that's the dual。
+在作业中，我们将会有一个，Pegasos，这大概是几年前解决支持向量机（SVM）问题最好的方法。好吧。那么这是我们的 SVM。是的。哦。有什么问题吗？[听不清]，不。我是说，原问题就是你开始时的问题。任何问题都可以是原问题。然后你取对偶，那就是对偶问题。
 
- So there's nothing else to find。 It's just our first problem is the primal。 Yeah。 There a question。 Okay。 So here it is again。 And what's the first thing we do anyway to write down our Lagrangian？
+所以没有其他要找的东西。我们第一个问题是原问题。是的。有什么问题吗？好的。这是再次出现的情况。那么，我们首先要做的事情是什么？写下我们的拉格朗日函数？
 
- So let's just make this little table for each of the constraints。 This is the Lagrangian multiplier。 It's going to go with it。 I also wrote it on the board for quick reference when this slide is gone。 All right。 So this more complicated constraint goes with the alpha i and the negative psi i。 Let's say it goes with the lambda i。 All right。 All right。
+所以让我们为每个约束做一个小表格。这是拉格朗日乘子。它将与之对应。我还把它写在黑板上，以便在这张幻灯片消失后快速参考。好了。那么这个更复杂的约束与 alpha i 和负的 psi i 对应。假设它与 lambda i 对应。好了。好了。
 
- So these are -- and how do we get our Lagrangian？ We just take our objective and then we add the product of the Lagrangian multiplier and。 the constraint functions。 Right。 So here's our objective and here's this sum of Lagrangian multiplier constraint function。
+那么这些是——我们怎么得到我们的拉格朗日函数？我们只需要取目标函数，然后加上拉格朗日乘子和约束函数的乘积。对。这里是我们的目标函数，这里是拉格朗日乘子约束函数的和。
 
- Lagrangian multiplier constraint function。 That's our Lagrangian。 All right。 Okay。 So let's rearrange a bit。 We have these psi i spread out in three places。 Do a little factorization and collect them out of size and nicely grouped。 And let's rehearse。 What's this primal in the dual？ The primal can be written as the infimum over all of our primal variables。
+拉格朗日乘子约束函数。这就是我们的拉格朗日函数。好了。好吧。我们稍微整理一下。我们有这些 psi i 分布在三个地方。做一点因式分解，并将它们收集在一起，整齐地分组。让我们来回顾一下。这是原始问题和对偶问题？原始问题可以写成所有原始变量的下确界。
 
- The w and d， which you started with， the psi i， which we introduced， was the new primal。 And then an inside with a supremum over these new Lagrange multipliers。 All right。 So that's our infotestup。 And the dual is going to be -- super the end of Lagrangian。 Okay。 And we're going to start with a weak duality。 So it's an inequality。
+你一开始的 w 和 b，psi i 是我们引入的新的原始变量。然后在内层是这些新的拉格朗日乘子的上确界。好了。这就是我们的信息设置。然后对偶问题将是——拉格朗日的最终结果。好了。我们将从弱对偶性开始。所以它是一个不等式。
 
- But what we want to show is they're equal。 So what do we need to show to have strong duality？ Yeah。 So if we have strong duality， then the equal each other。 Sure。 So first of all。 is this a convex-fra objective function？ Is this convex in w and psi i？ Sure。 Where this sum of w i squares， that's certainly convex。 And this linear term in psi i。
+但我们想要证明的是它们相等。那么我们需要证明什么才能得到强对偶性呢？是的。所以如果我们有强对偶性，那么它们是相等的。没错。那么首先，这是不是一个凸的目标函数？这是关于 w 和 psi i 的凸函数吗？没错。这里的 w i 的平方和，肯定是凸的。而 psi i 的这个线性项。
 
- this is convex。 It's quadratic。 Very simple。 Okay。 And these are affine constraints。 so certainly convex。 It's certainly a convex optimization problem。 All right。 Good。 So it's convex。 And how about our constraints？ They're affine。 Right？
+这是凸的。它是二次的。非常简单。好吧。这些是仿射约束。所以它肯定是凸的。它当然是一个凸优化问题。好了。很好。所以它是凸的。那么我们的约束怎么样？它们是仿射的。对吗？
 
- And the slaters condition for affine constraints were almost nothing。 You just have to find one point that's feasible。 All right。 All right。 So there's our challenge。 Can we find one point that's feasible？ All right。 Here are our constraints。 We need to find the next best satisfies those constraints。
+对于仿射约束，斯莱特条件几乎没什么要求。你只需要找到一个可行的点。好了。好了。那么这是我们的挑战。我们能找到一个可行的点吗？好了。这是我们的约束。我们需要找到下一个最符合这些约束的点。
 
- And that's enough for strong duality in this case。 What do you say？ Make it as simple as possible。 So start plugging in values， or we need to find values for w， for b， and for psi i。 And respect the constraints。 Set the psi i to zero。 Okay。 Well， I don't know。 That might work out。 But another direction， since we're short on time， that I know it， will work out。
+这就足以保证在这种情况下的强对偶性了。你怎么看？尽量简化。所以开始代入值，或者我们需要找到 w、b 和 psi i 的值，并且遵守约束条件。将 psi i 设置为零。好吧。嗯，我不知道。这可能有效。但另一个方向，由于时间紧迫，我知道它会奏效。
 
- is if you take w and b to be zero。 What？ Oh， with the size， maybe？ Second。 Okay。 So if psi is one。 it's only the first thing that's satisfied。 W and b are zero。 This is the question of zero。 We have one minus psi。 Let's take zero to zero。 So if psi is one， W and b are zero。 It's feasible。 We don't need strict visibility。 That's all we need。
+如果你将 w 和 b 设为零，怎么样？哦，也许是大小？稍等。好吧。如果 psi 为 1，只有第一个条件满足。w 和 b 为零。这是零的问题。我们有 1 减去 psi。让我们把零设置为零。所以如果 psi 为 1，w 和 b 为零。它是可行的。我们不需要严格可行性。我们只需要这个。
 
- So you convince yourself later that that's indeed a feasible point。 And that implies strong dualities。 So the in for the soup of the Lagrangian is equal to the soup of the in。 And for later on， we're also going to have， we can use the complementary slackness。 because of the strong duality。 So that will come back in later。 All right。 Good。
+所以你稍后会自己说服自己，这确实是一个可行的点。这意味着强对偶性成立。所以拉格朗日的下确界等于该式的下确界。稍后我们还会使用互补松弛性。因为强对偶性，所以这将在稍后返回。好了，好的。
 
- So the strong duality， which means if we formulate this， the dual problem。 it's going to have the same solution and solving that is， in some sense。 as good as solving the primal problem。 All right。 So let's find the dual。 So the dual function。 that inner minimization， this infimum piece， is like that。 Just expanding out。
+所以强对偶性意味着，如果我们制定了对偶问题，它将有相同的解，并且在某种意义上，解决对偶问题和解决原问题一样好。好了。那么我们来找对偶问题。对偶函数，那部分内层最小化的下确界，就像这样。展开一下。
 
- Nothing new happening。 Just plugging in what we've already written down for the Lagrangian。 All right。 So this expression that we're taking the infimum of， this is also convex。 We need to be convex in w， v， and psi。 It's， again， essentially， it's quadratic。 And linear term。 so it is convex。 It's differentiable。 So now we're back to basic calculus。
+没有什么新的进展。我们只是在将之前写下的拉格朗日函数代入进去。好了。所以我们正在求取下列表达式的下确界，这个表达式也是凸的。我们需要在 w、v 和 psi 上保持凸性。它，和之前一样，本质上是二次的，还有线性项。所以它是凸的。它是可微的。所以现在我们回到了基础的微积分。
 
- which is if you want to take the infimum， the minimum of a differentiable function。 you differentiate it and set it equal to zero。 And then we're going to take all the partial derivatives with respect to all the w's。 the v， and all the psi i's。 We set them all to zero。 and this will give us the necessary and sufficient conditions， for this minimum to exist。 Okay。
+如果你想取下确界，求一个可微函数的最小值，你对它求导并设为零。然后我们将对所有的 w、v 和所有的 psi i 求偏导数。我们将它们都设为零，这将给我们这个最小值存在的必要和充分条件。好的。
 
- Remember I said that this thing could be negative infinity。 The dual function can be negative infinity。 So when might this go to negative infinity？
+记得我说过这个东西可能是负无穷吗？对偶函数可能是负无穷。那么什么时候会变成负无穷呢？
 
- Then the fimum go to negative infinity。 So suppose this term is not equal to zero。 The c o m minus alpha i minus lambda i。 If this is not equal to zero。 then when we take the fimum over psi i， we could send psi to negative infinity。 If this is positive。 and if this expression is negative， we could send psi i to positive infinity， and in both cases。
+那么下确界会变成负无穷。那么假设这一项不等于零。c o m - alpha i - lambda i。如果这不等于零，那么当我们对 psi i 取下确界时，我们可以让 psi 趋向负无穷。如果这是正的。如果这个表达式是负的，我们可以让 psi i 趋向正无穷，并且在这两种情况下。
 
- the infimum of this expression goes to negative infinity。 Similar case for， well， we'll see later。 Okay。 Yes？ -Sai i can't move before getting into the case。 -Sai i。 -Constraint， uh。 psi i is not equal to the thing。 That's a constraint， but it wasn't。 Sai i was constrained in the original problem to be greater than equal to zero。
+这个表达式的下确界会变成负无穷。类似的情况，嗯，我们稍后会看到。好的。是吗？ -Sai i 在进入案例之前不能动。 -Sai i。 -约束，呃。 psi i 不等于那个东西。那是一个约束，但是它在原问题中并不是约束条件，Sai i 在原问题中被约束为大于等于零。
 
- but this is an unconstrained minimization。 Remember。 those constraints were already represented in the Lagrangian。 That's， so these are unconstrained。 The only thing that's constrained right now is lambda and alpha。 The dual variables are constrained to be non-negative。
+但是这是一个无约束最小化问题。记住，约束条件已经在拉格朗日函数中表示了。所以这些是无约束的。现在唯一受约束的是 lambda 和 alpha。对偶变量被约束为非负数。
 
- but the primal variables are unconstrained now。 That's actually one of the nice points of going to the dual form collision。 The constraints get absorbed into the Lagrangian。 Okay。 Okay。 So what's going on here is we're taking these partial derivatives。 and this is the type of thing you'll want to do， work through on your own。
+但是现在原始变量没有约束了。实际上，这正是转到对偶形式时的一个优点。约束条件被吸收到拉格朗日函数中了。好，好的。那么这里发生的事情是我们在对这些部分导数求解。这正是你需要做的类型，自己去做一遍。
 
- and rather than my talking， really。 But for each partial derivative equal to zero， we get this。 we get a different expression， which are conditions we require to have a minimum。 So one thing。 the first thing we get is an expression for w， which is our primal variable we're trying to optimize over。 is this linear combination of alpha i's， which are dual variables， and some data。
+而且与其我在这里讲解，实际上是每个偏导数等于零时，我们会得到这个结果。我们得到了不同的表达式，这些表达式是我们要求解最小值时所需要的条件。所以首先得到的结果是w的表达式，这是我们要优化的原始变量。它是αi（对偶变量）和一些数据的线性组合。
 
- This will come back to be very useful later。 So look ahead。 This is what's going to give us the form of our SVM solution。 This is one of the interesting things we're deriving from the dual， but we'll come back to this。 And then these constraints， that the sum of the alpha i's is zero。
+这将在后续非常有用。请继续关注。这就是我们得到SVM解的形式。这个是我们从对偶问题推导出的有趣部分之一，但我们会在后面回到这里。然后这些约束条件，要求所有的αi之和为零。
 
- and that alpha i plus lambda is c over m。 Okay。 Great。 So what do you do once you find your conditions for optimality？ Remember from calculus？
+并且那个αi加上λ等于c除以m。好的，太好了。那么一旦你找到了最优性条件，接下来该怎么做呢？还记得微积分中的内容吗？
 
- You like plug them back in and see what happens。 You're simply by。 So when we plug these conditions back into this expression， so I'll point out a few on this slide。 Take the bottom one。 Alpha i plus lambda i plus c over n。 Well， in this middle term。 the second term， if alpha i and lambda i is equal to c over n， this whole middle term is zero。
+你可以将它们代回去看看会发生什么。你只需要这样做。所以当我们将这些条件代回到这个表达式中时，我将在这张幻灯片中指出一些关键点。以最底下的那个为例。αi加上λi再加上c除以n。好吧，在这个中间项中，第二项，如果αi和λi等于c除以n，这整个中间项就是零。
 
- All right。 So I don't have to， when this middle term vanishes。 Okay。 Let's see what else。 When we plug into the first term， this expression for w。 it expands out to this finding looking thing， which we'll break down later on。 And the third term expands out and reduces somewhat and putting it， all together。
+好的。所以当这个中间项消失时，我就不需要了。好吧，接下来看看其他的。当我们代入第一个项时，这个关于w的表达式展开后是这个看起来比较复杂的形式，我们稍后会逐步解析。第三项展开并稍微简化，最后把所有项放在一起。
 
- We get this expression for the dual function， which is under certain constraints。 which were the two， constraints we had to have a minimum。 So when those two constraints are satisfied， we get this actual minimum value and the value we。 obtain by plugging in the conditions to the grandeum。 And otherwise， we don't have a minimum。
+我们得到了这个对偶函数的表达式，它在某些约束条件下成立。那些约束条件是我们必须满足的两个条件，才能得到最小值。所以当这两个约束条件满足时，我们得到实际的最小值，以及通过将条件代入大系统中得到的值。否则，我们就没有最小值。
 
- and we can see by inspection， for instance， that it's going to negative infinity。 [ Inaudible ]， No。 the c comes in to the constraint。 Let's see。 Then it's applied because I'm last。 Let me see over。 Yeah。 Okay。 All right。 So now we have our dual function， and we can start writing out。 Let's write it back out。 So what's the dual problem？
+我们可以通过检查得出，例如它会趋向负无穷。[听不清]，不是的，c进入了约束条件。我们来看看。然后它就被应用，因为我是最后一个。让我再看一眼。好的，明白了。现在我们有了对偶函数，接下来可以开始写出表达式了。我们把它重新写出来。那么对偶问题是什么？
 
- The dual problem is the supremum over our Lagrange multipliers。 over our dual variables of the dual function。 So supremum over alpha。 What's the condition we done in alpha and lambda？ [ Inaudible ]， All right。 I wrote those down here this time on the bottom right， instead of over there。 Okay。 All right。
+对偶问题是我们对拉格朗日乘子、对偶变量的对偶函数取上确界。所以对α的上确界是什么？我们在α和λ上已经完成的条件是什么？[听不清]，好的。我这次把它们写在右下角，而不是在那边。好的，明白了。
 
- So here's our dual function。 Here's our constraints。 I've left out the otherwise piece when these constraints， are not satisfied because in that case。 the dual objective is negative infinity， and that's certainly not going to be the supremum。 So I've constrained to these conditions because otherwise， it's not going to be the supremum anyway。
+这是我们的对偶函数。这里是我们的约束条件。我省略了当这些约束条件不满足时的情况，因为在那种情况下，对偶目标是负无穷，而这显然不可能是上确界。所以我将条件约束为这些，因为否则无论如何都不可能得到上确界。
 
- So that's how these supremums got there。 These conditions got there。 So this is the dual problem。 So this is like round one of the SVM dual problem。 We're going to massage it a bit。 but this is -- we've gotten it。 This is the dual SVM problem。 We can eliminate a variable。 Notice this lambda I doesn't appear in the objective at all。
+所以这些 supremum 就是这样得出来的。条件也是这样得出来的。所以这是对偶问题。这就像是 SVM 对偶问题的第一轮。我们会稍微调整一下，但这是——我们已经得到了它。这就是对偶 SVM 问题。我们可以消除一个变量。注意，这个 lambda i 在目标函数中完全没有出现。
 
- It just kind of appears in the constraints。 And it turns out you have this alpha i plus lambda i。 plus c over n。 Alpha i and lambda i are not negative。 Turns out you can eliminate the lambda i and still have the same， set of alpha i's。 And alpha i is only -- you only think it appears in the objective， anyway。
+它仅仅出现在约束条件中。结果证明你有这个 alpha i 加上 lambda i，再加上 c 除以 n。alpha i 和 lambda i 都不是负数。结果你可以消除 lambda i，仍然得到相同的 alpha i 集合。alpha i 只是——你只会发现它出现在目标函数中，无论如何。
 
- So you can commit yourself that this is equivalent to this。 reformulation where there's no more lambda。 And alpha i is now constrained to be between zero and c over n。 Much simpler。 So each alpha i has to be -- this is called a box constraint。 Each alpha i is in an interval。 Zero to c over n。 So what's special about this dual problem？
+所以你可以确认，这等同于没有 lambda 的重新表述。现在 alpha i 被限制在 0 到 c 除以 n 之间。简单得多。所以每个 alpha i 必须是——这叫做盒子约束。每个 alpha i 都在一个区间内。从 0 到 c 除以 n。那么这个对偶问题有什么特别之处？
 
- All right。 It's quadratic。 We have more unknowns。 So we potentially more unknowns。 We started with the dimension of our primal variables。 So d -- say it's d dimensional feature space。 So our primal variables were w was rd。 And then we had v in intercept。 So it's like d plus one。 It's what we started with。 Then we introduced the psi i's。 But originally it was d plus one。
+好的。这是二次方程。我们有更多的未知数。所以可能有更多的未知数。我们从原始变量的维度开始。假设是 d 维特征空间。所以我们的原始变量是 w，是 r^d。然后我们有 v 作为截距。所以是 d 加一。这是我们开始时的设置。然后我们引入了 psi i's。但最初是 d 加一。
 
- And now the dual has n unknowns。 One for each data point。 Each data point gave rise to a constraint。 All right。 So the dual problem has a nice way to minimize it， which we're。 not going to talk about now。 It might be a homework problem。 It's called SML sequential minimal optimization。 And so what's left to do is to see what reward we can get from。
+现在对偶问题有 n 个未知数。每个数据点一个。每个数据点引出了一个约束。好的。所以对偶问题有一个很好的最小化方法，我们现在不会讨论。可能是一个作业问题。它叫做 SML（Sequential Minimal Optimization）。剩下要做的是看看从中能得到什么奖励。
 
- deriving this dual。 What can we learn about our solution to the SVM problem。 using this dual formulation？ All right。 So first， what's the form of the primal solution？
+推导这个对偶问题，我们能从这个对偶形式中学到什么关于我们 SVM 问题的解？好的。那么，首先，原始解的形式是什么？
 
- We saw this along the way。 Right？ So from this particular derivative we found that w is equal to。 the sum of ri of alpha i， the dual variable yi and xi。 So in particular。 if alpha star is a solution to the dual problem， then the primal solution is w star equals alpha i star yi and xi。 So what have we learned from this？ Well， for one thing， the form of w star， the form of our primal。
+我们在过程中看到了这一点，对吧？所以从这个特定的导数中，我们发现 w 等于 alpha i 的和，乘以对偶变量 yi 和 xi。所以特别地，如果 alpha star 是对偶问题的解，那么原始解是 w star 等于 alpha i star 乘 yi 和 xi。那么我们从中学到了什么？首先，w star 的形式，也就是我们原始问题的形式。
 
- solution to the SVM problem， it's a linear combination of our， input points of our xi。 That's kind of interesting。 I'm not sure we've seen something like that before。 So for example。 just from this we can reformulate our primal， problem and instead of finding the minimum overall w。 we could， if we wanted to write the minimum overall linear combinations of。
+SVM 问题的解是我们输入点 xi 的线性组合。这有点有趣。我不确定我们以前是否见过类似的东西。所以举个例子，仅从这一点，我们可以重新表述我们的原始问题，而不是找到整体 w 的最小值。我们可以，如果愿意，写出整体线性组合的最小值。
 
- xi because we know just from this that that is the form that， our w star must take。 Okay。 What else？
+xi，因为我们知道仅从这个式子来看，这就是我们的 w star 必须采取的形式。好，还有什么？
 
- So let's look at these alpha i's。 Alpha i's remember are bounded between 0 and c over n in the。 dual problem。 Right？ This then。 So now we see what you see is c， in some sense controls the。 weighting， the maximum weighting of any individual data point， xi。 That's interesting。 That relates some out of robustness。 Right？ No single point can enter into the solution for w star with weight。
+所以我们来看这些alpha i's。记住，alpha i's在对偶问题中被限定在0到c除以n之间，对吧？这就是这样。那么现在我们看到的是，c在某种程度上控制了任何单一数据点xi的最大权重。这很有趣。这涉及到一定的鲁棒性，对吧？任何单一的点都不能以过大的权重进入w star的解中。
 
- more than c over n。 So that can be adjusted。 Okay。 And what's b star？
+大于c除以n的部分。所以这是可以调整的。好的。那么，b star是什么？
 
- So remember we need w star and b star。 Finding b star is a whole other procedure which we might have time。 for at the end or maybe not， we'll say。 Okay。 But let's move on。 So we have this form of w star。 So let's talk about this notion called support vectors which is。 perhaps the name where the name support vector machine comes， from。
+所以记住，我们需要w star和b star。找到b star是另一个完整的过程，我们可能会有时间在最后进行讨论，也许没有时间，我们再说。好的。现在我们继续。所以我们有了w star的这个形式。让我们来谈谈这个名为支持向量的概念，这也许是支持向量机名字的由来。
 
- So w star is this linear combination。 The alpha i's are between 0 and c over n。 And what's interesting is that not only can it be 0 is that， alpha i star alpha is 0。 So when alpha i star is 0， the corresponding xi doesn't really。 show up in this expression for w star at all。 And what you can end up with is a kind of sparse representation of。
+所以w star是这个线性组合。alpha i's在0和c除以n之间。值得注意的是，不仅可以是0，而且alpha i star等于0时，对应的xi根本不会出现在w star的表达式中。最终你会得到一种稀疏的表示。
 
- w star。 Well now we're now by sparsity。 We don't mean sparsity in the features but sparsity in the。 fact that you only needed to take a linear combination of a few， different types of things。 So what are support vectors？ Support vectors are what's left after you drop everything that。 has coefficient 0 that has a pi star 0。 So support vectors are the xi's for which that actually show up in。
+w star。现在我们讨论的是稀疏性。我们所说的稀疏性不是指特征的稀疏性，而是指你只需要对少量不同类型的东西进行线性组合。那么，什么是支持向量？支持向量是那些在你去掉所有系数为0的部分后，剩下的部分，系数为0的就是pi star 0。所以支持向量就是那些实际出现在其中的xi。
 
- this linear expansion that have a pi star not equal to 0。 Those are the support vectors。 Tomorrow there will be a presentation of support vector。 machine by the TI event that's more geometrically inspired and， geometrically based。 And there a support vector will have kind of a geometric， interpretation of the hell shape。 Okay。
+这个线性展开包含了pi star不等于0的部分。这些就是支持向量。明天将在TI活动中展示支持向量机，它是基于几何学启发的，更加几何化的。在那里，支持向量将有一种几何意义的解释，形状类似于hell形。好的。
 
- All right。 So now it's kind of the last part。 We're going to talk about bringing it back together。 bring back， together the margin and the support vectors。 And this is where we're going to use this complementary slackness。 to get all sorts of insight into what how these things fit， together。 All right。
+好的。那么，现在是最后的部分。我们将谈论如何将边距和支持向量结合起来。我们将使用互补松弛性来获取关于这些内容如何结合在一起的各种洞见。好的。
 
- So let's bring back the F， right？ F star， let's like F star be our decision function。 So it has w star and b star in it。 And let's rehearse this picture。 So remember anything to the right of zero， if our margin is， the right of zero。 that's -- first of all， what's the margin？ Margin is， recall it's y。
+那么让我们带回F，对吧？F star，假设F star是我们的决策函数。它包含了w star和b star。让我们回顾一下这个图像。所以记住，任何位于零右侧的部分，如果我们的边距是位于零右侧的。首先，边距是什么？边距是，回想一下它是y。
 
- It's the actual classification y times F star， right？ y times the prediction。 So any margin is greater than zero is correct。 Less than zero is incorrect。 Anything greater than one has no penalty。 But less than one can have a penalty。 So we say we have a margin error if the margin is less than one， because we're penalizing it。
+它是实际的分类y乘以F star，对吧？就是y乘以预测值。所以任何大于零的边距都是正确的，小于零的是不正确的。大于一的没有惩罚，但是小于一的可能会有惩罚。所以我们说如果边距小于一，就存在边距误差，因为我们对此进行惩罚。
 
- We have a loss。 It's not an actual error unless it's less than zero。 But we say it's a margin error if it's less than one。 Then we say we're on the margin if our prediction is exactly one， so no loss， but right at the edge。 And on the good side of the margin， if our margin is greater than， one， no loss。
+我们有一个损失。它不是实际错误，除非它小于零。但是我们说，如果损失小于1，它就是边际错误。然后我们说，如果我们的预测正好是1，那我们就在边际上，没有损失，但正好处在边际上。而在边际的好一侧，如果我们的边际大于1，就没有损失。
 
- So margin error on the margin， good side of the margin， and whether， or not we're correct。 All right， now let's remember the psi i star。 So that we convinced ourselves it's going to be equal to the loss。 on our prediction for psi i。 Okay。 So it's the hinge loss on the ith example。 All right。 so let's work through a few cases。 Suppose psi i star is zero。 Zero hinge loss。 All right。 Well。
+所以边际错误，边际上，边际的好一侧，和我们是否正确。好的，现在我们回顾一下psi i星。所以我们让自己相信，它将等于我们对psi i预测的损失。好的。所以它是第i个例子的铰链损失。好的，现在我们通过几个情况来推导。假设psi i星是零。零铰链损失。好的。那么。
 
- that means the margin has to be at least one。 Remember， anything one or bigger was no margin loss。 So if our loss is zero， we know why xi is greater than equal to one。 And that's either on the margin or on the good side of the margin。 Okay， that's a terminology。 So now we bring in our tools that are going to let us derive some， insight。
+这意味着边际必须至少为1。记住，任何大于或等于1的边际都没有损失。所以如果我们的损失为零，我们就知道xi大于等于1。那就意味着它要么在边际上，要么在边际的好一侧。好的，这是一个术语。现在我们引入工具来帮助我们推导一些见解。
 
- So these are the complementary slackness conditions。 Remember。 we have our Lagrange multiplier times the， corresponding constraint。 The original Lagrange multiplier was lambda i。 But along the way。 remember we found an expression for lambda i， being c o m minus alpha i star。
+这些是互补松弛条件。记住，我们有拉格朗日乘子乘以相应的约束条件。原始的拉格朗日乘子是lambda i。但在这个过程中，记住我们找到了lambda i的表达式，即c o m减去alpha i星。
 
- So these are just the complementary slackness conditions。 And what we're going to do is we're going to read off different， results from them。 So。 for instance， suppose y star x is greater than one。 So what's that？
+所以这些只是互补松弛条件。我们要做的是从中推导出不同的结果。例如，假设y星x大于1。那么，这是什么意思？
 
- The margin is strictly greater than one。 If we're on the good side of the margin。 then what can we say？ All right， certainly the margin loss is zero。 We have no loss。 And now go up here。 So if psi i， where are we？ The first one？ Yeah。 So if psi i star is zero。 one minus y f star x i is less than， zero。 The whole product has to be zero。
+边际严格大于1。如果我们处在边际的好一侧，那么我们能说什么？好的，显然边际损失为零，我们没有损失。现在回到上面。如果psi i，我们在哪里？是第一个吗？是的。如果psi i星是零，那么1减去y f星 x i小于零。整个乘积必须为零。
 
- which means alpha i star has to， be equal to zero。 Okay。 Thanks for that。 All right。 so alpha i star is zero。 How about another one？ y i f star x i is less than one。 Okay。 so that means we do incur margin loss。 And so psi i star is greater than zero。 And so I guess we're on the second slackness condition。 So this psi i star is greater than zero。
+这意味着alpha i星必须等于零。好的，谢谢。那么，另一个条件呢？y i f star x i小于1。好的，这意味着我们确实会发生边际损失。所以psi i星大于零。所以我猜我们在第二个松弛条件上。所以这个psi i星大于零。
 
- which means c o m minus， alpha i star must equal zero。 So alpha i star is equal to c over m。 You guys see how I'm reading myself？ Okay。 All right， well let's interpret this for a second。 So if we have a margin loss， if we're getting any loss in the， example。 then the coefficient in that expansion， alpha i star， is， c over m。 And if you remember。
+这意味着c o m减去alpha i星必须等于零。所以alpha i星等于c除以m。你们看我怎么理解吗？好的。那么让我们暂时解释一下。所以如果我们有边际损失，如果我们在例子中有任何损失，那么在这个展开式中的系数alpha i星是c除以m。如果你们记得的话。
 
- c over m is the maximum allowed coefficient， in this expansion。 So if we have a data point that we never quite figured out， if， we're not classifying correctly。 then we know that in expression， for w star， that data point's getting the maximum weight， possible。 All right， let's go for alpha i star。 So suppose the coefficient of a particular xi is zero。
+c除以m是这个展开式中允许的最大系数。所以如果我们有一个数据点，我们始终无法正确分类，那么我们知道在w星的表达式中，这个数据点的权重是最大的。好的，接下来是alpha i星。假设某个xi的系数是零。
 
- What does that tell us？ I won't labor through it， but the conclusion is that that means。 why i f star x is greater than equal to one。 So we're on the margin on the good side of the margin。 All right。 So there's all these different things you can read off。 Here I've summarized them。 And they're just relating-- are we on the good or the bad side， of the margin？
+这告诉我们什么呢？我不会详细讲解，但结论是，这意味着当 i f 星号 x 大于等于 1 时，我们就处于良好的边界一侧。好吧。你可以从中读出很多不同的东西。我在这里总结了它们，它们只是涉及到——我们是否在边界的良好一侧或坏的一侧？
 
- And for a particular data point， and does that correspond to a--。 what kind of coefficient does that correspond to my xi？
+对于一个特定的数据点，那个数据点对应于什么样的系数，是否对应于我的 xi？
 
- So what happens to alpha i for each of those cases？ OK。 So one thing that's interesting is that if alpha i is-- so if， alpha is not zero。 so it's zero when we're classifying well， on the good side of the margin， right？ If it's not zero。 it's not c oren。 c oren is when we're classifying incorrectly。 So strictly between zero and c oren。
+那么 alpha i 在每种情况下会发生什么呢？好吧。所以一个有趣的事情是，如果 alpha i 是——如果 alpha 不为零。那么当我们在良好的边界一侧分类时，它为零，对吧？如果它不为零，那就不是 c oren。c oren 是当我们分类错误时。所以严格在零到 c oren 之间。
 
- But a pretty broad range， it's the whole interval except for the， endpoints。 If alpha i star is anything that interval， then the data point is， exactly on the margin。 So that's why I have star f-size one。 Kind of interesting。 So most of the coefficients。 when you look at your expansion for， w star， three through zero， so you don't see them， or their。
+但是一个相当广泛的范围，它是整个区间，除了端点。如果 alpha i 星号在这个区间内，那么数据点就正好位于边界上。所以这就是为什么我有星号 f 大小为 1。这很有趣。所以大多数系数，当你查看 w 星号 的展开式时，三到零，你不会看到它们，或者它们是……
 
- c oren， which means those are points you got incorrect， or， they're something in between。 which means you're getting it， correct， but with just enough margin of one。 All right。 Do you have any questions？ We have enough time to cover b star， so we'll do that， but I'll。 just pause if you have any questions。 Okay。 Happy day。 Sure。 [ Inaudible ]， Question is。
+c oren，这意味着那些是你分类错误的点，或者它们是介于两者之间的点。这意味着你分类正确，但仅仅是刚好有一个边界宽度为 1。好吧。你有任何问题吗？我们有足够的时间来讨论 b 星号，我们会讨论它，但我会……如果你有问题我就暂停。好吧，祝你有愉快的一天。没问题。[听不清]，问题是……
 
- do I know the historical reason that how the， SVM was invented， basically？ I don't know。 And even the real way it was invented may not be the story that， quickly got formulated around it。 So the thing about the SVM was that it was a machine learning。 method that they could actually prove theorems about， and everyone， got very excited about it。
+我知道历史上 SVM 是如何被发明的吗？基本上？我不知道。甚至它真正的发明方式可能不是大家很快就形成的故事。所以关于 SVM 的事情是，它是一种机器学习方法，大家实际上能够证明一些定理，所有人都对此非常兴奋。
 
- and you could justify the performance， in different ways， generalization balance and stuff。 So I don't know if that upper bound was kind of before after the， invention。 So to get b star。 we're going to use a complementary slack， SVM。 So we have strong duality。 so we get the complementary slackness。 So here's our constraints again。
+你可以通过不同的方式来证明性能，泛化平衡之类的东西。所以我不知道这个上界是在发明之前还是之后。为了得到 b 星号，我们将使用互补松弛的 SVM。所以我们有强对偶性，所以我们得到了互补松弛性。所以这是我们的约束条件。
 
- So what we need to do is assume that there's some i for which。 alpha i stars is strictly in that interval， zero lc over m。 Turns out if there's not a single i that has this property， then， you can show that the problem。 your data set is degenerate in a， certain sense， and the optimal w star is identically zero， and。
+所以我们需要做的是假设存在某个 i，使得 alpha i 星号严格在区间零到 lc/m 之间。如果没有单独的 i 满足这个属性，那么你可以证明这个问题，数据集在某种意义上是退化的，最优的 w 星号是恒为零。
 
- it's kind of not an interesting case。 I get a reference later on。 So pick an i for which alpha i stars between zero and c over m。 Then kind of using the same tricks and pushing around things， in the complementary slackness。 we can find that if alpha i， stars in this range， then our margin is exactly one。
+这有点不是一个有趣的情况。我稍后会参考它。所以选择一个 i，使得 alpha i 星号在零和 c/m 之间。然后利用相同的技巧和推导，使用互补松弛性。我们可以发现，如果 alpha i 星号在这个范围内，那么我们的边界正好是 1。
 
- We talked about that earlier。 All right。 And all right， that was interesting。 Remember。 yi is either negative one or one。 So if we multiply both sides by a yi， yi squared is just one， and。 over here we get yi。 See how we went from this to this？ This is worth a look。 If you multiply both sides of this top thing by yi， you get the。
+我们之前讨论过这个。好了，这很有趣。记住，yi要么是-1，要么是1。所以如果我们两边都乘以yi，yi的平方就是1，然后。我们得到yi。看看我们是如何从这个变到这个的？值得一看。如果你将这个顶部的东西两边都乘以yi，你会得到。
 
- yi squared becomes one and we get the second thing。 And then we rearrange and you get b stars equal to yi minus xi， transpose w star。 Does this seem funny to anybody？ This expression for b star？ I thought it was funny。 I thought it was kind of weird。 What I thought was weird about it was that we're driving b--。
+yi的平方变成1，然后我们得到第二个结果。然后我们重新排列，得到b星等于yi减去xi转置w星。这个表达式对任何人来说看起来很奇怪吗？这个b星的表达式？我觉得很奇怪。我觉得有点奇怪。我觉得奇怪的地方是我们推导出b--。
 
- first we picked any i for which alpha i star had this property。 and we had this expression for b star in terms of a single， sample point xi yi。 But that's the way it is。 This is the math。 And you can't express b star in this way。 It's not necessarily the way people do it in practice because。
+首先我们选择任何i，使得alpha i星具有这个特性。然后我们得到了一个关于单个样本点xi yi的b星表达式。但这就是数学的方式。你不能用这种方式表达b星。这不一定是人们实际操作中使用的方式，因为。
 
- what they'll prefer to do is take all the i's for which alpha i， star is in that range。 And yes。 that should give the same value for b star each time。 And it will be roughly the same。 And you average them and it will get you a more robust estimate， of b star。 At least that's what people tend to prefer to do。 So you can just take the mean of all the expressions for b star。
+他们倾向于做的是取所有alpha i星在那个范围内的i。是的，这应该每次都给出相同的b星值。它会大致相同。然后你将它们平均，这将为你提供一个更稳健的b星估计。至少这是人们倾向于做的方式。所以你可以直接取所有b星表达式的平均值。
 
- for each i in that range。 All right。 So that's it for what's called the linear SVM。 We'll expand on things like how to optimize it in homework and get， some experience with it there。 There's one other cute thing that we see in the dual SVM。 formulation which I'll point out to you now。 So here's the SVM dual problem。
+对于这个范围内的每个i。好了，这就是所谓的线性SVM。我们将在作业中进一步扩展，优化它的方式，并在那儿获得一些经验。还有一个在对偶SVM形式中我们会看到的有趣点，我现在给你指出。这里是SVM的对偶问题。
 
- And what I want you to notice is that look where x is appear--。 look how x is appear in this formulation。 x is only show up right here。 And it only shows up in terms of this inner product between pairs of， x's。 So xj transpose xi。 x never shows up alone， raw as a vector except when it's right next。
+我希望你注意的是，看看x是如何出现在这个公式中的。x只在这里出现。它仅以x之间的内积的形式出现。所以xj转置xi。x从未单独作为向量出现，除非它就在旁边。
 
- to another vector in the form of an inner product。 And this is kind of the entry point to what's called， kernelization。 And kernelization is where you take an expression of an algorithm such as this， one。 where you've written every access to xi to an x in terms of inner product， between pairs of x's。
+转换为内积形式的另一个向量。这就是所谓的核化（kernelization）的入门。核化是你将一个算法的表达式（比如这个）转化为内积的形式，其中每个对xi的访问都被写成x之间的内积。
 
- And what you do is you take the Euclidean inner product and you replace it with。 another inner product， any new inner product that you like。 And what we'll find is this will implicitly transform x to a new feature space。 And what's interesting is that the new feature space。
+你所做的是取欧几里得内积，并用另一个内积替换它，任何你喜欢的新内积。我们会发现，这将隐式地将x转换到一个新的特征空间。而有趣的是，新的特征空间。
 
- corresponding to this new inner product that you made。 could be in a certain way much more complex than the original one。 It could actually be like infinite dimensional as a feature space。 But we never access those vectors directly because we only have to access them。
+对应你所创建的这个新内积，它可能比原始的内积复杂得多。它实际上可能是一个无限维的特征空间。但我们从不直接访问这些向量，因为我们只需要访问它们。
 
- to create their inner product。 So this is what we'll talk about next week in kernelization。 All right。 That's all I'll say about this today。 Any questions？ All right。 In a few minutes。 all right。 Thanks。 [MUSIC]， [BLANK_AUDIO]。
+创建它们的内积。所以这是我们下周将在核化中讨论的内容。好了，今天我就讲到这里。有问题吗？好了，几分钟后。好了，谢谢。[音乐]，[空白音频]。

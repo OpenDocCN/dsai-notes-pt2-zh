@@ -1,12 +1,10 @@
 # P23：23.Lecture_May_4 - Tesra-AI不错哟 - BV1aJ411y7p7
 
-
-
 ![](img/f9864a91004ac8c69f8ecdc814883727_0.png)
 
 好的，这声音太大了还是可以的，所以今天的计划，首先，我们做了很好的调查，然后我们将直接完成EM算法，我们在EM算法上进行了几轮很好的热身，但现在我们要穿过它，谈谈EM的几个扩展。在那里的某个地方可能会有一个休息，然后有一个班级照片的请求，我认为这是个很酷的主意，所以休息后可以是一张班级照片，然后在E之后，M算法我们可以取一些随机的问题，如果你们有什么还在坚持的。或者我们可以简单地介绍一下神经网络，我有一些神经网络的幻灯片，然后我们会提前结束，你们可以拿起你们的测试，明天是和顾问们的会议，现在我要把它包起来，我们很好，好吧，让我们继续谈论好吧。所以我想你们会想复习一下EM算法，所以让我们记住设置，我们有潜在变量模型，其中我们有变量，观察到的一组变量，这些是X的，和一组未被观察到的变量，这些是Z，我们要写x和z，对于Z将是所有未观察到的变量。
 
-称为隐变量或潜在变量，x将是所有观察到的变量，我们要把它们放在一个向量里，我们有一个概率模型，所以给定θ的xz表示x和z上的联合概率分布，我们收到的是这个不完整的数据集x，不知何故。我们需要弄清楚给定θ的概率分布pxe是多少，只是来自X，所以换句话说，给定x，我们想求最大似然参数θ，这是这个问题的最大似然目标函数，D现在是我们观察到的数据，只有X，我们想找到给出观测数据的θ。最大似然，我们想做的另一件事是估计模型，让我们找到西塔，一旦我们有了模型，我们就开始了，我们观察到一些X，那是未被观察到的东西，我们要做的是弄清楚，Z是未被观察到的部分，所以在我们的高斯混合模型中。比如说，x是我们观察到的所有点，每个x对应一个z，这是潜在的变量，哪个是X来自的星系团，所以给了下一个，我们想知道Z上的分布，x来自的星系团上的分布，所以这就是这个分布，这很容易计算，嗯。
+被称为隐变量或潜在变量，x将是所有观察到的变量，我们要把它们放在一个向量里，我们有一个概率模型，所以给定θ的xz表示x和z上的联合概率分布，我们收到的是这个不完整的数据集x，不知何故。我们需要弄清楚给定θ的概率分布pxe是多少，只是来自X，所以换句话说，给定x，我们想求最大似然参数θ，这是这个问题的最大似然目标函数，D现在是我们观察到的数据，只有X，我们想找到给出观测数据的θ。最大似然，我们想做的另一件事是估计模型，让我们找到西塔，一旦我们有了模型，我们就开始了，我们观察到一些X，那是未被观察到的东西，我们要做的是弄清楚，Z是未被观察到的部分，所以在我们的高斯混合模型中。比如说，x是我们观察到的所有点，每个x对应一个z，这是潜在的变量，哪个是X来自的星系团，所以给了下一个，我们想知道Z上的分布，x来自的星系团上的分布，所以这就是这个分布，这很容易计算，嗯。
 
 所以对于小工具混合模型，至少在给定x的情况下计算z i很容易，i与子溪的关节成正比，这很容易写下来，它是星系团的概率z i乘以可能性，与平均μi和协方差相关的簇子分布，西格玛·泽西，很好。回顾一下关于这东西的任何问题，好的，所以有一个高斯混合模型，问题是很难解决这个最大化问题，最大化这个边际可能性，所以我们上次讲的是找到一个下限，叫做L，它有两个参数，有一个分布q和θ。我们证明了这个L是我们想要最大化的下界，数据的可能性是多少，所以让我们看看，这是我们对这个下界的推导，这种不等式来自延森的不等式，所以左边的东西，这就是我们想要最大化的，很难和它一起工作。所以我们用这个表达式给它下界，如果你看着它，你可以看到这是一个期望，因为z的q，那是Z上的分布，这个表达式是z的函数，所以它是一个随机变量，这整件事是一个对数的期望，我们称之为qθ的l，在其他情况下。
 
@@ -18,19 +16,19 @@
 
 找到使lqθ最大化的q，我们称之为Q星，然后我们要保持Q星固定，让第二个参数改变theta并在theta上最大化，我们交替，这就是我们的大图像算法，所以这是我们开始一个θ，这里有一个下界。我们跳到下界的最大值，然后我们在这一点上找到一个新的下限，那就是绿线，然后我们跳到这个下界的最大值，我们继续，看起来就是这样，我们稍后再看这张照片，再仔细一点，所以这是一个惊人的等式。我们有边际对数可能性，我们可以把它写为等于下界，加上这个kl，分布Q之间的分歧，和我们未观察到的变量的条件分布，给定观察到的变量，对吗，所以是的，我们已经证明了对于任何Q和θ，lq，θ是px上的下界。给了西塔我们想要的，而且，在这里我们得到了两者之间的精确差距，下界之间的间隙，我们的下界，正是这个分布Q之间的关键分歧，和给定x的z的条件分布，这是我们将在下一张幻灯片中使用的关键等式，所有的权利。
 
-所以让我们把注意力集中在θ被固定的阶段，让我们优化Q，这是我们的下限，我们在西塔老，我们想找到使这个lqθ最大化的q，这是我们对lqθ的确切表达式，你会注意到第二块没有Q和A所以，为了最大化Q。这肯定无关紧要，这是一个负的分歧，那么Q将使这个表达式最大化，是呀，所以要记住，kl散度有这样一个性质，首先，它总是大于或等于零，其次，它只等于零，当KL改道时，当它需要两个相等的分布时。所以kl散度有两个参数，它需要两个分布，这有点像测量一个距离，两个分布有多不同，也就是，如果两个分布完全相同，只有在它们完全相同的情况下，我们得到的散度为零，对呀，所有的权利，所以这是一个负散度。那么最大的价值是什么，负发散可以为零，因为它是如此的KL总是积极的，是呀，所以底片是可以的，然后我们如何使它为零，确定取q等于z的p给定x和θ，好的，所以对于固定θ，最大化q。
+So let’s focus on the stage where θ is fixed, let’s optimize Q, this is our lower bound, we are at θ old, and we want to find the q that maximizes lqθ, this is our exact expression for lqθ, you’ll notice that the second term has no Q and A, so to maximize Q. This is definitely irrelevant, it’s a negative divergence, so Q will maximize this expression, yeah, so remember, KL divergence has this property, first, it is always greater than or equal to zero, secondly, it equals zero only when KL is minimized, which means it needs two identical distributions. So KL divergence has two parameters, it requires two distributions, it’s kind of like measuring a distance, how different the two distributions are, that is, if the two distributions are identical, only when they are identical do we get zero divergence, yeah, all right, so this is a negative divergence. So what’s the maximum value, the negative divergence can be zero because it’s always positive, yeah, so the bottom case is valid, so how do we make it zero, by setting q equal to z, p given x and θ, okay, so for fixed θ, maximizing q.
 
-所以你认为这是一个很难的问题，因为你知道我们在最大化总体概率分布，在这种情况下是这样发生的，由于KL发散的这种性质，这很容易，好的，所以我们找到了使固定θ的l最大化的队列，好吧，让我们把它插到Q星上。那么第一项为零，剩下的是这个对数px给定θ，这正是我们试图最大化的，对呀，所以在西塔老，我们试图最大化的东西之间是平等的，现在是一个下界，所以当下界正好等于它的下界时，这叫做紧下界，就在那儿。它与曲线相切，我们试图下界的函数，所以让我们把它看成一张照片，所以平等就是为什么我们有，所以在西塔老，我们θ的下界l q，这是所有θ的下界，但尤其是在Theta老，这是平等的权利，这就是平等，它很感人。这就是这种平等，那是从哪里来的，好的，所以在图片中，切线不是巧合，这应该是在那里所有权利，否则就是下限，有什么问题吗？好的，所有的权利，所以一般的EM算法，第一件事叫做期望步y。
+So you think this is a hard problem because you know we’re maximizing the overall probability distribution, in this case it happens, due to this property of KL divergence, it’s easy, okay, so we found the queue that maximizes l for fixed θ, okay, let’s plug it into Q-star. Then the first term is zero, and the remaining part is this log px given θ, which is exactly what we’re trying to maximize, yeah, so at θ old, what we’re trying to maximize is equal to this lower bound, so when the lower bound exactly equals its bound, it’s called a tight lower bound, right there. It is tangent to the curve we are trying to bound, so let’s see it as a picture, so equality is why we have it, so at θ old, the lower bound lq, this is the lower bound for all θ, but especially at θ old, this is equality, right, this is equality, it’s touching. This is the equality, where did it come from, okay, so in the picture, the tangent is not a coincidence, it should be right there, all right, otherwise it’s the lower bound, is there a problem? Okay, all right, so in general, the first thing in the EM algorithm is called the Expectation step y.
 
-第一件事是我们在哪里找到优化的Q星，的，固定θ旧的下限，我们把它插进去，所以现在LQθ星，下一步是最大化我们的θ，所以当我们写出lq星θ时，把它拆开，我们有这个对数表达式的Q星号之和。现在这又是一个期望，因为我们把这个日志表达式求和为z的函数，我们以前见过同样的事情，z的q星是每个z的概率，我们正在计算所有可能的结果，c's，这是关于Q星的对数表达式的期望，我们需要计算这个期望。以Q星θ的函数结束，我们就叫它Jθ，强调不再涉及Q的事实，我们已经我们已经采取的期望，我是说，在这一点上，我们只对这些数据感兴趣，那是杰西塔，所以计算，这是计算一个期望，这就是为什么在EM算法中。这个东西被称为期望步，所以接下来的事情是，对于固定的Q星，我们在θ上最大化，就在这边，我们需要什么才能让这个算法工作，正如它所说的那样，最大化需要是可行的，不仅仅是期望需要是可行的。
+The first thing is where we find the optimized Q-star, the fixed θ old lower bound, we plug it in, so now LQθ-star, the next step is to maximize our θ, so when we write out lq star θ, expand it, we have this log expression summed over Q-star. Now this is also an expectation, because we sum this log expression as a function of z, we’ve seen the same thing before, z's q star is the probability for each z, we are calculating over all possible outcomes, c’s, this is about the expectation of the log expression in Q-star, we need to compute this expectation. It ends as a function of Q-star θ, we call it Jθ, emphasizing the fact that Q is no longer involved, we’ve already taken the expectation, I mean, at this point, we’re only interested in this data, that’s J theta, so the computation is, it’s calculating an expectation, that’s why in the EM algorithm, this is called the Expectation step, so the next thing is, for fixed Q-star, we maximize over θ, just here, what do we need for the algorithm to work, as it says, maximizing needs to be feasible, not just that the expectation needs to be feasible.
 
-这些计算中的每一个都需要相当简单，当你把这个应用到高斯混合模型时，比如说，它是它是非常，很简单，你可以很容易地做到这一点，让我们来谈谈我们对这个东西实际工作的了解，到目前为止，我们已经讨论过LQ了。我们在最大化l qθ，我们能把这和最大化边际可能性联系得多紧密，这就是我们想要的对吧，所以首先，让我们至少看看我们移动到的每一个θ，我们单调地增加可能性，所以我想这很清楚，每次我们迈出一步。我们正移动到我们下界的一个较高的点，下界总是好的，让我们让我们追踪它，所以我们从Theta老开始，关键是向上推，我们的可能性是，我们的下限是紧的，所以我们开始老，然后当我们最大化蓝色的时候。我们还不一定很清楚，是呀，所以红线总是在蓝线之上，对呀，所以当我们从θ移动到θnu时，我们已经知道在这一点上，那个，在θnu处的似然值，一定比我们刚来的地方高，然后我们找到一个新的下界，它与红线相切。
+Each of these calculations is relatively simple when you apply it to Gaussian Mixture Models, for example, it’s very simple, you can easily do this, let’s talk about our understanding of how this thing actually works, so far, we’ve discussed LQ. We are maximizing lqθ, how tightly we can relate this to maximizing the marginal possibility, that’s what we want, right, so first, let’s at least see that every time we move to a new θ, we monotonically increase the possibility, so I think this is clear, every step we take. We’re moving to a higher point of our lower bound, the lower bound is always good, let’s track it, so we start from θ old, the key is to push upward, our possibility is, our lower bound is tight, so we start old, and when we maximize the blue line. We’re still not completely clear, yeah, so the red line is always above the blue line, yeah, so when we move from θ to θ nu, we already know at this point, at θ nu, the likelihood value is definitely higher than where we just came from, then we find a new lower bound, which is tangent to the red line.
 
-当我们跳到最大值时，这个新的下界，我们再次知道，可能性也一定比我们来自的地方大，如果你不相信我的照片，这里有一些数学，好的，所以对于Q星来说，我们知道在Theta老。我们在下限和边际可能性之间有精确的质量，好了，现在我们选择西塔努，它使给定q星的下界最大化，所以Q星和θu的下界，肯定大于等于Q星和θ老右边，因为qθnu选择最大化这个表达式相对于θ槽。所以根据Theta Nu的定义，这当然是正确的，好吧，接下来呢，现在让我们从边际可能性开始，所以px给定θnu，所以这就是我们最后的地方，让我们看看θu的边际可能性是多少，嗯，我们知道我是一个下界。所以它肯定大于等于l，在q星上，θ，nu，好的，现在我们应用上面的不等式，大于或等于Q星θ老，然后我们也有平等，好吧，所以我们在这里看到，当我们从西塔到西塔努，利润的可能性肯定至少一样大，所有的权利。
+When we jump to the maximum, this new lower bound, we again know the possibility must also be greater than where we came from, if you don’t believe my photo, here’s some math, okay, so for Q-star, we know at theta old. We have exact quality between the lower bound and marginal possibility, all right, now we choose θ nu that maximizes the lower bound given q star, so Q-star and θ nu's lower bound must be greater than or equal to Q-star and θ old right side, because qθ nu chooses to maximize this expression relative to θ slot. So by the definition of θ nu, this is of course correct, okay, what’s next, now let’s start with the marginal possibility, so px given θ nu, so this is our final place, let’s see what the marginal possibility of θ nu is, um, we know I’m a lower bound. So it’s definitely greater than or equal to l, at q star, θ nu, okay, now we apply the inequality above, greater than or equal to Q-star θ old, and we also have equality, okay, so here we see, when we move from theta to theta nu, the likelihood profit is definitely at least as large, all right.
 
-那是一回事，所以这很好，至少当我们采取措施增加下限时，我们知道边际可能性增加，真令人欣慰，那很好，让我们多说一点，假设我们能够找到下界的全局最大值，所以我们有lqθ，我们做得很好，我们发现全局最大值。结果会是，这也是边际可能性的全局最大值，太神奇了，因为那是我们想要的，那该怎么做呢？假设Q星θ星是下界的全局最大值，所以它肯定比任何地方的l qθ都大，好的，我们也知道对于给定的θ星，条件概率是最大值。这就是我们所展示的，所以我们知道Q星是什么，所以声称是θ星，它参与了下界的最大值，也是这个边缘对数的最大化器，很有趣，让我们看看它看起来怎么样，所有的权利，所以让我们取任何一个θ质数，所有的权利。所以会有其他可能的θ质数，它可能比我们的θ星更好，我们将证明实际上不是，但让θ是任意的θ质数，是任何其他点，我们知道q质数z是，最佳分布对应于θ素数，在θ质数处的边际似然对数等于这个下界。
+That’s one thing, so this is good, at least when we take steps to increase the lower bound, we know the marginal possibility increases, which is really comforting, that’s good, let’s say a bit more, suppose we can find the global maximum of the lower bound, so we have lqθ, we’re doing well, we find the global maximum. The result will be that this is also the global maximum of the marginal possibility, which is amazing because that’s what we want, so what should we do? Suppose Q-star θ-star is the global maximum of the lower bound, so it must be greater than any lqθ anywhere, okay, we also know that for the given θ-star, the conditional probability is maximized. This is what we’ve shown, so we know what Q-star is, so claiming θ-star participates in the maximum of the lower bound and is the maximizer of this marginal log, very interesting, let’s see what it looks like, all right, so let’s take any θ prime, all right. So there might be other possible θ primes that could be better than our θ-star, we will prove it’s actually not, but let θ be an arbitrary θ prime, any other point, we know q prime z is, the best distribution corresponds to θ prime, the marginal likelihood log at θ prime is equal to this lower bound.
 
-加上kl发散度，这一直是正确的，因为我们用的是q素数，哪一个是等于LQ素数的最佳分布，θ质数，现在我们所知道的Q星，西塔星，假设下界的最大值，所以这肯定小于或等于这个，所有权利，现在我们终于有了松紧。所以l立方θ星等于px给定θ星，所有权利，所以如果你把它放在一起，我们看到对于任何其他θ质数，边际对数似然将小于，或等于θ星的边际对数似然，好的，所以现在就是四行，所以现在，我们给了自己很好的动力。试图最大化这个下限，如果我们真的能最大化下限，我们还发现了边际对数似然的最大值，所以这是一个全局最大值，事实上，一般来说，我们不知道如何找到全局最大值，好的，那太糟糕了，嗯，稍加努力。你可以把这个定理推广到局部极大值，这很好，你可能需要有某种功能的连续性，或者一些小的技术条件，但可以扩展到本地最大值，嗯，但至少这给了很好的动力，所以实际上有一个定理，没那么老。
+Add the KL divergence, which has always been correct because we are using q prime, which equals the best distribution of LQ prime, θ prime, now we know Q-star, θ-star, suppose the maximum of the lower bound, so it is certainly less than or equal to this, all right, now we finally have tightness. So l^3θ-star equals px given θ-star, all right, so if you put it together, we see that for any other θ prime, the marginal log likelihood will be less than or equal to the marginal log likelihood at θ-star, okay, so now it’s four lines, so now, we’ve given ourselves good momentum. Trying to maximize this lower bound, and if we can really maximize the lower bound, we also find the maximum of the marginal log likelihood, so this is a global maximum, in fact, generally speaking, we don’t know how to find the global maximum, okay, that’s too bad, well, with a little effort, you can generalize this theorem to local maxima, which is good, you might need some continuity of the function or some small technical conditions, but it can be extended to local maxima, well, but at least this gives a good motivation, so in fact, there is a theorem, not so old.
 
 实际上在m和i左的收敛性上，它有一些技术条件，会有点超出水平，这学期到目前为止我们一直讨厌的，但我有一个推荐人给你，但只是为了给你一个定理所说的味道，所以让我们把它设置一下，Theta n。设θn为θ的当前位置，在EM算法的最后一步，在第n步之后，让我们定义一个转移函数m，所以在，如果一开始我们在零点，在第一回合后，我们在第一回合，然后总的来说，让这个函数m从θ1到θ2。或者从Theta n到Theta n，加一个，所以θ加1等于θ的m，这将帮助我们把事情写下来，这清楚吗，所有的权利，所以我们假设这个对数似然函数是可微的，这里有个话题，我想我们还没有完全提到。让我们是静止点的集合，所以函数的驻点就是点的集合，其中梯度零，所以当你寻找最小或最大或鞍点时，你要找的，其中梯度零，所以这些都被称为驻点，事实证明，这将是最好的，我们可以向它展示到一个固定点的收敛。
 
@@ -52,11 +50,7 @@
 
 ![](img/f9864a91004ac8c69f8ecdc814883727_4.png)
 
-
-
 ![](img/f9864a91004ac8c69f8ecdc814883727_5.png)
-
-
 
 ![](img/f9864a91004ac8c69f8ecdc814883727_6.png)
 
@@ -64,27 +58,25 @@
 
 ![](img/f9864a91004ac8c69f8ecdc814883727_8.png)
 
-
-
 ![](img/f9864a91004ac8c69f8ecdc814883727_9.png)
 
 你们中有多少人对神经网络有所了解。
 
 ![](img/f9864a91004ac8c69f8ecdc814883727_11.png)
 
-让我问一下，首先是这学期同时上神经网络课的人，所以我会给你我最喜欢的幻灯片，这里人太多了，现在不能做了，我将翻阅高光部分，所以说，我假设你们根本不知道什么是神经网络，但我想你们中的一些人可能知道。所以简单的目标是什么是神经网络，至少是最简单的神经网络，它如何适合我们的工具箱，我们什么时候应该考虑使用它们，实际上，到目前为止，到目前为止还没有到目前为止，我们已经做了线性方法和非线性方法，的。线性的或支持向量机和岭回归，套索长线性的，就像任何基于树的随机森林增强，因此，神经网络具有很强的非线性，事物非线性的一面，从高水平上来说，神经网络给你的，基于树的算法在非线性方面给你的是。神经网络的输出是平滑的，最近，它们并不总是可微的，传统上它们是可微的，但是，但现在他们可以踢了，但他们至少是连续的，好的，所以这里有一个神经网络，到目前为止我们所做的所有线性方法的版本，θ1到θ1到3。
+让我问一下，首先是这学期同时上神经网络课的人，所以我会给你我最喜欢的幻灯片，这里人太多了，现在不能做了，我将翻阅高光部分，所以说，我假设你们根本不知道什么是神经网络，但我想你们中的一些人可能知道。所以简单的目标是什么是神经网络，至少是最简单的神经网络，它如何适合我们的工具箱，我们什么时候应该考虑使用它们，实际上，到目前为止，我们已经做了线性方法和非线性方法。线性的或支持向量机和岭回归，套索是线性的，就像任何基于树的随机森林增强一样，因此，神经网络具有很强的非线性，事物的非线性的一面，从高层次来说，神经网络给你的，基于树的算法在非线性方面给你的是。神经网络的输出是平滑的，最近，它们并不总是可微的，传统上它们是可微的，但是现在它们可以跳跃，但至少它们是连续的，好的，所以这里有一个神经网络，到目前为止我们所做的所有线性方法的版本，θ1 到 θ1 到 3。
 
-这些就像我们现在表示的特征向量，就像这样，这个图不是，贝叶斯网络是另一种图，更像是一个计算图，但是θ1，θx 1到θx 3，这些是作为输入的三个特性，这代表的是这些特征中的每一个都乘以一些权重w。每支箭上都有一个重物，它们都聚集在一起形成一个最后的节点，在这张图中，这意味着它们被加在一起，所以分数等于线性代数符号中的分数，x的w转置phi和x的phi是这三个节点的向量，w表示所有这些权重。所以这将是一种用神经网络表示法表示线性分类器的方法，所以说，当然，只有当我们添加另一层和非线性变换时，它才会变得令人兴奋，所以我们在这里加了一层，称为输入层和分数之间的隐藏层。最终输出和每个节点的输入来自整个未来向量，所以这个特征向量，在本例中，这些条目中的每一个都乘以一个权重v，然后把它们加在一起，这就成为这个节点的输入，然后特征的线性组合的总和通过一些非线性变换，西格玛。
+这些就像我们现在表示的特征向量，像这样，这个图不是，贝叶斯网络是另一种图，更像是一个计算图，但是 θ1，θx1 到 θx3，这些是作为输入的三个特征，代表这些特征中的每一个都乘以一些权重 w。每支箭上都有一个权重，它们都聚集在一起形成一个最终节点，在这张图中，这意味着它们被加在一起，所以分数等于线性代数符号中的分数，x 的 w 转置 phi 和 x 的 phi 是这三个节点的向量，w 表示所有这些权重。所以这将是用神经网络表示线性分类器的方法。所以说，当然，只有当我们添加另一层和非线性变换时，它才会变得令人兴奋。所以我们在这里加了一层，称为输入层和分数之间的隐藏层。最终输出和每个节点的输入来自整个未来向量。所以这个特征向量，在本例中，这些条目中的每一个都乘以一个权重 v，然后把它们加在一起，这就成为这个节点的输入，然后特征的线性组合的总和通过一些非线性变换，西格玛。
 
-这就是这些神经网络非线性的原因，同样的事情发生在另一个节点，这两个节点的区别在于权重，对于这两个节点中的每一个节点，输入的线性组合都是不同的，最后，这两个节点的输出线性组合成最终的分数。这是一个基本的前馈神经网络的模板，任何关于这一点的问题都很清楚，所以这里是这里，让我写下这张图片的数学含义，所以一个隐藏的节点，让我们打电话说h one或h i，它是隐藏节点的输出。沿着这个箭头向下的等于sigma的sigma，这是一个函数，它被称为激活函数，它一般是非线性的，我们稍后会看一些例子，这就是非线性的来源，你传递给非线性函数的是一个数字，单个标量，它是输入的线性组合。所以总结一下，你得到一个X，你把X的特征表示，那是x的phi，你取V转置的特征向量的线性组合，i，e，那是标量，数字，你把它通过一个非线性函数，这给了你另一个数字，这是Hone的输出。
+这就是这些神经网络非线性的原因，同样的事情发生在另一个节点，这两个节点的区别在于权重，对于这两个节点中的每一个节点，输入的线性组合都是不同的，最后，这两个节点的输出线性组合成最终的分数。这是一个基本的前馈神经网络模板，任何关于这一点的问题都很清楚，所以这里是这里，让我写下这张图片的数学含义。一个隐藏节点，让我们称之为 h one 或 h i，它是隐藏节点的输出。沿着这个箭头向下的等式是 sigma 的 sigma，这是一个函数，它被称为激活函数，它通常是非线性的，我们稍后会看一些例子，这就是非线性的来源，你传递给非线性函数的是一个数字，单个标量，它是输入的线性组合。所以总结一下，你得到一个 X，你把 X 的特征表示，那是 x 的 phi，你取 v 转置的特征向量的线性组合，i，e，那是标量，数字，你把它通过一个非线性函数，这给了你另一个数字，这是 Hone 的输出。
 
-你在H 2上做同样的事情，你得到两个数字，然后你把这两个数字的线性组合，h 1和h 2，如果你把它，是啊，是啊，好的功能对每个都是一样的，你可以做你想做的事，但是是的，对于所有音符。激活函数通常是相同的，是啊，是啊，嗯是的，您可以有任意数量的隐藏节点，你可以有任意数量的层，这是这个基本模板，所以我会看看，这些是回答你问题的子弹，所以耶，可能会有，你知道，五万个节点，可能会有。嗯是的，传统上你知道，如果你回到十多年前，通常会有一个隐藏的层，但最近他们你现在走了，你回到十年前，他们做了八层，最近他们只有一千层，所以有这个，他们没有做更多层的原因，因为他们发现很难做到。在深度网络中，学习部分的训练很难，但近年来有了很大的进步，关于如何有效地学习所有参数，所以所有的w和v都是从数据中学习的，没什么太花哨的，基本上是随机梯度下降，可能会有一些小的变化和改进，但是嗯。
+在H 2上做同样的事情，你得到两个数字，然后把这两个数字做线性组合，h 1 和 h 2，如果你把它，嗯，是的，功能对每个都是一样的，你可以做你想做的事，但确实，对于所有音符，激活函数通常是相同的，是的，是的，嗯，是的，你可以有任意数量的隐藏节点，也可以有任意数量的层，这就是这个基本模板。所以我会看看，这些是回答你问题的要点，所以是的，可能会有，你知道，五万个节点，可能会有。嗯，是的，传统上你知道，如果你回到十多年前，通常会有一个隐藏层，但最近他们，你知道，现在你回到十年前，他们做了八层，最近他们有了一千层，所以有这个，他们不做更多层的原因是因为他们发现很难做到。在深度网络中，学习部分的训练很难，但近年来有了很大的进步，关于如何有效地学习所有参数，所以所有的 w 和 v 都是从数据中学习的，没什么特别的，基本上是随机梯度下降，可能会有一些小的变化和改进，但嗯。
 
-但他们很难训练他们适应较小的网络，但现在，通过不同的发展来训练他们，即使是网络也像一千层，同样的不，我是说，第一输入层不隐藏，最后一个没有隐藏，其余的是因为你没有直接观察到这些节点。这些不在潜在变量模型中的原因之间的区别，就像我们所说的EM算法，我们实际上想知道这里隐藏节点的值，我们不一定真的关心他们，它们只是让我们得到这个非线性函数的一种方法，所以我想这是。这是一个参数化的非线性函数，参数是所有的W和V，我们必须学会它们，但从高层来看，什么都不跨越，这里没有什么是我们不熟悉的，这是一组从r 3映射到r的函数，在本例中，由w向量和v向量参数化，就这样了。好的，那么这与带有非线性核的线性回归相比如何呢，所以我们就叫它非线性特征图吧，好的，所以这只是回到这个案子，所以我们把非线性特征作为输入，然后这是线性回归，所以这是很新的东西，对吧。
+但他们很难训练它们适应较小的网络，但现在，通过不同的发展来训练它们，即使是网络也像一千层，同样的不，我是说，第一输入层不隐藏，最后一个没有隐藏，其余的是因为你没有直接观察到这些节点。这些不在潜在变量模型中的原因之间的区别，就像我们所说的 EM 算法，我们实际上想知道这里隐藏节点的值，我们不一定真的关心他们，它们只是让我们得到这个非线性函数的一种方法，所以我想这是。 这是一个参数化的非线性函数，参数是所有的 W 和 V，我们必须学会它们，但从高层来看，什么都不跨越，这里没有什么是我们不熟悉的，这是一组从 r3 映射到 r 的函数，在本例中，由 w 向量和 v 向量参数化，就这样了。好的，那么这与带有非线性核的线性回归相比如何呢，所以我们就叫它非线性特征图吧，好的，所以这只是回到这个案子，所以我们把非线性特征作为输入，然后这是线性回归，所以这是很新的东西，对吧。
 
-即使我们有输入是非线性的，也是用非线性特征来表示的，即使函数是一个非线性函数，这真的不一样，是啊，是啊，哦耶，为什么非线性，嗯，我想最简单的动机是，很难发明所有的非线性，如果你想没有这个。那么你就必须发明你的非线性特征，人们已经做了很长时间了，但如果你能自动学会，那不是更好吗，事实上，最近，在某些领域性能要好得多，就像谁决定西格玛一样预测，选择西格玛，西格玛不是学过的，在这种情况下。西格玛是由数据科学家选择的，只有几个通常使用的，我一会儿就给你看，是啊，是啊，是啊，是啊，H在这种新功能上，我们能把H作为新功能吗，当然，我希望你把H作为新功能来考虑，事实上，我想让你考虑H作为特征。通过神经网络学习，而不是自己设计，这是我们越能有更多的年龄，更多数据，我们也可以，你说你可以有更多，你可以有更多是的，而不是从H1到H2，可能是H一三额外，一千个是，你也可以有更多的层，这是正确的。
+即使我们有输入是非线性的，也是用非线性特征来表示的，即使函数是一个非线性函数，这真的不一样，是的，是的，哦，耶，为什么非线性，嗯，我想最简单的动机是，很难发明所有的非线性，如果你想没有这个。那么你就必须发明你的非线性特征，人们已经做了很长时间了，但如果你能自动学会，那不是更好吗，事实上，最近，在某些领域性能要好得多，就像谁决定西格玛一样预测，选择西格玛，西格玛不是学过的，在这种情况下。西格玛是由数据科学家选择的，只有几个通常使用的，我一会儿就给你看，是的，是的，是的，是的，H 在这种新功能上，我们能把 H 作为新功能吗，当然，我希望你把 H 作为新功能来考虑，事实上，我想让你考虑 H 作为特征。通过神经网络学习，而不是自己设计，这是我们越能有更多的年龄，更多数据，我们也可以，你说你可以有更多，你可以有更多，是的，而不是从 H1 到 H2，可能是 H一三额外，一千个是，你也可以有更多的层，这是正确的。
 
-我不做你想做的事，嗯，增加，这是个好问题，那么在什么条件下，所以你你有，你有，网有多宽、网有多深，人们最近发现，更深的网络似乎更有效，如果你能训练他们，所以如果有了所有的交易技巧。能够成功地最小化你的目标函数，实际上得到很好的训练误差，似乎更深的网络往往在以下方面工作得更好，说，比更宽的网络更少过配，说，即使对于相同数量的节点，但是有点，它仍然是非常艺术的，你发现为了有效的表现。人们发现深度网络往往会提供更好的性能，至少在某些领域，如视觉，比如说，我不想给规则，我只是说，粗略地说，人们最近通过使他们的关系网变得更深而取得了成功，所以这是一个很好的方向。所以神经网络的挑战之一是你可以改变太多东西，网络结构，你的激活功能，你有所有常见的问题，你好。优化，你的步数，诸如此类的事情，所以在神经网络中有很多东西在进行，所以看起来一切都很顺利。
+我不做你想做的事，嗯，增加，这是个好问题，那么在什么条件下，你有，网有多宽、网有多深，人们最近发现，更深的网络似乎更有效，如果你能训练它们。所以，如果有了所有的交易技巧，能够成功地最小化目标函数，实际上得到很好的训练误差，似乎更深的网络通常在以下方面工作得更好，就是说，比更宽的网络更少过拟合，即使对于相同数量的节点，虽然有点不同，但仍然非常艺术，发现为了有效地表现，人们发现深度网络通常提供更好的性能，至少在某些领域，如视觉，嗯，譬如说，我不想给出规则，我只是大概说一下，人们最近通过让它们的关系网更深而取得了成功，所以这是个很好的方向。所以神经网络的挑战之一是你可以改变很多东西，网络结构，你的激活函数，你有所有常见的问题，比如优化、步长，类似的事情，所以在神经网络中有很多事情在进行，看起来一切都很顺利。
 
 你去参加神经网络会议，我刚从一个，所有这些很酷的东西都很有效，你会感觉到他们就像，哦，我就试试看，会成功的，问题是所有这些微小的变化，什么有效根本不起作用，这样你就会和人们说话，他们会说，是啊，是啊。这太棒了，但是当我把我的激活函数换成另一个东西时，它实际上很穷，所以我想如果你要进入神经网络，一个好主意是从你知道有效的东西开始，然后逐渐调整到你想去的方向，除非你有很多时间做很多实验，让它工作。但最近神经网络社区最酷的地方是那个男孩，他们把所有的代码都放在GitHub上，他们真的很喜欢分享，让一切都可以复制，所以从某种意义上说，参与进来再容易不过了，就像，你知道的，最先进的东西就在那里。你可以复制结果，然后你想玩它，你知道你总是可以回到他们工作的设置，所以这是一个很好的，对于喜欢玩东西的人来说，这是一种很好的感觉，然后嗯，这不是一个很好的领域，如果你喜欢有非常严格的理由。
 
@@ -100,15 +92,11 @@
 
 我派人去找红色的，不知何故，是啊，是啊，就像，这是一个很好的，所以我看到了，不是神经网络，我在SVM环境中见过，嗯，我几乎可以肯定这是在神经网络中完成的，我只是不知道这是怎么回事，我没听到很多人谈论它。所以不知何故，这并不令人惊讶，它成为主流，但是是的，我敢肯定做这件事是可行的，如果你很好，出了点问题，所以如果我没理解错的话，你想把它装进后备箱吗，所以问题是，如果你在树干上经过截断。所以你在水平平坦的部分，那么你就不会得到渐变更新，所以当你做渐变下降，当你在平坦的地方时，你没有变化信号，所以这是一个和是的一样的问题，如此正确，所以如果你太消极了，你有麻烦了，但如果你太积极。这也会让它陷入困境，所以你有点。
 
-
-
 ![](img/f9864a91004ac8c69f8ecdc814883727_13.png)
 
 这是一张卡通图，展示了你现在得到的东西，当你为视觉做神经网络时，或者你希望得到什么，你真的做得很好，如果原始输入是像素，好的，那是你的意见，你会发现在网络的不同层，您会得到隐藏的节点。这些节点倾向于响应输入中不同类型的模式，所以说，比如说，这里发生了什么，这个特别可爱的块对应于我们的第一层的一个隐藏节点，我们的神经网络，和，解释这一点的一种方法是，如果图像中的像素。这种过滤器在特定区域有很高的内积，那么这个隐藏节点就会有很高的输出，否则我们的产量会很低，所以，这些是输入中每个隐藏节点响应的模式类型，所以你可以看到他们在最低层的反应，这些会像边缘一样。在更高的层次上，很多层，如果这是人脸识别问题，它倾向于学会对面部的某些部位做出反应，所以鼻子和眼睛什么的，或者在顶层，它甚至会像整张脸一样，所以更一般地说，你希望你所学到的特征成为一种。
 
 从非常低级的简单功能转移到高端的更复杂的功能，例如，嗯，在神经科学或假说中有一种理论，你的大脑里会有一个神经元，当你看着你的祖母时，它会有反应，它被称为祖母神经元，当你看到你的祖母时。就会有一个神经元开始放电，所以事实上他们是这样训练神经网络的，他们经常能找到祖母神经元的类似物，所以嗯，对特定的神经元做出反应的神经元，你知道的，这只对猫有反应，这只对狗有反应。这是对你最好的朋友的回应，所以他们发现这种情况有时很有趣，是啊，是啊，的，很好的问题那么我们的神经网络有多复杂，我们为什么要关心这个，因为它和过度装修有关，估计误差与近似误差的权衡。
-
-
 
 ![](img/f9864a91004ac8c69f8ecdc814883727_15.png)
 
@@ -159,7 +147,5 @@
 否，我最喜欢的部分是你们问问题并参与，有一些互让，这就是有趣的地方，所以在那个音符上，这是一个非常有趣的学期，我想感谢你们是一个很棒的班级。
 
 ![](img/f9864a91004ac8c69f8ecdc814883727_31.png)
-
-
 
 ![](img/f9864a91004ac8c69f8ecdc814883727_32.png)

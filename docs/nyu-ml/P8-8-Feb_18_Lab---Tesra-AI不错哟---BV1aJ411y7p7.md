@@ -1,235 +1,233 @@
 # P8：8.Feb_18_Lab - Tesra-AI不错哟 - BV1aJ411y7p7
 
- Okay。
+好的。
 
 ![](img/6ddddef09bca9a70d5f50a90c582ca0a_1.png)
 
-
-
 ![](img/6ddddef09bca9a70d5f50a90c582ca0a_2.png)
 
- Just a few reminders。 Today is not March 2nd， 2015。 And I'm not David。 So don't take this information。 Zachary。 David is out of town， so I'm covering for him today。 So we will do a little review of what we've seen and maybe some new topics and some questions。 and answers。 So feel free to as always ask questions。 Before we begin。
+只是几个提醒。今天不是2015年3月2日，我也不是David。所以不要采信这些信息。Zachary。David不在城里，所以今天由我代班。我们会回顾一下我们学过的内容，可能还有一些新话题，以及问题和答案。请随时提问，像往常一样。
 
- I got a request to change my office hours to a later time。 How many of you would support that idea？
+我收到一个请求，要将我的办公时间改到更晚。你们有多少人支持这个想法？
 
- How many of you are against the idea of changing the office hours to a later time？ I want to。 Okay。 I haven't seen you。 It's so my office hours are on Mondays to 2pm。 Just a reminder。 So does it sound good to switch it to a later time？ Like 4pm in 5pm。 So the problem is availability。 classroom availability。 If I can't find a class in this building。
+有多少人反对将办公时间调整到更晚的时间？我想要调整。好的。没见过你。我的办公时间是周一到下午2点。提醒一下。那么，把它调到更晚的时间怎么样？比如4点或者5点。问题在于可用性，教室的可用性。如果我找不到这栋楼的教室。
 
- I will probably have to do it in the center， for data science。 I could do Wednesday later 4 or 5pm or I could do Thursday later。 Any preference？ Yes， sir。 What day？ Wednesday？ Wednesday or Thursday？ So Wednesday 5pm you have another class？ Okay。 just let me note that down。 So it has to be before Wednesday。 So Wednesday 3。30pm。
+我可能得去数据科学中心做。可以做周三晚些时候4点或5点，或者可以做周四晚些时候。有什么偏好吗？是的，先生。哪一天？周三？周三还是周四？周三5点你有其他课吗？好的。让我记下来。那么必须在周三之前。周三3点半怎么样？
 
- Wednesday 4pm or options。 What about Thursday？ You have class after 3pm before this time？ What？
+周三4点或其他选择。那周四呢？你有课吗？在这个时间之后3点之前？什么？
 
- Yeah。 It's after this time though。 It's at 8pm。 The graders have office hours on Tuesday。 So。 Friday is a little bit tricky。 Yeah， last semester I tried Friday's， nobody seemed to join。 Wednesday 4 is fine， okay。 Okay， maybe I should do a poll。 Okay。 Oops。 So how do you tune your system while you do your homework？ It's usually by inspection。
+嗯。其实是这个时间之后。是晚上8点。评分员的办公时间是周二。所以，周五有点儿棘手。是的，上学期我试过周五的时间，似乎没有人参加。周三4点可以，没问题。好吧，也许我应该做个投票。好的。哎呀。那么你在做作业的时候是如何调整你的系统的？通常是通过检查来调整。
 
- You try a few things。 Usually the first things you try don't work so you have to tune it again。 right？ It's either too small or too large。 If it's too large it oscillates。 it gives you random numbers。 If it's too small it just doesn't move。 It doesn't improve。 And then you find a switch spot and then you zoom in。 Once you find a switch spot。
+你试几个方法。通常你最先尝试的东西不会奏效，所以你得再次调整，对吧？要么太小，要么太大。如果太大，它会震荡，给你随机的数字。如果太小，它就不动，不会改进。然后你找到一个转换点，再放大。一旦找到转换点。
 
- I use a min you play around in that region to find the optimal， place。 How do you check something is optimal？ A hyper parameter tuning is optimal。 You check it by the improvement in the validation set。 'Cause we don't care。 We can always make the training set have very low， low， low energies， very low， low， low cost。
+我会在那个区域稍微试一下，找到最佳位置。你怎么确认某个设置是最优的呢？超参数调整是最优的。你可以通过验证集中的改进来检查。因为我们不关心训练集。我们总是可以让训练集的能量非常低，成本非常低。
 
- But it doesn't make sense if it doesn't correspond to an improvement in the validation， set。 The validation set can be thought of as a generalization。 How well the mission generalizes？
+但是如果它没有对应于验证集的改进，那就没有意义。验证集可以看作是泛化的表现。任务泛化得怎么样？
 
- If it doesn't generalize well then it's memorizing。 It's memorizing means it's overfitting or fitting is something that we don't want。 So we monitor the validation set or if we have the test set available we can do that。 Technically jargon is that you screen the validation set。
+如果它不能很好地泛化，那就是记忆化。记忆化意味着它是过拟合或者拟合不当，这是我们不希望看到的。因此我们监控验证集，或者如果我们有测试集可以使用，我们也可以这样做。专业术语是，你要监控验证集。
 
- Maybe in a trouble tuning your systems in your homeworks。 Takes time。 What other issues have you got？ Yeah， that's an issue。 But if you really need to go below double precision then maybe something is wrong。 Yes。 It's possible。 I didn't actually check what's going on with the homework。 It's a separate thing。
+可能在调优你的系统或做作业时会遇到麻烦。需要时间。还有什么问题吗？是的，这是个问题。但如果你确实需要低于双精度浮点数，那可能是出了问题。是的，这是可能的。我实际上没有检查作业的情况，那是另外的事情。
 
- I can look it up if you have the definition of what exactly is going on there。 From a general theoretical point of view。 In practice I would start with a small step size。 I would increase it little by little until it diverges。 So the moment before divergence is your sweet spot typically。
+如果你有定义，具体情况是什么，我可以查找。从一般的理论角度来看，实际上我会从一个小的步长开始，逐步增加它，直到它发散。通常，在发散之前的那个时刻是你的最佳点。
 
- It depends on how you set up the regularization。 We're going to do it in a few slides。 If you set a really small lambda then the regularization doesn't have any effect。 That's why you need to start from a large lambda value。 But it again depends on your particular setup。 So most of the times but you should also be careful because if you set up too much。
+这取决于你如何设置正则化。我们会在接下来的几张幻灯片中讲解。如果你设置一个非常小的lambda，那么正则化就没有任何效果。这就是为什么你需要从一个较大的lambda值开始。但它仍然取决于你的具体设置。所以大多数情况下你应该也要小心，因为如果你设置得太大。
 
- if， you increase lambda by too much then the object that you're optimizing is the right hand side。 is the second term， is the regularizer term。 Which blocks you from dealing with the original task。 Original task was the actual loss。 So the additional term shouldn't be too large as well。 Should be meaningful value。 So for example if you have some cost plus some regularization let's say it's parameterized。
+如果你将lambda增加得太多，那么你优化的对象就变成了右侧的部分。第二项是正则化项，它会阻止你处理原始任务。原始任务是实际的损失。所以额外的项不应该太大，应该是一个有意义的值。例如，如果你有一些成本加上一些正则化，假设它是参数化的。
 
- with w。 Say you have something like this。 What happens if you pick a very large lambda？
+对于w。假设你有这样的情况。如果你选择一个非常大的lambda会发生什么？
 
- What happens？ It becomes zero。 Why does it become zero？
+会发生什么？它变成了零。为什么它变成零？
 
- Because this term is meaning this after some time。 The only contribution， the optimization。 your parable is going to be something like this， and this little cost is maybe just a tiny bit noise around it。 So once you optimize bum bum bum in a few steps you come to zero point。 But this is your task。 You need to focus on this。 But what happens if this is too small？
+因为这个项意味着过了一段时间。唯一的贡献，优化。你的寓言将是这样的，且这个小的成本可能只是围绕它的微小噪声。所以一旦你优化了，咚咚咚，几步之后你会到达零点。但这是你的任务。你需要专注于这个。如果这个项太小会发生什么？
 
- You just optimize this and it's not regular so you don't punish with very exploding values。 of entries of the parameters。 So for step size I would start from a smaller number and increase it。 For a regularization parameter I would start from a higher number if I know what the solution。 is and then decrease it to find the balance between the two。 Did you have another question？ Yeah。
+你只是优化这个，而没有进行正则化，因此你没有惩罚参数的非常爆炸性的值。所以对于步长，我会从一个较小的数字开始，然后逐渐增加。对于正则化参数，如果我知道解决方案是什么，我会从一个较大的数字开始，然后减少它，以找到两者之间的平衡。你还有其他问题吗？是的。
 
- Yeah， that sounds like it's something that fits to this intuition。 That's something that your parable familiar with as well。 Sometimes you want to compare two different methods and it seems like they just go down。 and then it seems like they both make this shape so it's not the fresh。
+是的，这听起来像是符合直觉的东西。这也是你所熟悉的寓言之一。有时候你想比较两种不同的方法，结果看起来它们都在下降。然后似乎它们都做出这个形状，因此它不再是新鲜的。
 
- We don't really know what's going on。 But once you take the log scale then you realize what's happening here is actually something。 like this with let's say stochastic gradient descent and maybe something like this with。 the gradient descent。 So this little gap that was now existent before in this plot in the real plot it becomes visible。 and not visible in the log plot。 Okay， some loss functions。
+我们并不完全知道发生了什么。但一旦你采用对数刻度，你会意识到这里实际上发生的事情类似于这样，用我们说的随机梯度下降，可能是这样的情况。梯度下降也是如此。所以在这个图中以前存在的这个小间隙，在实际图中变得可见，而在对数图中则不可见。好的，一些损失函数。
 
- So suppose we have the total loss we don't have we don't average it。 We don't divide this expression of J omega with n with the number of samples and what， happens。 The calculation is easy since differentiation is a linear operator we can take differentiation。 operator into the sum which is a finite sum so we can do that right we can switch differentiation。
+所以假设我们有总损失，我们没有取平均。我们不把J omega的表达式除以n样本数，那么会发生什么。计算很简单，因为微分是线性运算符，我们可以将微分运算符带入和式中，这是一个有限和式，所以我们可以这么做，对吧，我们可以交换微分的顺序。
 
- with the sum。 If it were infinite sum then I would have to check whether it was converging in from the。 old up。 But it's a finite sum so I can do that I switch to order of differentiation with respect to。 summation then I get the second equation which gives me the gradient。 And I can follow the path of the gradient simply enough。
+和和式。如果它是无限和式，那么我得检查它是否在从旧到新的过程中收敛。但它是有限和式，所以我可以这么做，我将微分的顺序与求和的顺序交换，然后我得到第二个方程，这个方程给了我梯度。然后我可以简单地跟随梯度的路径。
 
- So from this expression of the gradient of J omega what is the step of stochastic gradient， descent。 And that's the last equation last last line actually there's no recall to sign there。 So the last line tells me that if I want to do things in the stochastic way then I would。 have to take a step in the direction of minus 2 times W parameters times input minus the。
+所以从这个梯度J omega的表达式中，随机梯度下降的步伐是什么。那就是最后的方程，实际上最后一行没有回顾符号。所以最后一行告诉我，如果我想用随机的方式做事情，那么我必须朝着减去2倍W参数乘以输入的方向迈步，减去。
 
- output times input again。 It's going to be a vector。 It's dot product is a number minus a number times a number multiplied with a vector。 But how do you compare the derivative here and the derivative there if you don't have the。 averaging。 What differentiates them？ What's different between the two？
+输出乘以输入，再一次。这将是一个向量。它的点积是一个数字，减去一个数字乘以一个数字再乘以一个向量。但如果你没有取平均值，如何比较这里的导数和那里导数呢？它们之间有什么区别？它们之间有什么不同？
 
- True but if I had one over run that would be still true。 So I want a difference between the two that's only particular to the choice of the factor。 one over run。 Direction。 Well it's just a scaling so I can add one over run and I get the same direction right。 Think in terms of magnitude。 What's the difference between the gradient of the JFW？
+对，但如果我有`1/n`，那仍然成立。所以我想要区分这两者之间的差异，这仅仅是选择`1/n`因子的不同。方向。嗯，这只是一个缩放因子，所以我可以加上`1/n`，然后得到相同的方向，对吧。想想它的大小。JFW的梯度之间有什么区别？
 
- So what's the difference between the gradient step versus the stochastic gradient step？ The divider。 Yes it will be larger right。 The first one will be much larger because I take gradients and I add them up。 I add n different vectors。 So this one is addition of n different vectors。 Maybe they rotate and come back。 I don't know that but in the end on average in the expected value in the sense of mean。
+那么梯度步和随机梯度步有什么区别呢？分母。是的，它会更大，对吧。第一个会大得多，因为我取了梯度并将它们加起来。我加了n个不同的向量。所以这是n个不同向量的加法。也许它们会旋转然后回来。我不知道，但最终在平均值的期望值上。
 
- of things it's larger because in the end I'm adding n different vectors and this is going。 to be the total one then those are the little steps。 But I take the average if I look at the gradient。 So if I had this one over n factor in front of this expression of minus gradient J omega。 then I would have this vector this is the total gradient and divide it by n right。
+事情之所以变大，是因为最终我在加上n个不同的向量，这将是总和，然后这些是小步骤。但我如果看梯度，我会取平均值。所以如果我在这个表达式前面有一个`1/n`的因子，减去梯度J omega的表达式，那么我将得到这个向量，这是总梯度，再除以n，对吧。
 
- There's none of them so it's roughly somewhere here。 That would be the average one。 So in terms of how big of a step you are taking in that mountainous landscape the scale of。 the two are very different depending on whether you average them or not。 If you average them the scales are comparable of SGD and GD。
+它们没有，所以大致就在这里。那就是平均值。所以在你在那座山区地形中迈步的大小上，两个的尺度非常不同，这取决于你是否对它们取平均。如果你对它们取平均，那么SGD和GD的尺度是可比的。
 
- But if you don't average them then they are not comparable。 The gradient step is much larger roughly and times the step of a single example times larger。 So that's actually the next slide。 So the technical computation of this is just taking expected values。 Why do we take expected values？ Expected values are something some operations that can be done on random variables that。
+但是如果你不对它们进行平均化，那么它们是不可比较的。梯度步长通常要大得多，粗略估计是单个示例的步长的N倍大。所以这实际上是下一个幻灯片要讲的内容。那么，这个技术计算就是求期望值。我们为什么要取期望值呢？期望值是对随机变量进行的一些操作。
 
- has some sort of underlying distributions。 What's a random variable here？
+有某种潜在的分布。那么这里的随机变量是什么？
 
- I thought we just had some examples。 I thought I had a bunch of fixed points。 I thought I had only those x1 and xn's。 But obviously I can't take them as random variables that come from some unknown distribution。 that's called key。 So x is distributed as DP in a sense or we can just say P。 So there is some underlying distribution of those examples that I'm selecting my samples， from。
+我原以为我们只有一些示例。我以为我只有一些固定的点。我以为我只有那些x1和xn。但显然我不能把它们当作来自某个未知分布的随机变量。这个叫做关键。所以x是按DP分布的，或者我们可以简单地说P。所以那些示例的确有某种潜在的分布，我正是从这些分布中选择样本。
 
- And once I sample them the sampled outcomes are those N samples。 And hence even though I don't know what P is， even though I don't know what underlying distribution。 is， I can look at their expected values and compare them。 Because in GD and SGD the distribution will be the same。
+一旦我对它们进行抽样，得到的样本结果就是这N个样本。因此，尽管我不知道P是什么，尽管我不知道潜在的分布是什么，我可以查看它们的期望值并进行比较。因为在GD和SGD中，分布是相同的。
 
- So taking expected value will give me a rough idea of the magnitude of stochastic steps versus。 gradient steps。 So let's just carry that out。 Now I'm just plugging from the previous slide the expression for the gradient。 Take expectation。 Again， expectation is a linear operation。 And I have finite sum。 So I can reverse the order of summation and expectation。 And I take expectation inside。
+因此，取期望值可以让我大致了解随机步长与梯度步长的大小。接下来我们继续做这个计算。现在我只是从上一张幻灯片中代入梯度的表达式。取期望值。同样，期望值是一个线性操作。并且我有一个有限和的求和，所以我可以交换求和和期望的顺序。然后我将期望值放到内部。
 
- but I have is minus N times expected value of this expression。 which is the step of stochastic descent。 So it turns out our intuition that we did on the board was indeed true。 In expectation， the size of a， the mean size of a gradient step is N times larger than。 the mean size of a stochastic gradient step。 Right？
+但我得到的是负N乘以这个表达式的期望值。也就是随机下降的步长。所以结果证明我们在板上做的直觉确实是正确的。期望值中，梯度步长的平均大小是随机梯度步长的N倍大。对吧？
 
- Just a simple observation that you can back with a little basic calculation。 So what does this mean？
+只是一个简单的观察，你可以通过一些基本的计算来验证。那这意味着什么呢？
 
- If you don't average， and if you want to take a， take an SGD step， we can maybe pick an example。 and blow it by N。 So maybe it was this and we can just blow this by N and take that step instead。 Right。 That's a possibility。 I'm not sure if it's the smartest way to do this。 but it's a possibility。 Yes？ [ Inaudible ]， Take you this step versus this step。
+如果你不进行平均化，并且如果你想采取一次SGD步长，我们可以选择一个示例，然后将其放大N倍。也许它原本是这个，我们可以把它放大N倍，然后采取这个步长。对吧。这是一个可能性。我不确定这是否是最聪明的做法，但这是一个可能性。是的？[听不清]，你需要这一步与这一步相比。
 
- You don't usually do this。 It's just because stochastic steps， as you see， they're a little noisy。 If you blow them by N， they might take you to places where you don't actually want to， go。 Right。 That's not， that doesn't give you， so ultimately， why do we do stochastic gradient descent？
+你通常不会这么做。只是因为随机步骤，如你所见，它们有点嘈杂。如果你将它们放大N倍，它们可能会把你带到你其实不想去的地方。对吧？那样的话，它就不会给你正确的结果。那么，最终，为什么我们要使用随机梯度下降法？
 
- To gain time。 Because time is a big constraint。 I can't train huge networks with gradient descent。 That would be lovely， but we don't have the computational power。 That would take ages。 You're overshooting in weird direction。 So each time， imagine them taking this。 It's going to be like this。 Take this step。 It's going to be like this。 Take this step。
+这样做是为了节省时间。因为时间是一个重要的限制因素。我不能用梯度下降法训练巨大的网络。那样当然很好，但我们没有足够的计算能力。那将需要很长时间。你会朝着奇怪的方向偏离。所以每一次，想象一下，假如他们这样做。这将是这样的。采取这一步。它将是这样的。采取这一步。
 
- It's going to go like this。 So in N steps， you want to reach here， but your god knows where。 [ Inaudible ]， Yes。 Yes。 [ Inaudible ]， [ Inaudible ]， Yes。 [ Inaudible ]， Yes。 [ Inaudible ]， Yes。 [ Inaudible ]， Yes。 [ Inaudible ]， Yes。 [ Inaudible ]， Yes。 [ Inaudible ]， Yes。 [ Inaudible ]， Yes。 [ Inaudible ]， Yes。 [ Inaudible ]， Yes。 [ Inaudible ]， Yes。 [ Inaudible ]， Yes。 [ Inaudible ]， Yes。
+它会像这样进行。所以在N步中，你想达到这个位置，但你不知道它会到哪里。[听不清]，是的。是的。[听不清]，[听不清]，是的。[听不清]，是的。[听不清]，是的。[听不清]，是的。[听不清]，是的。[听不清]，是的。[听不清]，是的。[听不清]，是的。[听不清]，是的。[听不清]，是的。[听不清]，是的。[听不清]，是的。[听不清]，是的。
 
- [ Inaudible ]， Yes。 [ Inaudible ]， Yes。 [ Inaudible ]， In my experience。 I think it doesn't matter about how far you have -- how far you are from。 the original -- if gradient descent is costly， you typically don't use it。 If you can't afford using gradient descent， and if you know your problem is usually nice， in comics。
+[听不清]，是的。[听不清]，是的。[听不清]，根据我的经验，我认为你离原始位置有多远并不重要——如果梯度下降计算代价很高，你通常不会使用它。如果你负担不起使用梯度下降，而且你知道你的问题通常是很好的，在漫画中是那样。
 
- which is what we had so far， then by all means go ahead and use gradient descent。 It's much more stable， much more consistent in all cases。 So， okay。 let's -- let's take a look at the slide again。 So it's just rewriting this expression of minus and times gradient。 So it tells you what happens -- you know， comparing various steps。 So， you know。
+这就是我们目前所拥有的，那么尽管如此，还是继续使用梯度下降。它在所有情况下都更加稳定，一致性更强。所以，好吧。让我们再看一下幻灯片。所以这只是重新写这个表达式，减号和乘号梯度。它告诉你会发生什么——你知道的，比较各种步骤。所以，你知道。
 
- the whole point of this detour was to get us back to the average loss。 So if I want to optimize the same thing with the same magnitudes of steps， I could use the。 average one。 If I have the average one， then my gradient step will be like this。 and stochastic step will， be like this。 So they are going to be those small vectors。
+这次绕道的主要目的是让我们回到平均损失。所以，如果我想用相同的步长优化相同的东西，我可以使用平均损失。如果我有平均损失，那么我的梯度步长就会是这样，而随机步长则会是这样。所以它们会是那些小向量。
 
- and the sizes of their vectors are going to， be comparable。 The SGD will have some noise。 but their sizes will be comparable。 And most of the times。 I can't think of specific examples in which the total loss is going to， be a better loss function。 but most of the times you want to use the average one。 You want to use the average loss。
+他们的向量大小将是相似的。SGD会有一些噪音，但它们的大小会相似。大多数时候，我想不出具体的例子，说明总损失会成为更好的损失函数，但大多数时候你会想使用平均损失。你会想使用平均损失。
 
- So unless there is a specific reason that forces you to use total loss， I would suggest using。 the average loss。 And there are various other advantages of the average loss as well。 and we'll come to that， yes？ [inaudible]， You could。 So you are saying I could always scale the step size by N， and I could get the same thing。
+所以除非有特定的原因迫使你使用总损失，否则我建议使用平均损失。而且平均损失还有其他各种优势，我们稍后会讲到，对吧？[听不清]，你可以。所以你是在说我可以通过N来缩放步长，这样我就能得到相同的结果。
 
- And then if you add regularization， then the scale of regularization will be different as， well。 But good question。 You could， there isomorphic。 So the two problems are the same。 I can scale either the step size or， you know， hyper parameters。 That seems like it's the same thing， so it seems total。
+然后如果你添加正则化，正则化的规模也会有所不同。但这是个好问题。你可以，存在同构性。所以这两个问题是相同的。我可以缩放步长，或者你知道，调整超参数。看起来这就是相同的事情，所以看起来是总损失。
 
- Why do I play the total loss versus average loss？ Right？
+为什么我会使用总损失和平均损失呢？对吧？
 
- The main idea of using average loss is the following。 Suppose you have huge amount of data。 Thousands of thousands of data。 And practically they repeat themselves。 What happens then？
+使用平均损失的主要思想如下。假设你有大量数据，成千上万的数据。而且它们实际上是重复的。那么会发生什么呢？
 
- [inaudible]， You are double counting the same errors。 What happens if you use the total loss？
+[听不清]，你在重复计算相同的错误。如果你使用总损失，会发生什么呢？
 
- Or versus average loss？ Yeah， right？ So let's say you have the same thing。 No， x minus， let's say。 let's say it's just x squared。 Or parameter is w。 Let's say you have w squared。 And you have， okay。 w x minus y squared。 And you have two samples。 You add this， w x two minus y two squared。 And this is your loss。 This is your total loss。 And the average loss is one half of the same thing plus one half of the same thing because。
+或者对比平均损失呢？是的，对吧？假设你有相同的东西。没有，x减去，假设。假设它只是x的平方，或者参数是w。假设你有w的平方。然后你有，好的，w x减去y的平方。你有两个样本。你将这个加上，w x2减去y2的平方。这就是你的损失。这是你的总损失。然后平均损失是相同东西的一半加上相同东西的一半，因为。
 
- you have two examples。 So if you assume that x one is x two and y one is y two， what happens？
+你有两个样本。如果你假设x1等于x2，y1等于y2，会发生什么呢？
 
- Your gradient step in this one will be just twice of the gradient step of this one， right？
+在这个例子中，你的梯度步长将是这个的两倍，对吧？
 
- That's fine。 What's your stochastic step？ In this case， your stochastic case。 so stochastic step of the average one is actually equal to， the gradient step of the average one。 In the above example， it won't be the case。 In the above example。 the stochastic step will be half the size of the gradient step。
+这没问题。你的随机步长是多少？在这种情况下，你的随机步长，实际上平均值的随机步长等于平均值的梯度步长。在上述例子中，情况就不一样了。在上述例子中，随机步长将是梯度步长的一半。
 
- So this is like you have a parabola and you have another parabola on top of it。 And instead of adding them up， you just average them so it's the same thing， right？
+所以这就像是你有一个抛物线，而在它上面还有另一个抛物线。你不是将它们加起来，而是对它们取平均，所以这不是一样的吗？
 
- It gives you the same thing。 So why is that important？ Because if I have data that has similarities。 then the average， then the stochastic step， stochastic。 gradient step will give me exactly the gradient step。 So I will save time and they will both have the same descent directions。 So in this example， again。
+这会给你相同的结果。那么为什么这很重要呢？因为如果我有一些数据，它们之间有相似性，那么取平均，接着进行随机的梯度下降步长会给我与梯度下降完全相同的步长。因此，我可以节省时间，并且它们的下降方向是相同的。在这个例子中，还是这样。
 
- you can argue that if I scale everything by one half in this first， example。 I'll get the same thing。 But what if you have data that comes from two different sources？
+你可以争辩说，如果我在第一个例子中将所有内容缩放为一半，我会得到相同的结果。但是如果你有来自两个不同来源的数据会怎样呢？
 
- So all the parabolas are either here or there and you add them up and you have a little variation。 between the two。 So the data， let's say this is the data of zeros and this is the data of ones that you。 want to classify。 And it's not perfect。 It's， let's say， handwritten zeros and months。 So some zeros have this cost and some zeros have this cost。 And in the one case。
+所以所有的抛物线要么在这里，要么在那儿，你将它们加在一起，就会有一些小的变化，介于两者之间。假设这是零的数据，这是你想要分类的一个的数据。它并不完美，假设是手写的零和一月。所以一些零有这个成本，而另一些零有那个成本。在一的情况下。
 
- the handwritten digits have some of them has this cost and some of， them has this cost。 So they're not exactly the same。 And you have 30，000 such samples and you have a huge network to train。 Calculating the gradient of those 30，000s， 30，000 examples will be painful。 If you take the gradient step， if you are looking at the average cost， for the average cost。
+手写数字中的某些数字有这个成本，某些有那个成本。所以它们并不完全相同。而且你有30,000个这样的样本，且你有一个庞大的网络要训练。计算这30,000个样本的梯度将会非常痛苦。如果你取平均成本来看这个问题，实际上。
 
- this problem of averaging over 30，000 samples will be almost exactly the same as just taking。 one from this， one sample from this and one sample from that and averaging over these two。 It exactly gives you the same decent directions。 So by just bringing a little calculation。 you save yourself time and condition power and you have a method that's almost as powerful as a gradient descent。
+平均30,000个样本的这个问题，将几乎完全等同于只取一个来自这个的样本和一个来自那个的样本，再对这两个取平均。它将给你完全相同的下降方向。所以，通过仅仅进行一些计算，你就能节省时间和计算能力，而且你会得到一个几乎和梯度下降一样强大的方法。
 
- That's why in practice， yes？ Because calculating the gradient of a sum of 30。000 of the same thing is 30，000 times slower than calculating the gradient of one term。 Look。 in this step， since you don't know exactly what xi's and yi's are。 calculating this amounts to calculating gradient of this n times。
+这就是为什么在实际操作中，为什么呢？因为计算30,000个相同项目的和的梯度，速度是计算一个项的梯度的30,000倍慢。看，在这一步，由于你并不知道xi和yi到底是什么，计算这个就等于要计算这个的n倍。
 
- If you could just get away by calculating one term only， that would save you time by n times。 They are huge。 Weight net worth weight matrix is huge。 so you might not even have enough memory to collect all gradients。 Yes？ [inaudible]。 Take your gradient。 [inaudible]， [inaudible]， In the average one， okay？
+如果你只需要计算一个项，那将节省你n倍的时间。它们很大。权重矩阵非常大，所以你可能甚至没有足够的内存来收集所有的梯度。是吗？[听不清]。拿你的梯度。[听不清]，[听不清]，在平均的那个，好的？
 
- So why would you normalize the gradient？ [inaudible]， So if you make the。 if you're on different landscapes in the total of one， then average one。 If you make the norms of the gradient the same， then you take different steps。 Like in one example。 you have an amplified world where a normal， an average person is like a， you know。
+那么为什么要归一化梯度？[听不清]，所以如果你在一个总体上是不同的景观中，那么平均一个。如果你使梯度的范数相同，那么你将采取不同的步伐。就像在一个例子中。你有一个放大世界，普通人就像你知道的那样。
 
- like gluver's gigantic world。 You have to take gigantic steps to get to the place where you want to go。 In the other one， you're in a tiny people world， so you have to take tiny steps。 So you want to follow the path of the gradient。 So what matters is not whether the gradient of this is comparable to the gradient of this。 but what matters is whether the gradient of this is comparable to the stochastic gradient of the same landscape。
+就像是格卢弗的巨大世界。你必须采取巨大的步伐才能到达你想去的地方。在另一个世界里，你是在一个微小的人类世界，所以你必须采取微小的步伐。所以你想跟随梯度的路径。那么重要的不是这个梯度是否与这个梯度相当，而是这个梯度是否与相同景观的随机梯度相当。
 
- Or the gradient of this compared to the stochastic gradient of the same landscape。 So fixing a function， loss function fixes you the landscape。 and that inherently has its own scale of things。 You're either in the gigantic world or tiny world。 When you're a couple of eight， the way we are getting near the beam。
+或者这个梯度与相同景观的随机梯度相比。所以固定一个函数，损失函数固定了你的景观，而那本身有自己的尺度。你要么在巨大的世界里，要么在微小的世界里。当你是一个八岁的小孩时，我们接近那个目标。
 
- or the stochastic gradient tends to be the normal gradient tends to be the gradient。 Yes。 In the stochastic case， it also decreases， but it's noisy。 Why it's noisy？
+或者随机梯度倾向于是正常梯度，倾向于是梯度。是的。在随机情况下，它也会减小，但它是有噪声的。为什么会有噪声？
 
- Because the sum of the two parabolas here is another parabola here。 And you want to be around here in the minimum。 And if you by chance sample a function from the first example from the first one。 the gradient will be large and it will show you on the other side。 And that's why in practice in large scale problems people do stochastic gradient descent with a mini-batch。
+因为这里两个抛物线的和是另一个抛物线。你想在这里接近最小值。如果你碰巧从第一个例子中采样一个函数，第一个梯度会很大，它会把你推到另一边。这就是为什么在大规模问题中，人们通常使用带有小批量的随机梯度下降。
 
- Not with mini-batch size of one， but with mini-batch size of ten hundred， or maybe even more。 depending on the problem。 So in this example， if I take random samples of ten inputs。 let's say I have thirty thousand training examples， and I randomly select ten of them。 and look at the average。 The average will be a really good estimate of the underlying function。
+不是用大小为一的小批量，而是用大小为十、百，或者甚至更多，取决于问题。所以在这个例子中，如果我随机选择十个输入。假设我有三万个训练样本，我随机选择其中十个。然后查看它们的平均值。平均值将是对潜在函数的一个非常好的估计。
 
- Because I know I have a good chance of selecting almost equally from both classes by choosing mini-batch size of ten。 And since they're all very close to each other， and they're all very close to each other。 the average of the two will give me something very similar to this landscape。 So that landscape by averaging will be just maybe a tiny bit shifted version of it。
+因为我知道通过选择大小为十的小批量，我几乎有很好的机会从两个类别中选择差不多的样本。而且它们都非常接近，几乎是一样的。这两个的平均值会给我一个非常接近这个景观的东西。所以通过平均，那个景观将只是它的一个微小偏移版本。
 
- And the stochastic steps will be calculated by the gradients of the shifted landscape。 and the actual gradients will give me this landscape。 So this is going to be a gradient step。 and this is going to be a stochastic gradient step。 But the good deal is that they are so much comparable， they are almost the same。 So in this example。
+而随机步长将通过平移后的梯度来计算。实际的梯度将给我这个景观。所以这将是一个梯度步长。这将是一个随机梯度步长。但好的一点是它们非常相似，几乎是一样的。所以在这个例子中。
 
- with mini-batch size of ten， the stochastic steps will almost follow the steps of the gradient descent。 which is a huge benefit。 That's why it works in practice。 That's why average loss is much nicer。 OK。 so if you take two， there's a higher chance that you maybe only select from the first class。 You can do two， too， because in the long run， if you keep selecting two all the time。
+使用迷你批次大小为十时，随机步骤几乎会跟随梯度下降的步骤。这是一个巨大的优势。这就是它在实践中有效的原因。这就是为什么平均损失看起来更好。好的，如果你选两个，可能有更高的机会仅从第一类中选择。你也可以选两个，因为从长远来看，如果你一直选择两个。
 
- some of them will be the average ones。 So， for example， in the digit classification problem。 classical example where SGD works better than GD， much， much faster。 In that case。 you can take stochastic gradient， since there are ten examples， you can take stochastic gradient。 mini-batch size 100， or 128。 That's the standard， 128。 Well。
+其中一些将是平均值。例如，在数字分类问题中，这是一个经典例子，其中SGD比GD更有效，速度快得多。在这种情况下，你可以采用随机梯度下降，由于有十个样本，你可以采用随机梯度下降。迷你批次大小为100或128。标准值是128。好吧。
 
- the trade-off is between computation time， what you can afford。 because you want to increase the mini-batch size， but you don't want to increase it too much to slow down computation。 Yes？ In the case， when we're using， for example， mini-batch with ten examples。 we have to average for more than ten。 Yes。 And then take the gradient。
+这之间的权衡是计算时间和你能够承担的成本。因为你想增加迷你批次的大小，但你不想增加得太多以免减慢计算速度。是吗？在这种情况下，当我们使用例如十个样本的迷你批次时，我们必须对超过十个样本的梯度进行平均。是的。然后再进行梯度计算。
 
- And taking gradient of ten submissions is easier than taking gradient of 30，000 submissions。 That's the whole idea。 It's actually pretty simple。 So the idea behind SGD is that there is redundancy in data。 Data usually comes in little clumps。 and we select a lot of them， so we have lots of lots of lots of samples to train data。
+取十个提交的梯度比取三万个提交的梯度要容易。这就是整个思路。其实非常简单。所以SGD背后的思想是数据中存在冗余。数据通常是以小块的形式出现的，我们选择其中很多，因此我们拥有大量的样本来训练数据。
 
- to train the system， train a machine。 And if there is redundancy， SGD will work well。 because it will approximate the gradient very well。 If it doesn't， I think in the homework。 the case you had， you know， most people had the trouble of gradient descent finding a better solution than the stochastic gradient descent。 It's because you're doing mini-batch size 1。 So the gradient of this pulls you in a direction。
+训练系统，训练机器。如果存在冗余，SGD将表现良好，因为它可以很好地近似梯度。如果没有冗余，我认为在作业中，你遇到的情况是，大家大多数人发现梯度下降法找到的解决方案比随机梯度下降法更好。这是因为你使用的迷你批次大小为1。所以这个梯度会把你拉向某个方向。
 
- The gradient of this pulls you in another direction， so you can't really stabilize here。 It actually bounces back and forth here。 You have to really wait a long time for the step size to diminish the very low value to be able to see points here。 So it seems like it's taking longer。 Because that problem is not the best showcase of SGD。 So it shouldn't mislead you。 Yes？ [inaudible]， Yes。 [inaudible]， You always have to do that。
+这个梯度会将你拉向另一个方向，所以你无法在这里稳定下来。它实际上在这里来回反弹。你必须等很长时间，直到步长减小到一个非常小的值，才能看到这里的点。所以看起来它似乎花了更长时间。因为这个问题不是SGD的最佳展示例子，所以它不应该误导你。是吗？[听不清]，是的。[听不清]，你总是需要这么做。
 
- Because if you。 [inaudible]， No。 You can take constant step size。 That doesn't matter much。 [inaudible]， [inaudible]， So if you don't take anything， it's actually taking a step size of 1。 right？ Your step size is 1， in that case。 So maybe 1 is a too large of a step size。 It will diverge。 Or maybe 1 is too small of a step size。 It really， really depends on the problem。
+因为如果你。[听不清]，不。你可以采取常数步长。那没有太大影响。[听不清]，[听不清]，所以如果你什么都不做，实际上就是步长为1，对吧？在这种情况下，你的步长是1。所以可能1是一个太大的步长，可能会发散。或者1可能是一个太小的步长，这真的非常依赖于问题。
 
- How do you put constraints on v？ What's your x's and what's your y's？ If you normalize your data。 if you preprocess and make all the x's have expected value 0 and standard deviation 1。 it's different than having them blown up by a factor of 10。 So that you still need to do hyperparameter tuning is because you don't know the scale of your data。
+如何对v进行约束？你的x和y分别是什么？如果你对数据进行归一化处理，预处理并使所有的x的期望值为0，标准差为1，这与将它们放大10倍是不同的。所以你仍然需要进行超参数调优，因为你不知道数据的规模。
 
- So it doesn't save you from hyperparameter tuning。 Clearly。 since the two functions differ by only a factor of 1 over n， once minimized。 their minimizers are at the same place。 So on the domain。 it's going to be the same point on the domain。 The values are going to be different。
+所以它并不能帮助你免除超参数调整。显然，由于这两个函数的差异仅仅是1/n的因子，一旦最小化，它们的最小值点会在同一个位置。所以在域上，它们会位于同一个点。只是值会有所不同。
 
- The altitudes are going to be different。 But the points are going to be the same。 What happens if you're the regularizer though？ What happens in this case？ In this case。 they are not at the same place。 In both cases， I just added a term that regularizes。 that punishes large values of weights。 Now， the location is going to be a little different。
+高度将会有所不同。但是点是相同的。如果你是正则化器，会发生什么？在这种情况下，会发生什么？在这种情况下，它们不在同一个地方。在这两种情况下，我只是加了一个正则化项，惩罚较大的权重值。现在，位置会稍微不同。
 
- Why is that？ Okay， let's ask another question。 How can I change lambdas so that the two loss functions have their minimizers at the same point？
+为什么会这样？好吧，我们来问另一个问题。我该如何改变lambda，以便两个损失函数的最小值点在同一个位置？
 
- Minimum zero？ What？ Big lambda？ I can make lambda zero， but then I lose regularization。 I want to keep regularization。 Lambda times n。 So I can just modify one of the lambdas。 So now the loss function depends on lambda。 To the first one， let's explicitly write the dependency。 lambda plus total plus。 And the other one is total divided by n plus lambda from squared。
+最小值是零？什么？大lambda？我可以把lambda设为零，但那样就失去了正则化。我想保持正则化。lambda乘以n。所以我可以修改其中一个lambda。现在损失函数依赖于lambda。对于第一个，让我们显式地写出依赖关系。lambda加总和加上。另一个则是总和除以n加上lambda的平方。
 
- So if I here， instead of plugging lambda， if I plug lambda divided by n。 I also have lambda divided by n here。 Then the minimizers are at the same place。 But let's take a step back。 Let's take lambda is fixed before I assign those functions。 So I have these two。 Which one question is the last line？
+所以，如果我在这里，不是直接使用lambda，而是使用lambda除以n。这里我也有lambda除以n。那么最小值点会在同一个位置。但让我们退一步思考。在我指定这些函数之前，假设lambda是固定的。那么我有这两个函数。最后一行问题是什么？
 
- Which one of those functions once minimized have the smaller complexity？
+这两个函数最小化后，哪个函数具有更小的复杂度？
 
- Smaller norm in lambda in parameters w。 Which one？ Second one？ First one？ Second one， why？
+哪个在lambda中的范数和w的参数范数较小？哪个？第二个？第一个？第二个，为什么？
 
- Because we have higher organization。 Yes， because it has higher organization。 Because we put more weight in regularizing norm of b than the emphasis we put on the actual thing we want to minimize。
+因为我们有更高的组织性。是的，因为它具有更高的组织性。因为我们在正则化b的范数时投入了更多的权重，而不是在我们想要最小化的实际内容上。
 
 ![](img/6ddddef09bca9a70d5f50a90c582ca0a_4.png)
 
- That's the end of the review part。
+这是复习部分的结束。
 
 ![](img/6ddddef09bca9a70d5f50a90c582ca0a_6.png)
 
- We have 10 more minutes for little kernel methods。
+我们还有10分钟来讲解一些小的核方法。
 
 ![](img/6ddddef09bca9a70d5f50a90c582ca0a_8.png)
 
- Same remark， this is not February 18， 2015。 I'm not being any questions on the previous topics。 Yes。 In general， let's say you have a function times， so let's just look at the first function。 What happens if I take lambda zero？ Then there's no regularization。 Whatever w。 I find， I find。 Why do I add regularization？ I added， because maybe by chance。
+同样的评论，这不是2015年2月18日。我不会回答之前主题的问题。是的。一般来说，假设你有一个函数乘以某个因子，那么我们只看第一个函数。如果我取lambda为零，会发生什么？那么就没有正则化了。无论w是什么，我都会找到它。我为什么加正则化？我加了，因为也许是碰巧的。
 
- I have a bad function here that doesn't punish large values of w。 So it blows up。 And it memorizes everything。 I don't want it to memorize it over fits。 I want to prevent that。 So in order to prevent that， in order to prevent this function blowing up， I add this term。 But it does that if I minimize the whole thing， I also want to minimize this。
+这里有一个不好的函数，它没有惩罚w的较大值。所以它会爆炸，并且会记住所有东西。我不希望它记住这些过拟合的内容，我想要防止这种情况。所以为了防止这种情况，防止这个函数爆炸，我加了这个项。但是，如果我最小化整个函数，我也希望最小化这一项。
 
- So it blocks the growth of w。 It blocks the growth of parameters。 So in the extreme where lambda is zero， this can be very large。 This can blow up。 What is the other extreme when lambda is infinity？ Or very， very large。 Sum lambda very large。 Omega star will be almost zero， right？ Yes， it's going to be zero。 Close to very close to zero。
+所以它阻止了w的增长，阻止了参数的增长。所以在lambda为零的极端情况下，这个值可能非常大，可能会爆炸。那当lambda趋近于无穷大时会怎样呢？或者非常非常大时，lambda非常大时。Omega星将几乎为零，对吧？是的，几乎会变成零，非常接近零。
 
- So what happens is very close to zero。 Then it has， according to the previous definition。 it has low complexity， which means it has low norm。 So what this means is that larger lambda lower the complexity。 And that's how we derived this conclusion from two different functions。
+所以发生的情况是非常接近零时，根据之前的定义，它的复杂度很低，意味着它的范数很低。这意味着lambda越大，复杂度越低。这就是我们从两个不同函数中得出这个结论的方式。
 
- Because the second one has larger lambda。 Let's go quick。 The current x will be the space of text and x will be an example。 You didn't see the slides yesterday， right？ No。 So x will be an example of a text。 And we are going to extract features。 Features can be some keywords that can be extracted from the text。
+因为第二个文本有更大的lambda。我们快速进行。当前的x将是文本空间，x将是一个文本示例。你昨天没有看幻灯片，对吧？没有。那么x将是一个文本示例。我们将提取特征，特征可以是从文本中提取的关键词。
 
- such as Android。 That takes place twice， Google that takes place twice， IO shows up once。 and then and so on and so on。 We'll come back to this text。 So if we have two different texts。 examples of texts， how do we compare the two？ We want to find a notion of distance。 We want to find a dual notion of similarity between the two texts。
+比如Android出现了两次，Google出现了两次，IO出现了一次，等等等等。我们会回到这个文本。所以如果我们有两个不同的文本，文本示例，怎么比较这两者呢？我们希望找到一个距离的概念，想要找到两个文本之间的相似性对偶概念。
 
- It can be identifying positive reviews from negative reviews。 So if I find good keywords for positive reviews on Amazon。 I can actually find a similarity notion between the two。 By just calculating a number。 I can say this is very close to a positive review。 So it's supposed。
+这可以是从负面评论中识别正面评论。因此，如果我找到了亚马逊上正面评论的好关键词，我实际上可以找到这两者之间的相似性概念。通过计算一个数值，我可以说这个非常接近正面评论。所以这是可以的。
 
- the other one that has an unknown label will be a positive review。 And if the distance is too much。 then I can assume that it's a negative review， right？ You can do things like that。 So you want to come up with a function that takes input as two texts。 and it will up you a real number that will determine how close they are。
+另一个没有标签的文本将会是正面评论。如果它们之间的距离太大，那么我可以假设它是负面评论，对吧？你可以做类似的事情。所以你需要设计一个函数，它接受两个文本作为输入，并输出一个实数，来判断它们的相似程度。
 
- There are various ways to do that。 Let's say we have the following two texts。 They seem to have come from similar contexts， and I can look at number of occurrences of various keywords。 Now I have some feature vectors。 I extracted the vector of dimension seven here on one side and on the other side for both texts。 Now I'm going to compare them。 It seems like their similarity is peaked in the first two elements。
+这样做有多种方式。假设我们有以下两段文本，它们似乎来自类似的语境，我可以查看各种关键词的出现次数。现在我有了一些特征向量。我提取了这边七维的向量，另一边也有相同的文本。现在我将要比较它们。看起来它们的相似性在前两个元素上最为突出。
 
- but how can I create a rigorous notion of comparison？ Let's say I normalize my vectors。 What I do is I just take squares of all the elements。 take the square root and divide every element by that， which gives me a new vector is the following。 which is just normalization。 So they have the same size。 So they become comparable now。
+但是我怎么才能创建一个严格的比较概念呢？假设我规范化了我的向量。我做的是将所有元素平方后取平方根，然后将每个元素除以该值，这样就得到一个新的向量，下面是它的表现形式，这实际上就是规范化。这样它们的大小相同，所以现在它们变得可以比较了。
 
- Now what I can do， now I have two vectors。 They are normalized。 I can take the dot product of them。 I can take the inner product。 The inner product， remember。 it gives you the angle between two vectors on a given space， on a given inner product space。 I checked the inner product。 The inner product turns out to be 0。85。
+现在我能做的是，我有两个向量，它们已经被规范化。我可以取它们的点积，可以计算它们的内积。内积，记住，它给出的是两个向量在给定空间中的夹角，内积空间中。检查内积后，结果是0.85。
 
- which kind of indicates high correlation。 The two texts that are originally started with have some similarities that's beyond random。 It's a good indication。 It seems like inner product of features。 remember they were extracted by a number of occurrences of certain keywords。 In this case。 inner product seems to be a good kernel。 So a kernel is something that takes two inputs and speeds to a number that roughly compares and measures the distance between two objects。
+这在某种程度上表示了高相关性。最初开始的这两段文本有一些超出随机的相似性。这是一个很好的指示。看起来像是特征的内积。记得它们是通过某些关键词的出现次数提取的。在这种情况下，内积似乎是一个很好的核函数。所以，核函数是将两个输入转化为一个数字，大致比较并衡量两个对象之间的距离。
 
- Okay。 It's a little reminder， some linear algebra。 And inner product。 So before we go any further。 do you know the relationship between inner product spaces， norm spaces and metric spaces？
+好的，这是一个小小的提醒，一些线性代数的知识和内积。所以在我们继续之前，你知道内积空间、范数空间和度量空间之间的关系吗？
 
- So we want to create a notion of angle and distance。 And according to this equation。 this first equation here， we have a notion of angle because we have this cosine theta there， right？
+所以我们想要创建一个角度和距离的概念。根据这个方程式，这里第一个方程，我们有角度的概念，因为这里有这个余弦 θ，对吧？
 
- We know that it's related to it just measures the theta has to be angle between two vectors。 But it also has a norm。 It has norm of v and norm of x。 So does it mean that every inner product space has a norm？ And as far as this。 it does induce a norm。 So if I have an x in the space， and if I have an inner product defined。
+我们知道它与它相关，因为它只是衡量 θ，它必须是两个向量之间的角度。但它也有范数。它有 v 和 x 的范数。那么，是否意味着每个内积空间都有范数？就这点而言，它确实诱导了一个范数。所以，如果我在空间中有一个 x，并且定义了一个内积，
 
- then I can define a norm induced by the inner product as x。x。 This means that every inner product space is actually normed space。 And in turn。 I can use the norm to define a metric space。 This means every normed space is a metric space。 So if I look at the set of all spaces that are inner product。
+然后我可以定义一个由内积诱导的范数，表示为 x·x。这意味着每个内积空间实际上都是一个范数空间。反过来，我可以利用范数定义一个度量空间。这意味着每个范数空间都是度量空间。所以，如果我看所有内积空间的集合，
 
- they are going to be the smallest because inner product implies norm。 So those are going to be normed spaces。 And this implies metric， which is even larger。 And the reverse relation is true。 Not every metric space is a normed space。 Not every normed space is an inner product space。 So why is this important？ Yes。
+它们会是最小的，因为内积意味着范数。所以这些将是范数空间。而这又意味着度量空间，度量空间更大。反过来关系也成立。并不是每个度量空间都是范数空间，并且不是每个范数空间都是内积空间。那么，为什么这很重要？是的。
 
- Metric space is the space where you have the notion of distance。 The only thing you have in your hand is a notion of distance。 There are assumptions of all of them。 We don't have to go into this。 The only thing we need to understand when it comes to separation of those spaces is that metric can be a very vague notion。 As long as you can describe a distance pretty much， it's going to be a metric space。
+度量空间是你可以定义距离的空间。你手上唯一拥有的就是距离的概念。它们都有各自的假设，我们不需要深入探讨。我们需要理解的唯一一件事是，度量可以是一个非常模糊的概念。只要你能描述一种距离，它就可以是一个度量空间。
 
- But it won't have the rigidity of norm。 Norm is a little more special。 Norm gives you certain scaling properties， for example。 If you take a vector， multiply it by two。 then its norm should be twice as much。 You don't have to have that in a metric space。 So normed space is more rigid。 What extra thing do you have in an inner product？
+但是它不会像范数那样刚性。范数更特殊。范数给你一些特定的缩放性质，例如。如果你拿一个向量，乘以二，那么它的范数应该是原来的两倍。在度量空间中不一定要求这样。所以范数空间更刚性。在内积空间中有什么额外的东西？
 
- Let's answer this and we are done。 Normed space is a little rigid。 It has distances that scales with the constant proportionally。 As you said。 inner product space has the extra notion of angle。 So now every normed space has to carry out the notion of angle。
+让我们来解答这个问题，然后就完成了。范数空间有点刚性。它有与常数成比例的距离缩放。正如你所说，内积空间有额外的角度概念。所以现在每个范数空间都必须具备角度的概念。
 
- But an inner product space on top of being a metric has a distance and has rigidity of norm。 On top of everything it has the notion of distance， notion of angles。 That's why we have the first equation there。 That's why we can take two texts and look at the similarities。 That's why inner product spaces are going to be the suitable spaces to work on kernels。
+但作为度量空间的内积空间，除了具有距离外，还有范数的刚性。最重要的是，它具有距离的概念，和角度的概念。这就是为什么我们有第一条公式的原因。也正因如此，我们可以将两个文本进行比较，查看它们的相似性。这也是为什么内积空间将成为处理核的合适空间。
 
- And more on kernels will become the next class。 Thanks。
+接下来会讲解更多关于核的内容。谢谢。
 
 ![](img/6ddddef09bca9a70d5f50a90c582ca0a_10.png)
 
- [BLANK_AUDIO]。
+[BLANK_AUDIO]。
