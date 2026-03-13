@@ -1,0 +1,7 @@
++   [MIT 6.S183 扩散模型笔记](README.md)
++   [1：课程介绍与扩散模型基础 🎯](mit-6s183-diffmdl-001.md)
++   [2：扩散模型的多视角解读 🧠](mit-6s183-diffmdl-002.md)
++   [3：条件生成与引导技术 🎯](mit-6s183-diffmdl-003.md)
++   [4：扩散模型的泛化能力 🧠](mit-6s183-diffmdl-004.md)
++   [5：分数蒸馏](mit-6s183-diffmdl-005.md)
++   [6：高级训练、采样与理论视角](mit-6s183-diffmdl-006.md)
