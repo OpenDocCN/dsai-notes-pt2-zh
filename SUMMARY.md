@@ -107,6 +107,7 @@
 +   [UCSD COGS108 数据科学实战中文笔记](docs/ucsd-cogs108-notes/README.md)
 +   [UCSD DSC10 数据科学原理笔记](docs/ucsd-dsc10-ds-prcp/README.md)
 +   [UCSD Python 数据科学笔记](docs/ucsd-pyds/README.md)
++   [UCSD Python 数据科学概率统计笔记](docs/ucsd-pyds-prob-stat/README.md)
 +   [UIUC 商业分析笔记](docs/uiuc-biz-anls/README.md)
 +   [UIUC CS357 数值方法 I 中文教科书](docs/uiuc-cs357-nummtd1/README.md)
 +   [UIUC CS542 统计强化学习笔记](docs/uiuc-cs542-stat-rl/README.md)
