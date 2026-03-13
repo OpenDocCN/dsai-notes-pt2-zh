@@ -1,0 +1,7 @@
++   [MIT 6.S184 扩散模型笔记](README.md)
++   [1：生成式AI与随机微分方程 🎯](mit-6s184-diffmdl-001.md)
++   [2：构建训练目标 🎯](mit-6s184-diffmdl-002.md)
++   [3：训练流与扩散模型](mit-6s184-diffmdl-003.md)
++   [4：构建图像生成器](mit-6s184-diffmdl-004.md)
++   [5：机器人学中的扩散模型 🦾](mit-6s184-diffmdl-005.md)
++   [6：蛋白质生成的扩散模型](mit-6s184-diffmdl-006.md)
