@@ -3,7 +3,7 @@
     
     README.md
     
-        数据科学和人工智能笔记（二）：文档中文名
+        数据科学与人工智能笔记（二）：文档中文名
         {nameEn}：文档英文名
         {urlEn}：文档原始链接
         dsaint2：域名前缀
@@ -21,7 +21,7 @@
 
     index.html
     
-        数据科学和人工智能笔记（二）：文档中文名
+        数据科学与人工智能笔记（二）：文档中文名
         {color}：显示颜色
         dsai-notes-pt2-zh：ApacheCN 的 Github 仓库名称
 
@@ -30,7 +30,7 @@
         dsai-notes-pt2-zh：ApacheCN 的 Github 仓库名称
 -->
 
-# 数据科学和人工智能笔记（二）
+# 数据科学与人工智能笔记（二）
 
 > 协议：[CC BY-NC-SA 4.0](http://creativecommons.org/licenses/by-nc-sa/4.0/)
 > 
