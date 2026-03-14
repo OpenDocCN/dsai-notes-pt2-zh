@@ -15,6 +15,7 @@
 +   [CMU 16-745 最优控制与强化学习笔记](docs/cmu-16745-rl/README.md)
 +   [CMU 17-445 AI 驱动的软件工程笔记](docs/cmu-17445-aidvn-swe/README.md)
 +   [CMU 170691 机器学习实践笔记](docs/cmu-17691-mlprac/README.md)
++   [CMU 机器学习数据库研讨会 2023 笔记](docs/cmu-mldb-sem-2023/README.md)
 +   [CMU 概率图模型笔记](docs/cmu-pgm/README.md)
 +   [MIT 15.773 动手学深度学习笔记](docs/mit-15773-dlpt/README.md)
 +   [MIT 18.06 线性代数笔记](docs/mit-18.06-linalg-notes/README.md)
