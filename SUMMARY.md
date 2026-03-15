@@ -14,7 +14,7 @@
 +   [CMU 15-418 并行计算笔记](docs/cmu-15418-prll-comp/README.md)
 +   [CMU 16-745 最优控制与强化学习笔记](docs/cmu-16745-rl/README.md)
 +   [CMU 17-445 AI 驱动的软件工程笔记](docs/cmu-17445-aidvn-swe/README.md)
-+   [CMU 170691 机器学习实践笔记](docs/cmu-17691-mlprac/README.md)
++   [CMU 17-691 机器学习实践笔记](docs/cmu-17691-mlprac/README.md)
 +   [CMU 机器学习数据库研讨会 2023 笔记](docs/cmu-mldb-sem-2023/README.md)
 +   [CMU 概率图模型笔记](docs/cmu-pgm/README.md)
 +   [MIT 15.773 动手学深度学习笔记](docs/mit-15773-dlpt/README.md)
