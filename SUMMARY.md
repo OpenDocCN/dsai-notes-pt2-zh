@@ -54,6 +54,7 @@
 +   [斯坦福 CS224r 深度强化学习笔记](docs/stf-cs224r-drl/README.md)
 +   [斯坦福 CS224U 自然语言理解笔记](docs/stf-cs224u-nlu/README.md)
 +   [斯坦福 CS224W 图机器学习笔记](docs/stf-cs224w-gnn/README.md)
++   [斯坦福 CS228 概率图模型笔记](docs/stf-cs228-pgm/README.md)
 +   [斯坦福 CS229/M 机器学习 2024 笔记](docs/stf-cs229-ml-2024/README.md)
 +   [斯坦福 CS230 深度学习笔记](docs/stf-cs230-dl/README.md)
 +   [斯坦福 CS231n 卷积神经网络中文讲义](docs/stf-cs231n-cv/README.md)
